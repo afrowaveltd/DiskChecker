@@ -1,0 +1,6 @@
+<Solution>
+  <Project Path="DiskChecker.Application/DiskChecker.Application.csproj" />
+  <Project Path="DiskChecker.Core/DiskChecker.Core.csproj" />
+  <Project Path="DiskChecker.Infrastructure/DiskChecker.Infrastructure.csproj" />
+  <Project Path="DiskChecker.UI/DiskChecker.UI.csproj" />
+</Solution>
