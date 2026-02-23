@@ -14,7 +14,11 @@ builder.Services.AddServerSideBlazor();
 builder.Services.AddCoreServices();
 builder.Services.AddPersistence("Data Source=DiskChecker.db");
 builder.Services.Configure<EmailSettings>(builder.Configuration.GetSection("EmailSettings"));
-builder.Services.AddSingleton<ISmartaProvider>(_ => SmartaProviderFactory.CreateProvider());
+builder.Services.AddScoped<ISmartaProvider>(sp =>
+{
+    var factory = sp.GetRequiredService<SmartaProviderFactory>();
+    return factory.Create();
+});
 builder.Services.AddSingleton<IQualityCalculator, QualityCalculator>();
 builder.Services.AddScoped<DiskCheckerService>();
 builder.Services.AddScoped<SmartCheckService>();
@@ -23,15 +27,21 @@ builder.Services.AddScoped<ISurfaceTestExecutor, SurfaceTestExecutor>();
 builder.Services.AddScoped<ISurfaceTestService, SurfaceTestService>();
 builder.Services.AddScoped<SurfaceTestService>();
 builder.Services.AddScoped<ITestReportExporter, TestReportExportService>();
-builder.Services.AddScoped<TestReportExportService>();
-builder.Services.AddScoped<IPdfReportExporter, PdfReportExportService>();
 builder.Services.AddScoped<PdfReportExportService>();
+builder.Services.AddScoped<IPdfReportExporter, PdfReportExportService>();
 builder.Services.AddScoped<IEmailSettingsService, EmailSettingsService>();
 builder.Services.AddScoped<IEmailSender, SmtpEmailSender>();
 builder.Services.AddScoped<IReportEmailService, ReportEmailService>();
 builder.Services.AddScoped<ReportEmailService>();
+builder.Services.AddScoped<HistoryService>();
 
 var app = builder.Build();
+
+using (var scope = app.Services.CreateScope())
+{
+    var context = scope.ServiceProvider.GetRequiredService<DiskCheckerDbContext>();
+    context.Database.EnsureCreated();
+}
 
 if (!app.Environment.IsDevelopment())
 {

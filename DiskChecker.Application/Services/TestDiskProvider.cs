@@ -24,4 +24,14 @@ public class TestDiskProvider : ISmartaProvider
         };
         return Task.FromResult<IReadOnlyList<CoreDriveInfo>>(drives);
     }
+
+    public Task<string?> GetDependencyInstructionsAsync(CancellationToken cancellationToken = default)
+    {
+        return Task.FromResult<string?>(null);
+    }
+
+    public Task<bool> TryInstallDependenciesAsync(CancellationToken cancellationToken = default)
+    {
+        return Task.FromResult(true);
+    }
 }

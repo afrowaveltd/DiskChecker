@@ -15,6 +15,7 @@ public class DiskCheckerDbContext : DbContext
     public DbSet<DriveRecord> Drives { get; set; } = null!;
     public DbSet<SurfaceTestSampleRecord> SurfaceTestSamples { get; set; } = null!;
     public DbSet<EmailSettingsRecord> EmailSettings { get; set; } = null!;
+    public DbSet<ReplicationQueueRecord> ReplicationQueue { get; set; } = null!;
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -54,6 +55,7 @@ public class DriveRecord
     public string ModelFamily { get; set; } = string.Empty;
     public string DeviceModel { get; set; } = string.Empty;
     public string SerialNumber { get; set; } = string.Empty;
+    public string FirmwareVersion { get; set; } = string.Empty;
     public string FileSystem { get; set; } = string.Empty;
     public long TotalSize { get; set; }
     public long FreeSpace { get; set; }
@@ -201,4 +203,17 @@ public class EmailSettingsRecord
     /// Gets or sets the last update time.
     /// </summary>
     public DateTime UpdatedAtUtc { get; set; }
+}
+
+public class ReplicationQueueRecord
+{
+    public Guid Id { get; set; }
+    public string EventType { get; set; } = string.Empty;
+    public string EntityId { get; set; } = string.Empty;
+    public string EntityName { get; set; } = string.Empty;
+    public DateTime CreatedAtUtc { get; set; }
+    public DateTime? SentAtUtc { get; set; }
+    public bool IsSent { get; set; }
+    public int RetryCount { get; set; }
+    public string? Payload { get; set; }
 }

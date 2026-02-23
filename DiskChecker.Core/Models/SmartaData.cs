@@ -71,3 +71,58 @@ public class SmartCheckResult
     // </summary>
     public Guid TestId { get; set; }
 }
+
+public class SpeedSample
+{
+    public long OffsetBytes { get; set; }
+    public int BlockSizeBytes { get; set; }
+    public double ThroughputMbps { get; set; }
+    public DateTime TimestampUtc { get; set; }
+    public int ErrorCount { get; set; }
+}
+
+public class TestHistoryItem
+{
+    public Guid TestId { get; set; }
+    public Guid DriveId { get; set; }
+    public string DriveName { get; set; } = string.Empty;
+    public string DrivePath { get; set; } = string.Empty;
+    public string SerialNumber { get; set; } = string.Empty;
+    public DateTime TestDate { get; set; }
+    public string TestType { get; set; } = string.Empty;
+    public QualityGrade Grade { get; set; }
+    public double Score { get; set; }
+    public double AverageSpeed { get; set; }
+    public double PeakSpeed { get; set; }
+    public double MinSpeed { get; set; }
+    public long TotalBytesTested { get; set; }
+    public int ErrorCount { get; set; }
+    public SmartaData? SmartaData { get; set; }
+    public IReadOnlyList<SpeedSample>? SurfaceSamples { get; set; }
+}
+
+public class PagedResult<T>
+{
+    public IReadOnlyList<T> Items { get; set; } = Array.Empty<T>();
+    public int TotalItems { get; set; }
+    public int PageSize { get; set; }
+    public int PageIndex { get; set; }
+    public int TotalPages => (int)Math.Ceiling((double)TotalItems / PageSize);
+}
+
+public class CompareItem
+{
+    public string Label { get; set; } = string.Empty;
+    public string Value1 { get; set; } = string.Empty;
+    public string Value2 { get; set; } = string.Empty;
+}
+
+public class DriveCompareItem
+{
+    public Guid DriveId { get; set; }
+    public string DriveName { get; set; } = string.Empty;
+    public string SerialNumber { get; set; } = string.Empty;
+    public string Model { get; set; } = string.Empty;
+    public int TotalTests { get; set; }
+    public DateTime? LastTestDate { get; set; }
+}

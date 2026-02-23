@@ -19,10 +19,12 @@ var services = new ServiceCollection();
 services.AddSingleton<IConfiguration>(configuration);
 services.Configure<EmailSettings>(configuration.GetSection("EmailSettings"));
 services.AddCoreServices();
-services.AddLogging(logging => logging.AddConsole());
+services.AddLogging(logging => 
+{
+    logging.ClearProviders();
+    // logging.AddConsole(); // Disabled to keep console UI clean
+});
 services.AddPersistence("Data Source=DiskChecker.db");
-services.AddSingleton<ISmartaProvider>(_ => SmartaProviderFactory.CreateProvider());
-services.AddSingleton<IQualityCalculator, QualityCalculator>();
 services.AddScoped<DiskCheckerService>();
 services.AddScoped<SmartCheckService>();
 services.AddScoped<SurfaceTestPersistenceService>();
@@ -30,15 +32,24 @@ services.AddScoped<ISurfaceTestExecutor, SurfaceTestExecutor>();
 services.AddScoped<ISurfaceTestService, SurfaceTestService>();
 services.AddScoped<SurfaceTestService>();
 services.AddScoped<ITestReportExporter, TestReportExportService>();
-services.AddScoped<TestReportExportService>();
+services.AddScoped<PdfReportExportService>();
+services.AddScoped<IPdfReportExporter, PdfReportExportService>();
+services.AddScoped<EmailSettingsService>();
 services.AddScoped<IEmailSettingsService, EmailSettingsService>();
 services.AddScoped<IEmailSender, SmtpEmailSender>();
-services.AddScoped<IReportEmailService, ReportEmailService>();
 services.AddScoped<ReportEmailService>();
+services.AddScoped<IReportEmailService, ReportEmailService>();
+services.AddScoped<HistoryService>();
 services.AddScoped<MainConsoleMenu>();
 services.AddScoped<DiskCheckerApp>();
 
 var serviceProvider = services.BuildServiceProvider();
+
+using (var scope = serviceProvider.CreateScope())
+{
+    var context = scope.ServiceProvider.GetRequiredService<DiskCheckerDbContext>();
+    context.Database.EnsureCreated();
+}
 
 var app = serviceProvider.GetRequiredService<DiskCheckerApp>();
 await app.RunAsync(args);

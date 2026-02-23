@@ -1,5 +1,19 @@
 @inherits LayoutComponentBase
 
-<div class="content">
+<header class="navbar">
+    <nav>
+        <a href="/">Disky</a> | 
+        <a href="/history">Historie</a> | 
+        <a href="/settings">Nastavení</a>
+    </nav>
+</header>
+
+<main class="content">
     @Body
-</div>
+</main>
+
+<style>
+    .navbar { border-bottom: 1px solid #ccc; padding: 10px; margin-bottom: 20px; }
+    .navbar a { text-decoration: none; color: #007bff; margin: 0 10px; }
+    .content { padding: 0 20px; }
+</style>

@@ -1,0 +1,98 @@
+@page "/settings"
+@using DiskChecker.Core.Models
+@using DiskChecker.Core.Interfaces
+@inject IEmailSettingsService EmailSettingsService
+
+<h1>Nastavení aplikace</h1>
+
+<div class="row">
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-header bg-primary text-white">
+                <h5 class="mb-0">Email (SMTP) nastavení</h5>
+            </div>
+            <div class="card-body">
+                @if (settings == null)
+                {
+                    <p>Načítám nastavení...</p>
+                }
+                else
+                {
+                    @if (showSuccess)
+                    {
+                        <div class="alert alert-success">Nastavení bylo úspěšně uloženo.</div>
+                    }
+
+                    <div class="mb-3">
+                        <label class="form-label">SMTP Host</label>
+                        <input type="text" class="form-control" @bind="settings.Host" placeholder="smtp.example.com" />
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">SMTP Port</label>
+                        <input type="number" class="form-control" @bind="settings.Port" />
+                    </div>
+                    <div class="mb-3 form-check">
+                        <input type="checkbox" class="form-check-input" id="useSsl" @bind="settings.UseSsl" />
+                        <label class="form-check-label" for="useSsl">Použít SSL/TLS</label>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Uživatelské jméno</label>
+                        <input type="text" class="form-control" @bind="settings.UserName" />
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Heslo</label>
+                        <input type="password" class="form-control" @bind="settings.Password" />
+                    </div>
+                    <hr />
+                    <div class="mb-3">
+                        <label class="form-label">Jméno odesílatele</label>
+                        <input type="text" class="form-control" @bind="settings.FromName" />
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Email odesílatele</label>
+                        <input type="email" class="form-control" @bind="settings.FromAddress" />
+                    </div>
+
+                    <button class="btn btn-primary" @onclick="SaveSettings" disabled="@isSaving">
+                        @(isSaving ? "Ukládám..." : "Uložit nastavení")
+                    </button>
+                }
+            </div>
+        </div>
+    </div>
+</div>
+
+@code {
+    private EmailSettings? settings;
+    private bool isSaving = false;
+    private bool showSuccess = false;
+
+    protected override async Task OnInitializedAsync()
+    {
+        settings = await EmailSettingsService.GetAsync();
+    }
+
+    private async Task SaveSettings()
+    {
+        if (settings == null) return;
+
+        isSaving = true;
+        showSuccess = false;
+        StateHasChanged();
+
+        try
+        {
+            await EmailSettingsService.SaveAsync(settings);
+            showSuccess = true;
+        }
+        catch (Exception)
+        {
+            // Log error
+        }
+        finally
+        {
+            isSaving = false;
+            StateHasChanged();
+        }
+    }
+}

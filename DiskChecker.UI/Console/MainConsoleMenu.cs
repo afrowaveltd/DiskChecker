@@ -3,6 +3,7 @@ using DiskChecker.Application.Services;
 using DiskChecker.Core.Interfaces;
 using DiskChecker.Core.Models;
 using static System.Console;
+using System.Text;
 
 namespace DiskChecker.UI.Console;
 
@@ -17,6 +18,8 @@ public class MainConsoleMenu
     private readonly ITestReportExporter _reportExporter;
     private readonly IPdfReportExporter _pdfExporter;
     private readonly IReportEmailService _reportEmailService;
+    private readonly HistoryService _historyService;
+    private readonly IEmailSettingsService _emailSettingsService;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="MainConsoleMenu"/> class.
@@ -27,13 +30,17 @@ public class MainConsoleMenu
     /// <param name="reportExporter">Service for test report exporting.</param>
     /// <param name="pdfExporter">Service for exporting reports as PDF.</param>
     /// <param name="reportEmailService">Service for sending reports via email.</param>
+    /// <param name="historyService">Service for test history and comparison.</param>
+    /// <param name="emailSettingsService">Service for email settings.</param>
     public MainConsoleMenu(
         DiskCheckerService diskCheckerService,
         SmartCheckService smartCheckService,
         ISurfaceTestService surfaceTestService,
         ITestReportExporter reportExporter,
         IPdfReportExporter pdfExporter,
-        IReportEmailService reportEmailService)
+        IReportEmailService reportEmailService,
+        HistoryService historyService,
+        IEmailSettingsService emailSettingsService)
     {
         _diskCheckerService = diskCheckerService;
         _smartCheckService = smartCheckService;
@@ -41,6 +48,8 @@ public class MainConsoleMenu
         _reportExporter = reportExporter;
         _pdfExporter = pdfExporter;
         _reportEmailService = reportEmailService;
+        _historyService = historyService;
+        _emailSettingsService = emailSettingsService;
     }
 
     private static readonly string[] MenuChoices = new[]
@@ -67,34 +76,54 @@ public class MainConsoleMenu
             }
 
             AnsiConsole.Write(new FigletText("DiskChecker").Color(Color.Red));
+            AnsiConsole.MarkupLine("[bold white]Hlavní menu[/]");
+            AnsiConsole.MarkupLine(" [blue]1.[/] Kontrola disku (SMART)");
+            AnsiConsole.MarkupLine(" [blue]2.[/] Úplný test (zápis/nula + kontrola)");
+            AnsiConsole.MarkupLine(" [blue]3.[/] Historie testů");
+            AnsiConsole.MarkupLine(" [blue]4.[/] Porovnání disků");
+            AnsiConsole.MarkupLine(" [blue]5.[/] Nastavení (jazyk)");
+            AnsiConsole.MarkupLine(" [blue]6.[/] Konec");
+            AnsiConsole.WriteLine();
+            AnsiConsole.Markup("Zadejte volbu (1-6): ");
 
-            var choice = AnsiConsole.Prompt(
-                new SelectionPrompt<string>()
-                    .Title("DiskChecker - hlavní menu [v0.1]")
-                    .PageSize(10)
-                    .MoreChoicesText("[i](použijte šipky pro výběr)[/]")
-                    .AddChoices(MenuChoices));
+            var choice = ReadLine();
 
-            switch (choice)
+            switch (choice.Trim())
             {
-                case var _ when choice.Contains("Kontrola disku"):
+                case "1":
                     await CheckDiskMenuAsync();
                     break;
-                case var _ when choice.Contains("Úplný test"):
+                case "2":
                     await FullTestMenuAsync();
                     break;
-                case var _ when choice.Contains("Historie"):
+                case "3":
                     await HistoryMenuAsync();
                     break;
-                case var _ when choice.Contains("Porovnání"):
+                case "4":
                     await CompareMenuAsync();
                     break;
-                case var _ when choice.Contains("Nastavení"):
+                case "5":
                     await SettingsMenuAsync();
                     break;
-                case var _ when choice.Contains("Konec"):
+                case "6":
                     return;
+                default:
+                    AnsiConsole.MarkupLine("[red]Neplatná volba, zkuste to znovu.[/]");
+                    WaitForReturn();
+                    break;
             }
+        }
+    }
+
+    private static string ReadLine()
+    {
+        try
+        {
+            return System.Console.ReadLine() ?? string.Empty;
+        }
+        catch
+        {
+            return string.Empty;
         }
     }
 
@@ -105,40 +134,93 @@ public class MainConsoleMenu
 
         if (drives.Count == 0)
         {
-            AnsiConsole.MarkupLine("[red]Nebyl nalezen žádný disk.[/]");
+            AnsiConsole.MarkupLine("[red]Nebyl nalezen žádný disk. Zkuste spustit program jako Správce (Administrator).[/]");
             WaitForReturn();
             return;
         }
 
-        var drive = AnsiConsole.Prompt(
-            new SelectionPrompt<CoreDriveInfo>()
-                .Title("Vyberte disk pro SMART kontrolu")
-                .PageSize(10)
-                .UseConverter(info => $"{info.Name} ({info.Path})")
-                .AddChoices(drives));
+        AnsiConsole.MarkupLine("[bold white]Vyberte disk pro SMART kontrolu:[/]");
+        for (int i = 0; i < drives.Count; i++)
+        {
+            var d = drives[i];
+            AnsiConsole.MarkupLine($" [blue]{i + 1}.[/] {Markup.Escape(d.Name)} ({Markup.Escape(d.Path)}) - {FormatBytes(d.TotalSize)}");
+        }
+        AnsiConsole.MarkupLine($" [blue]{drives.Count + 1}.[/] Zpět");
+        AnsiConsole.WriteLine();
+        AnsiConsole.Markup("Zadejte volbu: ");
+        
+        var choiceStr = ReadLine();
+        if (!int.TryParse(choiceStr, out var choice) || choice < 1 || choice > drives.Count)
+        {
+            return;
+        }
+
+        var drive = drives[choice - 1];
 
         AnsiConsole.MarkupLine("[yellow]Načítám SMART data...[/]");
         var result = await _smartCheckService.RunAsync(drive);
 
-        if (result == null)
+        // Check if we got "meaningful" data (at least temperature or hours)
+        bool hasRichData = result != null && (result.SmartaData.Temperature > 0 || result.SmartaData.PowerOnHours > 0);
+
+        if (result == null || !hasRichData)
         {
-            AnsiConsole.MarkupLine("[red]SMART data nelze načíst.[/]");
-            WaitForReturn();
-            return;
+            if (result == null)
+            {
+                AnsiConsole.MarkupLine("[red]SMART data nelze načíst vůbec.[/]");
+            }
+            else
+            {
+                AnsiConsole.MarkupLine("[yellow]Byla načtena pouze základní data, detailní parametry SMART chybí.[/]");
+            }
+            
+            // Check for missing dependencies
+            var instructions = await _smartCheckService.GetDependencyInstructionsAsync();
+            if (!string.IsNullOrEmpty(instructions))
+            {
+                AnsiConsole.WriteLine();
+                AnsiConsole.MarkupLine("[bold white]Doporučení:[/]");
+                AnsiConsole.MarkupLine(instructions);
+                AnsiConsole.WriteLine();
+
+                if (AnsiConsole.Confirm("Chcete se pokusit o automatickou instalaci 'smartmontools'?"))
+                {
+                    AnsiConsole.MarkupLine("[yellow]Instaluji součásti, prosím čekejte...[/]");
+                    var success = await _smartCheckService.TryInstallDependenciesAsync();
+                    
+                    if (success)
+                    {
+                        AnsiConsole.MarkupLine("[green]Instalace dokončena úspěšně![/]");
+                        AnsiConsole.MarkupLine("[yellow]DŮLEŽITÉ: Pro aktivaci nástroje je nutné aplikaci (a terminál) RESTARTOVAT.[/]");
+                        WaitForReturn();
+                        return;
+                    }
+                    else
+                    {
+                        AnsiConsole.MarkupLine("[red]Instalace selhala. Zkuste prosím 'winget install smartmontools' ručně v novém okně PowerShellu.[/]");
+                    }
+                }
+            }
+
+            if (result == null)
+            {
+                WaitForReturn();
+                return;
+            }
         }
 
         var table = new Table()
             .AddColumn("Parametr")
             .AddColumn("Hodnota");
 
-        table.AddRow("Model", result.SmartaData.DeviceModel ?? "Neznámý");
-        table.AddRow("Sériové číslo", result.SmartaData.SerialNumber ?? "Neznámé");
-        table.AddRow("Firmware", result.SmartaData.FirmwareVersion ?? "Neznámý");
-        table.AddRow("Naběhané hodiny", result.SmartaData.PowerOnHours.ToString());
-        table.AddRow("Reallocated", result.SmartaData.ReallocatedSectorCount.ToString());
-        table.AddRow("Pending", result.SmartaData.PendingSectorCount.ToString());
-        table.AddRow("Uncorrectable", result.SmartaData.UncorrectableErrorCount.ToString());
-        table.AddRow("Teplota", $"{result.SmartaData.Temperature:F1} °C");
+        table.AddRow("Model", result.SmartaData.DeviceModel ?? "---");
+        table.AddRow("Sériové číslo", result.SmartaData.SerialNumber ?? "---");
+        table.AddRow("Firmware", result.SmartaData.FirmwareVersion ?? "---");
+        table.AddRow("Naběhané hodiny", result.SmartaData.PowerOnHours > 0 ? result.SmartaData.PowerOnHours.ToString() : "---");
+        table.AddRow("Reallocated", result.SmartaData.ReallocatedSectorCount > 0 ? result.SmartaData.ReallocatedSectorCount.ToString() : "---");
+        table.AddRow("Pending", result.SmartaData.PendingSectorCount > 0 ? result.SmartaData.PendingSectorCount.ToString() : "---");
+        table.AddRow("Uncorrectable", result.SmartaData.UncorrectableErrorCount > 0 ? result.SmartaData.UncorrectableErrorCount.ToString() : "---");
+        table.AddRow("Teplota", result.SmartaData.Temperature > 0 ? $"{result.SmartaData.Temperature:F1} °C" : "---");
         if (result.SmartaData.WearLevelingCount.HasValue)
         {
             table.AddRow("Wear leveling", $"{result.SmartaData.WearLevelingCount.Value}%");
@@ -152,7 +234,7 @@ public class MainConsoleMenu
             AnsiConsole.MarkupLine("[yellow]Upozornění:[/]");
             foreach (var warning in result.Rating.Warnings)
             {
-                AnsiConsole.MarkupLine($" - {warning}");
+                AnsiConsole.MarkupLine($" - {Markup.Escape(warning)}");
             }
         }
 
@@ -166,24 +248,36 @@ public class MainConsoleMenu
 
         if (drives.Count == 0)
         {
-            AnsiConsole.MarkupLine("[red]Nebyl nalezen žádný disk.[/]");
+            AnsiConsole.MarkupLine("[red]Nebyl nalezen žádný disk. Zkuste spustit program jako Správce (Administrator).[/]");
             WaitForReturn();
             return;
         }
 
-        var drive = AnsiConsole.Prompt(
-            new SelectionPrompt<CoreDriveInfo>()
-                .Title("Vyberte disk pro test")
-                .PageSize(10)
-                .UseConverter(info => $"{info.Name} ({info.Path})")
-                .AddChoices(drives));
+        AnsiConsole.MarkupLine("[bold white]Vyberte disk pro test:[/]");
+        for (int i = 0; i < drives.Count; i++)
+        {
+            var d = drives[i];
+            AnsiConsole.MarkupLine($" [blue]{i + 1}.[/] {Markup.Escape(d.Name)} ({Markup.Escape(d.Path)}) - {FormatBytes(d.TotalSize)}");
+        }
+        AnsiConsole.MarkupLine($" [blue]{drives.Count + 1}.[/] Zpět");
+        AnsiConsole.WriteLine();
+        AnsiConsole.Markup("Zadejte volbu: ");
 
-        var profileChoice = AnsiConsole.Prompt(
-            new SelectionPrompt<string>()
-                .Title("Zvolte profil testu")
-                .AddChoices("HDD - úplný test (zápis)", "SSD - rychlý test (čtení)"));
+        var choiceStr = ReadLine();
+        if (!int.TryParse(choiceStr, out var choice) || choice < 1 || choice > drives.Count)
+        {
+            return;
+        }
 
-        var profile = profileChoice.StartsWith("HDD", StringComparison.Ordinal)
+        var drive = drives[choice - 1];
+
+        AnsiConsole.MarkupLine("Zvolte profil testu:");
+        AnsiConsole.MarkupLine(" [blue]1.[/] HDD - úplný test (zápis)");
+        AnsiConsole.MarkupLine(" [blue]2.[/] SSD - rychlý test (čtení)");
+        AnsiConsole.Markup("Volba: ");
+        var profileChoice = ReadLine();
+
+        var profile = profileChoice.Trim() == "1"
             ? SurfaceTestProfile.HddFull
             : SurfaceTestProfile.SsdQuick;
 
@@ -286,7 +380,7 @@ public class MainConsoleMenu
 
         if (!string.IsNullOrWhiteSpace(result.Notes))
         {
-            AnsiConsole.MarkupLine($"[yellow]{result.Notes}[/]");
+            AnsiConsole.MarkupLine($"[yellow]{Markup.Escape(result.Notes)}[/]");
         }
 
         await OfferSurfaceExportAsync(drive, result);
@@ -316,10 +410,23 @@ public class MainConsoleMenu
             SurfaceTest = surfaceResult
         };
 
-        var format = AnsiConsole.Prompt(
-            new SelectionPrompt<string>()
-                .Title("Vyberte formát exportu")
-                .AddChoices("Text", "HTML", "CSV", "Certifikát (HTML)", "Certifikát (PDF)"));
+        AnsiConsole.MarkupLine("Vyberte formát exportu:");
+        AnsiConsole.MarkupLine(" [blue]1.[/] Text");
+        AnsiConsole.MarkupLine(" [blue]2.[/] HTML");
+        AnsiConsole.MarkupLine(" [blue]3.[/] CSV");
+        AnsiConsole.MarkupLine(" [blue]4.[/] Certifikát (HTML)");
+        AnsiConsole.MarkupLine(" [blue]5.[/] Certifikát (PDF)");
+        AnsiConsole.Markup("Volba: ");
+        var formatChoice = ReadLine();
+
+        var format = formatChoice.Trim() switch
+        {
+            "2" => "HTML",
+            "3" => "CSV",
+            "4" => "Certifikát (HTML)",
+            "5" => "Certifikát (PDF)",
+            _ => "Text"
+        };
 
         var content = format switch
         {
@@ -367,36 +474,269 @@ public class MainConsoleMenu
 
     private async Task HistoryMenuAsync()
     {
-        AnsiConsole.MarkupLine("[yellow]Načítám historii...[/]");
-        await Task.Delay(500);
-        AnsiConsole.MarkupLine("[red]TODO: Zobrazit historii testů[/]");
+        var pageSize = 10;
+        var pageIndex = 0;
+
+        while (true)
+        {
+            var history = await _historyService.GetHistoryAsync(pageSize: pageSize, pageIndex: pageIndex);
+
+            AnsiConsole.MarkupLine($"[green]Stránka {history.PageIndex + 1} z {history.TotalPages} ({history.TotalItems} testů)[/]");
+            
+            var table = new Table()
+                .AddColumn("Datum")
+                .AddColumn("Disk")
+                .AddColumn("Typ")
+                .AddColumn("Známka")
+                .AddColumn("Skóre")
+                .AddColumn("Rychlost");
+
+            foreach (var item in history.Items)
+            {
+                table.AddRow(
+                    item.TestDate.ToString("G"),
+                    Markup.Escape(item.DriveName),
+                    Markup.Escape(item.TestType),
+                    $"[{(item.Grade >= QualityGrade.C ? "red" : "green")}]{item.Grade}[/]",
+                    $"{item.Score:F1}",
+                    $"{item.AverageSpeed:F1} MB/s"
+                );
+            }
+
+            AnsiConsole.Write(table);
+
+            if (history.TotalPages <= 1)
+            {
+                break;
+            }
+
+            AnsiConsole.MarkupLine(" [blue]N[/] Další strana | [blue]P[/] Předchozí strana | [blue]X[/] Zpět");
+            AnsiConsole.Markup("Volba: ");
+            var nav = ReadLine().ToUpperInvariant();
+
+            if (nav == "P" && pageIndex > 0)
+            {
+                pageIndex--;
+            }
+            else if (nav == "N" && pageIndex < history.TotalPages - 1)
+            {
+                pageIndex++;
+            }
+            else if (nav == "X")
+            {
+                break;
+            }
+        }
+
         WaitForReturn();
     }
 
     private async Task CompareMenuAsync()
     {
-        AnsiConsole.MarkupLine("[yellow]Načítám data pro porovnání...[/]");
-        await Task.Delay(500);
-        AnsiConsole.MarkupLine("[red]TODO: Zobrazit porovnání disků[/]");
+        AnsiConsole.MarkupLine("[yellow]Získávám seznam disků...[/]");
+        var drives = await _historyService.GetDrivesWithTestsAsync();
+
+        if (drives.Count == 0)
+        {
+            AnsiConsole.MarkupLine("[red]Nebyly nalezeny žádné testy pro porovnání.[/]");
+            WaitForReturn();
+            return;
+        }
+
+        var selectedDrives = new List<DriveCompareItem>();
+
+        while (selectedDrives.Count < 2)
+        {
+            var available = drives.Where(d => !selectedDrives.Contains(d)).ToList();
+
+            if (available.Count == 0)
+            {
+                break;
+            }
+
+            AnsiConsole.MarkupLine($"[bold white]Vyberte disk pro porovnání ({selectedDrives.Count + 1}/2):[/]");
+            for (int i = 0; i < available.Count; i++)
+            {
+                var d = available[i];
+                AnsiConsole.MarkupLine($" [blue]{i + 1}.[/] {Markup.Escape(d.DriveName)} - {Markup.Escape(d.Model)} ({d.TotalTests} testů)");
+            }
+            AnsiConsole.MarkupLine($" [blue]{available.Count + 1}.[/] Hotovo/Zpět");
+            AnsiConsole.WriteLine();
+            AnsiConsole.Markup("Zadejte volbu: ");
+
+            var choiceStr = ReadLine();
+            if (!int.TryParse(choiceStr, out var choice) || choice < 1 || choice > available.Count)
+            {
+                break;
+            }
+
+            selectedDrives.Add(available[choice - 1]);
+        }
+
+        if (selectedDrives.Count < 2)
+        {
+            AnsiConsole.MarkupLine("[red]Je potřeba vybrat alespoň 2 disky pro porovnání.[/]");
+            WaitForReturn();
+            return;
+        }
+
+        AnsiConsole.MarkupLine("[yellow]Načítám detaily testů...[/]");
+        var comparisons = new List<CompareItem>();
+
+        for (int i = 0; i < selectedDrives.Count - 1; i++)
+        {
+            var drive1 = selectedDrives[i];
+            var drive2 = selectedDrives[i + 1];
+
+            var test1 = drive1.LastTestDate.HasValue 
+                ? (await _historyService.GetForCompareAsync(1)).FirstOrDefault()
+                : null;
+            var test2 = drive2.LastTestDate.HasValue
+                ? (await _historyService.GetForCompareAsync(1)).FirstOrDefault()
+                : null;
+
+            if (test1 != null && test2 != null)
+            {
+                var comp = await _historyService.CompareTestsAsync(test1.TestId, test2.TestId);
+                comparisons.AddRange(comp);
+            }
+        }
+
+        var compTable = new Table()
+            .AddColumn("Parametr")
+            .AddColumn(Markup.Escape(selectedDrives[0].DriveName))
+            .AddColumn(Markup.Escape(selectedDrives[1].DriveName));
+
+        foreach (var comp in comparisons)
+        {
+            compTable.AddRow(Markup.Escape(comp.Label), Markup.Escape(comp.Value1), Markup.Escape(comp.Value2));
+        }
+
+        AnsiConsole.Write(compTable);
+
+        if (comparisons.Count > 0)
+        {
+            var export = AnsiConsole.Confirm("Chcete exportovat výsledek porovnání?");
+            if (export)
+            {
+                var content = GenerateCompareText(comparisons, selectedDrives);
+                var filePath = AnsiConsole.Ask<string>("Zadejte cestu k souboru", "compare.txt");
+                await File.WriteAllTextAsync(filePath, content);
+                AnsiConsole.MarkupLine($"[green]Export uložen: {Markup.Escape(filePath)}[/]");
+            }
+        }
+
         WaitForReturn();
+    }
+
+    private string GenerateCompareText(List<CompareItem> comparisons, List<DriveCompareItem> drives)
+    {
+        var sb = new StringBuilder();
+        sb.AppendLine("=== DiskChecker - Porovnání disků ===");
+        sb.AppendLine();
+        sb.AppendLine($"Disk 1: {drives[0].DriveName} ({drives[0].Model})");
+        sb.AppendLine($"Disk 2: {drives[1].DriveName} ({drives[1].Model})");
+        sb.AppendLine();
+        sb.AppendLine(new string('-', 50));
+
+        foreach (var comp in comparisons)
+        {
+            sb.AppendLine($"{comp.Label, -30} | {comp.Value1, -20} | {comp.Value2, -20}");
+        }
+
+        return sb.ToString();
     }
 
     private async Task SettingsMenuAsync()
     {
-        var language = AnsiConsole.Prompt(
-            new SelectionPrompt<string>()
-                .Title("Vyberte jazyk / Select Language")
-                .PageSize(5)
-                .AddChoices(new[] { "Čeština", "English" }));
+        while (true)
+        {
+            try { Clear(); } catch { }
+            AnsiConsole.Write(new FigletText("Nastaveni").Color(Color.Yellow));
+            AnsiConsole.MarkupLine("[bold white]Nastavení aplikace[/]");
+            AnsiConsole.MarkupLine(" [blue]1.[/] Jazyk / Language");
+            AnsiConsole.MarkupLine(" [blue]2.[/] Email (SMTP) nastavení");
+            AnsiConsole.MarkupLine(" [blue]3.[/] Zpět");
+            AnsiConsole.WriteLine();
+            AnsiConsole.Markup("Zadejte volbu (1-3): ");
 
+            var choice = ReadLine();
+            switch (choice.Trim())
+            {
+                case "1":
+                    await ChangeLanguageMenuAsync();
+                    break;
+                case "2":
+                    await EmailSettingsMenuAsync();
+                    break;
+                case "3":
+                    return;
+                default:
+                    if (string.IsNullOrEmpty(choice)) return; // Exit on EOF
+                    break;
+            }
+        }
+    }
+
+    private async Task ChangeLanguageMenuAsync()
+    {
+        AnsiConsole.MarkupLine(" [blue]1.[/] Čeština");
+        AnsiConsole.MarkupLine(" [blue]2.[/] English");
+        AnsiConsole.Markup("Vyberte jazyk: ");
+        var lang = ReadLine();
+        var language = lang.Trim() == "2" ? "English" : "Čeština";
         AnsiConsole.MarkupLine($"[green]Jazyk nastaven na: {language}[/]");
         await Task.Delay(1000);
+    }
+
+    private async Task EmailSettingsMenuAsync()
+    {
+        var settings = await _emailSettingsService.GetAsync();
+
+        AnsiConsole.MarkupLine("[bold]Aktuální SMTP nastavení:[/]");
+        AnsiConsole.MarkupLine($"Host: [yellow]{Markup.Escape(settings.Host)}[/]");
+        AnsiConsole.MarkupLine($"Port: [yellow]{settings.Port}[/]");
+        AnsiConsole.MarkupLine($"SSL: [yellow]{settings.UseSsl}[/]");
+        AnsiConsole.MarkupLine($"Uživatel: [yellow]{Markup.Escape(settings.UserName)}[/]");
+        AnsiConsole.MarkupLine($"Odesílatel: [yellow]{Markup.Escape(settings.FromName)} <{Markup.Escape(settings.FromAddress)}>[/]");
+        AnsiConsole.WriteLine();
+
+        if (!AnsiConsole.Confirm("Chcete změnit nastavení?"))
+        {
+            return;
+        }
+
+        settings.Host = AnsiConsole.Ask<string>("SMTP Host:", settings.Host);
+        settings.Port = AnsiConsole.Ask<int>("SMTP Port:", settings.Port);
+        settings.UseSsl = AnsiConsole.Confirm("Použít SSL?", settings.UseSsl);
+        settings.UserName = AnsiConsole.Ask<string>("Uživatelské jméno:", settings.UserName);
+        settings.Password = AnsiConsole.Prompt(new TextPrompt<string>("Heslo:").Secret());
+        settings.FromName = AnsiConsole.Ask<string>("Jméno odesílatele:", settings.FromName);
+        settings.FromAddress = AnsiConsole.Ask<string>("Email odesílatele:", settings.FromAddress);
+
+        await _emailSettingsService.SaveAsync(settings);
+        AnsiConsole.MarkupLine("[green]Nastavení uloženo.[/]");
+        WaitForReturn();
     }
 
     private static void WaitForReturn()
     {
         AnsiConsole.MarkupLine("[dim]Stiskněte libovolnou klávesu pro návrat...[/]");
-        ReadKey(true);
+        try
+        {
+            if (System.Console.IsInputRedirected)
+            {
+                System.Console.In.Read();
+            }
+            else
+            {
+                System.Console.ReadKey(true);
+            }
+        }
+        catch
+        {
+            // Ignore
+        }
     }
 
     private static string FormatBytes(long bytes)

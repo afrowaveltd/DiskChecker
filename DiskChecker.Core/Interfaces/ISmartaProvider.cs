@@ -7,4 +7,16 @@ public interface ISmartaProvider
     Task<SmartaData?> GetSmartaDataAsync(string drivePath, CancellationToken cancellationToken = default);
     Task<bool> IsDriveValidAsync(string drivePath, CancellationToken cancellationToken = default);
     Task<IReadOnlyList<CoreDriveInfo>> ListDrivesAsync(CancellationToken cancellationToken = default);
+    
+    /// <summary>
+    /// Gets instructions on how to install missing system dependencies.
+    /// Returns null if all dependencies are satisfied.
+    /// </summary>
+    Task<string?> GetDependencyInstructionsAsync(CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Attempts to automatically install missing system dependencies.
+    /// Returns true if installation was successful.
+    /// </summary>
+    Task<bool> TryInstallDependenciesAsync(CancellationToken cancellationToken = default);
 }

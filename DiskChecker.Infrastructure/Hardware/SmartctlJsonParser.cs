@@ -27,7 +27,7 @@ public static class SmartctlJsonParser
             var smartaData = new SmartaData
             {
                 ModelFamily = GetString(root, "model_family"),
-                DeviceModel = GetString(root, "model_name") ?? GetString(root, "model_number"),
+                DeviceModel = GetString(root, "model_name") ?? GetString(root, "model_number") ?? GetString(root, "device_model"),
                 SerialNumber = GetString(root, "serial_number"),
                 FirmwareVersion = GetString(root, "firmware_version")
             };
@@ -68,15 +68,12 @@ public static class SmartctlJsonParser
 
         foreach (var entry in table.EnumerateArray())
         {
-            if (!entry.TryGetProperty("id", out var idElement) || idElement.ValueKind != JsonValueKind.Number)
-            {
-                continue;
-            }
+            var id = GetInt(entry, "id");
+            if (!id.HasValue) continue;
 
-            var id = idElement.GetInt32();
             var rawValue = GetLong(entry, "raw", "value") ?? GetLong(entry, "raw", "string") ?? 0;
 
-            switch (id)
+            switch (id.Value)
             {
                 case 5:
                     smartaData.ReallocatedSectorCount = rawValue;
@@ -122,16 +119,36 @@ public static class SmartctlJsonParser
 
     private static string? GetString(JsonElement root, string property)
     {
-        return root.TryGetProperty(property, out var value) && value.ValueKind == JsonValueKind.String
-            ? value.GetString()
-            : null;
+        if (root.TryGetProperty(property, out var value) && value.ValueKind == JsonValueKind.String)
+            return value.GetString();
+            
+        foreach (var prop in root.EnumerateObject())
+        {
+            if (string.Equals(prop.Name, property, StringComparison.OrdinalIgnoreCase) && prop.Value.ValueKind == JsonValueKind.String)
+                return prop.Value.GetString();
+        }
+        
+        return null;
     }
 
     private static long? GetLong(JsonElement root, string property)
     {
-        return root.TryGetProperty(property, out var value) && value.ValueKind == JsonValueKind.Number
-            ? value.GetInt64()
-            : null;
+        if (root.TryGetProperty(property, out var value))
+        {
+            if (value.ValueKind == JsonValueKind.Number) return value.GetInt64();
+            if (value.ValueKind == JsonValueKind.String && long.TryParse(value.GetString(), out var parsed)) return parsed;
+        }
+
+        foreach (var prop in root.EnumerateObject())
+        {
+            if (string.Equals(prop.Name, property, StringComparison.OrdinalIgnoreCase))
+            {
+                if (prop.Value.ValueKind == JsonValueKind.Number) return prop.Value.GetInt64();
+                if (prop.Value.ValueKind == JsonValueKind.String && long.TryParse(prop.Value.GetString(), out var parsed)) return parsed;
+            }
+        }
+        
+        return null;
     }
 
     private static long? GetLong(JsonElement root, string property, string nestedProperty)
@@ -151,22 +168,51 @@ public static class SmartctlJsonParser
             return parsed;
         }
 
-        return nested.TryGetProperty(nestedProperty, out var value) && value.ValueKind == JsonValueKind.Number
-            ? value.GetInt64()
-            : null;
+        if (nested.ValueKind == JsonValueKind.Object)
+        {
+            return GetLong(nested, nestedProperty);
+        }
+
+        return null;
     }
 
     private static int? GetInt(JsonElement root, string property)
     {
-        return root.TryGetProperty(property, out var value) && value.ValueKind == JsonValueKind.Number
-            ? value.GetInt32()
-            : null;
+        if (root.TryGetProperty(property, out var value))
+        {
+            if (value.ValueKind == JsonValueKind.Number) return value.GetInt32();
+            if (value.ValueKind == JsonValueKind.String && int.TryParse(value.GetString(), out var parsed)) return parsed;
+        }
+
+        foreach (var prop in root.EnumerateObject())
+        {
+            if (string.Equals(prop.Name, property, StringComparison.OrdinalIgnoreCase))
+            {
+                if (prop.Value.ValueKind == JsonValueKind.Number) return prop.Value.GetInt32();
+                if (prop.Value.ValueKind == JsonValueKind.String && int.TryParse(prop.Value.GetString(), out var parsed)) return parsed;
+            }
+        }
+        
+        return null;
     }
 
     private static double? GetDouble(JsonElement root, string property)
     {
-        return root.TryGetProperty(property, out var value) && value.ValueKind == JsonValueKind.Number
-            ? value.GetDouble()
-            : null;
+        if (root.TryGetProperty(property, out var value))
+        {
+            if (value.ValueKind == JsonValueKind.Number) return value.GetDouble();
+            if (value.ValueKind == JsonValueKind.String && double.TryParse(value.GetString(), out var parsed)) return parsed;
+        }
+
+        foreach (var prop in root.EnumerateObject())
+        {
+            if (string.Equals(prop.Name, property, StringComparison.OrdinalIgnoreCase))
+            {
+                if (prop.Value.ValueKind == JsonValueKind.Number) return prop.Value.GetDouble();
+                if (prop.Value.ValueKind == JsonValueKind.String && double.TryParse(prop.Value.GetString(), out var parsed)) return parsed;
+            }
+        }
+        
+        return null;
     }
 }

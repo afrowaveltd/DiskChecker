@@ -62,7 +62,7 @@ public class SmartCheckService
         var testDate = DateTime.UtcNow;
         smartaData.LastChecked = testDate;
 
-        var serialKey = string.IsNullOrWhiteSpace(smartaData.SerialNumber) ? drive.Path : smartaData.SerialNumber;
+        var serialKey = (string.IsNullOrWhiteSpace(smartaData.SerialNumber) ? drive.Path : smartaData.SerialNumber).Trim();
         var driveRecord = await _dbContext.Drives
             .SingleOrDefaultAsync(d => d.SerialNumber == serialKey, cancellationToken);
 
@@ -145,5 +145,21 @@ public class SmartCheckService
             TestDate = testDate,
             TestId = testRecord.Id
         };
+    }
+
+    /// <summary>
+    /// Gets instructions on how to install missing system dependencies.
+    /// </summary>
+    public async Task<string?> GetDependencyInstructionsAsync(CancellationToken cancellationToken = default)
+    {
+        return await _smartaProvider.GetDependencyInstructionsAsync(cancellationToken);
+    }
+
+    /// <summary>
+    /// Attempts to automatically install missing system dependencies.
+    /// </summary>
+    public async Task<bool> TryInstallDependenciesAsync(CancellationToken cancellationToken = default)
+    {
+        return await _smartaProvider.TryInstallDependenciesAsync(cancellationToken);
     }
 }

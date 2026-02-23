@@ -4,9 +4,9 @@ using DiskChecker.Infrastructure.Hardware;
 
 namespace DiskChecker.Infrastructure.Persistence;
 
-public static class SmartaProviderFactory
+public class SmartaProviderFactory
 {
-    public static ISmartaProvider CreateProvider()
+    public ISmartaProvider Create()
     {
         return RuntimeInformation.IsOSPlatform(OSPlatform.Linux)
             ? new LinuxSmartaProvider()
