@@ -3,4 +3,5 @@
   <Project Path="DiskChecker.Core/DiskChecker.Core.csproj" />
   <Project Path="DiskChecker.Infrastructure/DiskChecker.Infrastructure.csproj" />
   <Project Path="DiskChecker.UI/DiskChecker.UI.csproj" />
+  <Project Path="DiskChecker.Web/DiskChecker.Web.csproj" />
 </Solution>

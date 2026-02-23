@@ -2,7 +2,6 @@ using Microsoft.Extensions.DependencyInjection;
 using DiskChecker.Core.Interfaces;
 using DiskChecker.Core.Models;
 using DiskChecker.Core.Services;
-using DiskChecker.Infrastructure.Hardware;
 using DiskChecker.Infrastructure.Persistence;
 using DiskChecker.Application.Services;
 using DiskChecker.Core;
@@ -15,8 +14,8 @@ services.AddCoreServices();
 // Add persistence
 services.AddPersistence("Data Source=DiskChecker.db");
 
-// Register factories and services
-services.AddSingleton<ISmartaProvider>(SmartaProviderFactory.CreateProvider());
+// Register factories and services - use test provider for testing
+services.AddSingleton<ISmartaProvider, TestDiskProvider>();
 services.AddSingleton<IQualityCalculator, QualityCalculator>();
 services.AddSingleton<DiskCheckerService>();
 

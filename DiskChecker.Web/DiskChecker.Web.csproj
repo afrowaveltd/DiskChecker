@@ -1,0 +1,20 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <ItemGroup>
+    <ProjectReference Include="..\DiskChecker.Core\DiskChecker.Core.csproj" />
+    <ProjectReference Include="..\DiskChecker.Application\DiskChecker.Application.csproj" />
+    <ProjectReference Include="..\DiskChecker.Infrastructure\DiskChecker.Infrastructure.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.AspNetCore.Components.WebAssembly.Server" Version="9.0.0" />
+  </ItemGroup>
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <NoWarn>CA1822;CA1860;CA1861;CA1862;CA1305;CA1707;CA1859</NoWarn>
+  </PropertyGroup>
+
+</Project>

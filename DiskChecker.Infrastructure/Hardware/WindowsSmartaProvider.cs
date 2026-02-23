@@ -81,12 +81,7 @@ if ($drive) {{
         var drives = new List<CoreDriveInfo>();
 
         var powershellScript = @"
-Get-PhysicalDisk | Select-Object -Property 
-    @{Name='DriveNumber';Expression={$_.DeviceNumber}},
-    @{Name='DeviceID';Expression={$_.DeviceID}},
-    Model, SerialNumber, 
-    @{Name='Size';Expression={$_.Size}},
-    @{Name='MediaType';Expression={$_.MediaType}}";
+Get-PhysicalDisk | Select-Object DeviceNumber, DeviceID, Model, SerialNumber, Size, MediaType";
 
         var psi = new ProcessStartInfo
         {
@@ -103,8 +98,20 @@ Get-PhysicalDisk | Select-Object -Property
         var output = await process.StandardOutput.ReadToEndAsync(cancellationToken);
         await process.WaitForExitAsync(cancellationToken);
 
-        // Parse output and create drive info
-        // This is simplified - in production would parse JSON output
+        var lines = output.Split('\n', StringSplitOptions.RemoveEmptyEntries);
+        foreach (var line in lines.Skip(1))
+        {
+            var parts = line.Split(',', StringSplitOptions.RemoveEmptyEntries);
+            if (parts.Length >= 5)
+            {
+                drives.Add(new CoreDriveInfo
+                {
+                    Path = $@"\\.\PhysicalDrive{parts[0].Trim()}",
+                    Name = parts[2].Trim(),
+                    TotalSize = long.TryParse(parts[4].Trim(), out var size) ? size : 0
+                });
+            }
+        }
         
         return drives;
     }

@@ -1,6 +1,6 @@
 # DiskChecker
 
-Profesionální nástroj pro kontrolu a testování úložných zařízení v terminálovém prostředí.
+Profesionální nástroj pro kontrolu a testování úložných zařízení s konzolovým i webovým rozhraním.
 
 ## 🚀 Vlastnosti
 
@@ -9,7 +9,13 @@ Profesionální nástroj pro kontrolu a testování úložných zařízení v te
 - **Certifikáty** - generování textových dokumentů s detailními výsledky
 - **Historie** - ukládání výsledků do SQLite databáze  
 - **Porovnávání** - srovnání více disků nebo opakovaných testů
-- **Bilingual** - čeština a angličtina s možností přepínání
+- **Bilingual** - čeština a angličtin s možností přepínání
+
+## 📋 Podporovaná rozhraní
+
+- **Console UI** - pro TUI prostředí (Windows/Linux)
+- **Web UI** - Blazor Server + Kestrel pro přístup přes prohlížeč
+- **Avalonia UI** - WPF-like desktopová aplikace (připraveno)
 
 ## 📋 Požadavky
 
@@ -22,25 +28,25 @@ Profesionální nástroj pro kontrolu a testování úložných zařízení v te
 sudo apt-get install smartmontools
 ```
 
-## 🛠 Instalace
+## 🛠 Instalace a použití
 
 ```bash
 git clone https://github.com/yourusername/DiskChecker.git
 cd DiskChecker
 dotnet build -c Release
+```
+
+### Console UI (TUI)
+```bash
 dotnet run --project DiskChecker.UI
 ```
 
-## 📖 Použití
+### Web UI (Blazor Server)
+```bash
+dotnet run --project DiskChecker.Web
+```
 
-```
-DiskChecker - hlavní menu
-1. Kontrola disku (SMART) - získá SMART data a vyhodnotí kvalitu
-2. Úplný test (zápis/nula + kontrola) - prošpehování disku
-3. Historie testů - zobrazí dřívější testy
-4. Porovnání disků - srovnání více disků
-5. Nastavení (jazyk) - přepínání jazyka
-```
+Přejděte na `https://localhost:5001` nebo `http://localhost:5000`
 
 ## 🏗 Architektura
 
@@ -49,18 +55,18 @@ DiskChecker/
 ├── Core/           # Modely, rozhraní, business logika
 ├── Application/    # DTO, služby
 ├── Infrastructure/ # EF Core, SMART čtečky, databáze
-└── UI/             # Konzolové rozhraní (Spectre.Console)
+├── UI/             # Konzolové rozhraní (Spectre.Console)
+├── Web/            # Blazor Server + Kestrel web UI
+└── Tests/          # Unit testy (xUnit + NSubstitute)
 ```
 
 ## 🌐 Lokalizace
 
-Podporuje češtinu a angličtinu. V nastavení lze jazyk změnit.  
-Všechny uživatelské texty jsou lokalizovatelné.
+Podporuje češtinu a angličtinu. Všechny uživatelské texty jsou lokalizovatelné.
 
 ## 📄 Certifikáty
 
-Certifikáty jsou generovány v textové formě pro tisk a archivaci.  
-Obsahují:
+Certifikáty jsou generovány v textové formě pro tisk a archivaci. Obsahují:
 - Identifikační údaje disku
 - SMART parametry
 - Kvalitní hodnocení (A-F)
@@ -81,4 +87,4 @@ Příspěvky Jsou VÍTANÉ! Prosím otevřete issue nebo pull request.
 
 ---
 
-**DiskChecker** - vaše disková bezpečnost v terminálu.
+**DiskChecker** - vaše disková bezpečnost v terminálu i přes síť.
