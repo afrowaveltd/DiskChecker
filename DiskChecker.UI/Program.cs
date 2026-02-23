@@ -1,34 +1,44 @@
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Configuration;
 using DiskChecker.Core.Interfaces;
 using DiskChecker.Core.Models;
 using DiskChecker.Core.Services;
 using DiskChecker.Infrastructure.Persistence;
+using DiskChecker.Infrastructure.Hardware;
 using DiskChecker.Application.Services;
 using DiskChecker.Core;
+using DiskChecker.UI.Console;
+
+var configuration = new ConfigurationBuilder()
+    .AddJsonFile("appsettings.json", optional: true, reloadOnChange: true)
+    .Build();
 
 var services = new ServiceCollection();
 
-// Add core services
+services.AddSingleton<IConfiguration>(configuration);
+services.Configure<EmailSettings>(configuration.GetSection("EmailSettings"));
 services.AddCoreServices();
-
-// Add persistence
+services.AddLogging(logging => logging.AddConsole());
 services.AddPersistence("Data Source=DiskChecker.db");
-
-// Register factories and services - use test provider for testing
-services.AddSingleton<ISmartaProvider, TestDiskProvider>();
+services.AddSingleton<ISmartaProvider>(_ => SmartaProviderFactory.CreateProvider());
 services.AddSingleton<IQualityCalculator, QualityCalculator>();
-services.AddSingleton<DiskCheckerService>();
+services.AddScoped<DiskCheckerService>();
+services.AddScoped<SmartCheckService>();
+services.AddScoped<SurfaceTestPersistenceService>();
+services.AddScoped<ISurfaceTestExecutor, SurfaceTestExecutor>();
+services.AddScoped<ISurfaceTestService, SurfaceTestService>();
+services.AddScoped<SurfaceTestService>();
+services.AddScoped<ITestReportExporter, TestReportExportService>();
+services.AddScoped<TestReportExportService>();
+services.AddScoped<IEmailSettingsService, EmailSettingsService>();
+services.AddScoped<IEmailSender, SmtpEmailSender>();
+services.AddScoped<IReportEmailService, ReportEmailService>();
+services.AddScoped<ReportEmailService>();
+services.AddScoped<MainConsoleMenu>();
+services.AddScoped<DiskCheckerApp>();
 
-// Build provider
 var serviceProvider = services.BuildServiceProvider();
 
-// Get services
-var diskCheckerService = serviceProvider.GetRequiredService<DiskCheckerService>();
-
-// Example: List drives
-var drives = await diskCheckerService.ListDrivesAsync();
-Console.WriteLine($"Nalezeno disků: {drives.Count}");
-foreach (var drive in drives)
-{
-    Console.WriteLine($"- {drive.Name} ({drive.Path})");
-}
+var app = serviceProvider.GetRequiredService<DiskCheckerApp>();
+await app.RunAsync(args);

@@ -26,3 +26,76 @@ h3 {
     color: #333;
     margin-bottom: 20px;
 }
+
+.btn {
+    display: inline-block;
+    padding: 6px 12px;
+    background-color: #4A90E2;
+    color: white;
+    text-decoration: none;
+    border-radius: 4px;
+}
+
+.btn:hover {
+    background-color: #357ABD;
+}
+
+.error {
+    color: #B00020;
+}
+
+.chart {
+    width: 100%;
+    height: 140px;
+    margin-top: 10px;
+    background-color: #f5f5f5;
+}
+
+.chart-container {
+    margin-top: 10px;
+}
+
+.chart-legend {
+    display: flex;
+    gap: 16px;
+    font-size: 0.9rem;
+    color: #333;
+    margin-top: 6px;
+}
+
+.export-actions {
+    display: flex;
+    gap: 8px;
+    margin-top: 10px;
+    flex-wrap: wrap;
+}
+
+.export-text {
+    width: 100%;
+    min-height: 200px;
+    margin-top: 10px;
+    font-family: Consolas, monospace;
+}
+
+.certificate-preview {
+    border: 1px solid #ccc;
+    padding: 12px;
+    margin-top: 10px;
+    background: white;
+}
+
+.email-actions {
+    display: grid;
+    gap: 8px;
+    margin-top: 10px;
+    align-items: center;
+}
+
+.email-input {
+    padding: 6px;
+    max-width: 320px;
+}
+
+.email-status {
+    color: #2e7d32;
+}

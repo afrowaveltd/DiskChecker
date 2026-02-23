@@ -13,6 +13,8 @@ public class DiskCheckerDbContext : DbContext
     public DbSet<TestRecord> Tests { get; set; } = null!;
     public DbSet<SmartaRecord> SmartaData { get; set; } = null!;
     public DbSet<DriveRecord> Drives { get; set; } = null!;
+    public DbSet<SurfaceTestSampleRecord> SurfaceTestSamples { get; set; } = null!;
+    public DbSet<EmailSettingsRecord> EmailSettings { get; set; } = null!;
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -28,6 +30,19 @@ public class DiskCheckerDbContext : DbContext
 
         modelBuilder.Entity<TestRecord>()
             .HasIndex(t => t.TestDate);
+
+        modelBuilder.Entity<SurfaceTestSampleRecord>()
+            .HasIndex(s => s.TestId);
+
+        modelBuilder.Entity<TestRecord>()
+            .HasMany(t => t.SurfaceSamples)
+            .WithOne(s => s.Test)
+            .HasForeignKey(s => s.TestId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        modelBuilder.Entity<EmailSettingsRecord>()
+            .HasIndex(s => s.Id)
+            .IsUnique();
     }
 }
 
@@ -73,11 +88,117 @@ public class TestRecord
     public double PeakSpeed { get; set; }
     public double MinSpeed { get; set; }
     public long TotalBytesWritten { get; set; }
+    /// <summary>
+    /// Gets or sets the total bytes processed during the test.
+    /// </summary>
+    public long TotalBytesTested { get; set; }
     public int Errors { get; set; }
     public QualityGrade Grade { get; set; }
     public double Score { get; set; }
     public string CertificatePath { get; set; } = string.Empty;
-    
+    /// <summary>
+    /// Gets or sets the surface test profile used for this test.
+    /// </summary>
+    public SurfaceTestProfile? SurfaceProfile { get; set; }
+    /// <summary>
+    /// Gets or sets the surface test operation used for this test.
+    /// </summary>
+    public SurfaceTestOperation? SurfaceOperation { get; set; }
+    /// <summary>
+    /// Gets or sets the drive technology used for this test.
+    /// </summary>
+    public DriveTechnology? SurfaceTechnology { get; set; }
+    /// <summary>
+    /// Gets or sets whether secure erase was performed.
+    /// </summary>
+    public bool? SecureErasePerformed { get; set; }
+
     public DriveRecord Drive { get; set; } = null!;
     public SmartaRecord SmartaData { get; set; } = null!;
+    /// <summary>
+    /// Gets or sets the surface test samples captured for the test.
+    /// </summary>
+    public ICollection<SurfaceTestSampleRecord> SurfaceSamples { get; set; } = new List<SurfaceTestSampleRecord>();
+}
+
+/// <summary>
+/// Represents a speed sample recorded during a surface test.
+/// </summary>
+public class SurfaceTestSampleRecord
+{
+    /// <summary>
+    /// Gets or sets the sample identifier.
+    /// </summary>
+    public Guid Id { get; set; }
+    /// <summary>
+    /// Gets or sets the related test identifier.
+    /// </summary>
+    public Guid TestId { get; set; }
+    /// <summary>
+    /// Gets or sets the byte offset where the sample was recorded.
+    /// </summary>
+    public long OffsetBytes { get; set; }
+    /// <summary>
+    /// Gets or sets the block size in bytes.
+    /// </summary>
+    public int BlockSizeBytes { get; set; }
+    /// <summary>
+    /// Gets or sets the throughput in MB/s.
+    /// </summary>
+    public double ThroughputMbps { get; set; }
+    /// <summary>
+    /// Gets or sets the timestamp in UTC.
+    /// </summary>
+    public DateTime TimestampUtc { get; set; }
+    /// <summary>
+    /// Gets or sets the error count for the sample window.
+    /// </summary>
+    public int ErrorCount { get; set; }
+    /// <summary>
+    /// Gets or sets the navigation property for the test.
+    /// </summary>
+    public TestRecord Test { get; set; } = null!;
+}
+
+/// <summary>
+/// Stores SMTP settings in the database.
+/// </summary>
+public class EmailSettingsRecord
+{
+    /// <summary>
+    /// Gets or sets the unique identifier.
+    /// </summary>
+    public Guid Id { get; set; }
+    /// <summary>
+    /// Gets or sets the SMTP host.
+    /// </summary>
+    public string Host { get; set; } = string.Empty;
+    /// <summary>
+    /// Gets or sets the SMTP port.
+    /// </summary>
+    public int Port { get; set; }
+    /// <summary>
+    /// Gets or sets whether SSL is used.
+    /// </summary>
+    public bool UseSsl { get; set; }
+    /// <summary>
+    /// Gets or sets the SMTP username.
+    /// </summary>
+    public string UserName { get; set; } = string.Empty;
+    /// <summary>
+    /// Gets or sets the SMTP password.
+    /// </summary>
+    public string Password { get; set; } = string.Empty;
+    /// <summary>
+    /// Gets or sets the sender name.
+    /// </summary>
+    public string FromName { get; set; } = string.Empty;
+    /// <summary>
+    /// Gets or sets the sender address.
+    /// </summary>
+    public string FromAddress { get; set; } = string.Empty;
+    /// <summary>
+    /// Gets or sets the last update time.
+    /// </summary>
+    public DateTime UpdatedAtUtc { get; set; }
 }

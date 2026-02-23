@@ -6,20 +6,12 @@ namespace DiskChecker.Infrastructure.Hardware;
 
 public class LinuxSmartaProvider : ISmartaProvider
 {
+    /// <inheritdoc />
     public async Task<SmartaData?> GetSmartaDataAsync(string drivePath, CancellationToken cancellationToken = default)
     {
         try
         {
-            var smartaData = new SmartaData();
-            
-            // Try smartctl first
-            var smartctlData = await GetSmartctlDataAsync(drivePath, cancellationToken);
-            if (smartctlData != null)
-            {
-                smartaData = smartctlData;
-            }
-            
-            return smartaData;
+            return await GetSmartctlDataAsync(drivePath, cancellationToken);
         }
         catch
         {
@@ -27,6 +19,7 @@ public class LinuxSmartaProvider : ISmartaProvider
         }
     }
 
+    /// <inheritdoc />
     public async Task<bool> IsDriveValidAsync(string drivePath, CancellationToken cancellationToken = default)
     {
         try
@@ -54,6 +47,7 @@ public class LinuxSmartaProvider : ISmartaProvider
         }
     }
 
+    /// <inheritdoc />
     public async Task<IReadOnlyList<CoreDriveInfo>> ListDrivesAsync(CancellationToken cancellationToken = default)
     {
         var drives = new List<CoreDriveInfo>();
@@ -105,7 +99,7 @@ public class LinuxSmartaProvider : ISmartaProvider
             var psi = new ProcessStartInfo
             {
                 FileName = "smartctl",
-                Arguments = $"-i -A {drivePath}",
+                Arguments = $"-j -a \"{drivePath}\"",
                 RedirectStandardOutput = true,
                 UseShellExecute = false,
                 CreateNoWindow = true
@@ -122,46 +116,11 @@ public class LinuxSmartaProvider : ISmartaProvider
                 return null;
             }
 
-            return ParseSmartctlOutput(output);
+            return SmartctlJsonParser.Parse(output);
         }
         catch
         {
             return null;
         }
-    }
-
-    private SmartaData ParseSmartctlOutput(string output)
-    {
-        var smartaData = new SmartaData();
-        
-        if (string.IsNullOrWhiteSpace(output)) return smartaData;
-
-        // Parse output - simplified for example
-        // In production would parse structured SMART data
-        // Example format:
-        // Model Number:       Samsung SSD 860 EVO 500GB
-        // Serial Number:      S3ZJNF0K500000
-        // Firmware Version:   RVT1
-        // User Capacity:      500,107,862,016 bytes [500 GB]
-        // SMART support is:   Enabled
-        
-        var lines = output.Split('\n');
-        foreach (var line in lines)
-        {
-            if (line.Contains("Model Number:"))
-            {
-                smartaData.DeviceModel = line.Split(':')[1].Trim();
-            }
-            else if (line.Contains("Serial Number:"))
-            {
-                smartaData.SerialNumber = line.Split(':')[1].Trim();
-            }
-            else if (line.Contains("Firmware Version:"))
-            {
-                smartaData.FirmwareVersion = line.Split(':')[1].Trim();
-            }
-        }
-
-        return smartaData;
     }
 }

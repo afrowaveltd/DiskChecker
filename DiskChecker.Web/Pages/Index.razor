@@ -17,6 +17,7 @@ else
                 <th>Název</th>
                 <th>Cesta</th>
                 <th>Velikost</th>
+                <th>Akce</th>
             </tr>
         </thead>
         <tbody>
@@ -26,6 +27,10 @@ else
                     <td>@drive.Name</td>
                     <td>@drive.Path</td>
                     <td>@FormatBytes(drive.TotalSize)</td>
+                    <td>
+                        <a class="btn" href="@($"/smart-check?path={Uri.EscapeDataString(drive.Path)}")">SMART</a>
+                        <a class="btn" href="@($"/surface-test?path={Uri.EscapeDataString(drive.Path)}")">Test</a>
+                    </td>
                 </tr>
             }
         </tbody>

@@ -1,1 +1,21 @@
-<RouteView RouteData="RouteData" DefaultLayout="typeof(MainLayout)" />
+@page "/"
+@namespace DiskChecker.Web.Pages
+@addTagHelper *, Microsoft.AspNetCore.Mvc.TagHelpers
+
+<!DOCTYPE html>
+<html lang="cs">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>DiskChecker</title>
+    <base href="~/" />
+    <link href="css/app.css" rel="stylesheet" />
+</head>
+<body>
+    <app>
+        <component type="typeof(App)" render-mode="ServerPrerendered" />
+    </app>
+
+    <script src="_framework/blazor.server.js"></script>
+</body>
+</html>

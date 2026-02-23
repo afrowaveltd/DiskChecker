@@ -8,6 +8,14 @@
   <ItemGroup>
     <PackageReference Include="SkiaSharp" Version="3.119.2" />
     <PackageReference Include="Spectre.Console" Version="0.54.0" />
+    <PackageReference Include="Microsoft.Extensions.Logging.Console" Version="10.0.3" />
+    <PackageReference Include="Microsoft.Extensions.Configuration.Json" Version="10.0.3" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Update="appsettings.json">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
   </ItemGroup>
 
   <PropertyGroup>

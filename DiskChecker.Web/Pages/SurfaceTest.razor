@@ -1,0 +1,343 @@
+@page "/surface-test"
+@using System.Globalization
+@using DiskChecker.Core.Models
+@using DiskChecker.Core.Interfaces
+@using DiskChecker.Application.Services
+@inject DiskCheckerService DiskCheckerService
+@inject ISurfaceTestService SurfaceTestService
+@inject SmartCheckService SmartCheckService
+@inject ITestReportExporter ReportExporter
+@inject IPdfReportExporter PdfReportExporter
+@inject IReportEmailService ReportEmailService
+
+<h3>Povrchový test</h3>
+
+@if (IsLoading)
+{
+    <p>Načítám data...</p>
+}
+else if (!string.IsNullOrWhiteSpace(ErrorMessage))
+{
+    <p class="error">@ErrorMessage</p>
+}
+else
+{
+    if (Drives.Count == 0)
+    {
+        <p>Žádné disky nebyly nalezeny.</p>
+    }
+    else
+    {
+        <div>
+            <label>Disk</label>
+            <select @bind="SelectedPath">
+                @foreach (var drive in Drives)
+                {
+                    <option value="@drive.Path">@drive.Name (@drive.Path)</option>
+                }
+            </select>
+        </div>
+        <div>
+            <label>Profil</label>
+            <select @bind="SelectedProfile">
+                <option value="@SurfaceTestProfile.HddFull">HDD - úplný test (zápis)</option>
+                <option value="@SurfaceTestProfile.SsdQuick">SSD - rychlý test (čtení)</option>
+            </select>
+        </div>
+        @if (SelectedProfile == SurfaceTestProfile.HddFull)
+        {
+            <div>
+                <input type="checkbox" @bind="ConfirmDestructive" />
+                <label>Potvrzuji smazání dat (zařízení budou testována jen v omezeném rozsahu)</label>
+            </div>
+        }
+        <button class="btn" @onclick="RunTestAsync" disabled="@IsRunDisabled">Spustit test</button>
+    }
+}
+
+@if (IsRunning)
+{
+    <div>
+        <label>Průběh</label>
+        <progress value="@ProgressPercent" max="100"></progress>
+        <span>@ProgressPercent.ToString("F1") % | @CurrentThroughput.ToString("F1") MB/s</span>
+    </div>
+}
+
+@if (Result != null)
+{
+    <h4>Výsledek</h4>
+    <table class="table">
+        <tbody>
+            <tr><td>Profil</td><td>@Result.Profile</td></tr>
+            <tr><td>Operace</td><td>@Result.Operation</td></tr>
+            <tr><td>Testováno</td><td>@FormatBytes(Result.TotalBytesTested)</td></tr>
+            <tr><td>Průměr</td><td>@Result.AverageSpeedMbps.ToString("F1") MB/s</td></tr>
+            <tr><td>Maximum</td><td>@Result.PeakSpeedMbps.ToString("F1") MB/s</td></tr>
+            <tr><td>Minimum</td><td>@Result.MinSpeedMbps.ToString("F1") MB/s</td></tr>
+            <tr><td>Chyby</td><td>@Result.ErrorCount</td></tr>
+            <tr><td>Vzorky</td><td>@Result.Samples.Count</td></tr>
+        </tbody>
+    </table>
+
+    @if (Result.Samples.Count > 1)
+    {
+        <div class="chart-container">
+            <svg class="chart" viewBox="0 0 100 100" preserveAspectRatio="none">
+                <line x1="5" y1="5" x2="5" y2="95" stroke="#777" stroke-width="0.5" />
+                <line x1="5" y1="95" x2="95" y2="95" stroke="#777" stroke-width="0.5" />
+                <polyline points="@BuildChartPoints()" fill="none" stroke="#4A90E2" stroke-width="2" />
+            </svg>
+            <div class="chart-legend">
+                <span>Min: @Result.MinSpeedMbps.ToString("F1") MB/s</span>
+                <span>Avg: @Result.AverageSpeedMbps.ToString("F1") MB/s</span>
+                <span>Max: @Result.PeakSpeedMbps.ToString("F1") MB/s</span>
+            </div>
+        </div>
+    }
+
+    @if (!string.IsNullOrWhiteSpace(Result.Notes))
+    {
+        <p class="error">@Result.Notes</p>
+    }
+
+    @if (SmartForExport != null)
+    {
+        <h4>Exporty</h4>
+        <div class="export-actions">
+            <button class="btn" @onclick="() => SelectExport(ExportFormat.Text)">Text</button>
+            <button class="btn" @onclick="() => SelectExport(ExportFormat.Html)">HTML</button>
+            <button class="btn" @onclick="() => SelectExport(ExportFormat.Csv)">CSV</button>
+            <button class="btn" @onclick="() => SelectExport(ExportFormat.Certificate)">Certifikát</button>
+            <button class="btn" @onclick="() => SelectExport(ExportFormat.Pdf)">PDF</button>
+        </div>
+
+        <div class="email-actions">
+            <input class="email-input" placeholder="Email příjemce" @bind="EmailRecipient" />
+            <label>
+                <input type="checkbox" @bind="EmailUseCertificate" />
+                Použít certifikát v emailu
+            </label>
+            <button class="btn" @onclick="SendEmailAsync" disabled="@IsEmailDisabled">Odeslat email</button>
+            @if (!string.IsNullOrWhiteSpace(EmailStatus))
+            {
+                <div class="email-status">@EmailStatus</div>
+            }
+        </div>
+
+        @if (!string.IsNullOrWhiteSpace(ExportContent) && SelectedExport != ExportFormat.Certificate && SelectedExport != ExportFormat.Pdf)
+        {
+            <textarea class="export-text" readonly>@ExportContent</textarea>
+        }
+
+        @if (!string.IsNullOrWhiteSpace(ExportContent) && SelectedExport == ExportFormat.Certificate)
+        {
+            <div class="certificate-preview">
+                @((MarkupString)ExportContent)
+            </div>
+        }
+
+        @if (!string.IsNullOrWhiteSpace(PdfDownloadUrl) && SelectedExport == ExportFormat.Pdf)
+        {
+            <a class="btn" href="@PdfDownloadUrl" download="DiskChecker-Certificate.pdf">Stáhnout PDF</a>
+        }
+    }
+}
+
+@code {
+    [SupplyParameterFromQuery]
+    public string? Path { get; set; }
+
+    private IReadOnlyList<CoreDriveInfo> Drives = Array.Empty<CoreDriveInfo>();
+    private string? SelectedPath;
+    private SurfaceTestProfile SelectedProfile = SurfaceTestProfile.HddFull;
+    private bool ConfirmDestructive;
+    private bool IsLoading = true;
+    private bool IsRunning;
+    private double ProgressPercent;
+    private double CurrentThroughput;
+    private string? ErrorMessage;
+    private SurfaceTestResult? Result;
+    private SmartCheckResult? SmartForExport;
+    private string? ExportContent;
+    private string? PdfDownloadUrl;
+    private ExportFormat SelectedExport;
+
+    private enum ExportFormat
+    {
+        None,
+        Text,
+        Html,
+        Csv,
+        Certificate,
+        Pdf
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        Drives = await DiskCheckerService.ListDrivesAsync();
+        SelectedPath = Drives.FirstOrDefault(d => d.Path == Path)?.Path ?? Drives.FirstOrDefault()?.Path;
+        IsLoading = false;
+    }
+
+    private bool IsRunDisabled => IsRunning || string.IsNullOrWhiteSpace(SelectedPath) ||
+        (SelectedProfile == SurfaceTestProfile.HddFull && !ConfirmDestructive);
+
+    private async Task RunTestAsync()
+    {
+        ErrorMessage = null;
+        Result = null;
+        ProgressPercent = 0;
+        CurrentThroughput = 0;
+        ExportContent = null;
+        PdfDownloadUrl = null;
+        SelectedExport = ExportFormat.None;
+
+        var drive = Drives.FirstOrDefault(d => d.Path == SelectedPath);
+        if (drive == null)
+        {
+            ErrorMessage = "Disk nebyl nalezen.";
+            return;
+        }
+
+        IsRunning = true;
+
+        var technology = SelectedProfile == SurfaceTestProfile.HddFull
+            ? DriveTechnology.Hdd
+            : DriveTechnology.Ssd;
+
+        var operation = SelectedProfile == SurfaceTestProfile.HddFull
+            ? SurfaceTestOperation.WriteZeroFill
+            : SurfaceTestOperation.ReadOnly;
+
+        var request = new SurfaceTestRequest
+        {
+            Drive = drive,
+            Technology = technology,
+            Profile = SelectedProfile,
+            Operation = operation,
+            SecureErase = false,
+            AllowDeviceWrite = ConfirmDestructive,
+            MaxBytesToTest = operation != SurfaceTestOperation.ReadOnly && drive.TotalSize > 0 ? drive.TotalSize : null
+        };
+
+        var progress = new Progress<SurfaceTestProgress>(update =>
+        {
+            ProgressPercent = update.PercentComplete;
+            CurrentThroughput = update.CurrentThroughputMbps;
+            _ = InvokeAsync(StateHasChanged);
+        });
+
+        Result = await SurfaceTestService.RunAsync(request, progress);
+
+        if (Result.ErrorCount > 0 && string.IsNullOrWhiteSpace(Result.Notes))
+        {
+            ErrorMessage = "Test skončil s chybou.";
+        }
+
+        SmartForExport = await SmartCheckService.RunAsync(drive);
+
+        IsRunning = false;
+    }
+
+    private void SelectExport(ExportFormat format)
+    {
+        if (SmartForExport == null || Result == null)
+        {
+            return;
+        }
+
+        var report = new TestReportData
+        {
+            SmartCheck = SmartForExport,
+            SurfaceTest = Result
+        };
+
+        if (format == ExportFormat.Pdf)
+        {
+            var pdfBytes = PdfReportExporter.GenerateCertificatePdf(report);
+            PdfDownloadUrl = $"data:application/pdf;base64,{Convert.ToBase64String(pdfBytes)}";
+            ExportContent = null;
+        }
+        else
+        {
+            ExportContent = format switch
+            {
+                ExportFormat.Html => ReportExporter.GenerateHtml(report),
+                ExportFormat.Csv => ReportExporter.GenerateCsv(report),
+                ExportFormat.Certificate => ReportExporter.GenerateCertificateHtml(report),
+                _ => ReportExporter.GenerateText(report)
+            };
+            PdfDownloadUrl = null;
+        }
+
+        SelectedExport = format;
+    }
+
+    private static string FormatBytes(long bytes)
+    {
+        string[] sizes = { "B", "KB", "MB", "GB", "TB" };
+        int i = 0;
+        double b = bytes;
+        while (b >= 1024 && i < sizes.Length - 1)
+        {
+            b /= 1024;
+            i++;
+        }
+        return $"{b:F1} {sizes[i]}";
+    }
+
+    private string BuildChartPoints()
+    {
+        if (Result == null || Result.Samples.Count < 2)
+        {
+            return string.Empty;
+        }
+
+        var max = Result.Samples.Max(sample => sample.ThroughputMbps);
+        if (max <= 0)
+        {
+            return string.Empty;
+        }
+
+        const double padding = 5;
+        var width = 100 - (padding * 2);
+        var height = 100 - (padding * 2);
+        var step = width / (Result.Samples.Count - 1);
+        var points = new List<string>(Result.Samples.Count);
+
+        for (var i = 0; i < Result.Samples.Count; i++)
+        {
+            var x = padding + step * i;
+            var y = padding + (height - (Result.Samples[i].ThroughputMbps / max * height));
+            points.Add($"{x.ToString("F2", CultureInfo.InvariantCulture)},{y.ToString("F2", CultureInfo.InvariantCulture)}");
+        }
+
+        return string.Join(" ", points);
+    }
+
+    private string? EmailRecipient;
+    private bool EmailUseCertificate;
+    private string? EmailStatus;
+
+    private bool IsEmailDisabled => string.IsNullOrWhiteSpace(EmailRecipient) || Result == null || SmartForExport == null;
+
+    private async Task SendEmailAsync()
+    {
+        EmailStatus = null;
+        if (SmartForExport == null || Result == null || string.IsNullOrWhiteSpace(EmailRecipient))
+        {
+            EmailStatus = "Email není připraven.";
+            return;
+        }
+
+        var report = new TestReportData
+        {
+            SmartCheck = SmartForExport,
+            SurfaceTest = Result
+        };
+
+        await ReportEmailService.SendReportAsync(report, EmailRecipient, EmailUseCertificate);
+        EmailStatus = "Email odeslán.";
+    }
+}

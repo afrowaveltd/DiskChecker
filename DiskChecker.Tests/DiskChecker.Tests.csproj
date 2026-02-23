@@ -18,6 +18,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\DiskChecker.Core\DiskChecker.Core.csproj" />
+    <ProjectReference Include="..\DiskChecker.Application\DiskChecker.Application.csproj" />
     <ProjectReference Include="..\DiskChecker.Infrastructure\DiskChecker.Infrastructure.csproj" />
   </ItemGroup>
 

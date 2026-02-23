@@ -6,18 +6,19 @@ namespace DiskChecker.Infrastructure.Hardware;
 
 public class WindowsSmartaProvider : ISmartaProvider
 {
+    /// <inheritdoc />
     public async Task<SmartaData?> GetSmartaDataAsync(string drivePath, CancellationToken cancellationToken = default)
     {
         try
         {
-            var smartaData = new SmartaData();
-            
-            // Get SMART data via powershell
             var powershellScript = $@"
 $drive = Get-PhysicalDisk -DeviceNumber {GetDriveNumber(drivePath)} 2>$null
 if ($drive) {{
-    $drive | Select-Object Model, SerialNumber, FirmwareVersion, MediaType
-    Get-StorageHealthReport -EntityPhysicalDisk $drive.UniqueId 2>$null | Select-Object -ExpandProperty attributes
+    $info = $drive | Select-Object Model, SerialNumber, FirmwareVersion | ConvertTo-Json -Compress
+    $attrs = (Get-StorageHealthReport -EntityPhysicalDisk $drive.UniqueId 2>$null).Attributes | ConvertTo-Json -Compress
+    Write-Output $info
+    Write-Output '__ATTRS__'
+    Write-Output $attrs
 }}";
 
             var psi = new ProcessStartInfo
@@ -35,13 +36,21 @@ if ($drive) {{
             var output = await process.StandardOutput.ReadToEndAsync(cancellationToken);
             await process.WaitForExitAsync(cancellationToken);
 
-            if (process.ExitCode == 0)
+            if (process.ExitCode != 0 || string.IsNullOrWhiteSpace(output))
             {
-                ParseWindowsSmartaOutput(output, smartaData);
-                return smartaData;
+                return null;
             }
 
-            return null;
+            var sections = output.Split("__ATTRS__", StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+            if (sections.Length == 0)
+            {
+                return null;
+            }
+
+            var diskInfoJson = sections[0];
+            var attributesJson = sections.Length > 1 ? sections[1] : string.Empty;
+
+            return WindowsSmartJsonParser.Parse(diskInfoJson, attributesJson);
         }
         catch
         {
@@ -49,6 +58,7 @@ if ($drive) {{
         }
     }
 
+    /// <inheritdoc />
     public async Task<bool> IsDriveValidAsync(string drivePath, CancellationToken cancellationToken = default)
     {
         try
@@ -76,6 +86,7 @@ if ($drive) {{
         }
     }
 
+    /// <inheritdoc />
     public async Task<IReadOnlyList<CoreDriveInfo>> ListDrivesAsync(CancellationToken cancellationToken = default)
     {
         var drives = new List<CoreDriveInfo>();
@@ -114,14 +125,6 @@ Get-PhysicalDisk | Select-Object DeviceNumber, DeviceID, Model, SerialNumber, Si
         }
         
         return drives;
-    }
-
-    private void ParseWindowsSmartaOutput(string output, SmartaData smartaData)
-    {
-        if (string.IsNullOrWhiteSpace(output)) return;
-
-        // Parse output - simplified for example
-        // In production would parse structured JSON or CSV output
     }
 
     private int GetDriveNumber(string drivePath)

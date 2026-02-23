@@ -40,3 +40,34 @@ public class QualityRating
     public double Score { get; set; }
     public List<string> Warnings { get; set; } = new();
 }
+
+// <summary>
+// Represents the result of a SMART check for a single drive.
+// </summary>
+public class SmartCheckResult
+{
+    // <summary>
+    // Gets or sets the drive information used for the SMART check.
+    // </summary>
+    public CoreDriveInfo Drive { get; set; } = new();
+
+    // <summary>
+    // Gets or sets the captured SMART data snapshot.
+    // </summary>
+    public SmartaData SmartaData { get; set; } = new();
+
+    // <summary>
+    // Gets or sets the calculated quality rating.
+    // </summary>
+    public QualityRating Rating { get; set; } = new();
+
+    // <summary>
+    // Gets or sets the time when the SMART check was executed.
+    // </summary>
+    public DateTime TestDate { get; set; }
+
+    // <summary>
+    // Gets or sets the persisted test identifier.
+    // </summary>
+    public Guid TestId { get; set; }
+}
