@@ -1,6 +1,7 @@
 using DiskChecker.Core.Interfaces;
 using DiskChecker.Core.Models;
 using DiskChecker.Core.Services;
+using DiskChecker.Infrastructure.Hardware;
 
 namespace DiskChecker.Application.Services;
 
@@ -9,17 +10,17 @@ namespace DiskChecker.Application.Services;
 /// </summary>
 public class SurfaceTestService : ISurfaceTestService
 {
-    private readonly ISurfaceTestExecutor _executor;
+    private readonly SurfaceTestExecutorFactory _executorFactory;
     private readonly SurfaceTestPersistenceService _persistenceService;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="SurfaceTestService"/> class.
     /// </summary>
-    /// <param name="executor">Surface test executor implementation.</param>
+    /// <param name="executorFactory">Factory for creating appropriate test executors.</param>
     /// <param name="persistenceService">Persistence service for saving results.</param>
-    public SurfaceTestService(ISurfaceTestExecutor executor, SurfaceTestPersistenceService persistenceService)
+    public SurfaceTestService(SurfaceTestExecutorFactory executorFactory, SurfaceTestPersistenceService persistenceService)
     {
-        _executor = executor;
+        _executorFactory = executorFactory;
         _persistenceService = persistenceService;
     }
 
@@ -33,8 +34,11 @@ public class SurfaceTestService : ISurfaceTestService
         ArgumentNullException.ThrowIfNull(request.Drive);
 
         var normalizedRequest = SurfaceTestProfileDefaults.ApplyDefaults(request);
+        
+        // Use factory to get appropriate executor
+        var executor = _executorFactory.Create(normalizedRequest);
 
-        var result = await _executor.ExecuteAsync(normalizedRequest, progress, cancellationToken);
+        var result = await executor.ExecuteAsync(normalizedRequest, progress, cancellationToken);
 
         var testId = await _persistenceService.SaveAsync(result, cancellationToken);
         result.TestId = testId;

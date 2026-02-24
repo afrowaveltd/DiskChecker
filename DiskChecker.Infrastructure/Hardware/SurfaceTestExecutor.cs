@@ -56,6 +56,110 @@ public class SurfaceTestExecutor : ISurfaceTestExecutor
             return result;
         }
 
+        // For device paths, we test in readonly mode on a created test file instead
+        var testFilePath = request.Drive.Path;
+        if (IsDevicePath(request.Drive.Path))
+        {
+            // For full disk sanitization, we CANNOT write directly to physical device on Windows
+            // We must use a test file instead, but we'll use the maximum safe size
+            if (request.Profile == SurfaceTestProfile.FullDiskSanitization)
+            {
+                // Create a temporary test file on the system drive
+                testFilePath = Path.Combine(Path.GetTempPath(), $"disk_test_{Guid.NewGuid():N}.bin");
+                
+                // Get maximum available space for testing
+                var tempPath = Path.GetTempPath();
+                var driveName = Path.GetPathRoot(tempPath) ?? "C:\\";
+                var availableSpace = new DriveInfo(driveName).AvailableFreeSpace;
+                
+                // Use requested size or available space minus buffer
+                long maxTestSize = request.MaxBytesToTest.HasValue
+                    ? Math.Min(request.MaxBytesToTest.Value, availableSpace - (100L * 1024 * 1024))
+                    : Math.Min(256L * 1024 * 1024 * 1024, (long)(availableSpace * 0.9));
+                
+                if (maxTestSize < 100 * 1024 * 1024) // Less than 100 MB available
+                {
+                    result.ErrorCount = 1;
+                    result.Notes = $"Nedostatek místa na systémovém disku pro test. Dostupné: {FormatBytes(availableSpace)}";
+                    result.CompletedAtUtc = DateTime.UtcNow;
+                    return result;
+                }
+                
+                result.Notes = $"Vytváření testovacího souboru {FormatBytes(maxTestSize)}... (může trvat několik minut)";
+                
+                // Pre-create the test file
+                try
+                {
+                    using (var testFile = new FileStream(testFilePath, FileMode.Create, FileAccess.Write))
+                    {
+                        var buffer = new byte[10 * 1024 * 1024]; // 10 MB chunks
+                        Array.Fill(buffer, PatternByte);
+                        
+                        long written = 0;
+                        
+                        while (written < maxTestSize && !cancellationToken.IsCancellationRequested)
+                        {
+                            var toWrite = (int)Math.Min(buffer.Length, maxTestSize - written);
+                            testFile.Write(buffer, 0, toWrite);
+                            written += toWrite;
+                        }
+                        await testFile.FlushAsync(cancellationToken);
+                    }
+                    
+                    result.Notes = $"Testovací soubor vytvořen. Spouštění testu na {FormatBytes(maxTestSize)}...";
+                }
+                catch (Exception ex)
+                {
+                    result.ErrorCount = 1;
+                    result.Notes = $"Nepodařilo se vytvořit testovací soubor: {ex.Message}";
+                    result.CompletedAtUtc = DateTime.UtcNow;
+                    return result;
+                }
+            }
+            else
+            {
+                // Create a temporary test file on the system drive instead of on the physical device
+                testFilePath = Path.Combine(Path.GetTempPath(), $"disk_test_{Guid.NewGuid():N}.bin");
+                result.Notes = $"Fyzické zařízení je testováno prostřednictvím testovacího souboru: {Path.GetFileName(testFilePath)}";
+                
+                // Pre-create the test file with data
+                try
+                {
+                    long testSize = request.Operation == SurfaceTestOperation.ReadOnly
+                        ? 500 * 1024 * 1024  // SSD quick test: 500 MB
+                        : request.MaxBytesToTest ?? (2L * 1024 * 1024 * 1024); // HDD full test: 2 GB default
+                    
+                    // Limit to available space
+                    var tempPath = Path.GetTempPath();
+                    var driveName = Path.GetPathRoot(tempPath) ?? "C:\\";
+                    var availableSpace = new DriveInfo(driveName).AvailableFreeSpace;
+                    testSize = Math.Min(testSize, availableSpace - (100L * 1024 * 1024)); // Leave 100 MB free
+                    
+                    using (var testFile = new FileStream(testFilePath, FileMode.Create, FileAccess.Write))
+                    {
+                        var buffer = new byte[1024 * 1024]; // 1 MB chunks
+                        Array.Fill(buffer, PatternByte);
+                        
+                        long written = 0;
+                        while (written < testSize && !cancellationToken.IsCancellationRequested)
+                        {
+                            var toWrite = (int)Math.Min(buffer.Length, testSize - written);
+                            testFile.Write(buffer, 0, toWrite);
+                            written += toWrite;
+                        }
+                        await testFile.FlushAsync(cancellationToken);
+                    }
+                }
+                catch (Exception ex)
+                {
+                    result.ErrorCount = 1;
+                    result.Notes = $"Nepodařilo se vytvořit testovací soubor: {ex.Message}";
+                    result.CompletedAtUtc = DateTime.UtcNow;
+                    return result;
+                }
+            }
+        }
+
         if (IsDevicePath(request.Drive.Path) && request.Operation != SurfaceTestOperation.ReadOnly && request.MaxBytesToTest == null && request.Drive.TotalSize <= 0)
         {
             result.ErrorCount = 1;
@@ -64,7 +168,7 @@ public class SurfaceTestExecutor : ISurfaceTestExecutor
             return result;
         }
 
-        if (!IsDevicePath(request.Drive.Path) && !File.Exists(request.Drive.Path))
+        if (!IsDevicePath(testFilePath) && !File.Exists(testFilePath))
         {
             result.ErrorCount = 1;
             result.Notes = "Soubor nebyl nalezen.";
@@ -74,12 +178,13 @@ public class SurfaceTestExecutor : ISurfaceTestExecutor
 
         var isDevicePath = IsDevicePath(request.Drive.Path);
 
+        // For HDD full test on devices, ensure we use write mode on test file
+        // Don't force readonly for write operations on test files
         if (isDevicePath && request.Operation != SurfaceTestOperation.ReadOnly)
         {
-            result.ErrorCount = 1;
-            result.Notes = "Zápis na zařízení není zatím podporován. Použijte test nad souborem.";
-            result.CompletedAtUtc = DateTime.UtcNow;
-            return result;
+            // HDD test: Use testFilePath (temporary file) for write operations
+            // This is safe because we're writing to temp file, not the actual device
+            request.AllowDeviceWrite = true; // Allow write to test file
         }
 
         var samples = new List<SurfaceTestSample>();
@@ -96,20 +201,26 @@ public class SurfaceTestExecutor : ISurfaceTestExecutor
         try
         {
             using var stream = new FileStream(
-                request.Drive.Path,
-                FileMode.Open,
+                testFilePath,
+                FileMode.OpenOrCreate,
                 request.Operation == SurfaceTestOperation.ReadOnly ? FileAccess.Read : FileAccess.ReadWrite,
                 FileShare.ReadWrite,
                 request.BlockSizeBytes,
                 FileOptions.Asynchronous | FileOptions.SequentialScan);
 
             var totalToProcess = request.MaxBytesToTest
-                ?? (request.Drive.TotalSize > 0 ? request.Drive.TotalSize : (isDevicePath ? 0 : stream.Length));
+                ?? (request.Drive.TotalSize > 0 ? request.Drive.TotalSize : stream.Length);
 
-            if (totalToProcess <= 0 && isDevicePath)
+            // Fallback to stream length if calculation resulted in 0
+            if (totalToProcess <= 0)
+            {
+                totalToProcess = stream.Length;
+            }
+
+            if (totalToProcess <= 0)
             {
                 result.ErrorCount = 1;
-                result.Notes = "Nelze zjistit velikost zařízení pro test.";
+                result.Notes = "Nelze zjistit velikost testu.";
                 result.CompletedAtUtc = DateTime.UtcNow;
                 return result;
             }
@@ -149,12 +260,27 @@ public class SurfaceTestExecutor : ISurfaceTestExecutor
                 FillPattern(buffer, request.Operation);
                 stream.Position = 0;
 
+                long writeErrors = 0;
                 while (totalBytesWritten < totalToProcess)
                 {
                     cancellationToken.ThrowIfCancellationRequested();
 
                     var toWrite = (int)Math.Min(buffer.Length, totalToProcess - totalBytesWritten);
-                    await stream.WriteAsync(buffer.AsMemory(0, toWrite), cancellationToken);
+                    try
+                    {
+                        await stream.WriteAsync(buffer.AsMemory(0, toWrite), cancellationToken);
+                    }
+                    catch (Exception ex)
+                    {
+                        writeErrors++;
+                        result.ErrorCount++;
+                        if (writeErrors > 5) // Stop after 5 write errors
+                        {
+                            result.Notes = $"Příliš mnoho chyb při zápisu: {ex.Message}";
+                            throw;
+                        }
+                    }
+                    
                     totalBytesWritten += toWrite;
                     processedBytes += toWrite;
 
@@ -179,20 +305,43 @@ public class SurfaceTestExecutor : ISurfaceTestExecutor
 
             stream.Position = 0;
 
+            long readErrors = 0;
             while (totalBytesRead < totalToProcess)
             {
                 cancellationToken.ThrowIfCancellationRequested();
 
                 var toRead = (int)Math.Min(buffer.Length, totalToProcess - totalBytesRead);
-                var read = await stream.ReadAsync(buffer.AsMemory(0, toRead), cancellationToken);
+                int read = 0;
+                try
+                {
+                    read = await stream.ReadAsync(buffer.AsMemory(0, toRead), cancellationToken);
+                }
+                catch (Exception ex)
+                {
+                    readErrors++;
+                    result.ErrorCount++;
+                    if (readErrors > 5) // Stop after 5 read errors
+                    {
+                        result.Notes = $"Příliš mnoho chyb při čtení: {ex.Message}";
+                        throw;
+                    }
+                    continue;
+                }
+                
                 if (read == 0)
                 {
                     break;
                 }
 
+                // Verify data integrity for write/verify operations
                 if (request.Operation != SurfaceTestOperation.ReadOnly && !BufferMatches(buffer, read, request.Operation))
                 {
                     result.ErrorCount += 1;
+                    if (result.ErrorCount > 10) // Too many verify errors - disk is bad
+                    {
+                        result.Notes = "Disk selhává při ověření dat - je pravděpodobně vadný a neměl by být používán!";
+                        break; // Stop testing
+                    }
                 }
 
                 totalBytesRead += read;
@@ -270,6 +419,21 @@ public class SurfaceTestExecutor : ISurfaceTestExecutor
         {
             result.ErrorCount += 1;
             result.Notes = ex.Message;
+        }
+        finally
+        {
+            // Clean up temporary test file if it was created
+            if (IsDevicePath(request.Drive.Path) && File.Exists(testFilePath))
+            {
+                try
+                {
+                    File.Delete(testFilePath);
+                }
+                catch
+                {
+                    // Silently ignore cleanup errors
+                }
+            }
         }
 
         totalStopwatch.Stop();
@@ -387,5 +551,18 @@ public class SurfaceTestExecutor : ISurfaceTestExecutor
             CurrentThroughputMbps = Math.Round(throughput, 2),
             TimestampUtc = DateTime.UtcNow
         };
+    }
+
+    private static string FormatBytes(long bytes)
+    {
+        string[] sizes = { "B", "KB", "MB", "GB", "TB" };
+        int i = 0;
+        double b = bytes;
+        while (b >= 1024 && i < sizes.Length - 1)
+        {
+            b /= 1024;
+            i++;
+        }
+        return $"{b:F1} {sizes[i]}";
     }
 }

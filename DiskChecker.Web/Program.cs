@@ -23,6 +23,7 @@ builder.Services.AddSingleton<IQualityCalculator, QualityCalculator>();
 builder.Services.AddScoped<DiskCheckerService>();
 builder.Services.AddScoped<SmartCheckService>();
 builder.Services.AddScoped<SurfaceTestPersistenceService>();
+builder.Services.AddScoped<SurfaceTestExecutorFactory>();
 builder.Services.AddScoped<ISurfaceTestExecutor, SurfaceTestExecutor>();
 builder.Services.AddScoped<ISurfaceTestService, SurfaceTestService>();
 builder.Services.AddScoped<SurfaceTestService>();

@@ -3,10 +3,9 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Configuration;
 using DiskChecker.Core.Interfaces;
 using DiskChecker.Core.Models;
-using DiskChecker.Core.Services;
+using DiskChecker.Application.Services;
 using DiskChecker.Infrastructure.Persistence;
 using DiskChecker.Infrastructure.Hardware;
-using DiskChecker.Application.Services;
 using DiskChecker.Core;
 using DiskChecker.UI.Console;
 
@@ -18,16 +17,22 @@ var services = new ServiceCollection();
 
 services.AddSingleton<IConfiguration>(configuration);
 services.Configure<EmailSettings>(configuration.GetSection("EmailSettings"));
-services.AddCoreServices();
+
+// Configure logging FIRST before other services
 services.AddLogging(logging => 
 {
     logging.ClearProviders();
-    // logging.AddConsole(); // Disabled to keep console UI clean
+    logging.AddConsole();
+    logging.SetMinimumLevel(LogLevel.Warning); // Changed to Warning to suppress Info logs
+    logging.AddFilter("Microsoft.EntityFrameworkCore", LogLevel.Error); // Only show EF Core errors
 });
+
+services.AddCoreServices();
 services.AddPersistence("Data Source=DiskChecker.db");
 services.AddScoped<DiskCheckerService>();
 services.AddScoped<SmartCheckService>();
 services.AddScoped<SurfaceTestPersistenceService>();
+services.AddScoped<SurfaceTestExecutorFactory>();
 services.AddScoped<ISurfaceTestExecutor, SurfaceTestExecutor>();
 services.AddScoped<ISurfaceTestService, SurfaceTestService>();
 services.AddScoped<SurfaceTestService>();
@@ -41,6 +46,7 @@ services.AddScoped<ReportEmailService>();
 services.AddScoped<IReportEmailService, ReportEmailService>();
 services.AddScoped<HistoryService>();
 services.AddScoped<MainConsoleMenu>();
+services.AddScoped<DiagnosticsApp>();
 services.AddScoped<DiskCheckerApp>();
 
 var serviceProvider = services.BuildServiceProvider();
