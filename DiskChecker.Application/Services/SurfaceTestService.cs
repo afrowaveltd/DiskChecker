@@ -40,8 +40,8 @@ public class SurfaceTestService : ISurfaceTestService
 
         var result = await executor.ExecuteAsync(normalizedRequest, progress, cancellationToken);
 
-        var testId = await _persistenceService.SaveAsync(result, cancellationToken);
-        result.TestId = testId;
+        var testId = await _persistenceService.SaveAsync(result, normalizedRequest.Drive, cancellationToken);
+        result.TestId = testId.ToString();
 
         return result;
     }

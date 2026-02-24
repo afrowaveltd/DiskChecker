@@ -14,6 +14,14 @@ public class SequentialFileTestExecutor : ISurfaceTestExecutor
    private const long FileSize = 100L * 1024 * 1024; // 100 MB per file
    private const int HeaderSize = 1024; // 1KB header with metadata
 
+   private readonly ISmartaProvider _smartaProvider;
+
+   public SequentialFileTestExecutor(ISmartaProvider smartaProvider)
+   {
+      ArgumentNullException.ThrowIfNull(smartaProvider);
+      _smartaProvider = smartaProvider;
+   }
+
    /// <inheritdoc />
    public async Task<SurfaceTestResult> ExecuteAsync(
        SurfaceTestRequest request,
@@ -26,8 +34,6 @@ public class SequentialFileTestExecutor : ISurfaceTestExecutor
       SurfaceTestResult result = new SurfaceTestResult
       {
          TestId = Guid.NewGuid().ToString(),
-         Drive = request.Drive,
-         Technology = request.Technology,
          Profile = request.Profile,
          Operation = request.Operation,
          StartedAtUtc = DateTime.UtcNow,
@@ -89,50 +95,18 @@ public class SequentialFileTestExecutor : ISurfaceTestExecutor
          // === Collect Drive Metadata from SMART ===
          try
          {
-            var smartData = await _smartaProvider.GetSmartDataAsync(request.Drive);
-            if(smartData?.SmartaAttributes != null)
+            var smartData = await _smartaProvider.GetSmartaDataAsync(request.Drive.Path, cancellationToken);
+            if(smartData != null)
             {
-               result.DriveModel = smartData.SmartaAttributes.ModelNumber ?? request.Drive.Name;
-               result.DriveSerialNumber = smartData.SmartaAttributes.SerialNumber;
-               result.DriveManufacturer = ExtractManufacturer(smartData.SmartaAttributes.ModelNumber);
-               result.DriveInterface = smartData.SmartaAttributes.FormFactor?.ToString();
+               result.DriveModel = smartData.DeviceModel ?? request.Drive.Name;
+               result.DriveSerialNumber = smartData.SerialNumber;
+               result.DriveManufacturer = ExtractManufacturer(smartData.DeviceModel);
                result.DriveTotalBytes = request.Drive.TotalSize;
 
                // Extract SMART values
-               if(smartData.SmartaAttributes.Attributes?.Count > 0)
-               {
-                  // Power-on hours (attribute 9)
-                  var powerOnAttr = smartData.SmartaAttributes.Attributes
-                      .FirstOrDefault(a => a.AttributeId == 9);
-                  if(powerOnAttr?.CurrentValue > 0)
-                  {
-                     result.PowerOnHours = powerOnAttr.RawValue;
-                  }
-
-                  // Temperature (attribute 194 - HDA Temp, 190 - Airflow Temp)
-                  var tempAttr = smartData.SmartaAttributes.Attributes
-                      .FirstOrDefault(a => a.AttributeId == 194 || a.AttributeId == 190);
-                  if(tempAttr?.CurrentValue > 0)
-                  {
-                     result.CurrentTemperatureCelsius = (int)tempAttr.RawValue;
-                  }
-
-                  // Reallocated sectors (attribute 5)
-                  var reallocAttr = smartData.SmartaAttributes.Attributes
-                      .FirstOrDefault(a => a.AttributeId == 5);
-                  if(reallocAttr?.CurrentValue > 0)
-                  {
-                     result.ReallocatedSectors = reallocAttr.RawValue;
-                  }
-
-                  // RPM for HDDs (attribute 3)
-                  var rpmAttr = smartData.SmartaAttributes.Attributes
-                      .FirstOrDefault(a => a.AttributeId == 3);
-                  if(rpmAttr?.CurrentValue > 0)
-                  {
-                     result.DriveRpmOrNvmeSpeed = (int)rpmAttr.RawValue;
-                  }
-               }
+               result.PowerOnHours = smartData.PowerOnHours > 0 ? smartData.PowerOnHours : null;
+               result.CurrentTemperatureCelsius = smartData.Temperature > 0 ? (int)smartData.Temperature : null;
+               result.ReallocatedSectors = smartData.ReallocatedSectorCount > 0 ? smartData.ReallocatedSectorCount : null;
 
                System.Diagnostics.Debug.WriteLine($"Drive metadata collected: {result.DriveModel} ({result.DriveTotalBytes} bytes)");
             }
@@ -223,7 +197,7 @@ public class SequentialFileTestExecutor : ISurfaceTestExecutor
 
                      progress?.Report(new SurfaceTestProgress
                      {
-                        TestId = result.TestId,
+                        TestId = Guid.Parse(result.TestId),
                         BytesProcessed = totalBytesWritten,
                         PercentComplete = percentComplete,
                         CurrentThroughputMbps = Math.Round(throughput, 2),
@@ -299,7 +273,7 @@ public class SequentialFileTestExecutor : ISurfaceTestExecutor
                   {
                      progress?.Report(new SurfaceTestProgress
                      {
-                        TestId = result.TestId,
+                        TestId = Guid.Parse(result.TestId),
                         BytesProcessed = totalBytesRead,
                         PercentComplete = Math.Min(100, 50 + (filesVerified * 50.0 / filesWritten)),
                         CurrentThroughputMbps = totalBytesRead > 0 && verifyStopwatch.Elapsed.TotalSeconds > 0
@@ -535,11 +509,46 @@ exit";
 
             if(string.IsNullOrEmpty(newDrive))
             {
-               // Return special marker that tells caller to ask user
-               result.Notes = $"⚠️  Nové písmeno se nepodařilo zjistit automaticky.\n" +
-                             $"Disk byl naformátován s labelem: {uniqueLabel}\n" +
-                             $"Prosím vyberte disk ze seznamu (bude obsahovat DISKTEST_)";
-               return null; // Signal caller to ask user for disk selection
+               // Delta method failed - try to find by volume label
+               result.Notes = $"6️⃣  Delta metoda selhala, hledám podle labelu {uniqueLabel}...";
+               newDrive = FindDriveByVolumeLabel(uniqueLabel);
+               
+               if (!string.IsNullOrEmpty(newDrive))
+               {
+                  result.Notes = $"✓ Disk nalezen podle labelu na {newDrive}: (label: {uniqueLabel})";
+                  System.Diagnostics.Debug.WriteLine($"Drive found by label: {newDrive}");
+                  return newDrive;
+               }
+
+               // Still not found - provide helpful message
+               System.Diagnostics.Debug.WriteLine($"Could not find drive with label {uniqueLabel}");
+               
+               // Check if there are multiple DISKTEST drives
+               var allDrives = DriveInfo.GetDrives()
+                   .Where(d => d.IsReady && 
+                              !d.Name.StartsWith("C:", StringComparison.OrdinalIgnoreCase) &&
+                              !string.IsNullOrEmpty(d.VolumeLabel) &&
+                              d.VolumeLabel.Contains("DISKTEST_", StringComparison.OrdinalIgnoreCase))
+                   .ToList();
+               
+               if (allDrives.Count > 1)
+               {
+                  result.Notes = $"⚠️  Nalezeno {allDrives.Count} disků s DISKTEST_ labelem.\n" +
+                                $"Hledaný label: {uniqueLabel}\n" +
+                                $"Nalezené: {string.Join(", ", allDrives.Select(d => $"{d.Name} ({d.VolumeLabel})"))}\n" +
+                                $"Zkuste odpojit jiné USB disky a spustit test znovu.";
+               }
+               else
+               {
+                  result.Notes = $"⚠️  Disk byl naformátován s labelem: {uniqueLabel}\n" +
+                                $"Nepodařilo se automaticky detekovat písmeno.\n" +
+                                $"Zkuste:\n" +
+                                $"  • Otevřít Průzkumník (Win+E) a najít disk s tímto labelem\n" +
+                                $"  • Restartovat aplikaci\n" +
+                                $"  • Restartovat počítač pokud disk není viditelný";
+               }
+               
+               return null;
             }
 
             result.Notes = $"✓ Disk připraven na {newDrive}: (label: {uniqueLabel})";
@@ -623,6 +632,76 @@ exit";
    }
 
    /// <summary>
+   /// Finds a drive by its volume label.
+   /// Returns the drive letter (e.g., "E") or null if not found.
+   /// </summary>
+   private string? FindDriveByVolumeLabel(string targetLabel)
+   {
+      try
+      {
+         var drives = DriveInfo.GetDrives();
+         string? foundDrive = null;
+         int matchCount = 0;
+         
+         foreach (var drive in drives)
+         {
+            try
+            {
+               // Skip system drive (C:) and non-ready drives
+               if (drive.Name.StartsWith("C:", StringComparison.OrdinalIgnoreCase))
+                  continue;
+                  
+               if (!drive.IsReady)
+                  continue;
+
+               if (string.IsNullOrEmpty(drive.VolumeLabel))
+                  continue;
+
+               // Check for exact match first
+               if (drive.VolumeLabel.Equals(targetLabel, StringComparison.OrdinalIgnoreCase))
+               {
+                  var letter = drive.Name.Substring(0, 1).ToUpperInvariant();
+                  System.Diagnostics.Debug.WriteLine($"Found drive by exact label match '{targetLabel}': {letter}");
+                  return letter;
+               }
+
+               // Check for partial match (contains DISKTEST_)
+               if (drive.VolumeLabel.Contains("DISKTEST_", StringComparison.OrdinalIgnoreCase))
+               {
+                  matchCount++;
+                  foundDrive = drive.Name.Substring(0, 1).ToUpperInvariant();
+                  System.Diagnostics.Debug.WriteLine($"Found potential drive with DISKTEST_ label: {foundDrive} ({drive.VolumeLabel})");
+               }
+            }
+            catch
+            {
+               // Ignore individual drive access errors
+               continue;
+            }
+         }
+         
+         // If we found exactly one DISKTEST_ drive, use it
+         if (matchCount == 1 && foundDrive != null)
+         {
+            System.Diagnostics.Debug.WriteLine($"Using unique DISKTEST_ drive: {foundDrive}");
+            return foundDrive;
+         }
+         
+         if (matchCount > 1)
+         {
+            System.Diagnostics.Debug.WriteLine($"Found {matchCount} DISKTEST_ drives - cannot auto-select");
+         }
+         
+         return null;
+      }
+      catch (Exception ex)
+      {
+         System.Diagnostics.Debug.WriteLine($"Error in FindDriveByVolumeLabel: {ex.Message}");
+         return null;
+      }
+   }
+
+   /// <summary>
    /// Generates a unique volume label for the test partition to avoid collisions.
    /// Format: DISKTEST_yyMMdd_xxxxxxxx
    /// </summary>
@@ -637,28 +716,26 @@ exit";
    /// Extracts manufacturer from model string.
    /// Examples: "ST500DM002" → "Seagate", "WDC WD..." → "WDC", "Samsung SSD..." → "Samsung"
    /// </summary>
-   private string? ExtractManufacturer(string? modelNumber)
+   private static string? ExtractManufacturer(string? modelNumber)
    {
       if(string.IsNullOrEmpty(modelNumber))
          return null;
 
       var upper = modelNumber.ToUpperInvariant();
 
-      return upper switch
-      {
-         _ when upper.StartsWith("ST") => "Seagate",
-         _ when upper.StartsWith("WD") => "Western Digital",
-         _ when upper.StartsWith("SAMSUNG") => "Samsung",
-         _ when upper.StartsWith("INTEL") => "Intel",
-         _ when upper.StartsWith("TOSHIBA") => "Toshiba",
-         _ when upper.StartsWith("KINGSTON") => "Kingston",
-         _ when upper.StartsWith("CRUCIAL") => "Crucial",
-         _ when upper.StartsWith("SK HYNIX") => "SK Hynix",
-         _ when upper.StartsWith("HITACHI") => "Hitachi",
-         _ when upper.StartsWith("MAXTOR") => "Maxtor",
-         _ when upper.StartsWith("ADATA") => "ADATA",
-         _ when upper.StartsWith("SANDISK") => "SanDisk",
-         _ => null
-      };
+      if(upper.StartsWith("ST", StringComparison.Ordinal)) return "Seagate";
+      if(upper.StartsWith("WD", StringComparison.Ordinal)) return "Western Digital";
+      if(upper.StartsWith("SAMSUNG", StringComparison.Ordinal)) return "Samsung";
+      if(upper.StartsWith("INTEL", StringComparison.Ordinal)) return "Intel";
+      if(upper.StartsWith("TOSHIBA", StringComparison.Ordinal)) return "Toshiba";
+      if(upper.StartsWith("KINGSTON", StringComparison.Ordinal)) return "Kingston";
+      if(upper.StartsWith("CRUCIAL", StringComparison.Ordinal)) return "Crucial";
+      if(upper.StartsWith("SK HYNIX", StringComparison.Ordinal)) return "SK Hynix";
+      if(upper.StartsWith("HITACHI", StringComparison.Ordinal)) return "Hitachi";
+      if(upper.StartsWith("MAXTOR", StringComparison.Ordinal)) return "Maxtor";
+      if(upper.StartsWith("ADATA", StringComparison.Ordinal)) return "ADATA";
+      if(upper.StartsWith("SANDISK", StringComparison.Ordinal)) return "SanDisk";
+
+      return null;
    }
 }

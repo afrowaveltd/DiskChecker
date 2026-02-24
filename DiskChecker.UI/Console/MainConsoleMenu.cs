@@ -217,6 +217,172 @@ public class MainConsoleMenu
 
         // === Drive Information ===
         AnsiConsole.MarkupLine("[bold cyan]=== INFORMACE O DISKU ===[/]");
+        if (!string.IsNullOrEmpty(result.SmartaData.DeviceModel))
+        {
+            table.AddRow("[yellow]Model[/]", Markup.Escape(result.SmartaData.DeviceModel));
+        }
+        if (!string.IsNullOrEmpty(result.SmartaData.SerialNumber))
+        {
+            table.AddRow("[yellow]Sériové číslo[/]", Markup.Escape(result.SmartaData.SerialNumber));
+        }
+        if (!string.IsNullOrEmpty(result.SmartaData.FirmwareVersion))
+        {
+            table.AddRow("[yellow]Firmware[/]", Markup.Escape(result.SmartaData.FirmwareVersion));
+        }
+        
+        table.AddRow("[yellow]Kapacita[/]", FormatBytes(result.Drive.TotalSize));
+
+        // === SMART Status ===
+        if (result.SmartaData.PowerOnHours > 0)
+        {
+            var hours = result.SmartaData.PowerOnHours;
+            var years = hours / (24 * 365);
+            table.AddRow("[yellow]Provozní hodiny[/]", $"{hours:N0} h ({years} let)");
+        }
+
+        if (result.SmartaData.Temperature > 0)
+        {
+            var tempColor = result.SmartaData.Temperature > 50 ? "red" : 
+                           result.SmartaData.Temperature > 40 ? "yellow" : "green";
+            table.AddRow("[yellow]Teplota[/]", $"[{tempColor}]{result.SmartaData.Temperature:F1}°C[/]");
+        }
+
+        if (result.SmartaData.ReallocatedSectorCount > 0)
+        {
+            table.AddRow("[red]Realokované sektory[/]", $"[red]{result.SmartaData.ReallocatedSectorCount:N0}[/]");
+        }
+
+        if (result.SmartaData.PendingSectorCount > 0)
+        {
+            table.AddRow("[yellow]Čekající sektory[/]", $"[yellow]{result.SmartaData.PendingSectorCount:N0}[/]");
+        }
+
+        if (result.SmartaData.UncorrectableErrorCount > 0)
+        {
+            table.AddRow("[red]Neopravitelné chyby[/]", $"[red]{result.SmartaData.UncorrectableErrorCount:N0}[/]");
+        }
+
+        AnsiConsole.Write(table);
+        AnsiConsole.WriteLine();
+
+        // === Quality Rating ===
+        var ratingTable = new Table()
+            .AddColumn("Parametr")
+            .AddColumn("Hodnota");
+        
+        AnsiConsole.MarkupLine("[bold cyan]=== HODNOCENÍ KVALITY ===[/]");
+        var gradeColor = result.Rating.Grade switch
+        {
+            QualityGrade.A => "green",
+            QualityGrade.B => "green",
+            QualityGrade.C => "yellow",
+            QualityGrade.D => "yellow",
+            QualityGrade.E => "red",
+            QualityGrade.F => "red",
+            _ => "white"
+        };
+        ratingTable.AddRow("Známka", $"[{gradeColor}]{result.Rating.Grade}[/]");
+        ratingTable.AddRow("Skóre", $"{result.Rating.Score:F1}");
+
+        AnsiConsole.Write(ratingTable);
+
+        if (result.Rating.Warnings.Count > 0)
+        {
+            AnsiConsole.WriteLine();
+            AnsiConsole.MarkupLine("[bold yellow]⚠️  VAROVÁNÍ:[/]");
+            foreach (var warning in result.Rating.Warnings)
+            {
+                AnsiConsole.MarkupLine($"[yellow]  • {Markup.Escape(warning)}[/]");
+            }
+        }
+
+        // Overall verdict based on grade
+        if (result.Rating.Grade == QualityGrade.A || result.Rating.Grade == QualityGrade.B)
+        {
+            AnsiConsole.MarkupLine("[green]✓ Disk je v dobrém stavu[/]");
+        }
+        else if (result.Rating.Grade == QualityGrade.F)
+        {
+            AnsiConsole.MarkupLine("[bold red]❌ DISK JE VADNÝ - DOPORUČUJEME VYŘADIT Z PROVOZU![/]");
+        }
+
+        WaitForReturn();
+    }
+
+    private async Task FullTestMenuAsync()
+    {
+        AnsiConsole.MarkupLine("[yellow]Získávám seznam disků...[/]");
+        var drives = await _diskCheckerService.ListDrivesAsync();
+
+        if (drives.Count == 0)
+        {
+            AnsiConsole.MarkupLine("[red]Nebyl nalezen žádný disk.[/]");
+            WaitForReturn();
+            return;
+        }
+
+        AnsiConsole.MarkupLine("[bold white]Vyberte disk pro plný test povrchu:[/]");
+        for (int i = 0; i < drives.Count; i++)
+        {
+            var d = drives[i];
+            AnsiConsole.MarkupLine($" [blue]{i + 1}.[/] {Markup.Escape(d.Name)} ({Markup.Escape(d.Path)}) - {FormatBytes(d.TotalSize)}");
+        }
+        AnsiConsole.MarkupLine($" [blue]{drives.Count + 1}.[/] Zpět");
+        AnsiConsole.WriteLine();
+        AnsiConsole.Markup("Zadejte volbu: ");
+        
+        var choiceStr = ReadLine();
+        if (!int.TryParse(choiceStr, out var choice) || choice < 1 || choice > drives.Count)
+        {
+            return;
+        }
+
+        var drive = drives[choice - 1];
+
+        // Ask for test profile
+        AnsiConsole.MarkupLine("\n[bold white]Vyberte profil testu:[/]");
+        AnsiConsole.MarkupLine(" [blue]1.[/] HDD Plný test");
+        AnsiConsole.MarkupLine(" [blue]2.[/] SSD Rychlý test");
+        AnsiConsole.MarkupLine(" [blue]3.[/] Kompletní vymazání disku");
+        AnsiConsole.Markup("Zadejte volbu: ");
+
+        var profileChoice = ReadLine();
+        var profile = profileChoice.Trim() switch
+        {
+            "1" => SurfaceTestProfile.HddFull,
+            "2" => SurfaceTestProfile.SsdQuick,
+            "3" => SurfaceTestProfile.FullDiskSanitization,
+            _ => SurfaceTestProfile.HddFull
+        };
+
+        var request = new SurfaceTestRequest
+        {
+            Drive = drive,
+            Profile = profile,
+            Operation = SurfaceTestOperation.WriteZeroFill,
+            Technology = DriveTechnology.Unknown
+        };
+
+        AnsiConsole.MarkupLine($"\n[yellow]Spouštím test disku {Markup.Escape(drive.Name)}...[/]");
+
+        var progress = new Progress<SurfaceTestProgress>(p =>
+        {
+            AnsiConsole.MarkupLine($"[cyan]Průběh: {p.PercentComplete:F1}%, Rychlost: {p.CurrentThroughputMbps:F1} MB/s[/]");
+        });
+
+        var result = await _surfaceTestService.RunAsync(request, progress, CancellationToken.None);
+
+        await DisplaySurfaceTestResults(result, drive, profile);
+    }
+
+    private async Task DisplaySurfaceTestResults(SurfaceTestResult result, CoreDriveInfo drive, SurfaceTestProfile profile)
+    {
+        var table = new Table()
+            .AddColumn("Parametr")
+            .AddColumn("Hodnota");
+
+        // === Drive Information ===
+        AnsiConsole.MarkupLine("[bold cyan]=== INFORMACE O DISKU ===[/]");
         if (!string.IsNullOrEmpty(result.DriveModel))
         {
             table.AddRow("[yellow]Model[/]", Markup.Escape(result.DriveModel));
@@ -229,40 +395,8 @@ public class MainConsoleMenu
         {
             table.AddRow("[yellow]Sériové číslo[/]", Markup.Escape(result.DriveSerialNumber));
         }
-        if (!string.IsNullOrEmpty(result.DriveInterface))
-        {
-            table.AddRow("[yellow]Rozhraní[/]", result.DriveInterface);
-        }
         
         table.AddRow("[yellow]Kapacita[/]", FormatBytes(result.DriveTotalBytes));
-        
-        if (result.DriveRpmOrNvmeSpeed.HasValue)
-        {
-            var speedStr = result.DriveInterface?.Contains("NVMe") == true 
-                ? $"{result.DriveRpmOrNvmeSpeed} Gbps" 
-                : $"{result.DriveRpmOrNvmeSpeed} RPM";
-            table.AddRow("[yellow]Rychlost[/]", speedStr);
-        }
-
-        // === SMART Status ===
-        if (result.PowerOnHours.HasValue)
-        {
-            var hours = result.PowerOnHours.Value;
-            var years = hours / (24 * 365);
-            table.AddRow("[yellow]Provozní hodiny[/]", $"{hours:N0} h ({years} let)");
-        }
-
-        if (result.CurrentTemperatureCelsius.HasValue)
-        {
-            var tempColor = result.CurrentTemperatureCelsius > 50 ? "red" : 
-                           result.CurrentTemperatureCelsius > 40 ? "yellow" : "green";
-            table.AddRow("[yellow]Teplota[/]", $"[{tempColor}]{result.CurrentTemperatureCelsius}°C[/]");
-        }
-
-        if (result.ReallocatedSectors.HasValue && result.ReallocatedSectors > 0)
-        {
-            table.AddRow("[red]Realokované sektory[/]", $"[red]{result.ReallocatedSectors:N0}[/]");
-        }
 
         AnsiConsole.Write(table);
         AnsiConsole.WriteLine();
@@ -284,84 +418,34 @@ public class MainConsoleMenu
 
         AnsiConsole.Write(resultTable);
 
-        // Add warning if speed seems wrong
-        if (result.AverageSpeedMbps > 200)
-        {
-            AnsiConsole.MarkupLine("[bold yellow]⚠️  POZOR: Rychlost vypadá podezřele vysoká (~600 MB/s)[/]");
-            AnsiConsole.MarkupLine("[yellow]Možné příčiny:[/]");
-            AnsiConsole.MarkupLine("[yellow]  • Data se píšou na systémový disk (C:) místo na USB![/]");
-            AnsiConsole.MarkupLine("[yellow]  • Diskpart se nepovedl - zkus spustit program jako SPRÁVCE[/]");
-            AnsiConsole.MarkupLine("[yellow]  • Zkontroluj Debug Output (View -> Output)[/]");
-        }
-
-        if (result.Samples.Count > 1)
-        {
-            var chart = new BarChart()
-                .Width(60)
-                .Label("Rychlost (MB/s)")
-                .AddItem("Min", result.MinSpeedMbps, Color.Red)
-                .AddItem("Avg", result.AverageSpeedMbps, Color.Yellow)
-                .AddItem("Max", result.PeakSpeedMbps, Color.Green);
-
-            AnsiConsole.Write(chart);
-        }
-
-        if (result.Samples.Count > 2)
-        {
-            var midIndex = result.Samples.Count / 2;
-            var trendTable = new Table()
-                .AddColumn("Vzorek")
-                .AddColumn("MB/s");
-
-            var first = result.Samples[0];
-            var middle = result.Samples[midIndex];
-            var last = result.Samples[^1];
-
-            trendTable.AddRow("Start", first.ThroughputMbps.ToString("F1"));
-            trendTable.AddRow("Střed", middle.ThroughputMbps.ToString("F1"));
-            trendTable.AddRow("Konec", last.ThroughputMbps.ToString("F1"));
-
-            AnsiConsole.Write(trendTable);
-        }
-
-        // Show errors and warnings
         if (result.ErrorCount > 0)
         {
             AnsiConsole.MarkupLine($"[red]⚠️  CHYBY: Disk hlásí {result.ErrorCount} chyb(y)[/]");
             if (result.ErrorCount > 5)
             {
                 AnsiConsole.MarkupLine("[bold red]❌ DISK JE VADNÝ - NEPOUŽÍVEJTE HO![/]");
-                AnsiConsole.MarkupLine("[red]Disk selhává při datových operacích. Doporučuji vyřadit z provozu.[/]");
             }
         }
 
         if (!string.IsNullOrWhiteSpace(result.Notes))
         {
-            if (result.Notes.Contains("vadný", StringComparison.OrdinalIgnoreCase))
-            {
-                AnsiConsole.MarkupLine($"[bold red]{Markup.Escape(result.Notes)}[/]");
-            }
-            else
-            {
-                AnsiConsole.MarkupLine($"[yellow]ℹ️  {Markup.Escape(result.Notes)}[/]");
-            }
-        }
-
-        // Check for speed anomalies (disk slowing down)
-        if (result.Samples.Count > 3 && result.AverageSpeedMbps > 0)
-        {
-            var lastQuarterSpeed = result.Samples.Skip(result.Samples.Count * 3 / 4).Average(s => s.ThroughputMbps);
-            var firstQuarterSpeed = result.Samples.Take(result.Samples.Count / 4).Average(s => s.ThroughputMbps);
+            AnsiConsole.MarkupLine($"[yellow]ℹ️  {Markup.Escape(result.Notes)}[/]");
             
-            if (firstQuarterSpeed > 0 && lastQuarterSpeed < firstQuarterSpeed * 0.5)
+            // Check if it's a disk detection failure and offer retry with manual selection
+            if (result.Notes.Contains("DISKTEST_", StringComparison.OrdinalIgnoreCase) && 
+                result.Notes.Contains("Nepodařilo se automaticky detekovat", StringComparison.OrdinalIgnoreCase))
             {
-                AnsiConsole.MarkupLine($"[yellow]⚠️  ZPOMALENÍ: Disk výrazně zpomaluje během testu ({firstQuarterSpeed:F1} → {lastQuarterSpeed:F1} MB/s)[/]");
-                AnsiConsole.MarkupLine("[yellow]Disk může mít mechanické nebo elektronické problémy.[/]");
+                AnsiConsole.WriteLine();
+                AnsiConsole.MarkupLine("[bold yellow]💡 TIP: Disk byl naformátován, ale nepodařilo se automaticky zjistit písmeno jednotky.[/]");
+                AnsiConsole.MarkupLine("[yellow]   Zkuste:[/]");
+                AnsiConsole.MarkupLine("[yellow]   1. Otevřít Průzkumník Windows (Win+E) a najít disk s labelem začínajícím 'DISKTEST_'[/]");
+                AnsiConsole.MarkupLine("[yellow]   2. Restartovat aplikaci a zkusit test znovu[/]");
+                AnsiConsole.MarkupLine("[yellow]   3. Restartovat počítač, pokud disk není viditelný[/]");
             }
         }
 
         // Positive result message
-        if (result.ErrorCount == 0 && string.IsNullOrWhiteSpace(result.Notes))
+        if (result.ErrorCount == 0)
         {
             AnsiConsole.MarkupLine("[green]✓ Test úspěšný - disk vypadá v pořádku[/]");
         }

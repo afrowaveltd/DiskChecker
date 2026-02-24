@@ -25,15 +25,16 @@ public class SurfaceTestPersistenceService
     /// Saves the provided surface test result.
     /// </summary>
     /// <param name="result">Surface test result to persist.</param>
+    /// <param name="drive">Drive information from the request.</param>
     /// <param name="cancellationToken">Token to cancel the operation.</param>
     /// <returns>The persisted test identifier.</returns>
-    public async Task<Guid> SaveAsync(SurfaceTestResult result, CancellationToken cancellationToken = default)
+    public async Task<Guid> SaveAsync(SurfaceTestResult result, CoreDriveInfo drive, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(result);
-        ArgumentNullException.ThrowIfNull(result.Drive);
+        ArgumentNullException.ThrowIfNull(drive);
 
         var testDate = result.CompletedAtUtc == default ? DateTime.UtcNow : result.CompletedAtUtc;
-        var serialKey = string.IsNullOrWhiteSpace(result.Drive.Path) ? result.Drive.Name : result.Drive.Path;
+        var serialKey = result.DriveSerialNumber ?? (string.IsNullOrWhiteSpace(drive.Path) ? drive.Name : drive.Path);
 
         var driveRecord = await _dbContext.Drives
             .SingleOrDefaultAsync(d => d.SerialNumber == serialKey, cancellationToken);
@@ -43,12 +44,12 @@ public class SurfaceTestPersistenceService
             driveRecord = new DriveRecord
             {
                 Id = Guid.NewGuid(),
-                Path = result.Drive.Path,
-                Name = result.Drive.Name,
+                Path = drive.Path,
+                Name = result.DriveModel ?? drive.Name,
                 SerialNumber = serialKey,
-                FileSystem = result.Drive.FileSystem,
-                TotalSize = result.Drive.TotalSize,
-                FreeSpace = result.Drive.FreeSpace,
+                FileSystem = drive.FileSystem,
+                TotalSize = result.DriveTotalBytes > 0 ? result.DriveTotalBytes : drive.TotalSize,
+                FreeSpace = drive.FreeSpace,
                 FirstSeen = testDate,
                 LastSeen = testDate,
                 TotalTests = 0
@@ -58,11 +59,11 @@ public class SurfaceTestPersistenceService
         }
         else
         {
-            driveRecord.Path = result.Drive.Path;
-            driveRecord.Name = result.Drive.Name;
-            driveRecord.FileSystem = result.Drive.FileSystem;
-            driveRecord.TotalSize = result.Drive.TotalSize;
-            driveRecord.FreeSpace = result.Drive.FreeSpace;
+            driveRecord.Path = drive.Path;
+            driveRecord.Name = result.DriveModel ?? drive.Name;
+            driveRecord.FileSystem = drive.FileSystem;
+            driveRecord.TotalSize = result.DriveTotalBytes > 0 ? result.DriveTotalBytes : drive.TotalSize;
+            driveRecord.FreeSpace = drive.FreeSpace;
             driveRecord.LastSeen = testDate;
         }
 
@@ -85,7 +86,7 @@ public class SurfaceTestPersistenceService
             CertificatePath = string.Empty,
             SurfaceProfile = result.Profile,
             SurfaceOperation = result.Operation,
-            SurfaceTechnology = result.Technology,
+            SurfaceTechnology = DriveTechnology.Unknown,
             SecureErasePerformed = result.SecureErasePerformed
         };
 

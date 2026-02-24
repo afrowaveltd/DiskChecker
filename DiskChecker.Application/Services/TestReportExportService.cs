@@ -181,7 +181,6 @@ public class TestReportExportService : ITestReportExporter
         var smart = report.SmartCheck;
         var surface = report.SurfaceTest;
         var grade = smart.Rating.Grade.ToString();
-        var driveType = surface?.Technology.ToString() ?? "Unknown";
         var smartDescription = smart.SmartaData.DeviceModel ?? smart.SmartaData.ModelFamily ?? "Disk";
 
         var chart = BuildChartSvg(surface);
@@ -198,7 +197,7 @@ public class TestReportExportService : ITestReportExporter
         sb.AppendLine("<body>");
         sb.AppendLine("<div class=\"header\">");
         sb.AppendLine("<div><h1>Certifikát kvality disku</h1><div class=\"meta\">DiskChecker</div></div>");
-        sb.AppendLine($"<div class=\"right-head\"><div>{Escape(driveType)}</div><div>{Escape(smartDescription)}</div></div>");
+        sb.AppendLine($"<div class=\"right-head\"><div>{Escape(smartDescription)}</div></div>");
         sb.AppendLine("</div>");
         sb.AppendLine("<div class=\"grid\">");
         sb.AppendLine($"<div class=\"badge\">{Escape(grade)}</div>");

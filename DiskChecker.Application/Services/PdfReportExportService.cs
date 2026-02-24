@@ -58,9 +58,8 @@ public class PdfReportExportService : IPdfReportExporter
         var y = Margin + 20;
         canvas.DrawText("Certifikát kvality disku", Margin, y, SKTextAlign.Left, headerFont, textPaint);
 
-        var driveType = surface?.Technology.ToString() ?? "Unknown";
         var model = smart.SmartaData.DeviceModel ?? smart.SmartaData.ModelFamily ?? "Unknown";
-        canvas.DrawText(driveType, PageWidth - Margin - 150, Margin + 16, SKTextAlign.Left, smallFont, grayPaint);
+        canvas.DrawText(model, PageWidth - Margin - 150, Margin + 16, SKTextAlign.Left, smallFont, grayPaint);
         canvas.DrawText(model, PageWidth - Margin - 150, Margin + 30, SKTextAlign.Left, smallFont, grayPaint);
 
         y += 40;

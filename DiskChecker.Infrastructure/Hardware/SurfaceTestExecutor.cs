@@ -12,6 +12,14 @@ public class SurfaceTestExecutor : ISurfaceTestExecutor
     private const byte PatternByte = 0xA5;
     private const long DeviceWriteLimitBytes = 256L * 1024 * 1024;
 
+    private readonly ISmartaProvider _smartaProvider;
+
+    public SurfaceTestExecutor(ISmartaProvider smartaProvider)
+    {
+        ArgumentNullException.ThrowIfNull(smartaProvider);
+        _smartaProvider = smartaProvider;
+    }
+
     /// <inheritdoc />
     public async Task<SurfaceTestResult> ExecuteAsync(
         SurfaceTestRequest request,
@@ -23,9 +31,7 @@ public class SurfaceTestExecutor : ISurfaceTestExecutor
 
         var result = new SurfaceTestResult
         {
-            TestId = Guid.NewGuid(),
-            Drive = request.Drive,
-            Technology = request.Technology,
+            TestId = Guid.NewGuid().ToString(),
             Profile = request.Profile,
             Operation = request.Operation,
             StartedAtUtc = DateTime.UtcNow,
@@ -290,7 +296,7 @@ public class SurfaceTestExecutor : ISurfaceTestExecutor
                         processedBytes,
                         totalWorkBytes,
                         request.SampleIntervalBlocks,
-                        result.TestId,
+                        Guid.Parse(result.TestId),
                         ref sampleBytes,
                         ref sampleBlocks,
                         sampleStopwatch,
@@ -353,7 +359,7 @@ public class SurfaceTestExecutor : ISurfaceTestExecutor
                     processedBytes,
                     totalWorkBytes,
                     request.SampleIntervalBlocks,
-                    result.TestId,
+                    Guid.Parse(result.TestId),
                     ref sampleBytes,
                     ref sampleBlocks,
                     sampleStopwatch,
@@ -383,7 +389,7 @@ public class SurfaceTestExecutor : ISurfaceTestExecutor
                         processedBytes,
                         totalWorkBytes,
                         request.SampleIntervalBlocks,
-                        result.TestId,
+                        Guid.Parse(result.TestId),
                         ref sampleBytes,
                         ref sampleBlocks,
                         sampleStopwatch,

@@ -8,6 +8,14 @@ namespace DiskChecker.Infrastructure.Hardware;
 /// </summary>
 public class SurfaceTestExecutorFactory
 {
+    private readonly ISmartaProvider _smartaProvider;
+
+    public SurfaceTestExecutorFactory(ISmartaProvider smartaProvider)
+    {
+        ArgumentNullException.ThrowIfNull(smartaProvider);
+        _smartaProvider = smartaProvider;
+    }
+
     /// <summary>
     /// Creates a surface test executor appropriate for the given request.
     /// </summary>
@@ -20,10 +28,10 @@ public class SurfaceTestExecutorFactory
         // Use sequential file executor for full disk sanitization on Windows
         if (request.Profile == SurfaceTestProfile.FullDiskSanitization)
         {
-            return new SequentialFileTestExecutor();
+            return new SequentialFileTestExecutor(_smartaProvider);
         }
         
         // Default to standard executor for other profiles
-        return new SurfaceTestExecutor();
+        return new SurfaceTestExecutor(_smartaProvider);
     }
 }
