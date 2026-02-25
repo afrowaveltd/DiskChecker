@@ -69,6 +69,10 @@ public class SurfaceTestPersistenceService
 
         driveRecord.TotalTests += 1;
 
+        // Calculate test rating based on results
+        var grade = CalculateSurfaceTestGrade(result);
+        var score = CalculateSurfaceTestScore(result);
+
         var testRecord = new TestRecord
         {
             Id = Guid.NewGuid(),
@@ -81,8 +85,8 @@ public class SurfaceTestPersistenceService
             TotalBytesWritten = result.Operation == SurfaceTestOperation.ReadOnly ? 0 : result.TotalBytesTested,
             TotalBytesTested = result.TotalBytesTested,
             Errors = result.ErrorCount,
-            Grade = QualityGrade.C,
-            Score = 0,
+            Grade = grade,
+            Score = score,
             CertificatePath = string.Empty,
             SurfaceProfile = result.Profile,
             SurfaceOperation = result.Operation,
@@ -109,5 +113,58 @@ public class SurfaceTestPersistenceService
         await _dbContext.SaveChangesAsync(cancellationToken);
 
         return testRecord.Id;
+    }
+
+    /// <summary>
+    /// Calculates quality grade for surface test based on error count and completion.
+    /// </summary>
+    private static QualityGrade CalculateSurfaceTestGrade(SurfaceTestResult result)
+    {
+        // Critical failures
+        if (result.ErrorCount > 100)
+            return QualityGrade.F;
+        
+        if (result.ErrorCount > 10)
+            return QualityGrade.E;
+        
+        if (result.ErrorCount > 5)
+            return QualityGrade.D;
+        
+        if (result.ErrorCount > 0)
+            return QualityGrade.C;
+        
+        // No errors - check performance
+        if (result.AverageSpeedMbps > 100)
+            return QualityGrade.A;
+        
+        if (result.AverageSpeedMbps > 50)
+            return QualityGrade.B;
+        
+        // Slow but no errors
+        return QualityGrade.C;
+    }
+
+    /// <summary>
+    /// Calculates numeric score for surface test (0-100).
+    /// </summary>
+    private static double CalculateSurfaceTestScore(SurfaceTestResult result)
+    {
+        double score = 100.0;
+        
+        // Penalty for errors (severe)
+        if (result.ErrorCount > 0)
+        {
+            var errorPenalty = Math.Min(90, result.ErrorCount * 10);  // Up to -90 points
+            score -= errorPenalty;
+        }
+        
+        // Bonus for good speed (minor)
+        if (result.AverageSpeedMbps > 100)
+            score = Math.Min(100, score + 10);  // +10 for excellent speed
+        else if (result.AverageSpeedMbps < 30)
+            score -= 10;  // -10 for very slow
+        
+        // Ensure 0-100 range
+        return Math.Max(0, Math.Min(100, score));
     }
 }

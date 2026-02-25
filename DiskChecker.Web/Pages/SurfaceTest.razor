@@ -9,6 +9,7 @@
 @inject ITestReportExporter ReportExporter
 @inject IPdfReportExporter PdfReportExporter
 @inject IReportEmailService ReportEmailService
+@implements IDisposable
 
 <h3>Povrchový test</h3>
 
@@ -55,8 +56,37 @@ else
     }
 }
 
+@if (CurrentSmartData != null)
+{
+    <h4>SMART data testovaného disku</h4>
+    <table class="table">
+        <tbody>
+            <tr><td>Model</td><td><strong>@CurrentSmartData.DeviceModel</strong></td></tr>
+            @if (!string.IsNullOrWhiteSpace(CurrentSmartData.ModelFamily))
+            {
+                <tr><td>Rodina</td><td>@CurrentSmartData.ModelFamily</td></tr>
+            }
+            <tr><td>Sériové číslo</td><td>@CurrentSmartData.SerialNumber</td></tr>
+            @if (!string.IsNullOrWhiteSpace(CurrentSmartData.FirmwareVersion))
+            {
+                <tr><td>Firmware</td><td>@CurrentSmartData.FirmwareVersion</td></tr>
+            }
+            <tr><td>Teplota</td><td class="@GetTemperatureClass()"><strong>@CurrentSmartData.Temperature.ToString("F1") °C</strong></td></tr>
+            <tr><td>Odpracováno</td><td>@CurrentSmartData.PowerOnHours h (@FormatPowerOnTime(CurrentSmartData.PowerOnHours))</td></tr>
+            @if (CurrentSmartData.WearLevelingCount.HasValue)
+            {
+                <tr><td>Opotřebení</td><td>@CurrentSmartData.WearLevelingCount %</td></tr>
+            }
+            <tr><td>Přemístěné sektory</td><td class="@GetSectorClass(CurrentSmartData.ReallocatedSectorCount)">@CurrentSmartData.ReallocatedSectorCount</td></tr>
+            <tr><td>Čekající sektory</td><td class="@GetSectorClass(CurrentSmartData.PendingSectorCount)">@CurrentSmartData.PendingSectorCount</td></tr>
+            <tr><td>Neopravitelné chyby</td><td class="@GetSectorClass(CurrentSmartData.UncorrectableErrorCount)">@CurrentSmartData.UncorrectableErrorCount</td></tr>
+        </tbody>
+    </table>
+}
+
 @if (IsRunning)
 {
+    <h4>Průběh testu</h4>
     <div>
         <label>Průběh</label>
         <progress value="@ProgressPercent" max="100"></progress>
@@ -74,7 +104,7 @@ else
             <tr><td>Testováno</td><td>@FormatBytes(Result.TotalBytesTested)</td></tr>
             <tr><td>Průměr</td><td>@Result.AverageSpeedMbps.ToString("F1") MB/s</td></tr>
             <tr><td>Maximum</td><td>@Result.PeakSpeedMbps.ToString("F1") MB/s</td></tr>
-            <tr><td>Minimum</td><td>@Result.MinSpeedMbps.ToString("F1") MB/s</td></tr>
+            <tr><td>Minimální</td><td>@Result.MinSpeedMbps.ToString("F1") MB/s</td></tr>
             <tr><td>Chyby</td><td>@Result.ErrorCount</td></tr>
             <tr><td>Vzorky</td><td>@Result.Samples.Count</td></tr>
         </tbody>
@@ -159,6 +189,8 @@ else
     private string? ErrorMessage;
     private SurfaceTestResult? Result;
     private SmartCheckResult? SmartForExport;
+    private SmartaData? CurrentSmartData;
+    private System.Threading.Timer? _smartUpdateTimer;
     private string? ExportContent;
     private string? PdfDownloadUrl;
     private ExportFormat SelectedExport;
@@ -192,6 +224,7 @@ else
         ExportContent = null;
         PdfDownloadUrl = null;
         SelectedExport = ExportFormat.None;
+        CurrentSmartData = null;
 
         var drive = Drives.FirstOrDefault(d => d.Path == SelectedPath);
         if (drive == null)
@@ -200,7 +233,28 @@ else
             return;
         }
 
+        // Load initial SMART data
+        var initialSmartCheck = await SmartCheckService.RunAsync(drive);
+        if (initialSmartCheck != null)
+        {
+            CurrentSmartData = initialSmartCheck.SmartaData;
+        }
+
         IsRunning = true;
+
+        // Start periodic SMART data refresh (every 10 seconds)
+        _smartUpdateTimer = new System.Threading.Timer(async _ =>
+        {
+            if (IsRunning && drive != null)
+            {
+                var smartCheck = await SmartCheckService.RunAsync(drive);
+                if (smartCheck != null)
+                {
+                    CurrentSmartData = smartCheck.SmartaData;
+                    await InvokeAsync(StateHasChanged);
+                }
+            }
+        }, null, TimeSpan.FromSeconds(10), TimeSpan.FromSeconds(10));
 
         var technology = SelectedProfile == SurfaceTestProfile.HddFull
             ? DriveTechnology.Hdd
@@ -230,12 +284,20 @@ else
 
         Result = await SurfaceTestService.RunAsync(request, progress);
 
+        // Stop the timer
+        _smartUpdateTimer?.Dispose();
+        _smartUpdateTimer = null;
+
         if (Result.ErrorCount > 0 && string.IsNullOrWhiteSpace(Result.Notes))
         {
             ErrorMessage = "Test skončil s chybou.";
         }
 
         SmartForExport = await SmartCheckService.RunAsync(drive);
+        if (SmartForExport != null)
+        {
+            CurrentSmartData = SmartForExport.SmartaData;
+        }
 
         IsRunning = false;
     }
@@ -285,6 +347,58 @@ else
             i++;
         }
         return $"{b:F1} {sizes[i]}";
+    }
+
+    /// <summary>
+    /// Formats power-on time in human-readable format (days, months, years).
+    /// </summary>
+    private static string FormatPowerOnTime(int hours)
+    {
+        if (hours < 24)
+            return $"{hours} h";
+        
+        var days = hours / 24;
+        if (days < 30)
+            return $"{days} dní";
+        
+        var months = days / 30;
+        if (months < 12)
+            return $"{months} měsíců";
+        
+        var years = months / 12;
+        var remainingMonths = months % 12;
+        return remainingMonths > 0 ? $"{years} let {remainingMonths} měsíců" : $"{years} let";
+    }
+
+    /// <summary>
+    /// Returns CSS class for temperature based on value.
+    /// </summary>
+    private string GetTemperatureClass()
+    {
+        if (CurrentSmartData == null)
+            return string.Empty;
+        
+        if (CurrentSmartData.Temperature >= 60)
+            return "error";
+        
+        if (CurrentSmartData.Temperature >= 50)
+            return "warning";
+        
+        return string.Empty;
+    }
+
+    /// <summary>
+    /// Returns CSS class for sector counts (errors).
+    /// </summary>
+    private static string GetSectorClass(long count)
+    {
+        if (count > 10)
+            return "error";
+        
+        if (count > 0)
+            return "warning";
+        
+        return string.Empty;
     }
 
     private string BuildChartPoints()
@@ -339,5 +453,13 @@ else
 
         await ReportEmailService.SendReportAsync(report, EmailRecipient, EmailUseCertificate);
         EmailStatus = "Email odeslán.";
+    }
+
+    /// <summary>
+    /// Disposes the timer when component is destroyed.
+    /// </summary>
+    public void Dispose()
+    {
+        _smartUpdateTimer?.Dispose();
     }
 }

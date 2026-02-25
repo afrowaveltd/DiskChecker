@@ -326,9 +326,14 @@ public class SequentialFileTestExecutor : ISurfaceTestExecutor
       result.TotalBytesTested = totalBytesRead > 0 ? totalBytesRead : totalBytesWritten;
       result.Samples = samples;
 
-      if(totalStopwatch.Elapsed.TotalSeconds > 0 && totalBytesWritten > 0)
+      // Calculate average speed correctly - use total bytes (write + read) / total time
+      if(totalStopwatch.Elapsed.TotalSeconds > 0)
       {
-         result.AverageSpeedMbps = totalBytesWritten / (1024.0 * 1024.0) / totalStopwatch.Elapsed.TotalSeconds;
+         var totalBytesProcessed = totalBytesWritten + totalBytesRead;
+         if(totalBytesProcessed > 0)
+         {
+            result.AverageSpeedMbps = totalBytesProcessed / (1024.0 * 1024.0) / totalStopwatch.Elapsed.TotalSeconds;
+         }
       }
 
       result.PeakSpeedMbps = peak == double.MaxValue ? 0 : peak;
