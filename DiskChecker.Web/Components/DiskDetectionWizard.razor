@@ -1,0 +1,404 @@
+@using DiskChecker.Core.Models
+@using DiskChecker.Core.Services
+@using DiskChecker.Application.Services
+
+<div class="disk-detection-container">
+    <div class="detection-header">
+        <h4>🔍 Automatické rozpoznání disku</h4>
+        <p class="help-text">Postup: odpojit → potvrzení → zapojit → detekovat</p>
+    </div>
+
+    @switch (CurrentStep)
+    {
+        case DetectionStep.WaitingForDisconnect:
+            <div class="step-content warning">
+                <div class="step-icon">🔌</div>
+                <h5>Krok 1: Odpojte testovaný disk</h5>
+                <p>Prosím odpojte disk USB rámečku nebo portu, který chcete otestovat.</p>
+                <div class="disk-list">
+                    <h6>Aktuálně připojené disky:</h6>
+                    <ul>
+                        @foreach (var drive in CurrentDisks)
+                        {
+                            <li>@drive.Name - @FormatBytes(drive.TotalSize)</li>
+                        }
+                    </ul>
+                </div>
+                <button class="btn btn-warning" @onclick="CaptureBeforeState">
+                    ✓ Disk je odpojen - pokračovat
+                </button>
+            </div>
+            break;
+
+        case DetectionStep.WaitingForConnect:
+            <div class="step-content info">
+                <div class="step-icon">⏳</div>
+                <h5>Krok 2: Zapojte testovaný disk</h5>
+                <p>Nyní zapojte disk do stejného USB portu/rámečku zpět.</p>
+                <p class="hint">Systém automaticky detekuje nový disk během 10 sekund.</p>
+                
+                @if (DetectionProgress > 0)
+                {
+                    <div class="detection-progress">
+                        <div class="progress-bar" style="width: @DetectionProgress%"></div>
+                    </div>
+                    <p class="progress-text">Detekuji... @DetectionProgress%</p>
+                }
+            </div>
+            break;
+
+        case DetectionStep.Comparing:
+            <div class="step-content neutral">
+                <div class="step-icon">⚙️</div>
+                <h5>Krok 3: Porovnávám stavy</h5>
+                <p>Porovnávám disky před a po zapojení...</p>
+            </div>
+            break;
+
+        case DetectionStep.Complete:
+            <div class="step-content success">
+                <div class="step-icon">✅</div>
+                <h5>Disk detekován!</h5>
+                @if (DetectedDisk != null)
+                {
+                    <div class="detected-disk">
+                        <p><strong>Cesta:</strong> @DetectedDisk.Path</p>
+                        <p><strong>Model:</strong> @DetectedDisk.Model</p>
+                        <p><strong>Kapacita:</strong> @FormatBytes(DetectedDisk.TotalBytes)</p>
+                        @if (!string.IsNullOrEmpty(DetectedDisk.DriveLetter))
+                        {
+                            <p><strong>Písmenka:</strong> @DetectedDisk.DriveLetter</p>
+                        }
+                    </div>
+                    <div class="button-group">
+                        <button class="btn btn-success" @onclick="() => OnDiskSelected.InvokeAsync(DetectedDisk)">
+                            🎯 Použít tento disk
+                        </button>
+                        <button class="btn btn-secondary" @onclick="Reset">
+                            🔄 Zkusit znovu
+                        </button>
+                    </div>
+                }
+            </div>
+            break;
+
+        case DetectionStep.Error:
+            <div class="step-content error">
+                <div class="step-icon">❌</div>
+                <h5>Chyba detekce</h5>
+                <p>@ErrorMessage</p>
+                <button class="btn btn-secondary" @onclick="Reset">
+                    🔄 Zkusit znovu
+                </button>
+            </div>
+            break;
+    }
+</div>
+
+@code {
+    [Parameter]
+    public IReadOnlyList<CoreDriveInfo> AvailableDisks { get; set; } = Array.Empty<CoreDriveInfo>();
+
+    [Parameter]
+    public EventCallback<DiskDetectionService.DiskIdentifier> OnDiskSelected { get; set; }
+
+    [Inject]
+    private DiskCheckerService DiskCheckerService { get; set; } = null!;
+
+    private enum DetectionStep
+    {
+        WaitingForDisconnect,
+        WaitingForConnect,
+        Comparing,
+        Complete,
+        Error
+    }
+
+    private DetectionStep CurrentStep = DetectionStep.WaitingForDisconnect;
+    private List<CoreDriveInfo> CurrentDisks = new();
+    private DiskDetectionService.DiskSnapshot? SnapshotBefore;
+    private DiskDetectionService.DiskSnapshot? SnapshotAfter;
+    private DiskDetectionService.DiskIdentifier? DetectedDisk;
+    private string? ErrorMessage;
+    private int DetectionProgress;
+    private System.Threading.Timer? _detectionTimer;
+    private CancellationTokenSource? _detectionCts;
+
+    protected override async Task OnInitializedAsync()
+    {
+        CurrentDisks = AvailableDisks.ToList();
+    }
+
+    private async Task CaptureBeforeState()
+    {
+        var service = new DiskDetectionService();
+        SnapshotBefore = service.CreateSnapshot(CurrentDisks);
+        
+        CurrentStep = DetectionStep.WaitingForConnect;
+        DetectionProgress = 0;
+
+        // Start automatic detection polling
+        _detectionCts = new CancellationTokenSource();
+        _detectionTimer = new System.Threading.Timer(
+            async _ => await PollForNewDisk(),
+            null,
+            TimeSpan.FromSeconds(1),
+            TimeSpan.FromSeconds(1));
+    }
+
+    private async Task PollForNewDisk()
+    {
+        try
+        {
+            DetectionProgress = Math.Min(100, DetectionProgress + 10);
+            await InvokeAsync(StateHasChanged);
+
+            var currentDisks = await DiskCheckerService.ListDrivesAsync();
+            var service = new DiskDetectionService();
+            SnapshotAfter = service.CreateSnapshot(currentDisks);
+
+            if (SnapshotBefore != null && SnapshotAfter.DisksPresent.Any())
+            {
+                var comparison = service.Compare(SnapshotBefore, SnapshotAfter);
+
+                if (comparison.Added.Count == 1 && comparison.Removed.Count == 0)
+                {
+                    // Perfect match - exactly one disk added
+                    _detectionTimer?.Dispose();
+                    CurrentStep = DetectionStep.Comparing;
+                    await InvokeAsync(StateHasChanged);
+                    await Task.Delay(500);
+
+                    DetectedDisk = comparison.Added.First();
+                    CurrentStep = DetectionStep.Complete;
+                    await InvokeAsync(StateHasChanged);
+                }
+                else if (comparison.Added.Count > 1)
+                {
+                    // Too many disks added
+                    _detectionTimer?.Dispose();
+                    ErrorMessage = $"Příliš mnoho disků připojeno ({comparison.Added.Count}). Prosím připojte pouze jeden disk a zkuste znovu.";
+                    CurrentStep = DetectionStep.Error;
+                    await InvokeAsync(StateHasChanged);
+                }
+            }
+        }
+        catch
+        {
+            // Ignore polling errors
+        }
+
+        if (DetectionProgress >= 100)
+        {
+            _detectionTimer?.Dispose();
+            ErrorMessage = "Čas vypršel. Disk nebyl detekován. Prosím zkontrolujte, že je disk správně připojen, a zkuste znovu.";
+            CurrentStep = DetectionStep.Error;
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    private void Reset()
+    {
+        _detectionTimer?.Dispose();
+        _detectionCts?.Cancel();
+        CurrentStep = DetectionStep.WaitingForDisconnect;
+        SnapshotBefore = null;
+        SnapshotAfter = null;
+        DetectedDisk = null;
+        ErrorMessage = null;
+        DetectionProgress = 0;
+    }
+
+    private static string FormatBytes(long bytes)
+    {
+        string[] sizes = { "B", "KB", "MB", "GB", "TB" };
+        int i = 0;
+        double b = bytes;
+        while (b >= 1024 && i < sizes.Length - 1)
+        {
+            b /= 1024;
+            i++;
+        }
+        return $"{b:F1} {sizes[i]}";
+    }
+}
+
+<style>
+.disk-detection-container {
+    background: white;
+    padding: 20px;
+    border-radius: 8px;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    margin-bottom: 20px;
+}
+
+.detection-header {
+    border-bottom: 2px solid #4A90E2;
+    padding-bottom: 15px;
+    margin-bottom: 20px;
+}
+
+.detection-header h4 {
+    margin: 0 0 5px 0;
+    color: #333;
+}
+
+.help-text {
+    color: #666;
+    font-size: 0.9em;
+    margin: 0;
+}
+
+.step-content {
+    padding: 20px;
+    border-radius: 6px;
+    text-align: center;
+}
+
+.step-content.warning {
+    background: #fff3cd;
+    border-left: 4px solid #ffc107;
+}
+
+.step-content.info {
+    background: #d1ecf1;
+    border-left: 4px solid #17a2b8;
+}
+
+.step-content.neutral {
+    background: #e2e3e5;
+    border-left: 4px solid #6c757d;
+}
+
+.step-content.success {
+    background: #d4edda;
+    border-left: 4px solid #28a745;
+}
+
+.step-content.error {
+    background: #f8d7da;
+    border-left: 4px solid #dc3545;
+}
+
+.step-icon {
+    font-size: 2em;
+    margin-bottom: 10px;
+}
+
+.step-content h5 {
+    margin: 10px 0;
+    color: #333;
+}
+
+.step-content p {
+    color: #555;
+    margin: 8px 0;
+}
+
+.hint {
+    font-size: 0.9em;
+    color: #666;
+    font-style: italic;
+}
+
+.disk-list {
+    text-align: left;
+    background: rgba(255,255,255,0.7);
+    padding: 10px;
+    border-radius: 4px;
+    margin: 15px auto;
+    max-width: 300px;
+}
+
+.disk-list h6 {
+    margin: 0 0 8px 0;
+    font-weight: 600;
+}
+
+.disk-list ul {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+}
+
+.disk-list li {
+    padding: 5px 0;
+    color: #555;
+    font-size: 0.95em;
+}
+
+.detection-progress {
+    margin: 20px 0;
+}
+
+.progress-bar {
+    width: 100%;
+    height: 20px;
+    background: #e0e0e0;
+    border-radius: 4px;
+    overflow: hidden;
+}
+
+.progress-bar > div {
+    height: 100%;
+    background: linear-gradient(90deg, #17a2b8 0%, #138496 100%);
+    transition: width 0.3s ease;
+}
+
+.progress-text {
+    font-size: 0.9em;
+    color: #555;
+    margin-top: 8px;
+}
+
+.detected-disk {
+    background: white;
+    padding: 15px;
+    border-radius: 4px;
+    text-align: left;
+    margin: 15px auto;
+    max-width: 300px;
+    border: 1px solid #28a745;
+}
+
+.detected-disk p {
+    margin: 8px 0;
+    color: #333;
+}
+
+.detected-disk strong {
+    color: #28a745;
+}
+
+.button-group {
+    display: flex;
+    gap: 10px;
+    justify-content: center;
+    margin-top: 15px;
+}
+
+.btn-warning {
+    background: #ffc107;
+    color: #333;
+}
+
+.btn-warning:hover {
+    background: #e0a800;
+}
+
+.btn-success {
+    background: #28a745;
+}
+
+.btn-success:hover {
+    background: #218838;
+}
+
+.btn-secondary {
+    background: #6c757d;
+}
+
+.btn-secondary:hover {
+    background: #5a6268;
+}
+</style>

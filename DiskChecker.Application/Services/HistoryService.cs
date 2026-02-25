@@ -197,4 +197,40 @@ public class HistoryService
             })
             .ToListAsync(cancellationToken);
     }
+
+    /// <summary>
+    /// Gets all test history for a specific drive name.
+    /// </summary>
+    public async Task<List<TestHistoryItem>> GetDriveHistoryAsync(
+        string driveName,
+        CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(driveName))
+        {
+            return new List<TestHistoryItem>();
+        }
+
+        var tests = await _context.Tests
+            .Include(t => t.Drive)
+            .Where(t => t.Drive.Name == driveName)
+            .OrderBy(t => t.TestDate)
+            .ToListAsync(cancellationToken);
+
+        return tests.Select(t => new TestHistoryItem
+        {
+            TestId = t.Id,
+            DriveName = t.Drive.Name,
+            SerialNumber = t.Drive.SerialNumber,
+            TestDate = t.TestDate,
+            TestType = t.TestType,
+            Grade = t.Grade,
+            Score = t.Score,
+            AverageSpeed = t.AverageSpeed,
+            PeakSpeed = t.PeakSpeed,
+            MinSpeed = t.MinSpeed,
+            ErrorCount = t.Errors,
+            TotalBytesTested = t.TotalBytesTested,
+            SmartaData = null // TODO: Include SmartaData if needed
+        }).ToList();
+    }
 }

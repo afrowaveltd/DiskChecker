@@ -1,6 +1,7 @@
 @page "/history"
 @using DiskChecker.Core.Models
 @using DiskChecker.Application.Services
+@using DiskChecker.Web.Components
 @inject DiskCheckerService DiskCheckerService
 @inject HistoryService HistoryService
 
@@ -178,10 +179,16 @@ else
     </div>
 </div>
 
+@if (selectedDriveName != null)
+{
+    <DiskTrendAnalysis DriveName="selectedDriveName" />
+}
+
 @code {
     private bool isLoading = true;
     private PagedResult<TestHistoryItem> history = new();
     private TestHistoryItem? selectedTest;
+    private string? selectedDriveName;
     private string modalDisplay = "none";
     private string compareModalDisplay = "none";
     private List<CompareItem>? comparison;
@@ -241,6 +248,10 @@ else
     private async Task ViewDetails(Guid testId)
     {
         selectedTest = await HistoryService.GetTestByIdAsync(testId);
+        if (selectedTest != null)
+        {
+            selectedDriveName = selectedTest.DriveName;
+        }
         modalDisplay = "block";
         StateHasChanged();
     }

@@ -1,0 +1,92 @@
+@using Microsoft.JSInterop
+@inject IJSRuntime JS
+
+<div class="theme-toggle">
+    <button class="theme-button" @onclick="ToggleDarkModeAsync" title="Přepnout motiv">
+        @if (IsDarkMode)
+        {
+            <span>☀️ Světlý motiv</span>
+        }
+        else
+        {
+            <span>🌙 Tmavý motiv</span>
+        }
+    </button>
+</div>
+
+@code {
+    private bool IsDarkMode = false;
+
+    protected override async Task OnInitializedAsync()
+    {
+        // Check system preference
+        try
+        {
+            IsDarkMode = await JS.InvokeAsync<bool>("eval", 
+                "window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches");
+        }
+        catch
+        {
+            IsDarkMode = false;
+        }
+    }
+
+    private async Task ToggleDarkModeAsync()
+    {
+        IsDarkMode = !IsDarkMode;
+        
+        // Store preference in localStorage
+        try
+        {
+            await JS.InvokeVoidAsync("localStorage.setItem", "darkMode", IsDarkMode.ToString());
+            
+            // Note: CSS media query is preferred, but you can also use JS to apply class
+            if (IsDarkMode)
+            {
+                await JS.InvokeVoidAsync("document.documentElement.setAttribute", "data-theme", "dark");
+            }
+            else
+            {
+                await JS.InvokeVoidAsync("document.documentElement.setAttribute", "data-theme", "light");
+            }
+        }
+        catch
+        {
+            // Ignore JS errors
+        }
+    }
+}
+
+<style>
+.theme-toggle {
+    display: inline-block;
+    padding: 10px;
+}
+
+.theme-button {
+    background: #4A90E2;
+    color: white;
+    border: none;
+    padding: 8px 16px;
+    border-radius: 4px;
+    cursor: pointer;
+    font-weight: 500;
+    transition: background-color 0.3s ease;
+    font-size: 0.9em;
+}
+
+.theme-button:hover {
+    background: #357ABD;
+}
+
+@media (prefers-color-scheme: dark) {
+    .theme-button {
+        background: #6bb6ff;
+        color: #1a1a1a;
+    }
+
+    .theme-button:hover {
+        background: #4a90e2;
+    }
+}
+</style>

@@ -2,7 +2,9 @@
 @using System.Globalization
 @using DiskChecker.Core.Models
 @using DiskChecker.Core.Interfaces
+@using DiskChecker.Core.Services
 @using DiskChecker.Application.Services
+@using DiskChecker.Web.Components
 @inject DiskCheckerService DiskCheckerService
 @inject ISurfaceTestService SurfaceTestService
 @inject SmartCheckService SmartCheckService
@@ -11,7 +13,7 @@
 @inject IReportEmailService ReportEmailService
 @implements IDisposable
 
-<h3>Povrchový test</h3>
+<h3>Povrchový test disku</h3>
 
 @if (IsLoading)
 {
@@ -19,158 +21,141 @@
 }
 else if (!string.IsNullOrWhiteSpace(ErrorMessage))
 {
-    <p class="error">@ErrorMessage</p>
+    <div class="error-message">@ErrorMessage</div>
 }
 else
 {
-    if (Drives.Count == 0)
+    @if (ShowAutoDetection && !string.IsNullOrWhiteSpace(SelectedPath))
     {
-        <p>Žádné disky nebyly nalezeny.</p>
+        <DiskDetectionWizard 
+            AvailableDisks="Drives"
+            OnDiskSelected="HandleAutoDetectedDisk" />
     }
-    else
-    {
-        <div>
-            <label>Disk</label>
-            <select @bind="SelectedPath">
-                @foreach (var drive in Drives)
+
+    <div class="test-controls">
+        @if (Drives.Count == 0)
+        {
+            <p>Žádné disky nebyly nalezeny.</p>
+        }
+        else
+        {
+            <div class="form-group">
+                <label>Výběr disku</label>
+                <div class="disk-selection">
+                    <select @bind="SelectedPath" disabled="@IsRunning">
+                        <option value="">-- Vyberte disk --</option>
+                        @foreach (var drive in Drives)
+                        {
+                            <option value="@drive.Path">@drive.Name - @FormatBytes(drive.TotalSize) (@drive.Path)</option>
+                        }
+                    </select>
+                    <button class="btn btn-info" @onclick="() => ShowAutoDetection = !ShowAutoDetection" disabled="@IsRunning">
+                        🔍 Auto-detekce
+                    </button>
+                </div>
+            </div>
+
+            @if (!string.IsNullOrWhiteSpace(SelectedPath))
+            {
+                <div class="form-group">
+                    <label>Profil testu</label>
+                    <select @bind="SelectedProfile" disabled="@IsRunning">
+                        <option value="@SurfaceTestProfile.HddFull">HDD - Úplný test (zápis + ověřování)</option>
+                        <option value="@SurfaceTestProfile.SsdQuick">SSD - Rychlý test (čtení)</option>
+                    </select>
+                </div>
+
+                @if (SelectedProfile == SurfaceTestProfile.HddFull)
                 {
-                    <option value="@drive.Path">@drive.Name (@drive.Path)</option>
+                    <div class="form-group">
+                        <label>
+                            <input type="checkbox" @bind="ConfirmDestructive" disabled="@IsRunning" />
+                            ⚠️ Potvrzuji smazání dat - test PŘEPÍŠE všechna data na disku!
+                        </label>
+                    </div>
                 }
-            </select>
-        </div>
-        <div>
-            <label>Profil</label>
-            <select @bind="SelectedProfile">
-                <option value="@SurfaceTestProfile.HddFull">HDD - úplný test (zápis)</option>
-                <option value="@SurfaceTestProfile.SsdQuick">SSD - rychlý test (čtení)</option>
-            </select>
-        </div>
-        @if (SelectedProfile == SurfaceTestProfile.HddFull)
-        {
-            <div>
-                <input type="checkbox" @bind="ConfirmDestructive" />
-                <label>Potvrzuji smazání dat (zařízení budou testována jen v omezeném rozsahu)</label>
-            </div>
+
+                <button class="btn btn-primary" @onclick="RunTestAsync" disabled="@IsRunDisabled">
+                    @if (IsRunning) { <span>⏱️ Test běží...</span> } else { <span>▶️ Spustit test</span> }
+                </button>
+            }
         }
-        <button class="btn" @onclick="RunTestAsync" disabled="@IsRunDisabled">Spustit test</button>
-    }
-}
-
-@if (CurrentSmartData != null)
-{
-    <h4>SMART data testovaného disku</h4>
-    <table class="table">
-        <tbody>
-            <tr><td>Model</td><td><strong>@CurrentSmartData.DeviceModel</strong></td></tr>
-            @if (!string.IsNullOrWhiteSpace(CurrentSmartData.ModelFamily))
-            {
-                <tr><td>Rodina</td><td>@CurrentSmartData.ModelFamily</td></tr>
-            }
-            <tr><td>Sériové číslo</td><td>@CurrentSmartData.SerialNumber</td></tr>
-            @if (!string.IsNullOrWhiteSpace(CurrentSmartData.FirmwareVersion))
-            {
-                <tr><td>Firmware</td><td>@CurrentSmartData.FirmwareVersion</td></tr>
-            }
-            <tr><td>Teplota</td><td class="@GetTemperatureClass()"><strong>@CurrentSmartData.Temperature.ToString("F1") °C</strong></td></tr>
-            <tr><td>Odpracováno</td><td>@CurrentSmartData.PowerOnHours h (@FormatPowerOnTime(CurrentSmartData.PowerOnHours))</td></tr>
-            @if (CurrentSmartData.WearLevelingCount.HasValue)
-            {
-                <tr><td>Opotřebení</td><td>@CurrentSmartData.WearLevelingCount %</td></tr>
-            }
-            <tr><td>Přemístěné sektory</td><td class="@GetSectorClass(CurrentSmartData.ReallocatedSectorCount)">@CurrentSmartData.ReallocatedSectorCount</td></tr>
-            <tr><td>Čekající sektory</td><td class="@GetSectorClass(CurrentSmartData.PendingSectorCount)">@CurrentSmartData.PendingSectorCount</td></tr>
-            <tr><td>Neopravitelné chyby</td><td class="@GetSectorClass(CurrentSmartData.UncorrectableErrorCount)">@CurrentSmartData.UncorrectableErrorCount</td></tr>
-        </tbody>
-    </table>
-}
-
-@if (IsRunning)
-{
-    <h4>Průběh testu</h4>
-    <div>
-        <label>Průběh</label>
-        <progress value="@ProgressPercent" max="100"></progress>
-        <span>@ProgressPercent.ToString("F1") % | @CurrentThroughput.ToString("F1") MB/s</span>
     </div>
-}
 
-@if (Result != null)
-{
-    <h4>Výsledek</h4>
-    <table class="table">
-        <tbody>
-            <tr><td>Profil</td><td>@Result.Profile</td></tr>
-            <tr><td>Operace</td><td>@Result.Operation</td></tr>
-            <tr><td>Testováno</td><td>@FormatBytes(Result.TotalBytesTested)</td></tr>
-            <tr><td>Průměr</td><td>@Result.AverageSpeedMbps.ToString("F1") MB/s</td></tr>
-            <tr><td>Maximum</td><td>@Result.PeakSpeedMbps.ToString("F1") MB/s</td></tr>
-            <tr><td>Minimální</td><td>@Result.MinSpeedMbps.ToString("F1") MB/s</td></tr>
-            <tr><td>Chyby</td><td>@Result.ErrorCount</td></tr>
-            <tr><td>Vzorky</td><td>@Result.Samples.Count</td></tr>
-        </tbody>
-    </table>
-
-    @if (Result.Samples.Count > 1)
+    @if (IsRunning)
     {
-        <div class="chart-container">
-            <svg class="chart" viewBox="0 0 100 100" preserveAspectRatio="none">
-                <line x1="5" y1="5" x2="5" y2="95" stroke="#777" stroke-width="0.5" />
-                <line x1="5" y1="95" x2="95" y2="95" stroke="#777" stroke-width="0.5" />
-                <polyline points="@BuildChartPoints()" fill="none" stroke="#4A90E2" stroke-width="2" />
-            </svg>
-            <div class="chart-legend">
-                <span>Min: @Result.MinSpeedMbps.ToString("F1") MB/s</span>
-                <span>Avg: @Result.AverageSpeedMbps.ToString("F1") MB/s</span>
-                <span>Max: @Result.PeakSpeedMbps.ToString("F1") MB/s</span>
+        <div class="test-progress">
+            <h4>Průběh testu</h4>
+            <div class="progress-bar-container">
+                <div class="progress-bar" style="width: @ProgressPercent.ToString("F1", CultureInfo.InvariantCulture)%"></div>
             </div>
+            <p class="progress-text">@ProgressPercent.ToString("F1")% - @FormatBytes(TotalBytesProcessed) / @(SelectedDrive?.TotalSize > 0 ? FormatBytes(SelectedDrive.TotalSize) : "?")</p>
+            
+            <!-- Live Speed Chart -->
+            <LiveSpeedChart Samples="SamplesList" IsRunning="IsRunning" />
+            
+            <!-- Legacy Stats Chart -->
+            <SurfaceTestChart 
+                Samples="SamplesList"
+                CurrentThroughput="CurrentThroughput"
+                AverageThroughput="AverageThroughput"
+                PeakThroughput="PeakThroughput"
+                MinThroughput="MinThroughput" />
         </div>
     }
 
-    @if (!string.IsNullOrWhiteSpace(Result.Notes))
+    @if (CurrentSmartData != null)
     {
-        <p class="error">@Result.Notes</p>
+        <div class="smart-data">
+            <h4>SMART data testovaného disku</h4>
+            <table class="info-table">
+                <tbody>
+                    <tr><td><strong>Model</strong></td><td>@CurrentSmartData.DeviceModel</td></tr>
+                    @if (!string.IsNullOrWhiteSpace(CurrentSmartData.ModelFamily))
+                    {
+                        <tr><td><strong>Rodina</strong></td><td>@CurrentSmartData.ModelFamily</td></tr>
+                    }
+                    <tr><td><strong>Sériové číslo</strong></td><td>@CurrentSmartData.SerialNumber</td></tr>
+                    @if (!string.IsNullOrWhiteSpace(CurrentSmartData.FirmwareVersion))
+                    {
+                        <tr><td><strong>Firmware</strong></td><td>@CurrentSmartData.FirmwareVersion</td></tr>
+                    }
+                    <tr><td><strong>Teplota</strong></td><td class="@GetTemperatureClass()">@CurrentSmartData.Temperature.ToString("F1") °C</td></tr>
+                    <tr><td><strong>Odpracováno</strong></td><td>@CurrentSmartData.PowerOnHours h</td></tr>
+                </tbody>
+            </table>
+        </div>
     }
 
-    @if (SmartForExport != null)
+    @if (Result != null)
     {
-        <h4>Exporty</h4>
-        <div class="export-actions">
-            <button class="btn" @onclick="() => SelectExport(ExportFormat.Text)">Text</button>
-            <button class="btn" @onclick="() => SelectExport(ExportFormat.Html)">HTML</button>
-            <button class="btn" @onclick="() => SelectExport(ExportFormat.Csv)">CSV</button>
-            <button class="btn" @onclick="() => SelectExport(ExportFormat.Certificate)">Certifikát</button>
-            <button class="btn" @onclick="() => SelectExport(ExportFormat.Pdf)">PDF</button>
-        </div>
+        <div class="test-result">
+            <h4>📊 Výsledek testu</h4>
+            <table class="result-table">
+                <tbody>
+                    <tr><td>Testováno</td><td><strong>@FormatBytes(Result.TotalBytesTested)</strong></td></tr>
+                    <tr><td>Průměrná rychlost</td><td><strong>@Result.AverageSpeedMbps.ToString("F1") MB/s</strong></td></tr>
+                    <tr><td>Maximální rychlost</td><td><strong>@Result.PeakSpeedMbps.ToString("F1") MB/s</strong></td></tr>
+                    <tr><td>Minimální rychlost</td><td><strong>@Result.MinSpeedMbps.ToString("F1") MB/s</strong></td></tr>
+                    <tr><td>Chyby</td><td class="@(Result.ErrorCount > 0 ? "error" : "success")"><strong>@Result.ErrorCount</strong></td></tr>
+                    <tr><td>Vzorky</td><td>@Result.Samples.Count</td></tr>
+                </tbody>
+            </table>
 
-        <div class="email-actions">
-            <input class="email-input" placeholder="Email příjemce" @bind="EmailRecipient" />
-            <label>
-                <input type="checkbox" @bind="EmailUseCertificate" />
-                Použít certifikát v emailu
-            </label>
-            <button class="btn" @onclick="SendEmailAsync" disabled="@IsEmailDisabled">Odeslat email</button>
-            @if (!string.IsNullOrWhiteSpace(EmailStatus))
+            @if (Result.ErrorCount == 0)
             {
-                <div class="email-status">@EmailStatus</div>
+                <div class="success-message">✅ Test byl úspěšný!</div>
+            }
+            else
+            {
+                <div class="error-message">⚠️ Test skončil s @Result.ErrorCount chybou(ami)!</div>
+            }
+
+            @if (!string.IsNullOrWhiteSpace(Result.Notes))
+            {
+                <p class="notes">@Result.Notes</p>
             }
         </div>
-
-        @if (!string.IsNullOrWhiteSpace(ExportContent) && SelectedExport != ExportFormat.Certificate && SelectedExport != ExportFormat.Pdf)
-        {
-            <textarea class="export-text" readonly>@ExportContent</textarea>
-        }
-
-        @if (!string.IsNullOrWhiteSpace(ExportContent) && SelectedExport == ExportFormat.Certificate)
-        {
-            <div class="certificate-preview">
-                @((MarkupString)ExportContent)
-            </div>
-        }
-
-        @if (!string.IsNullOrWhiteSpace(PdfDownloadUrl) && SelectedExport == ExportFormat.Pdf)
-        {
-            <a class="btn" href="@PdfDownloadUrl" download="DiskChecker-Certificate.pdf">Stáhnout PDF</a>
-        }
     }
 }
 
@@ -179,37 +164,54 @@ else
     public string? Path { get; set; }
 
     private IReadOnlyList<CoreDriveInfo> Drives = Array.Empty<CoreDriveInfo>();
+    private CoreDriveInfo? SelectedDrive;
     private string? SelectedPath;
     private SurfaceTestProfile SelectedProfile = SurfaceTestProfile.HddFull;
     private bool ConfirmDestructive;
     private bool IsLoading = true;
     private bool IsRunning;
+    private bool ShowAutoDetection;
     private double ProgressPercent;
     private double CurrentThroughput;
+    private double AverageThroughput;
+    private double PeakThroughput = double.MinValue;
+    private double MinThroughput = double.MaxValue;
+    private long TotalBytesProcessed;
     private string? ErrorMessage;
     private SurfaceTestResult? Result;
-    private SmartCheckResult? SmartForExport;
     private SmartaData? CurrentSmartData;
     private System.Threading.Timer? _smartUpdateTimer;
-    private string? ExportContent;
-    private string? PdfDownloadUrl;
-    private ExportFormat SelectedExport;
-
-    private enum ExportFormat
-    {
-        None,
-        Text,
-        Html,
-        Csv,
-        Certificate,
-        Pdf
-    }
+    private List<SurfaceTestSample> SamplesList = new();
 
     protected override async Task OnInitializedAsync()
     {
         Drives = await DiskCheckerService.ListDrivesAsync();
         SelectedPath = Drives.FirstOrDefault(d => d.Path == Path)?.Path ?? Drives.FirstOrDefault()?.Path;
+        SelectedDrive = Drives.FirstOrDefault(d => d.Path == SelectedPath);
         IsLoading = false;
+    }
+
+    /// <summary>
+    /// Handles disk selected from auto-detection wizard.
+    /// </summary>
+    private async Task HandleAutoDetectedDisk(DiskDetectionService.DiskIdentifier disk)
+    {
+        // Refresh disk list to get the latest info
+        Drives = await DiskCheckerService.ListDrivesAsync();
+        
+        // Find the disk in our current list
+        var selectedDisk = Drives.FirstOrDefault(d => d.Path == disk.Path);
+        if (selectedDisk != null)
+        {
+            SelectedPath = disk.Path;
+            SelectedDrive = selectedDisk;
+            ShowAutoDetection = false;
+            await InvokeAsync(StateHasChanged);
+        }
+        else
+        {
+            ErrorMessage = "Disk nebyl nalezen. Prosím zkuste znovu.";
+        }
     }
 
     private bool IsRunDisabled => IsRunning || string.IsNullOrWhiteSpace(SelectedPath) ||
@@ -221,12 +223,14 @@ else
         Result = null;
         ProgressPercent = 0;
         CurrentThroughput = 0;
-        ExportContent = null;
-        PdfDownloadUrl = null;
-        SelectedExport = ExportFormat.None;
-        CurrentSmartData = null;
+        AverageThroughput = 0;
+        PeakThroughput = double.MinValue;
+        MinThroughput = double.MaxValue;
+        TotalBytesProcessed = 0;
+        SamplesList.Clear();
 
         var drive = Drives.FirstOrDefault(d => d.Path == SelectedPath);
+        SelectedDrive = drive;
         if (drive == null)
         {
             ErrorMessage = "Disk nebyl nalezen.";
@@ -242,99 +246,84 @@ else
 
         IsRunning = true;
 
-        // Start periodic SMART data refresh (every 10 seconds)
+        // Start periodic SMART data refresh
         _smartUpdateTimer = new System.Threading.Timer(async _ =>
         {
             if (IsRunning && drive != null)
             {
-                var smartCheck = await SmartCheckService.RunAsync(drive);
-                if (smartCheck != null)
+                try
                 {
-                    CurrentSmartData = smartCheck.SmartaData;
-                    await InvokeAsync(StateHasChanged);
+                    var smartCheck = await SmartCheckService.RunAsync(drive);
+                    if (smartCheck != null)
+                    {
+                        CurrentSmartData = smartCheck.SmartaData;
+                        await InvokeAsync(StateHasChanged);
+                    }
                 }
+                catch { /* Ignore SMART refresh errors */ }
             }
-        }, null, TimeSpan.FromSeconds(10), TimeSpan.FromSeconds(10));
-
-        var technology = SelectedProfile == SurfaceTestProfile.HddFull
-            ? DriveTechnology.Hdd
-            : DriveTechnology.Ssd;
-
-        var operation = SelectedProfile == SurfaceTestProfile.HddFull
-            ? SurfaceTestOperation.WriteZeroFill
-            : SurfaceTestOperation.ReadOnly;
+        }, null, TimeSpan.FromSeconds(5), TimeSpan.FromSeconds(5));
 
         var request = new SurfaceTestRequest
         {
             Drive = drive,
-            Technology = technology,
+            Technology = SelectedProfile == SurfaceTestProfile.HddFull ? DriveTechnology.Hdd : DriveTechnology.Ssd,
             Profile = SelectedProfile,
-            Operation = operation,
+            Operation = SelectedProfile == SurfaceTestProfile.HddFull ? SurfaceTestOperation.WriteZeroFill : SurfaceTestOperation.ReadOnly,
             SecureErase = false,
             AllowDeviceWrite = ConfirmDestructive,
-            MaxBytesToTest = operation != SurfaceTestOperation.ReadOnly && drive.TotalSize > 0 ? drive.TotalSize : null
+            MaxBytesToTest = null // Test full disk
         };
 
         var progress = new Progress<SurfaceTestProgress>(update =>
         {
             ProgressPercent = update.PercentComplete;
             CurrentThroughput = update.CurrentThroughputMbps;
+            TotalBytesProcessed = update.BytesProcessed;
+            
+            // Calculate running average
+            if (update.CurrentThroughputMbps > 0)
+            {
+                PeakThroughput = Math.Max(PeakThroughput, update.CurrentThroughputMbps);
+                MinThroughput = Math.Min(MinThroughput, update.CurrentThroughputMbps);
+            }
+            
             _ = InvokeAsync(StateHasChanged);
         });
 
-        Result = await SurfaceTestService.RunAsync(request, progress);
-
-        // Stop the timer
-        _smartUpdateTimer?.Dispose();
-        _smartUpdateTimer = null;
-
-        if (Result.ErrorCount > 0 && string.IsNullOrWhiteSpace(Result.Notes))
+        try
         {
-            ErrorMessage = "Test skončil s chybou.";
-        }
-
-        SmartForExport = await SmartCheckService.RunAsync(drive);
-        if (SmartForExport != null)
-        {
-            CurrentSmartData = SmartForExport.SmartaData;
-        }
-
-        IsRunning = false;
-    }
-
-    private void SelectExport(ExportFormat format)
-    {
-        if (SmartForExport == null || Result == null)
-        {
-            return;
-        }
-
-        var report = new TestReportData
-        {
-            SmartCheck = SmartForExport,
-            SurfaceTest = Result
-        };
-
-        if (format == ExportFormat.Pdf)
-        {
-            var pdfBytes = PdfReportExporter.GenerateCertificatePdf(report);
-            PdfDownloadUrl = $"data:application/pdf;base64,{Convert.ToBase64String(pdfBytes)}";
-            ExportContent = null;
-        }
-        else
-        {
-            ExportContent = format switch
+            Result = await SurfaceTestService.RunAsync(request, progress);
+            
+            // Calculate final stats
+            if (Result.Samples.Any())
             {
-                ExportFormat.Html => ReportExporter.GenerateHtml(report),
-                ExportFormat.Csv => ReportExporter.GenerateCsv(report),
-                ExportFormat.Certificate => ReportExporter.GenerateCertificateHtml(report),
-                _ => ReportExporter.GenerateText(report)
-            };
-            PdfDownloadUrl = null;
+                SamplesList = Result.Samples.ToList();
+                AverageThroughput = Result.AverageSpeedMbps;
+                PeakThroughput = Result.PeakSpeedMbps;
+                MinThroughput = Result.MinSpeedMbps;
+            }
         }
-
-        SelectedExport = format;
+        catch (Exception ex)
+        {
+            ErrorMessage = $"Chyba během testu: {ex.Message}";
+        }
+        finally
+        {
+            IsRunning = false;
+            _smartUpdateTimer?.Dispose();
+            _smartUpdateTimer = null;
+        }
     }
+
+    private string GetTemperatureClass() => CurrentSmartData?.Temperature switch
+    {
+        < 35 => "temp-cool",
+        < 45 => "temp-normal",
+        < 55 => "temp-warm",
+        < 65 => "temp-hot",
+        _ => "temp-critical"
+    };
 
     private static string FormatBytes(long bytes)
     {
@@ -349,117 +338,5 @@ else
         return $"{b:F1} {sizes[i]}";
     }
 
-    /// <summary>
-    /// Formats power-on time in human-readable format (days, months, years).
-    /// </summary>
-    private static string FormatPowerOnTime(int hours)
-    {
-        if (hours < 24)
-            return $"{hours} h";
-        
-        var days = hours / 24;
-        if (days < 30)
-            return $"{days} dní";
-        
-        var months = days / 30;
-        if (months < 12)
-            return $"{months} měsíců";
-        
-        var years = months / 12;
-        var remainingMonths = months % 12;
-        return remainingMonths > 0 ? $"{years} let {remainingMonths} měsíců" : $"{years} let";
-    }
-
-    /// <summary>
-    /// Returns CSS class for temperature based on value.
-    /// </summary>
-    private string GetTemperatureClass()
-    {
-        if (CurrentSmartData == null)
-            return string.Empty;
-        
-        if (CurrentSmartData.Temperature >= 60)
-            return "error";
-        
-        if (CurrentSmartData.Temperature >= 50)
-            return "warning";
-        
-        return string.Empty;
-    }
-
-    /// <summary>
-    /// Returns CSS class for sector counts (errors).
-    /// </summary>
-    private static string GetSectorClass(long count)
-    {
-        if (count > 10)
-            return "error";
-        
-        if (count > 0)
-            return "warning";
-        
-        return string.Empty;
-    }
-
-    private string BuildChartPoints()
-    {
-        if (Result == null || Result.Samples.Count < 2)
-        {
-            return string.Empty;
-        }
-
-        var max = Result.Samples.Max(sample => sample.ThroughputMbps);
-        if (max <= 0)
-        {
-            return string.Empty;
-        }
-
-        const double padding = 5;
-        var width = 100 - (padding * 2);
-        var height = 100 - (padding * 2);
-        var step = width / (Result.Samples.Count - 1);
-        var points = new List<string>(Result.Samples.Count);
-
-        for (var i = 0; i < Result.Samples.Count; i++)
-        {
-            var x = padding + step * i;
-            var y = padding + (height - (Result.Samples[i].ThroughputMbps / max * height));
-            points.Add($"{x.ToString("F2", CultureInfo.InvariantCulture)},{y.ToString("F2", CultureInfo.InvariantCulture)}");
-        }
-
-        return string.Join(" ", points);
-    }
-
-    private string? EmailRecipient;
-    private bool EmailUseCertificate;
-    private string? EmailStatus;
-
-    private bool IsEmailDisabled => string.IsNullOrWhiteSpace(EmailRecipient) || Result == null || SmartForExport == null;
-
-    private async Task SendEmailAsync()
-    {
-        EmailStatus = null;
-        if (SmartForExport == null || Result == null || string.IsNullOrWhiteSpace(EmailRecipient))
-        {
-            EmailStatus = "Email není připraven.";
-            return;
-        }
-
-        var report = new TestReportData
-        {
-            SmartCheck = SmartForExport,
-            SurfaceTest = Result
-        };
-
-        await ReportEmailService.SendReportAsync(report, EmailRecipient, EmailUseCertificate);
-        EmailStatus = "Email odeslán.";
-    }
-
-    /// <summary>
-    /// Disposes the timer when component is destroyed.
-    /// </summary>
-    public void Dispose()
-    {
-        _smartUpdateTimer?.Dispose();
-    }
+    void IDisposable.Dispose() => _smartUpdateTimer?.Dispose();
 }

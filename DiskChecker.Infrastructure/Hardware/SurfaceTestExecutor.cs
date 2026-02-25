@@ -86,7 +86,7 @@ public class SurfaceTestExecutor : ISurfaceTestExecutor
                 if (maxTestSize < 100 * 1024 * 1024) // Less than 100 MB available
                 {
                     result.ErrorCount = 1;
-                    result.Notes = $"Nedostatek místa na systémovém disku pro test. Dostupné: {FormatBytes(availableSpace)}";
+                    result.Notes = $"Nedostatek místa na systému disku pro test. Dostupné: {FormatBytes(availableSpace)}";
                     result.CompletedAtUtc = DateTime.UtcNow;
                     return result;
                 }
@@ -203,7 +203,11 @@ public class SurfaceTestExecutor : ISurfaceTestExecutor
         var sampleBlocks = 0;
         double peak = 0;
         double min = double.MaxValue;
+        long totalToProcess = 0; // Move here so it's available after try block
 
+        // NEW: Separate tracking for write and read phases
+        long totalBytesForCurrentPhase = 0;
+        
         try
         {
             using var stream = new FileStream(
@@ -214,7 +218,7 @@ public class SurfaceTestExecutor : ISurfaceTestExecutor
                 request.BlockSizeBytes,
                 FileOptions.Asynchronous | FileOptions.SequentialScan);
 
-            var totalToProcess = request.MaxBytesToTest
+            totalToProcess = request.MaxBytesToTest
                 ?? (request.Drive.TotalSize > 0 ? request.Drive.TotalSize : stream.Length);
 
             // Fallback to stream length if calculation resulted in 0
@@ -255,16 +259,25 @@ public class SurfaceTestExecutor : ISurfaceTestExecutor
                 return result;
             }
 
-            var totalWorkBytes = request.Operation == SurfaceTestOperation.ReadOnly
-                ? totalToProcess
-                : totalToProcess * (request.SecureErase ? 3 : 2);
+            // NEW: totalWorkBytes is now just how much to process in each phase
+            // For UI: write phase is 0-50%, read phase is 50-100%
+            var totalWorkBytes = totalToProcess;
 
             var buffer = new byte[request.BlockSizeBytes];
+            
+            // NEW: Time-based progress reporting
+            var lastProgressReportTime = DateTime.UtcNow;
+            const int MaxMillisecondsBetweenProgressReports = 500;
 
             if (request.Operation != SurfaceTestOperation.ReadOnly)
             {
+                // === WRITE PHASE ===
                 FillPattern(buffer, request.Operation);
                 stream.Position = 0;
+                totalBytesForCurrentPhase = 0;
+                sampleBytes = 0;
+                sampleBlocks = 0;
+                sampleStopwatch.Restart();
 
                 long writeErrors = 0;
                 while (totalBytesWritten < totalToProcess)
@@ -288,89 +301,206 @@ public class SurfaceTestExecutor : ISurfaceTestExecutor
                     }
                     
                     totalBytesWritten += toWrite;
+                    totalBytesForCurrentPhase += toWrite;
                     processedBytes += toWrite;
 
-                    UpdateSamples(
-                        toWrite,
-                        request.BlockSizeBytes,
-                        processedBytes,
-                        totalWorkBytes,
-                        request.SampleIntervalBlocks,
-                        Guid.Parse(result.TestId),
-                        ref sampleBytes,
-                        ref sampleBlocks,
-                        sampleStopwatch,
-                        samples,
-                        progress,
-                        ref peak,
-                        ref min);
+                    // NEW: Report if EITHER interval reached OR time-based threshold exceeded
+                    bool blockIntervalReached = sampleBlocks >= (request.SampleIntervalBlocks > 0 ? request.SampleIntervalBlocks : 128);
+                    bool timeSinceLastReport = (DateTime.UtcNow - lastProgressReportTime).TotalMilliseconds >= MaxMillisecondsBetweenProgressReports;
+                    
+                    if((blockIntervalReached || timeSinceLastReport))
+                    {
+                        UpdateSamplesWithPhase(
+                            toWrite,
+                            request.BlockSizeBytes,
+                            totalBytesForCurrentPhase,
+                            totalWorkBytes,
+                            request.SampleIntervalBlocks,
+                            Guid.Parse(result.TestId),
+                            ref sampleBytes,
+                            ref sampleBlocks,
+                            sampleStopwatch,
+                            samples,
+                            progress,
+                            ref peak,
+                            ref min,
+                            phaseProgress: totalBytesForCurrentPhase * 50.0 / totalWorkBytes);
+                        
+                        lastProgressReportTime = DateTime.UtcNow;
+                    }
+                    else
+                    {
+                        sampleBytes += toWrite;
+                        sampleBlocks++;
+                    }
                 }
 
                 await stream.FlushAsync(cancellationToken);
             }
 
-            stream.Position = 0;
-
-            long readErrors = 0;
-            while (totalBytesRead < totalToProcess)
+            // === READ PHASE ===
+            if (request.Operation == SurfaceTestOperation.ReadOnly)
             {
-                cancellationToken.ThrowIfCancellationRequested();
+                // For read-only, entire test is reading
+                totalBytesForCurrentPhase = 0;
+                sampleBytes = 0;
+                sampleBlocks = 0;
+                sampleStopwatch.Restart();
+                stream.Position = 0;
 
-                var toRead = (int)Math.Min(buffer.Length, totalToProcess - totalBytesRead);
-                int read = 0;
-                try
+                long readErrors = 0;
+                while (totalBytesRead < totalToProcess)
                 {
-                    read = await stream.ReadAsync(buffer.AsMemory(0, toRead), cancellationToken);
-                }
-                catch (Exception ex)
-                {
-                    readErrors++;
-                    result.ErrorCount++;
-                    if (readErrors > 5) // Stop after 5 read errors
+                    cancellationToken.ThrowIfCancellationRequested();
+
+                    var toRead = (int)Math.Min(buffer.Length, totalToProcess - totalBytesRead);
+                    int read = 0;
+                    try
                     {
-                        result.Notes = $"Příliš mnoho chyb při čtení: {ex.Message}";
-                        throw;
+                        read = await stream.ReadAsync(buffer.AsMemory(0, toRead), cancellationToken);
                     }
-                    continue;
-                }
-                
-                if (read == 0)
-                {
-                    break;
-                }
-
-                // Verify data integrity for write/verify operations
-                if (request.Operation != SurfaceTestOperation.ReadOnly && !BufferMatches(buffer, read, request.Operation))
-                {
-                    result.ErrorCount += 1;
-                    if (result.ErrorCount > 10) // Too many verify errors - disk is bad
+                    catch (Exception ex)
                     {
-                        result.Notes = "Disk selhává při ověření dat - je pravděpodobně vadný a neměl by být používán!";
-                        break; // Stop testing
+                        readErrors++;
+                        result.ErrorCount++;
+                        if (readErrors > 5) // Stop after 5 read errors
+                        {
+                            result.Notes = $"Příliš mnoho chyb při čtení: {ex.Message}";
+                            throw;
+                        }
+                        continue;
+                    }
+                    
+                    if (read == 0)
+                    {
+                        break;
+                    }
+
+                    totalBytesRead += read;
+                    processedBytes += read;
+
+                    // NEW: Report if EITHER interval reached OR time-based threshold exceeded
+                    bool blockIntervalReached = sampleBlocks >= (request.SampleIntervalBlocks > 0 ? request.SampleIntervalBlocks : 128);
+                    bool timeSinceLastReport = (DateTime.UtcNow - lastProgressReportTime).TotalMilliseconds >= MaxMillisecondsBetweenProgressReports;
+                    
+                    if((blockIntervalReached || timeSinceLastReport))
+                    {
+                        UpdateSamplesWithPhase(
+                            read,
+                            request.BlockSizeBytes,
+                            totalBytesForCurrentPhase,
+                            totalWorkBytes,
+                            request.SampleIntervalBlocks,
+                            Guid.Parse(result.TestId),
+                            ref sampleBytes,
+                            ref sampleBlocks,
+                            sampleStopwatch,
+                            samples,
+                            progress,
+                            ref peak,
+                            ref min,
+                            phaseProgress: 50.0 + (totalBytesForCurrentPhase * 50.0 / totalWorkBytes));
+                        
+                        lastProgressReportTime = DateTime.UtcNow;
+                    }
+                    else
+                    {
+                        sampleBytes += read;
+                        sampleBlocks++;
                     }
                 }
+            }
+            else
+            {
+                // For write+verify operations
+                totalBytesForCurrentPhase = 0;
+                sampleBytes = 0;
+                sampleBlocks = 0;
+                sampleStopwatch.Restart();
+                stream.Position = 0;
 
-                totalBytesRead += read;
-                processedBytes += read;
+                long readErrors = 0;
+                while (totalBytesRead < totalToProcess)
+                {
+                    cancellationToken.ThrowIfCancellationRequested();
 
-                UpdateSamples(
-                    read,
-                    request.BlockSizeBytes,
-                    processedBytes,
-                    totalWorkBytes,
-                    request.SampleIntervalBlocks,
-                    Guid.Parse(result.TestId),
-                    ref sampleBytes,
-                    ref sampleBlocks,
-                    sampleStopwatch,
-                    samples,
-                    progress,
-                    ref peak,
-                    ref min);
+                    var toRead = (int)Math.Min(buffer.Length, totalToProcess - totalBytesRead);
+                    int read = 0;
+                    try
+                    {
+                        read = await stream.ReadAsync(buffer.AsMemory(0, toRead), cancellationToken);
+                    }
+                    catch (Exception ex)
+                    {
+                        readErrors++;
+                        result.ErrorCount++;
+                        if (readErrors > 5) // Stop after 5 read errors
+                        {
+                            result.Notes = $"Příliš mnoho chyb při čtení: {ex.Message}";
+                            throw;
+                        }
+                        continue;
+                    }
+                    
+                    if (read == 0)
+                    {
+                        break;
+                    }
+
+                    // Verify data integrity for write/verify operations
+                    if (request.Operation != SurfaceTestOperation.ReadOnly && !BufferMatches(buffer, read, request.Operation))
+                    {
+                        result.ErrorCount += 1;
+                        if (result.ErrorCount > 10) // Too many verify errors - disk is bad
+                        {
+                            result.Notes = "Disk selhává při ověření dat - je pravděpodobně vadný a neměl by být používán!";
+                            break; // Stop testing
+                        }
+                    }
+
+                    totalBytesRead += read;
+                    processedBytes += read;
+
+                    // NEW: Report if EITHER interval reached OR time-based threshold exceeded
+                    bool blockIntervalReached = sampleBlocks >= (request.SampleIntervalBlocks > 0 ? request.SampleIntervalBlocks : 128);
+                    bool timeSinceLastReport = (DateTime.UtcNow - lastProgressReportTime).TotalMilliseconds >= MaxMillisecondsBetweenProgressReports;
+                    
+                    if((blockIntervalReached || timeSinceLastReport))
+                    {
+                        UpdateSamplesWithPhase(
+                            read,
+                            request.BlockSizeBytes,
+                            totalBytesForCurrentPhase,
+                            totalWorkBytes,
+                            request.SampleIntervalBlocks,
+                            Guid.Parse(result.TestId),
+                            ref sampleBytes,
+                            ref sampleBlocks,
+                            sampleStopwatch,
+                            samples,
+                            progress,
+                            ref peak,
+                            ref min,
+                            phaseProgress: 50.0 + (totalBytesForCurrentPhase * 50.0 / totalWorkBytes));
+                        
+                        lastProgressReportTime = DateTime.UtcNow;
+                    }
+                    else
+                    {
+                        sampleBytes += read;
+                        sampleBlocks++;
+                    }
+                }
             }
 
             if (request.SecureErase && request.Operation != SurfaceTestOperation.ReadOnly)
             {
+                // === SECURE ERASE PHASE (BONUS - for completeness) ===
+                totalBytesForCurrentPhase = 0;
+                sampleBytes = 0;
+                sampleBlocks = 0;
+                sampleStopwatch.Restart();
+
                 FillPattern(buffer, SurfaceTestOperation.WriteZeroFill);
                 stream.Position = 0;
                 long eraseWritten = 0;
@@ -381,12 +511,13 @@ public class SurfaceTestExecutor : ISurfaceTestExecutor
                     await stream.WriteAsync(buffer.AsMemory(0, toWrite), cancellationToken);
                     eraseWritten += toWrite;
                     totalBytesWritten += toWrite;
+                    totalBytesForCurrentPhase += toWrite;
                     processedBytes += toWrite;
 
-                    UpdateSamples(
+                    UpdateSamplesWithPhase(
                         toWrite,
                         request.BlockSizeBytes,
-                        processedBytes,
+                        totalBytesForCurrentPhase,
                         totalWorkBytes,
                         request.SampleIntervalBlocks,
                         Guid.Parse(result.TestId),
@@ -396,7 +527,8 @@ public class SurfaceTestExecutor : ISurfaceTestExecutor
                         samples,
                         progress,
                         ref peak,
-                        ref min);
+                        ref min,
+                        phaseProgress: 100.0); // Already at 100%
                 }
 
                 await stream.FlushAsync(cancellationToken);
@@ -444,10 +576,11 @@ public class SurfaceTestExecutor : ISurfaceTestExecutor
 
         totalStopwatch.Stop();
         result.CompletedAtUtc = DateTime.UtcNow;
-        result.TotalBytesTested = totalBytesRead;
+        result.TotalBytesTested = totalBytesRead > 0 ? totalBytesRead : totalBytesWritten;
         result.Samples = samples;
 
-        var totalWork = totalBytesRead + totalBytesWritten;
+        // Fixed: Use only the actual bytes read as TotalBytesTested
+        var totalWork = totalBytesRead > 0 ? totalBytesRead : totalBytesWritten;
         if (totalStopwatch.Elapsed.TotalSeconds > 0 && totalWork > 0)
         {
             result.AverageSpeedMbps = totalWork / (1024d * 1024d) / totalStopwatch.Elapsed.TotalSeconds;
@@ -495,6 +628,60 @@ public class SurfaceTestExecutor : ISurfaceTestExecutor
             peak = Math.Max(peak, sample.ThroughputMbps);
             min = Math.Min(min, sample.ThroughputMbps);
             progress?.Report(CreateProgress(testId, processedBytes, totalWorkBytes, sample.ThroughputMbps));
+        }
+
+        sampleBytes = 0;
+        sampleBlocks = 0;
+        sampleStopwatch.Restart();
+    }
+
+    // NEW: UpdateSamplesWithPhase - supports phase-aware progress reporting
+    private static void UpdateSamplesWithPhase(
+        int bytes,
+        int blockSize,
+        long phaseBytesProcessed,
+        long totalBytesInPhase,
+        int sampleIntervalBlocks,
+        Guid testId,
+        ref long sampleBytes,
+        ref int sampleBlocks,
+        Stopwatch sampleStopwatch,
+        List<SurfaceTestSample> samples,
+        IProgress<SurfaceTestProgress>? progress,
+        ref double peak,
+        ref double min,
+        double phaseProgress)
+    {
+        sampleBytes += bytes;
+        sampleBlocks++;
+
+        var interval = Math.Max(1, sampleIntervalBlocks);
+        if (sampleBlocks < interval)
+        {
+            return;
+        }
+
+        if (sampleStopwatch.Elapsed.TotalSeconds <= 0)
+        {
+            return;
+        }
+
+        var sample = CreateSample(sampleBytes, blockSize, phaseBytesProcessed, sampleStopwatch);
+        if (sample != null)
+        {
+            samples.Add(sample);
+            peak = Math.Max(peak, sample.ThroughputMbps);
+            min = Math.Min(min, sample.ThroughputMbps);
+            
+            // Report progress with phase-aware percentage
+            progress?.Report(new SurfaceTestProgress
+            {
+                TestId = testId,
+                BytesProcessed = phaseBytesProcessed,
+                PercentComplete = Math.Max(0, Math.Min(100, phaseProgress)),
+                CurrentThroughputMbps = Math.Round(sample.ThroughputMbps, 2),
+                TimestampUtc = DateTime.UtcNow
+            });
         }
 
         sampleBytes = 0;

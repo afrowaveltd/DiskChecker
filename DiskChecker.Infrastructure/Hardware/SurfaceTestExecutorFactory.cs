@@ -5,6 +5,7 @@ namespace DiskChecker.Infrastructure.Hardware;
 
 /// <summary>
 /// Factory for creating appropriate surface test executor based on profile and platform.
+/// Prioritizes low-level disk access (no OS buffering) for accuracy.
 /// </summary>
 public class SurfaceTestExecutorFactory
 {
@@ -18,6 +19,7 @@ public class SurfaceTestExecutorFactory
 
     /// <summary>
     /// Creates a surface test executor appropriate for the given request.
+    /// Uses low-level disk access (no OS buffering) by default for accurate testing.
     /// </summary>
     /// <param name="request">The surface test request with profile information.</param>
     /// <returns>An appropriate ISurfaceTestExecutor implementation.</returns>
@@ -25,13 +27,8 @@ public class SurfaceTestExecutorFactory
     {
         ArgumentNullException.ThrowIfNull(request);
         
-        // Use sequential file executor for full disk sanitization on Windows
-        if (request.Profile == SurfaceTestProfile.FullDiskSanitization)
-        {
-            return new SequentialFileTestExecutor(_smartaProvider);
-        }
-        
-        // Default to standard executor for other profiles
-        return new SurfaceTestExecutor(_smartaProvider);
+        // Use low-level disk surface test for all profiles (no OS buffering)
+        // This ensures accurate throughput measurements and complete surface verification
+        return new DiskSurfaceTestExecutor(_smartaProvider);
     }
 }

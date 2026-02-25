@@ -10,6 +10,8 @@
     <title>DiskChecker</title>
     <base href="~/" />
     <link href="css/app.css" rel="stylesheet" />
+    <!-- Chart.js -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.js"></script>
 </head>
 <body>
     <app>
@@ -17,5 +19,26 @@
     </app>
 
     <script src="_framework/blazor.server.js"></script>
+    <!-- Chart.js Interop Script -->
+    <script>
+        window.chartInterop = {
+            createChart: async function(canvasId, config) {
+                const canvas = document.getElementById(canvasId);
+                if (!canvas) {
+                    console.error('Canvas element not found:', canvasId);
+                    return null;
+                }
+                const ctx = canvas.getContext('2d');
+                const chart = new Chart(ctx, config);
+                return chart;
+            },
+            updateChart: async function(chartInstance, newData) {
+                if (chartInstance && chartInstance.data) {
+                    chartInstance.data = newData;
+                    chartInstance.update('none'); // No animation for smooth updates
+                }
+            }
+        };
+    </script>
 </body>
 </html>

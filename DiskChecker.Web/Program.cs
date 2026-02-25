@@ -5,11 +5,13 @@ using DiskChecker.Infrastructure.Persistence;
 using DiskChecker.Infrastructure.Hardware;
 using DiskChecker.Core.Interfaces;
 using DiskChecker.Core.Services;
+using DiskChecker.Web.Hubs;
 
 var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.AddRazorPages();
 builder.Services.AddServerSideBlazor();
+builder.Services.AddSignalR(); // NEW: SignalR support
 
 builder.Services.AddCoreServices();
 builder.Services.AddPersistence("Data Source=DiskChecker.db");
@@ -35,6 +37,8 @@ builder.Services.AddScoped<IEmailSender, SmtpEmailSender>();
 builder.Services.AddScoped<IReportEmailService, ReportEmailService>();
 builder.Services.AddScoped<ReportEmailService>();
 builder.Services.AddScoped<HistoryService>();
+builder.Services.AddSingleton<TestProgressBroadcaster>(); // NEW: Test progress broadcaster
+builder.Services.AddScoped<TestCompletionNotificationService>(); // NEW: Email notifications
 
 var app = builder.Build();
 
@@ -55,6 +59,7 @@ app.UseStaticFiles();
 app.UseRouting();
 
 app.MapBlazorHub();
+app.MapHub<DiskTestHub>("/hubs/disk-test"); // NEW: SignalR hub endpoint
 app.MapFallbackToPage("/_Host");
 
 app.Run();

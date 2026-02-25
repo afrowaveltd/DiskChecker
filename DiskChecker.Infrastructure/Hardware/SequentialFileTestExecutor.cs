@@ -1,12 +1,13 @@
 using DiskChecker.Core.Interfaces;
 using DiskChecker.Core.Models;
 using System.Diagnostics;
+using System.Runtime.InteropServices;
 
 namespace DiskChecker.Infrastructure.Hardware;
 
 /// <summary>
 /// Executes disk tests by writing sequential files until disk is full.
-/// Uses diskpart to prepare the physical disk properly.
+/// Supports both Windows and Linux platforms.
 /// </summary>
 public class SequentialFileTestExecutor : ISurfaceTestExecutor
 {
@@ -49,9 +50,9 @@ public class SequentialFileTestExecutor : ISurfaceTestExecutor
          return result;
       }
 
-      // Step 1: Prepare the disk (clean and format)
-      var driveLetter = await PrepareDiskAsync(request.Drive, result, cancellationToken);
-      if(string.IsNullOrEmpty(driveLetter))
+      // Step 1: Prepare the disk (if needed) and get test path
+      var testPath = await PrepareDiskAsync(request.Drive, result, cancellationToken);
+      if(string.IsNullOrEmpty(testPath))
       {
          result.ErrorCount = 1;
          result.Notes = $"CHYBA: Nepodařilo se připravit disk! {result.Notes} - DATA SE NEBUDOU PSÁT!";
@@ -59,16 +60,13 @@ public class SequentialFileTestExecutor : ISurfaceTestExecutor
          return result;
       }
 
-      // Build test path from drive letter
-      var testPath = driveLetter + ":";
-
-      // Verify drive is ready
+      // Verify path exists and is accessible
       try
       {
          if(!Directory.Exists(testPath))
          {
             result.ErrorCount = 1;
-            result.Notes = $"CHYBA: Disk {driveLetter}: není přístupný!";
+            result.Notes = $"CHYBA: Cesta {testPath} není přístupná!";
             result.CompletedAtUtc = DateTime.UtcNow;
             return result;
          }
@@ -76,7 +74,7 @@ public class SequentialFileTestExecutor : ISurfaceTestExecutor
       catch(Exception ex)
       {
          result.ErrorCount = 1;
-         result.Notes = $"CHYBA: Nelze ověřit disk {driveLetter}: - {ex.Message}";
+         result.Notes = $"CHYBA: Nelze ověřit cestu {testPath} - {ex.Message}";
          result.CompletedAtUtc = DateTime.UtcNow;
          return result;
       }
@@ -89,6 +87,7 @@ public class SequentialFileTestExecutor : ISurfaceTestExecutor
       int filesVerified = 0;
       double peak = 0;
       double min = double.MaxValue;
+      long totalBytesForCurrentPhase = 0;
 
       try
       {
@@ -103,7 +102,6 @@ public class SequentialFileTestExecutor : ISurfaceTestExecutor
                result.DriveManufacturer = ExtractManufacturer(smartData.DeviceModel);
                result.DriveTotalBytes = request.Drive.TotalSize;
 
-               // Extract SMART values
                result.PowerOnHours = smartData.PowerOnHours > 0 ? smartData.PowerOnHours : null;
                result.CurrentTemperatureCelsius = smartData.Temperature > 0 ? (int)smartData.Temperature : null;
                result.ReallocatedSectors = smartData.ReallocatedSectorCount > 0 ? smartData.ReallocatedSectorCount : null;
@@ -113,25 +111,28 @@ public class SequentialFileTestExecutor : ISurfaceTestExecutor
          }
          catch(Exception ex)
          {
-            // Non-critical - continue test even if SMART read fails
             System.Diagnostics.Debug.WriteLine($"Warning: Could not read SMART data: {ex.Message}");
          }
 
-         // Get actual disk size to calculate how many files we can write
-         // Use DriveInfo on root of mount point path
-         var testPathRoot = Path.GetPathRoot(testPath) ?? "C:\\";
+         // Get available space for test
+         var testPathRoot = Path.GetPathRoot(testPath) ?? testPath;
          DriveInfo driveInfo = new DriveInfo(testPathRoot);
          var availableSpace = driveInfo.AvailableFreeSpace;
          long maxToWrite = Math.Min(availableSpace * 9 / 10, request.MaxBytesToTest ?? availableSpace);
 
+         // === PHASE 1: WRITE ===
          result.Notes = "Fáze 1: Zápis souborů";
+         var sampleStopwatch = Stopwatch.StartNew();
+         var lastProgressReport = DateTime.UtcNow;  // NEW: Track last progress report time
+         long sampleBytes = 0;
+         int sampleBlocks = 0;
+         int sampleIntervalBlocks = request.SampleIntervalBlocks > 0 ? request.SampleIntervalBlocks : 128;
+         const int MaxMillisecondsBetweenProgressReports = 500;  // NEW: Report at least every 500ms
 
-         // Phase 1: Write files until disk is full or max size reached
          while(totalBytesWritten < maxToWrite && !cancellationToken.IsCancellationRequested)
          {
             var fileName = Path.Combine(testPath, $"test_{filesWritten:D6}.bin");
 
-            // Log first file being written
             if(filesWritten == 0)
             {
                System.Diagnostics.Debug.WriteLine($"Writing first test file to: {fileName}");
@@ -147,14 +148,12 @@ public class SequentialFileTestExecutor : ISurfaceTestExecutor
                    1024 * 1024,
                    FileOptions.SequentialScan))
                {
-                  Stopwatch sampleStopwatch = Stopwatch.StartNew();
-
-                  // Write header
                   var header = CreateHeader(filesWritten);
                   await fileStream.WriteAsync(header.AsMemory(), cancellationToken);
                   totalBytesWritten += header.Length;
+                  totalBytesForCurrentPhase += header.Length;
+                  sampleBytes += header.Length;
 
-                  // Write data (zeros)
                   var dataBuffer = new byte[1024 * 1024];
                   Array.Fill(dataBuffer, (byte)0);
 
@@ -170,65 +169,65 @@ public class SequentialFileTestExecutor : ISurfaceTestExecutor
                      await fileStream.WriteAsync(dataBuffer.AsMemory(0, toWrite), cancellationToken);
                      bytesInFile += toWrite;
                      totalBytesWritten += toWrite;
+                     totalBytesForCurrentPhase += toWrite;
+                     sampleBytes += toWrite;
+                     sampleBlocks++;
+
+                     // NEW: Report progress if EITHER interval reached OR time-based threshold exceeded
+                     bool blockIntervalReached = sampleBlocks >= sampleIntervalBlocks;
+                     bool timeSinceLastReport = (DateTime.UtcNow - lastProgressReport).TotalMilliseconds >= MaxMillisecondsBetweenProgressReports;
+                     
+                     if((blockIntervalReached || timeSinceLastReport) && sampleStopwatch.Elapsed.TotalSeconds > 0)
+                     {
+                        ReportProgressSample(
+                            sampleBytes, request.BlockSizeBytes, totalBytesForCurrentPhase, 
+                            maxToWrite, sampleStopwatch, samples, progress, result, ref peak, ref min,
+                            phaseProgress: totalBytesForCurrentPhase * 50.0 / maxToWrite);
+                        
+                        sampleBytes = 0;
+                        sampleBlocks = 0;
+                        sampleStopwatch.Restart();
+                        lastProgressReport = DateTime.UtcNow;  // NEW: Update last report time
+                     }
                   }
 
                   await fileStream.FlushAsync(cancellationToken);
-                  sampleStopwatch.Stop();
-
                   filesWritten++;
-
-                  // Record sample
-                  if(sampleStopwatch.Elapsed.TotalSeconds > 0)
-                  {
-                     var throughput = bytesInFile / (1024.0 * 1024.0) / sampleStopwatch.Elapsed.TotalSeconds;
-                     peak = Math.Max(peak, throughput);
-                     min = Math.Min(min, throughput);
-
-                     samples.Add(new SurfaceTestSample
-                     {
-                        OffsetBytes = totalBytesWritten,
-                        BlockSizeBytes = 1024 * 1024,
-                        ThroughputMbps = Math.Round(throughput, 2),
-                        TimestampUtc = DateTime.UtcNow,
-                        ErrorCount = 0
-                     });
-
-                     var percentComplete = totalBytesWritten * 100.0 / maxToWrite;
-
-                     progress?.Report(new SurfaceTestProgress
-                     {
-                        TestId = Guid.Parse(result.TestId),
-                        BytesProcessed = totalBytesWritten,
-                        PercentComplete = percentComplete,
-                        CurrentThroughputMbps = Math.Round(throughput, 2),
-                        TimestampUtc = DateTime.UtcNow
-                     });
-                  }
                }
             }
             catch(IOException)
             {
-               // Disk full - expected end condition
                result.Notes = $"Disk je zaplný. Vytvořeno {filesWritten} testovacích souborů.";
                break;
             }
             catch(Exception ex)
             {
                result.ErrorCount++;
-               result.Notes = $"Chyba: {ex.Message}";
+               result.Notes = $"Chyba zápisu: {ex.Message}";
 
                if(result.ErrorCount > 5)
-               {
                   break;
-               }
             }
          }
 
-         // Phase 2: Verify files
+         // Final sample for write phase
+         if(sampleBytes > 0 && sampleStopwatch.Elapsed.TotalSeconds > 0)
+         {
+            ReportProgressSample(
+                sampleBytes, request.BlockSizeBytes, totalBytesForCurrentPhase,
+                maxToWrite, sampleStopwatch, samples, progress, result, ref peak, ref min,
+                phaseProgress: totalBytesForCurrentPhase * 50.0 / maxToWrite);
+         }
+
+         // === PHASE 2: VERIFY ===
          if(result.ErrorCount == 0 && request.Operation == SurfaceTestOperation.WriteZeroFill)
          {
             result.Notes = "Fáze 2: Ověřování souborů";
-            Stopwatch verifyStopwatch = Stopwatch.StartNew();
+            totalBytesForCurrentPhase = 0;
+            sampleBytes = 0;
+            sampleBlocks = 0;
+            sampleStopwatch.Restart();
+            lastProgressReport = DateTime.UtcNow;  // NEW: Reset timer for verify phase
 
             for(int i = 0; i < filesWritten && !cancellationToken.IsCancellationRequested; i++)
             {
@@ -250,6 +249,9 @@ public class SequentialFileTestExecutor : ISurfaceTestExecutor
                      while((bytesRead = await fileStream.ReadAsync(buffer.AsMemory(0, buffer.Length), cancellationToken)) > 0)
                      {
                         totalBytesRead += bytesRead;
+                        totalBytesForCurrentPhase += bytesRead;
+                        sampleBytes += bytesRead;
+                        sampleBlocks++;
 
                         // Verify content (after header should be zeros)
                         if(fileStream.Position > HeaderSize)
@@ -263,24 +265,26 @@ public class SequentialFileTestExecutor : ISurfaceTestExecutor
                               }
                            }
                         }
+
+                        // NEW: Report progress if EITHER interval reached OR time-based threshold exceeded
+                        bool blockIntervalReached = sampleBlocks >= sampleIntervalBlocks;
+                        bool timeSinceLastReport = (DateTime.UtcNow - lastProgressReport).TotalMilliseconds >= MaxMillisecondsBetweenProgressReports;
+                        
+                        if((blockIntervalReached || timeSinceLastReport) && sampleStopwatch.Elapsed.TotalSeconds > 0)
+                        {
+                           ReportProgressSample(
+                               sampleBytes, request.BlockSizeBytes, totalBytesForCurrentPhase,
+                               maxToWrite, sampleStopwatch, samples, progress, result, ref peak, ref min,
+                               phaseProgress: 50.0 + (totalBytesForCurrentPhase * 50.0 / maxToWrite));
+                           
+                           sampleBytes = 0;
+                           sampleBlocks = 0;
+                           sampleStopwatch.Restart();
+                           lastProgressReport = DateTime.UtcNow;  // NEW: Update last report time
+                        }
                      }
 
                      filesVerified++;
-                  }
-
-                  // Report progress
-                  if(filesWritten > 0)
-                  {
-                     progress?.Report(new SurfaceTestProgress
-                     {
-                        TestId = Guid.Parse(result.TestId),
-                        BytesProcessed = totalBytesRead,
-                        PercentComplete = Math.Min(100, 50 + (filesVerified * 50.0 / filesWritten)),
-                        CurrentThroughputMbps = totalBytesRead > 0 && verifyStopwatch.Elapsed.TotalSeconds > 0
-                             ? totalBytesRead / (1024.0 * 1024.0) / verifyStopwatch.Elapsed.TotalSeconds
-                             : 0,
-                        TimestampUtc = DateTime.UtcNow
-                     });
                   }
                }
                catch(Exception ex)
@@ -290,7 +294,14 @@ public class SequentialFileTestExecutor : ISurfaceTestExecutor
                }
             }
 
-            verifyStopwatch.Stop();
+            // Final sample for verify phase
+            if(sampleBytes > 0 && sampleStopwatch.Elapsed.TotalSeconds > 0)
+            {
+               ReportProgressSample(
+                   sampleBytes, request.BlockSizeBytes, totalBytesForCurrentPhase,
+                   maxToWrite, sampleStopwatch, samples, progress, result, ref peak, ref min,
+                   phaseProgress: 50.0 + (totalBytesForCurrentPhase * 50.0 / maxToWrite));
+            }
          }
 
          result.Notes = $"Hotovo. Souborů: {filesWritten} (ověřeno {filesVerified}). Chyb: {result.ErrorCount}";
@@ -306,10 +317,9 @@ public class SequentialFileTestExecutor : ISurfaceTestExecutor
          // Clean up test files
          try
          {
-            var cleanupPath = driveLetter + ":";
-            if(Directory.Exists(cleanupPath))
+            if(Directory.Exists(testPath))
             {
-               foreach(var file in Directory.GetFiles(cleanupPath, "test_*.bin"))
+               foreach(var file in Directory.GetFiles(testPath, "test_*.bin"))
                {
                   File.Delete(file);
                }
@@ -326,7 +336,6 @@ public class SequentialFileTestExecutor : ISurfaceTestExecutor
       result.TotalBytesTested = totalBytesRead > 0 ? totalBytesRead : totalBytesWritten;
       result.Samples = samples;
 
-      // Calculate average speed correctly - use total bytes (write + read) / total time
       if(totalStopwatch.Elapsed.TotalSeconds > 0)
       {
          var totalBytesProcessed = totalBytesWritten + totalBytesRead;
@@ -343,228 +352,87 @@ public class SequentialFileTestExecutor : ISurfaceTestExecutor
    }
 
    /// <summary>
-   /// Creates a header with metadata for the test file.
+   /// Reports progress sample with phase-aware percentage.
    /// </summary>
-   private byte[] CreateHeader(int fileNumber)
+   private static void ReportProgressSample(
+       long sampleBytes,
+       int blockSizeBytes,
+       long phaseBytesProcessed,
+       long totalBytesInPhase,
+       Stopwatch sampleStopwatch,
+       List<SurfaceTestSample> samples,
+       IProgress<SurfaceTestProgress>? progress,
+       SurfaceTestResult result,
+       ref double peak,
+       ref double min,
+       double phaseProgress)
    {
-      var header = new byte[HeaderSize];
-      Array.Fill(header, (byte)0);
+      if(sampleStopwatch.Elapsed.TotalSeconds <= 0)
+         return;
 
-      var numberBytes = BitConverter.GetBytes(fileNumber);
-      Array.Copy(numberBytes, 0, header, 0, 4);
+      var throughput = sampleBytes / (1024d * 1024d) / sampleStopwatch.Elapsed.TotalSeconds;
 
-      var timestampBytes = BitConverter.GetBytes(DateTime.UtcNow.Ticks);
-      Array.Copy(timestampBytes, 0, header, 4, 8);
+      var sample = new SurfaceTestSample
+      {
+         OffsetBytes = Math.Max(0, phaseBytesProcessed - sampleBytes),
+         BlockSizeBytes = blockSizeBytes,
+         ThroughputMbps = Math.Round(throughput, 2),
+         TimestampUtc = DateTime.UtcNow,
+         ErrorCount = 0
+      };
 
-      var checksum = fileNumber ^ DateTime.UtcNow.Ticks.GetHashCode();
-      var checksumBytes = BitConverter.GetBytes(checksum);
-      Array.Copy(checksumBytes, 0, header, 12, 4);
+      samples.Add(sample);
+      peak = Math.Max(peak, sample.ThroughputMbps);
+      min = Math.Min(min, sample.ThroughputMbps);
 
-      return header;
+      progress?.Report(new SurfaceTestProgress
+      {
+         TestId = Guid.Parse(result.TestId),
+         BytesProcessed = phaseBytesProcessed,
+         PercentComplete = Math.Max(0, Math.Min(100, phaseProgress)),
+         CurrentThroughputMbps = Math.Round(throughput, 2),
+         TimestampUtc = DateTime.UtcNow
+      });
    }
 
    /// <summary>
-   /// Prepares the disk by cleaning all partitions and creating a new NTFS partition.
-   /// Uses delta method to find assigned drive letter - compares available drives before and after.
+   /// Prepares the disk for testing. On Windows, uses diskpart; on Linux, uses existing mounted path.
    /// </summary>
    private async Task<string?> PrepareDiskAsync(CoreDriveInfo drive, SurfaceTestResult result, CancellationToken cancellationToken)
    {
       try
       {
-         // Check if this is already a mounted drive (e.g., "E:\") vs physical disk (e.g., "\\.\PHYSICALDRIVE2")
-         if(drive.Path.Length == 3 && char.IsLetter(drive.Path[0]) && drive.Path[1] == ':')
-         {
-            // Already a mounted drive! Extract the letter and return it
-            var driveLetter = drive.Path[0].ToString().ToUpperInvariant();
-            result.Notes = $"✓ Disk je již připojen na {driveLetter}: - přeskakuji formátování";
-            System.Diagnostics.Debug.WriteLine($"Drive already mounted: {driveLetter}");
-            return driveLetter;
-         }
+         // Check if we're on Windows or Linux
+         bool isWindows = RuntimeInformation.IsOSPlatform(OSPlatform.Windows);
+         bool isLinux = RuntimeInformation.IsOSPlatform(OSPlatform.Linux);
 
-         // Extract disk number from physical path (e.g., "\\.\PHYSICALDRIVE2" → "2")
-         var driveNumber = new string(drive.Path.Where(char.IsDigit).ToArray());
-         if(string.IsNullOrEmpty(driveNumber))
+         if(isLinux)
          {
-            result.Notes = "CHYBA: Nelze určit číslo disku";
+            // On Linux, use the provided path directly (e.g., /mnt/disk, /media/user/disk)
+            // Don't try to format - just use the path as-is
+            if(Directory.Exists(drive.Path))
+            {
+               result.Notes = $"✓ Používám mount point: {drive.Path}";
+               System.Diagnostics.Debug.WriteLine($"Using Linux mount point: {drive.Path}");
+               return drive.Path;
+            }
+
+            // If the path doesn't exist, suggest mounting the disk
+            result.Notes = $"⚠️  Disk není připojený. Prosím připojte disk ručně:\n" +
+                          $"  sudo mkdir -p /mnt/testdisk\n" +
+                          $"  sudo mount {drive.Path} /mnt/testdisk";
+            System.Diagnostics.Debug.WriteLine($"Linux mount point not found: {drive.Path}");
             return null;
          }
-
-         result.Notes = "Příprava disku...";
-
-         // Get drives BEFORE formatting
-         var drivesBefore = GetAvailableDriveLetters();
-         System.Diagnostics.Debug.WriteLine($"Drives before: {string.Join(", ", drivesBefore)}");
-         result.Notes = $"Aktuální disky: {string.Join(", ", drivesBefore)}";
-
-         // Generate unique volume label for identification
-         var uniqueLabel = GenerateUniqueVolumeLabel();
-         result.Notes = $"2️⃣  Generuji unikátní label: {uniqueLabel}";
-
-         // Create diskpart script
-         var diskpartScript = $@"list disk
-select disk {driveNumber}
-clean
-create partition primary
-select partition 1
-format fs=ntfs quick label={uniqueLabel}
-assign
-exit";
-
-         try
+         else if(isWindows)
          {
-            result.Notes = $"3️⃣  Spouštím diskpart...";
-
-            ProcessStartInfo psi = new ProcessStartInfo
-            {
-               FileName = "diskpart",
-               UseShellExecute = false,
-               CreateNoWindow = true,
-               RedirectStandardInput = true,
-               RedirectStandardOutput = true,
-               RedirectStandardError = true
-            };
-
-            using Process? process = Process.Start(psi);
-            if(process == null)
-            {
-               result.Notes = "CHYBA: Nelze spustit diskpart - proces vrátil null";
-               return null;
-            }
-
-            // Write script to stdin
-            using(var writer = process.StandardInput)
-            {
-               foreach(var line in diskpartScript.Split(new[] { Environment.NewLine }, StringSplitOptions.None))
-               {
-                  if(!string.IsNullOrEmpty(line))
-                  {
-                     await writer.WriteLineAsync(line.AsMemory(), cancellationToken);
-                  }
-               }
-            }
-
-            var output = await process.StandardOutput.ReadToEndAsync(cancellationToken);
-            var errors = await process.StandardError.ReadToEndAsync(cancellationToken);
-            await process.WaitForExitAsync(cancellationToken);
-
-            System.Diagnostics.Debug.WriteLine($"DiskPart Output:\n{output}");
-            if(!string.IsNullOrEmpty(errors))
-            {
-               System.Diagnostics.Debug.WriteLine($"DiskPart Errors:\n{errors}");
-            }
-
-            // Check if requested disk exists in output
-            if(!output.Contains($"Disk {driveNumber}", StringComparison.OrdinalIgnoreCase))
-            {
-               result.Notes = $"CHYBA: Disk {driveNumber} nenalezen v diskpart! Disk je pravděpodobně vadný a Windows ho nereaguje.";
-               return null;
-            }
-
-            // Check for specific error messages
-            if(output.Contains("The disk you specified is not valid", StringComparison.OrdinalIgnoreCase))
-            {
-               result.Notes = $"CHYBA: Disk {driveNumber} není validní. Diskpart ho nenašel. Disk je pravděpodobně vadný.";
-               return null;
-            }
-
-            if(output.Contains("There is no disk selected", StringComparison.OrdinalIgnoreCase))
-            {
-               result.Notes = $"CHYBA: Diskpart nemohl vybrat disk {driveNumber}. Disk nereaguje. Disk je kriticky poškozený.";
-               return null;
-            }
-
-            if(output.Contains("no partition", StringComparison.OrdinalIgnoreCase) ||
-                output.Contains("no volume", StringComparison.OrdinalIgnoreCase))
-            {
-               result.Notes = $"CHYBA: Nepodařilo se vytvořit partici na disku {driveNumber}. Disk je poškozený.";
-               return null;
-            }
-
-            // Check for errors in output
-            if(output.Contains("error", StringComparison.OrdinalIgnoreCase) ||
-                output.Contains("invalid", StringComparison.OrdinalIgnoreCase) ||
-                output.Contains("access denied", StringComparison.OrdinalIgnoreCase) ||
-                output.Contains("failed", StringComparison.OrdinalIgnoreCase))
-            {
-               result.Notes = $"CHYBA diskpart: Disk nereaguje. Pravděpodobně vadný disk.";
-               return null;
-            }
-
-            if(process.ExitCode != 0)
-            {
-               result.Notes = $"CHYBA diskpart (kód {process.ExitCode}): {errors}";
-               return null;
-            }
-
-            // Check if assign was successful
-            if(!output.Contains("assigned", StringComparison.OrdinalIgnoreCase))
-            {
-               result.Notes = $"CHYBA: Diskpart se nezdařilo přiřadit písmeno jednotky.";
-               return null;
-            }
-
-            result.Notes = $"4️⃣  Čekám na stabilizaci (3 sekundy)...";
-            // Wait for Windows to recognize and stabilize the new drive letter
-            await Task.Delay(3000, cancellationToken);
-
-            result.Notes = $"5️⃣  Hledám nové písmeno disku (delta metoda)...";
-
-            // Use delta method to find the newly assigned drive letter with retry
-            string? newDrive = await FindNewDriveLetterWithRetryAsync(drivesBefore, cancellationToken);
-
-            if(string.IsNullOrEmpty(newDrive))
-            {
-               // Delta method failed - try to find by volume label
-               result.Notes = $"6️⃣  Delta metoda selhala, hledám podle labelu {uniqueLabel}...";
-               newDrive = FindDriveByVolumeLabel(uniqueLabel);
-               
-               if (!string.IsNullOrEmpty(newDrive))
-               {
-                  result.Notes = $"✓ Disk nalezen podle labelu na {newDrive}: (label: {uniqueLabel})";
-                  System.Diagnostics.Debug.WriteLine($"Drive found by label: {newDrive}");
-                  return newDrive;
-               }
-
-               // Still not found - provide helpful message
-               System.Diagnostics.Debug.WriteLine($"Could not find drive with label {uniqueLabel}");
-               
-               // Check if there are multiple DISKTEST drives
-               var allDrives = DriveInfo.GetDrives()
-                   .Where(d => d.IsReady && 
-                              !d.Name.StartsWith("C:", StringComparison.OrdinalIgnoreCase) &&
-                              !string.IsNullOrEmpty(d.VolumeLabel) &&
-                              d.VolumeLabel.Contains("DISKTEST_", StringComparison.OrdinalIgnoreCase))
-                   .ToList();
-               
-               if (allDrives.Count > 1)
-               {
-                  result.Notes = $"⚠️  Nalezeno {allDrives.Count} disků s DISKTEST_ labelem.\n" +
-                                $"Hledaný label: {uniqueLabel}\n" +
-                                $"Nalezené: {string.Join(", ", allDrives.Select(d => $"{d.Name} ({d.VolumeLabel})"))}\n" +
-                                $"Zkuste odpojit jiné USB disky a spustit test znovu.";
-               }
-               else
-               {
-                  result.Notes = $"⚠️  Disk byl naformátován s labelem: {uniqueLabel}\n" +
-                                $"Nepodařilo se automaticky detekovat písmeno.\n" +
-                                $"Zkuste:\n" +
-                                $"  • Otevřít Průzkumník (Win+E) a najít disk s tímto labelem\n" +
-                                $"  • Restartovat aplikaci\n" +
-                                $"  • Restartovat počítač pokud disk není viditelný";
-               }
-               
-               return null;
-            }
-
-            result.Notes = $"✓ Disk připraven na {newDrive}: (label: {uniqueLabel})";
-            System.Diagnostics.Debug.WriteLine($"Disk formatted and assigned to: {newDrive}");
-
-            return newDrive;
+            // Windows: use diskpart to prepare the disk
+            return await PrepareDiskWindowsAsync(drive, result, cancellationToken);
          }
-         catch(Exception ex)
+         else
          {
-            result.Notes = $"CHYBA diskpart: {ex.Message}";
-            System.Diagnostics.Debug.WriteLine($"DiskPart Exception: {ex}");
+            // Unknown platform
+            result.Notes = "CHYBA: Neznámý operační systém. Podporovány jsou pouze Windows a Linux.";
             return null;
          }
       }
@@ -576,51 +444,127 @@ exit";
    }
 
    /// <summary>
-   /// Finds new drive letter with retry logic (3 attempts with 1 second delays).
+   /// Windows-specific disk preparation using diskpart.
    /// </summary>
+   private async Task<string?> PrepareDiskWindowsAsync(CoreDriveInfo drive, SurfaceTestResult result, CancellationToken cancellationToken)
+   {
+      try
+      {
+         // Check if already mounted
+         if(drive.Path.Length == 3 && char.IsLetter(drive.Path[0]) && drive.Path[1] == ':')
+         {
+            var driveLetter = drive.Path[0].ToString().ToUpperInvariant();
+            result.Notes = $"✓ Disk je již připojen na {driveLetter}: - přeskakuji formátování";
+            System.Diagnostics.Debug.WriteLine($"Drive already mounted: {driveLetter}");
+            return driveLetter + ":";
+         }
+
+         var driveNumber = new string(drive.Path.Where(char.IsDigit).ToArray());
+         if(string.IsNullOrEmpty(driveNumber))
+         {
+            result.Notes = "CHYBA: Nelze určit číslo disku";
+            return null;
+         }
+
+         result.Notes = "Příprava disku...";
+         var drivesBefore = GetAvailableDriveLetters();
+         var uniqueLabel = GenerateUniqueVolumeLabel();
+
+         var diskpartScript = $@"list disk
+select disk {driveNumber}
+clean
+create partition primary
+select partition 1
+format fs=ntfs quick label={uniqueLabel}
+assign
+exit";
+
+         result.Notes = $"Spouštím diskpart...";
+
+         ProcessStartInfo psi = new ProcessStartInfo
+         {
+            FileName = "diskpart",
+            UseShellExecute = false,
+            CreateNoWindow = true,
+            RedirectStandardInput = true,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true
+         };
+
+         using Process? process = Process.Start(psi);
+         if(process == null)
+         {
+            result.Notes = "CHYBA: Nelze spustit diskpart";
+            return null;
+         }
+
+         using(var writer = process.StandardInput)
+         {
+            foreach(var line in diskpartScript.Split(new[] { Environment.NewLine }, StringSplitOptions.None))
+            {
+               if(!string.IsNullOrEmpty(line))
+                  await writer.WriteLineAsync(line.AsMemory(), cancellationToken);
+            }
+         }
+
+         var output = await process.StandardOutput.ReadToEndAsync(cancellationToken);
+         var errors = await process.StandardError.ReadToEndAsync(cancellationToken);
+         await process.WaitForExitAsync(cancellationToken);
+
+         if(process.ExitCode != 0)
+         {
+            result.Notes = $"CHYBA diskpart: {errors}";
+            return null;
+         }
+
+         await Task.Delay(3000, cancellationToken);
+
+         string? newDrive = await FindNewDriveLetterWithRetryAsync(drivesBefore, cancellationToken);
+
+         if(string.IsNullOrEmpty(newDrive))
+         {
+            newDrive = FindDriveByVolumeLabel(uniqueLabel);
+            if(string.IsNullOrEmpty(newDrive))
+            {
+               result.Notes = $"⚠️  Nepodařilo se automaticky detekovat písmeno disku. Hledaný label: {uniqueLabel}";
+               return null;
+            }
+         }
+
+         result.Notes = $"✓ Disk připraven na {newDrive}:";
+         return newDrive + ":";
+      }
+      catch(Exception ex)
+      {
+         result.Notes = $"CHYBA: {ex.Message}";
+         return null;
+      }
+   }
+
+   private byte[] CreateHeader(int fileNumber)
+   {
+      var header = new byte[HeaderSize];
+      Array.Fill(header, (byte)0);
+      Array.Copy(BitConverter.GetBytes(fileNumber), 0, header, 0, 4);
+      Array.Copy(BitConverter.GetBytes(DateTime.UtcNow.Ticks), 0, header, 4, 8);
+      return header;
+   }
+
    private async Task<string?> FindNewDriveLetterWithRetryAsync(List<string> drivesBefore, CancellationToken cancellationToken)
    {
-      const int maxRetries = 3;
-      const int delayMs = 1000;
-
-      for(int attempt = 0; attempt < maxRetries; attempt++)
+      for(int attempt = 0; attempt < 3; attempt++)
       {
-         try
-         {
-            var drivesAfter = GetAvailableDriveLetters();
-            System.Diagnostics.Debug.WriteLine($"Attempt {attempt + 1}: Drives after: {string.Join(", ", drivesAfter)}");
+         var drivesAfter = GetAvailableDriveLetters();
+         var newDrive = drivesAfter.Except(drivesBefore).FirstOrDefault();
+         if(!string.IsNullOrEmpty(newDrive))
+            return newDrive;
 
-            var newDrive = drivesAfter.Except(drivesBefore).FirstOrDefault();
-
-            if(!string.IsNullOrEmpty(newDrive))
-            {
-               System.Diagnostics.Debug.WriteLine($"Found new drive on attempt {attempt + 1}: {newDrive}");
-               return newDrive;
-            }
-
-            System.Diagnostics.Debug.WriteLine($"Attempt {attempt + 1}: No new drive found yet, retrying...");
-
-            if(attempt < maxRetries - 1)
-            {
-               await Task.Delay(delayMs, cancellationToken);
-            }
-         }
-         catch(Exception ex)
-         {
-            System.Diagnostics.Debug.WriteLine($"Error on attempt {attempt + 1}: {ex.Message}");
-            if(attempt < maxRetries - 1)
-            {
-               await Task.Delay(delayMs, cancellationToken);
-            }
-         }
+         if(attempt < 2)
+            await Task.Delay(1000, cancellationToken);
       }
-
       return null;
    }
 
-   /// <summary>
-   /// Gets list of currently available drive letters (C:, D:, E:, etc.)
-   /// </summary>
    private List<string> GetAvailableDriveLetters()
    {
       try
@@ -636,80 +580,21 @@ exit";
       }
    }
 
-   /// <summary>
-   /// Finds a drive by its volume label.
-   /// Returns the drive letter (e.g., "E") or null if not found.
-   /// </summary>
    private string? FindDriveByVolumeLabel(string targetLabel)
    {
       try
       {
-         var drives = DriveInfo.GetDrives();
-         string? foundDrive = null;
-         int matchCount = 0;
-         
-         foreach (var drive in drives)
-         {
-            try
-            {
-               // Skip system drive (C:) and non-ready drives
-               if (drive.Name.StartsWith("C:", StringComparison.OrdinalIgnoreCase))
-                  continue;
-                  
-               if (!drive.IsReady)
-                  continue;
-
-               if (string.IsNullOrEmpty(drive.VolumeLabel))
-                  continue;
-
-               // Check for exact match first
-               if (drive.VolumeLabel.Equals(targetLabel, StringComparison.OrdinalIgnoreCase))
-               {
-                  var letter = drive.Name.Substring(0, 1).ToUpperInvariant();
-                  System.Diagnostics.Debug.WriteLine($"Found drive by exact label match '{targetLabel}': {letter}");
-                  return letter;
-               }
-
-               // Check for partial match (contains DISKTEST_)
-               if (drive.VolumeLabel.Contains("DISKTEST_", StringComparison.OrdinalIgnoreCase))
-               {
-                  matchCount++;
-                  foundDrive = drive.Name.Substring(0, 1).ToUpperInvariant();
-                  System.Diagnostics.Debug.WriteLine($"Found potential drive with DISKTEST_ label: {foundDrive} ({drive.VolumeLabel})");
-               }
-            }
-            catch
-            {
-               // Ignore individual drive access errors
-               continue;
-            }
-         }
-         
-         // If we found exactly one DISKTEST_ drive, use it
-         if (matchCount == 1 && foundDrive != null)
-         {
-            System.Diagnostics.Debug.WriteLine($"Using unique DISKTEST_ drive: {foundDrive}");
-            return foundDrive;
-         }
-         
-         if (matchCount > 1)
-         {
-            System.Diagnostics.Debug.WriteLine($"Found {matchCount} DISKTEST_ drives - cannot auto-select");
-         }
-         
-         return null;
+         return DriveInfo.GetDrives()
+             .FirstOrDefault(d => d.IsReady && d.VolumeLabel.Equals(targetLabel, StringComparison.OrdinalIgnoreCase))?
+             .Name.Substring(0, 1)
+             .ToUpperInvariant();
       }
-      catch (Exception ex)
+      catch
       {
-         System.Diagnostics.Debug.WriteLine($"Error in FindDriveByVolumeLabel: {ex.Message}");
          return null;
       }
    }
 
-   /// <summary>
-   /// Generates a unique volume label for the test partition to avoid collisions.
-   /// Format: DISKTEST_yyMMdd_xxxxxxxx
-   /// </summary>
    private string GenerateUniqueVolumeLabel()
    {
       var guid = Guid.NewGuid().ToString("N").Substring(0, 8).ToUpperInvariant();
@@ -717,10 +602,6 @@ exit";
       return $"DISKTEST_{timestamp}_{guid}";
    }
 
-   /// <summary>
-   /// Extracts manufacturer from model string.
-   /// Examples: "ST500DM002" → "Seagate", "WDC WD..." → "WDC", "Samsung SSD..." → "Samsung"
-   /// </summary>
    private static string? ExtractManufacturer(string? modelNumber)
    {
       if(string.IsNullOrEmpty(modelNumber))
@@ -728,19 +609,21 @@ exit";
 
       var upper = modelNumber.ToUpperInvariant();
 
-      if(upper.StartsWith("ST", StringComparison.Ordinal)) return "Seagate";
-      if(upper.StartsWith("WD", StringComparison.Ordinal)) return "Western Digital";
-      if(upper.StartsWith("SAMSUNG", StringComparison.Ordinal)) return "Samsung";
-      if(upper.StartsWith("INTEL", StringComparison.Ordinal)) return "Intel";
-      if(upper.StartsWith("TOSHIBA", StringComparison.Ordinal)) return "Toshiba";
-      if(upper.StartsWith("KINGSTON", StringComparison.Ordinal)) return "Kingston";
-      if(upper.StartsWith("CRUCIAL", StringComparison.Ordinal)) return "Crucial";
-      if(upper.StartsWith("SK HYNIX", StringComparison.Ordinal)) return "SK Hynix";
-      if(upper.StartsWith("HITACHI", StringComparison.Ordinal)) return "Hitachi";
-      if(upper.StartsWith("MAXTOR", StringComparison.Ordinal)) return "Maxtor";
-      if(upper.StartsWith("ADATA", StringComparison.Ordinal)) return "ADATA";
-      if(upper.StartsWith("SANDISK", StringComparison.Ordinal)) return "SanDisk";
-
-      return null;
+      return upper switch
+      {
+         var x when x.StartsWith("ST", StringComparison.Ordinal) => "Seagate",
+         var x when x.StartsWith("WD", StringComparison.Ordinal) => "Western Digital",
+         var x when x.StartsWith("SAMSUNG", StringComparison.Ordinal) => "Samsung",
+         var x when x.StartsWith("INTEL", StringComparison.Ordinal) => "Intel",
+         var x when x.StartsWith("TOSHIBA", StringComparison.Ordinal) => "Toshiba",
+         var x when x.StartsWith("KINGSTON", StringComparison.Ordinal) => "Kingston",
+         var x when x.StartsWith("CRUCIAL", StringComparison.Ordinal) => "Crucial",
+         var x when x.StartsWith("SK HYNIX", StringComparison.Ordinal) => "SK Hynix",
+         var x when x.StartsWith("HITACHI", StringComparison.Ordinal) => "Hitachi",
+         var x when x.StartsWith("MAXTOR", StringComparison.Ordinal) => "Maxtor",
+         var x when x.StartsWith("ADATA", StringComparison.Ordinal) => "ADATA",
+         var x when x.StartsWith("SANDISK", StringComparison.Ordinal) => "SanDisk",
+         _ => null
+      };
    }
 }

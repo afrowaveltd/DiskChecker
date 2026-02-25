@@ -1,10 +1,18 @@
 @inherits LayoutComponentBase
+@using DiskChecker.Web.Components
 
 <header class="navbar">
-    <nav>
-        <a href="/">Disky</a> | 
-        <a href="/history">Historie</a> | 
-        <a href="/settings">Nastavení</a>
+    <nav class="navbar-nav">
+        <div class="nav-links">
+            <a href="/">🖥️ Disky</a>
+            <a href="/smart-check">📊 SMART Check</a>
+            <a href="/surface-test">🔍 Povrchový Test</a>
+            <a href="/history">📈 Historie</a>
+            <a href="/settings">⚙️ Nastavení</a>
+        </div>
+        <div class="nav-actions">
+            <ThemeToggle />
+        </div>
     </nav>
 </header>
 
@@ -13,7 +21,76 @@
 </main>
 
 <style>
-    .navbar { border-bottom: 1px solid #ccc; padding: 10px; margin-bottom: 20px; }
-    .navbar a { text-decoration: none; color: #007bff; margin: 0 10px; }
-    .content { padding: 0 20px; }
+    .navbar {
+        background: white;
+        border-bottom: 2px solid #4A90E2;
+        padding: 15px 20px;
+        margin-bottom: 20px;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    }
+
+    .navbar-nav {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        max-width: 1200px;
+        margin: 0 auto;
+    }
+
+    .nav-links {
+        display: flex;
+        gap: 20px;
+    }
+
+    .nav-links a {
+        text-decoration: none;
+        color: #4A90E2;
+        font-weight: 500;
+        transition: color 0.3s ease;
+    }
+
+    .nav-links a:hover {
+        color: #357ABD;
+        text-decoration: underline;
+    }
+
+    .nav-actions {
+        display: flex;
+        gap: 10px;
+        align-items: center;
+    }
+
+    .content {
+        padding: 0 20px;
+        max-width: 1200px;
+        margin: 0 auto;
+    }
+
+    @media (prefers-color-scheme: dark) {
+        .navbar {
+            background: #2d2d2d;
+            border-bottom-color: #6bb6ff;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.5);
+        }
+
+        .nav-links a {
+            color: #6bb6ff;
+        }
+
+        .nav-links a:hover {
+            color: #b0e0ff;
+        }
+    }
+
+    @media (max-width: 768px) {
+        .navbar-nav {
+            flex-direction: column;
+            gap: 15px;
+        }
+
+        .nav-links {
+            flex-wrap: wrap;
+            justify-content: center;
+        }
+    }
 </style>

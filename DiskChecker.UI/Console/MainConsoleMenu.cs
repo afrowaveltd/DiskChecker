@@ -1,6 +1,7 @@
 using DiskChecker.Application.Services;
 using DiskChecker.Core.Interfaces;
 using DiskChecker.Core.Models;
+using DiskChecker.Core.Services;
 using Spectre.Console;
 using System.Diagnostics;
 using System.Text;
@@ -387,17 +388,37 @@ public class MainConsoleMenu
          var d = drives[i];
          AnsiConsole.MarkupLine($" [blue]{i + 1}.[/] {Markup.Escape(d.Name)} ({Markup.Escape(d.Path)}) - {FormatBytes(d.TotalSize)}");
       }
-      AnsiConsole.MarkupLine($" [blue]{drives.Count + 1}.[/] Zpět");
+      AnsiConsole.MarkupLine($" [blue]{drives.Count + 1}.[/] 🔍 Automatické rozpoznání disku");
+      AnsiConsole.MarkupLine($" [blue]{drives.Count + 2}.[/] Zpět");
       AnsiConsole.WriteLine();
       AnsiConsole.Markup("Zadejte volbu: ");
 
       string choiceStr = ReadLine();
-      if(!int.TryParse(choiceStr, out int choice) || choice < 1 || choice > drives.Count)
+      if(!int.TryParse(choiceStr, out int choice) || choice < 1 || choice > drives.Count + 2)
       {
          return;
       }
 
-      var drive = drives[choice - 1];
+      CoreDriveInfo? drive = null;
+
+      if (choice == drives.Count + 1)
+      {
+         // Auto-detect workflow
+         drive = await AutoDetectDiskAsync(drives.ToList());
+         if (drive == null)
+         {
+            return;
+         }
+      }
+      else if (choice == drives.Count + 2)
+      {
+         // Go back
+         return;
+      }
+      else
+      {
+         drive = drives[choice - 1];
+      }
 
       // Ask for test profile
       AnsiConsole.Clear();
@@ -480,23 +501,27 @@ public class MainConsoleMenu
               {
                  try
                  {
-                    // Detect phase change
-                    var isVerifyPhase = p.PercentComplete > 50;
+                    // Detect phase change based on PercentComplete
+                    var isVerifyPhase = p.PercentComplete >= 50;
                     
                     if (isVerifyPhase && currentPhase == "write")
                     {
                        currentPhase = "verify";
                        startTime = DateTime.UtcNow;
+                       writeProgress = 100;
+                       writeSpeed = 0;
+                       writeEta = "✓";
                     }
 
                     if (currentPhase == "write")
                     {
+                       // Write phase: PercentComplete is 0-50%
                        writeProgress = Math.Min(100, p.PercentComplete * 2);
                        writeSpeed = p.CurrentThroughputMbps;
                        writeBytes = p.BytesProcessed;
                        writeErrors = 0;
-                       
-                       // Calculate ETA
+                        
+                       // Calculate ETA for write phase
                        var elapsed = (DateTime.UtcNow - startTime).TotalSeconds;
                        var bytesPerSecond = elapsed > 0 ? p.BytesProcessed / elapsed : 0;
                        var remainingBytes = maxBytesToTest - p.BytesProcessed;
@@ -505,12 +530,14 @@ public class MainConsoleMenu
                     }
                     else
                     {
+                       // Verify phase: PercentComplete is 50-100%
+                       // For verify, BytesProcessed is only data from verify phase, not cumulative
                        writeProgress = 100;
                        verifyProgress = Math.Min(100, (p.PercentComplete - 50) * 2);
                        verifySpeed = p.CurrentThroughputMbps;
                        verifyBytes = p.BytesProcessed;
-                       
-                       // Calculate ETA
+                        
+                       // Calculate ETA for verify phase
                        var elapsed = (DateTime.UtcNow - startTime).TotalSeconds;
                        var bytesPerSecond = elapsed > 0 ? p.BytesProcessed / elapsed : 0;
                        var remainingBytes = maxBytesToTest - p.BytesProcessed;
@@ -518,36 +545,36 @@ public class MainConsoleMenu
                        verifyEta = FormatEta(etaSeconds);
                     }
 
-                    // NOTE: SMART data refresh is DISABLED during test to avoid DbContext threading issues
-                    // SMART data will be refreshed AFTER the test completes
+                     // NOTE: SMART data refresh is DISABLED during test to avoid DbContext threading issues
+                     // SMART data will be refreshed AFTER the test completes
 
-                    // Update progress display
-                    ctx.UpdateTarget(CreateProgressTable(
-                      writeProgress, writeSpeed, writeBytes, writeEta, writeErrors,
-                      verifyProgress, verifySpeed, verifyBytes, verifyEta, verifyErrors));
-                 }
-                 catch
-                 {
-                    // Log error but don't crash the progress display
-                 }
-              });
+                     // Update progress display
+                     ctx.UpdateTarget(CreateProgressTable(
+                       writeProgress, writeSpeed, writeBytes, writeEta, writeErrors,
+                       verifyProgress, verifySpeed, verifyBytes, verifyEta, verifyErrors));
+                  }
+                  catch
+                  {
+                     // Log error but don't crash the progress display
+                  }
+               });
 
-             result = await _surfaceTestService.RunAsync(request, progress, CancellationToken.None);
-             
-             // Final update with actual error counts and final SMART data
-             if (result != null)
-             {
-                 verifyErrors = result.ErrorCount;
-                 try
-                 {
-                    await smartDisplay.RefreshDataAsync(drive);
-                 }
-                 catch { }
-                 ctx.UpdateTarget(CreateProgressTable(
-                     100, writeSpeed, writeBytes, writeEta, writeErrors,
-                     100, verifySpeed, verifyBytes, verifyEta, verifyErrors));
-             }
-          });
+              result = await _surfaceTestService.RunAsync(request, progress, CancellationToken.None);
+              
+              // Final update with actual error counts and final SMART data
+              if (result != null)
+              {
+                  verifyErrors = result.ErrorCount;
+                  try
+                  {
+                     await smartDisplay.RefreshDataAsync(drive);
+                  }
+                  catch { }
+                  ctx.UpdateTarget(CreateProgressTable(
+                      100, writeSpeed, writeBytes, writeEta, writeErrors,
+                      100, verifySpeed, verifyBytes, verifyEta, verifyErrors));
+              }
+           });
 
       AnsiConsole.WriteLine();
       AnsiConsole.WriteLine();
@@ -597,15 +624,22 @@ public class MainConsoleMenu
           $"[cyan]{writeEta}[/]");
 
       // Verify row
-      var errorColor = verifyErrors == 0 ? "green" : verifyErrors <= 5 ? "yellow" : "red";
-      var errorMark = verifyErrors == 0 ? "✓" : "⚠";
+      var verifyErrorMarkup = verifyErrors == 0
+          ? "[green]✓ 0[/]"
+          : verifyErrors <= 5
+              ? $"[yellow]⚠ {verifyErrors}[/]"
+              : $"[red]⚠ {verifyErrors}[/]";
+      
+      var verifyProgressMarkup = verifyProgress > 0
+          ? $"[yellow]{GenerateProgressBar(verifyProgress)}[/] {verifyProgress:F0}%"
+          : $"[dim]{GenerateProgressBar(0)} 0%[/]";
       
       table.AddRow(
           verifyProgress > 0 ? "[yellow]Fáze 2: Ověřování[/]" : "[dim]Fáze 2: Ověřování[/]",
           verifyProgress > 0 ? $"[yellow]{verifySpeed:F1} MB/s[/]" : "[dim]0,0 MB/s[/]",
           verifyProgress > 0 ? $"[yellow]{FormatBytes(verifyBytes)}[/]" : "[dim]0 B[/]",
-          verifyProgress > 0 ? $"[yellow]{GenerateProgressBar(verifyProgress)}[/] {verifyProgress:F0}%" : $"[dim]{GenerateProgressBar(0)}[/] [dim]0%[/]",
-          verifyErrors == 0 ? "[green]✓ 0[/]" : $"[{errorColor}]{errorMark} {verifyErrors}[/{errorColor}]",
+          verifyProgressMarkup,
+          verifyErrorMarkup,
           verifyProgress > 0 ? $"[yellow]{verifyEta}[/]" : "[dim]--:--:--[/]");
 
       return table;
@@ -1196,6 +1230,112 @@ assign";
       int filled = (int)(percent / 100.0 * width);
       int empty = width - filled;
       return new string('█', filled) + new string('░', empty);
+   }
+
+   /// <summary>
+   /// Auto-detection workflow for disk identification using USB port/framework.
+   /// </summary>
+   private async Task<CoreDriveInfo?> AutoDetectDiskAsync(List<CoreDriveInfo> initialDrives)
+   {
+      AnsiConsole.Clear();
+      AnsiConsole.MarkupLine("[bold yellow]🔍 Automatické rozpoznání disku[/]");
+      AnsiConsole.WriteLine();
+
+      var service = new DiskDetectionService();
+
+      // Step 1: Capture before state
+      AnsiConsole.MarkupLine("[bold]Krok 1: Odpojte testovaný disk[/]");
+      AnsiConsole.MarkupLine("Prosím odpojte disk z USB rámečku nebo portu, který chcete testovat.");
+      AnsiConsole.WriteLine();
+      AnsiConsole.MarkupLine("[dim]Aktuálně připojené disky:[/]");
+      foreach (var drive in initialDrives)
+      {
+         AnsiConsole.MarkupLine($"  • {Markup.Escape(drive.Name)} - {FormatBytes(drive.TotalSize)}");
+      }
+      AnsiConsole.WriteLine();
+      AnsiConsole.MarkupLine("[yellow]Stiskněte Enter když je disk odpojen...[/]");
+      ReadLine();
+
+      var snapshotBefore = service.CreateSnapshot(initialDrives);
+
+      // Step 2: Wait for reconnect
+      AnsiConsole.Clear();
+      AnsiConsole.MarkupLine("[bold]Krok 2: Zapojte testovaný disk[/]");
+      AnsiConsole.MarkupLine("Nyní zapojte disk do stejného USB portu zpět.");
+      AnsiConsole.MarkupLine("[dim]Systém bude detekovat nový disk během 10 sekund...[/]");
+      AnsiConsole.WriteLine();
+
+      DiskDetectionService.DiskSnapshot? snapshotAfter = null;
+      bool diskDetected = false;
+
+      for (int i = 0; i < 10; i++)
+      {
+         await Task.Delay(1000);
+         var currentDrives = await _diskCheckerService.ListDrivesAsync();
+         snapshotAfter = service.CreateSnapshot(currentDrives.ToList());
+
+         var comparison = service.Compare(snapshotBefore, snapshotAfter);
+
+         if (comparison.Added.Count == 1)
+         {
+            diskDetected = true;
+            break;
+         }
+         else if (comparison.Added.Count > 1)
+         {
+            AnsiConsole.MarkupLine("[red]❌ Příliš mnoho disků připojeno! Prosím odpojte všechny disky mimo testovaného a zkuste znovu.[/]");
+            WaitForReturn();
+            return null;
+         }
+
+         AnsiConsole.Write($"\r  {new string('█', (i + 1) * 3)} {(i + 1) * 10}%  ");
+      }
+
+      AnsiConsole.WriteLine();
+      AnsiConsole.WriteLine();
+
+      if (!diskDetected || snapshotAfter is null)
+      {
+         AnsiConsole.MarkupLine("[red]❌ Čas vypršel. Disk nebyl detekován. Prosím zkontrolujte, že je disk správně zapojený, a zkuste znovu.[/]");
+         WaitForReturn();
+         return null;
+      }
+
+      // Step 3: Show result
+      var comparison2 = service.Compare(snapshotBefore, snapshotAfter);
+      if (comparison2.Added.Count != 1)
+      {
+         AnsiConsole.MarkupLine("[red]❌ Chyba detekce. Zkuste znovu.[/]");
+         WaitForReturn();
+         return null;
+      }
+
+      var detectedDisk = comparison2.Added.First();
+      AnsiConsole.Clear();
+      AnsiConsole.MarkupLine("[bold green]✅ Disk detekován![/]");
+      AnsiConsole.WriteLine();
+      AnsiConsole.MarkupLine($"[green]Model:[/] {detectedDisk.Model}");
+      AnsiConsole.MarkupLine($"[green]Cesta:[/] {detectedDisk.Path}");
+      AnsiConsole.MarkupLine($"[green]Kapacita:[/] {FormatBytes(detectedDisk.TotalBytes)}");
+      if (!string.IsNullOrEmpty(detectedDisk.DriveLetter))
+      {
+         AnsiConsole.MarkupLine($"[green]Písmenko:[/] {detectedDisk.DriveLetter}");
+      }
+      AnsiConsole.WriteLine();
+
+      // Get the actual CoreDriveInfo from the current list
+      var allDrives = await _diskCheckerService.ListDrivesAsync();
+      var selectedDrive = allDrives.FirstOrDefault(d => d.Path == detectedDisk.Path);
+
+      if (selectedDrive != null)
+      {
+         AnsiConsole.MarkupLine("[green]✓ Disk je připraven pro test[/]");
+         return selectedDrive;
+      }
+
+      AnsiConsole.MarkupLine("[red]⚠️  Disk nebyl nalezen v aktuálním seznamu. Zkuste znovu.[/]", detectedDisk.Path);
+      WaitForReturn();
+      return null;
    }
 
 }
