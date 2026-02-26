@@ -38,10 +38,10 @@ public class LiveSmartDisplay
         CancellationToken cancellationToken = default)
     {
         // Load initial data
-        var initialResult = await _smartCheckService.RunAsync(drive, cancellationToken);
-        if (initialResult != null)
+        var initialData = await _smartCheckService.GetSmartaDataSnapshotAsync(drive, cancellationToken);
+        if (initialData != null)
         {
-            _currentSmartData = initialResult.SmartaData;
+            _currentSmartData = initialData;
             updateAction?.Invoke();
         }
     }
@@ -53,10 +53,10 @@ public class LiveSmartDisplay
     /// <param name="cancellationToken">Cancellation token.</param>
     public async Task RefreshDataAsync(CoreDriveInfo drive, CancellationToken cancellationToken = default)
     {
-        var result = await _smartCheckService.RunAsync(drive, cancellationToken);
-        if (result != null)
+        var data = await _smartCheckService.GetSmartaDataSnapshotAsync(drive, cancellationToken);
+        if (data != null)
         {
-            _currentSmartData = result.SmartaData;
+            _currentSmartData = data;
         }
     }
 

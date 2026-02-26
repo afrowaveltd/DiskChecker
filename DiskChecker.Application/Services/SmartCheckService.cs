@@ -162,4 +162,16 @@ public class SmartCheckService
     {
         return await _smartaProvider.TryInstallDependenciesAsync(cancellationToken);
     }
+
+    /// <summary>
+    /// Gets a SMART data snapshot without persisting it to the database.
+    /// </summary>
+    /// <param name="drive">Drive to read.</param>
+    /// <param name="cancellationToken">Token to cancel the operation.</param>
+    /// <returns>SMART data snapshot or <c>null</c> when unavailable.</returns>
+    public async Task<SmartaData?> GetSmartaDataSnapshotAsync(CoreDriveInfo drive, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(drive);
+        return await _smartaProvider.GetSmartaDataAsync(drive.Path, cancellationToken);
+    }
 }

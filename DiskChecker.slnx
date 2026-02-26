@@ -15,7 +15,5 @@
   <Project Path="DiskChecker.UI/DiskChecker.UI.csproj">
     <Platform Solution="*|x64" Project="x64" />
   </Project>
-  <Project Path="DiskChecker.Web/DiskChecker.Web.csproj">
-    <Platform Solution="*|x64" Project="x64" />
-  </Project>
 </Solution>
+

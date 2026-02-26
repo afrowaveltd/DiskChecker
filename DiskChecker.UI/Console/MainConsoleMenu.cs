@@ -14,6 +14,9 @@ namespace DiskChecker.UI.Console;
 /// </summary>
 public class MainConsoleMenu
 {
+   private const int PanelWidth = 110;
+   private static readonly TimeSpan SmartRefreshInterval = TimeSpan.FromSeconds(15);
+
    private readonly DiskCheckerService _diskCheckerService;
    private readonly SmartCheckService _smartCheckService;
    private readonly ISurfaceTestService _surfaceTestService;
@@ -146,7 +149,8 @@ public class MainConsoleMenu
       for(int i = 0; i < drives.Count; i++)
       {
          CoreDriveInfo d = drives[i];
-         AnsiConsole.MarkupLine($" [blue]{i + 1}.[/] {Markup.Escape(d.Name)} ({Markup.Escape(d.Path)}) - {FormatBytes(d.TotalSize)}");
+         var displayPath = FormatDrivePathForDisplay(d.Path);
+         AnsiConsole.MarkupLine($" [blue]{i + 1}.[/] {Markup.Escape(d.Name)} [dim]({Markup.Escape(displayPath)})[/] - {FormatBytes(d.TotalSize)}");
       }
       AnsiConsole.MarkupLine($" [blue]{drives.Count + 1}.[/] Zpět");
       AnsiConsole.WriteLine();
@@ -386,7 +390,8 @@ public class MainConsoleMenu
       for(int i = 0; i < drives.Count; i++)
       {
          CoreDriveInfo d = drives[i];
-         AnsiConsole.MarkupLine($" [blue]{i + 1}.[/] {Markup.Escape(d.Name)} ({Markup.Escape(d.Path)}) - {FormatBytes(d.TotalSize)}");
+         var displayPath = FormatDrivePathForDisplay(d.Path);
+         AnsiConsole.MarkupLine($" [blue]{i + 1}.[/] {Markup.Escape(d.Name)} [dim]({Markup.Escape(displayPath)})[/] - {FormatBytes(d.TotalSize)}");
       }
       AnsiConsole.MarkupLine($" [blue]{drives.Count + 1}.[/] 🔍 Automatické rozpoznání disku");
       AnsiConsole.MarkupLine($" [blue]{drives.Count + 2}.[/] Zpět");
@@ -470,6 +475,8 @@ public class MainConsoleMenu
       }
       AnsiConsole.WriteLine();
 
+      SmartaData? smartData = smartDisplay.CurrentSmartData;
+
       // Calculate max bytes for ETA
       long maxBytesToTest = request.MaxBytesToTest ?? drive.TotalSize;
 
@@ -492,10 +499,14 @@ public class MainConsoleMenu
       int verifyErrors = 0;
 
       // === TEMPERATURE TRACKING ===
-      int currentTemp = smartData?.TemperatureCelsius ?? 0;
+      int currentTemp = (int)Math.Round(smartData?.Temperature ?? 0, MidpointRounding.AwayFromZero);
       int minTemp = currentTemp;
       int maxTemp = currentTemp;
-      var temperatureHistory = new List<int>();
+      int? currentPowerOnHours = smartData?.PowerOnHours > 0 ? smartData.PowerOnHours : null;
+      var smartRefreshLock = new SemaphoreSlim(1, 1);
+
+      double overallPercent = 0.0;
+      long overallTestedBytes = 0L;
 
       // === SPEED SMOOTHING: Moving average of last 3 samples ===
       var writeSpeedSamples = new Queue<double>(3);
@@ -508,13 +519,25 @@ public class MainConsoleMenu
       Layout layout = new Layout("Root")
           .SplitRows(
               new Layout("DiskInfo").Size(6),
+              new Layout("Spacer1").Size(1),
+              new Layout("Temperature").Size(5),
+              new Layout("Spacer2").Size(1),
+              new Layout("Overall").Size(7),
+              new Layout("Spacer3").Size(1),
               new Layout("Progress")
           );
 
-      layout["DiskInfo"].Update(CreateDiskInfoPanel(drive, smartData, maxBytesToTest));
-      layout["Progress"].Update(CreateProgressTable(
+      layout["DiskInfo"].Update(Align.Center(CreateDiskInfoPanel(drive, smartData, maxBytesToTest, writeBytes, verifyBytes, currentTemp, currentPowerOnHours, PanelWidth)));
+      layout["Spacer1"].Update(new Text(string.Empty));
+      layout["Temperature"].Update(Align.Center(CreateTemperaturePanel(smartData, currentTemp, minTemp, maxTemp, PanelWidth)));
+      layout["Spacer2"].Update(new Text(string.Empty));
+      layout["Overall"].Update(Align.Center(TestVisualizationComponents.CreateOverallProgressGauge(
+          writeProgress, verifyProgress, writeEta, verifyEta,
+          maxBytesToTest, overallTestedBytes, TimeSpan.Zero, FormatEta(0), PanelWidth)));
+      layout["Spacer3"].Update(new Text(string.Empty));
+      layout["Progress"].Update(Align.Center(CreateProgressTable(
               writeProgress, writeSpeed, writeBytes, writeEta, writeErrors,
-              verifyProgress, verifySpeed, verifyBytes, verifyEta, verifyErrors));
+              verifyProgress, verifySpeed, verifyBytes, verifyEta, verifyErrors)));
 
       await AnsiConsole.Live(layout)
           .StartAsync(async ctx =>
@@ -530,6 +553,7 @@ public class MainConsoleMenu
                    {
                       currentPhase = "verify";
                       phaseStartTime = DateTime.UtcNow;  // Reset pro Fázi 2
+                      writeBytes = maxBytesToTest;
                       writeProgress = 100;
                       writeSpeed = 0;
                       writeEta = "✓";
@@ -537,9 +561,8 @@ public class MainConsoleMenu
 
                    if(currentPhase == "write")
                    {
-                      // Write phase: PercentComplete is 0-50%
-                      writeProgress = Math.Min(100, p.PercentComplete * 2);
-
+                      writeBytes = Math.Min(maxBytesToTest, p.BytesProcessed);
+                      writeProgress = maxBytesToTest == 0 ? 0 : Math.Min(100, writeBytes * 100d / maxBytesToTest);
 
                       // === SMOOTH SPEED: Moving average of last 3 samples ===
                       writeSpeedSamples.Enqueue(p.CurrentThroughputMbps);
@@ -547,33 +570,30 @@ public class MainConsoleMenu
                          writeSpeedSamples.Dequeue();
                       writeSpeed = writeSpeedSamples.Average();  // Smooth!
 
-
-                      writeBytes = p.BytesProcessed;
                       writeErrors = 0;
 
                       // Calculate ETA for write phase
                       double elapsed = (DateTime.UtcNow - phaseStartTime).TotalSeconds;
-                      double bytesPerSecond = elapsed > 0 ? p.BytesProcessed / elapsed : 0;
-                      long remainingBytes = maxBytesToTest - p.BytesProcessed;
+                      double bytesPerSecond = elapsed > 0 ? writeBytes / elapsed : 0;
+                      long remainingBytes = maxBytesToTest - writeBytes;
                       double etaSeconds = bytesPerSecond > 0 ? remainingBytes / bytesPerSecond : 0;
                       writeEta = FormatEta(etaSeconds);
 
                       // === ESTIMATE VERIFY ETA (before it starts) ===
                       // Assume verify will take similar time as write
-                      if(elapsed > 10 && p.BytesProcessed > 0)
+                      if(elapsed > 10 && writeBytes > 0)
                       {
-                         double estimatedTotalTime = elapsed / (p.BytesProcessed / (double)maxBytesToTest);
+                         double estimatedTotalTime = elapsed / (writeBytes / (double)maxBytesToTest);
                          double estimatedVerifyTime = estimatedTotalTime - elapsed;
                          verifyEta = $"~{FormatEta(estimatedVerifyTime)}";
                       }
                    }
                    else
                    {
-                      // Verify phase: PercentComplete is 50-100%
-                      // For verify, BytesProcessed is only data from verify phase, not cumulative
                       writeProgress = 100;
-                      verifyProgress = Math.Min(100, (p.PercentComplete - 50) * 2);
-
+                      writeBytes = maxBytesToTest;
+                      verifyBytes = Math.Min(maxBytesToTest, p.BytesProcessed);
+                      verifyProgress = maxBytesToTest == 0 ? 0 : Math.Min(100, verifyBytes * 100d / maxBytesToTest);
 
                       // === SMOOTH SPEED: Moving average of last 3 samples ===
                       verifySpeedSamples.Enqueue(p.CurrentThroughputMbps);
@@ -581,24 +601,79 @@ public class MainConsoleMenu
                          verifySpeedSamples.Dequeue();
                       verifySpeed = verifySpeedSamples.Average();  // Smooth!
 
-
-                      verifyBytes = p.BytesProcessed;
-
                       // Calculate ETA for verify phase
-                      double elapsed = (DateTime.UtcNow - startTime).TotalSeconds;
-                      double bytesPerSecond = elapsed > 0 ? p.BytesProcessed / elapsed : 0;
-                      long remainingBytes = maxBytesToTest - p.BytesProcessed;
+                      double elapsed = (DateTime.UtcNow - phaseStartTime).TotalSeconds;
+                      double bytesPerSecond = elapsed > 0 ? verifyBytes / elapsed : 0;
+                      long remainingBytes = maxBytesToTest - verifyBytes;
                       double etaSeconds = bytesPerSecond > 0 ? remainingBytes / bytesPerSecond : 0;
                       verifyEta = FormatEta(etaSeconds);
                    }
 
-                   // NOTE: SMART data refresh is DISABLED during test to avoid DbContext threading issues
-                   // SMART data will be refreshed AFTER the test completes
+                   if(DateTime.UtcNow - lastSmartUpdate >= SmartRefreshInterval)
+                   {
+                      await smartRefreshLock.WaitAsync();
+                      try
+                      {
+                         await smartDisplay.RefreshDataAsync(drive);
+                         var refreshedSmartData = smartDisplay.CurrentSmartData;
+                         if(refreshedSmartData != null)
+                         {
+                            smartData = refreshedSmartData;
+                         }
+                      }
+                      finally
+                      {
+                         smartRefreshLock.Release();
+                         lastSmartUpdate = DateTime.UtcNow;
+                      }
+                   }
 
-                   // Update progress display (both disk info and progress table)
-                   layout["Progress"].Update(CreateProgressTable(
+                   if(smartData?.Temperature > 0)
+                   {
+                      currentTemp = (int)Math.Round(smartData.Temperature, MidpointRounding.AwayFromZero);
+                      minTemp = Math.Min(minTemp, currentTemp);
+                      maxTemp = Math.Max(maxTemp, currentTemp);
+                   }
+
+                   if(smartData?.PowerOnHours > 0)
+                   {
+                      currentPowerOnHours = smartData.PowerOnHours;
+                   }
+
+                   overallPercent = p.PercentComplete;
+                   overallTestedBytes = (long)Math.Round(maxBytesToTest * overallPercent / 100.0);
+
+                   TimeSpan totalElapsed = DateTime.UtcNow - startTime;
+                   double overallEtaSeconds;
+                   if(currentPhase == "write" && writeBytes > 0)
+                   {
+                      double elapsed = (DateTime.UtcNow - phaseStartTime).TotalSeconds;
+                      double bytesPerSecond = elapsed > 0 ? writeBytes / elapsed : 0;
+                      long remainingBytes = (maxBytesToTest - writeBytes) + maxBytesToTest;
+                      overallEtaSeconds = bytesPerSecond > 0 ? remainingBytes / bytesPerSecond : 0;
+                   }
+                   else if(verifyBytes > 0)
+                   {
+                      double elapsed = (DateTime.UtcNow - phaseStartTime).TotalSeconds;
+                      double bytesPerSecond = elapsed > 0 ? verifyBytes / elapsed : 0;
+                      long remainingBytes = maxBytesToTest - verifyBytes;
+                      overallEtaSeconds = bytesPerSecond > 0 ? remainingBytes / bytesPerSecond : 0;
+                   }
+                   else
+                   {
+                      overallEtaSeconds = 0;
+                   }
+                   string overallEta = FormatEta(overallEtaSeconds);
+
+                   // Update progress display (disk info, temperature, overall gauge, progress table)
+                   layout["DiskInfo"].Update(Align.Center(CreateDiskInfoPanel(drive, smartData, maxBytesToTest, writeBytes, verifyBytes, currentTemp, currentPowerOnHours, PanelWidth)));
+                   layout["Temperature"].Update(Align.Center(CreateTemperaturePanel(smartData, currentTemp, minTemp, maxTemp, PanelWidth)));
+                   layout["Overall"].Update(Align.Center(TestVisualizationComponents.CreateOverallProgressGauge(
+                      writeProgress, verifyProgress, writeEta, verifyEta,
+                      maxBytesToTest, overallTestedBytes, totalElapsed, overallEta, PanelWidth)));
+                   layout["Progress"].Update(Align.Center(CreateProgressTable(
                       writeProgress, writeSpeed, writeBytes, writeEta, writeErrors,
-                      verifyProgress, verifySpeed, verifyBytes, verifyEta, verifyErrors));
+                      verifyProgress, verifySpeed, verifyBytes, verifyEta, verifyErrors)));
                    ctx.UpdateTarget(layout);
                 }
                 catch
@@ -616,11 +691,46 @@ public class MainConsoleMenu
                 try
                 {
                    await smartDisplay.RefreshDataAsync(drive);
+                   var refreshedSmartData = smartDisplay.CurrentSmartData;
+                   if(refreshedSmartData != null)
+                   {
+                      smartData = refreshedSmartData;
+                   }
                 }
                 catch { }
-                ctx.UpdateTarget(CreateProgressTable(
+
+                if(smartData?.Temperature > 0)
+                {
+                   currentTemp = (int)Math.Round(smartData.Temperature, MidpointRounding.AwayFromZero);
+                   minTemp = Math.Min(minTemp, currentTemp);
+                   maxTemp = Math.Max(maxTemp, currentTemp);
+                }
+
+                if(smartData?.PowerOnHours > 0)
+                {
+                   currentPowerOnHours = smartData.PowerOnHours;
+                }
+
+                overallPercent = 100;
+                writeBytes = maxBytesToTest;
+                verifyBytes = maxBytesToTest;
+                writeProgress = 100;
+                verifyProgress = 100;
+                overallTestedBytes = maxBytesToTest;
+
+                TimeSpan totalElapsed = DateTime.UtcNow - startTime;
+                double finalOverallEtaSeconds = 0;
+                string overallEta = FormatEta(finalOverallEtaSeconds);
+
+                layout["DiskInfo"].Update(Align.Center(CreateDiskInfoPanel(drive, smartData, maxBytesToTest, writeBytes, verifyBytes, currentTemp, currentPowerOnHours, PanelWidth)));
+                layout["Temperature"].Update(Align.Center(CreateTemperaturePanel(smartData, currentTemp, minTemp, maxTemp, PanelWidth)));
+                layout["Overall"].Update(Align.Center(TestVisualizationComponents.CreateOverallProgressGauge(
+                   writeProgress, verifyProgress, writeEta, verifyEta,
+                   maxBytesToTest, overallTestedBytes, totalElapsed, overallEta, PanelWidth)));
+                layout["Progress"].Update(Align.Center(CreateProgressTable(
                     100, writeSpeed, writeBytes, writeEta, writeErrors,
-                    100, verifySpeed, verifyBytes, verifyEta, verifyErrors));
+                    100, verifySpeed, verifyBytes, verifyEta, verifyErrors)));
+                ctx.UpdateTarget(layout);
              }
           });
 
@@ -648,7 +758,7 @@ public class MainConsoleMenu
    /// <summary>
    /// Creates a disk information panel for surface test display.
    /// </summary>
-   private static Panel CreateDiskInfoPanel(CoreDriveInfo drive, SmartaData? smartData, long totalBytesToTest)
+   private static Panel CreateDiskInfoPanel(CoreDriveInfo drive, SmartaData? smartData, long totalBytesToTest, long writeBytes, long verifyBytes, int currentTemp, int? currentPowerOnHours, int panelWidth)
    {
       var grid = new Grid();
       grid.AddColumn(new GridColumn().Width(20));
@@ -656,10 +766,13 @@ public class MainConsoleMenu
       grid.AddColumn(new GridColumn().Width(20));
       grid.AddColumn(new GridColumn().Width(30));
 
+      var writePercent = totalBytesToTest == 0 ? 0 : writeBytes * 100.0 / totalBytesToTest;
+      var verifyPercent = totalBytesToTest == 0 ? 0 : verifyBytes * 100.0 / totalBytesToTest;
+
       // Row 1: Model and Serial
       grid.AddRow(
           new Markup("[bold cyan]Model:[/]"),
-          new Markup($"[white]{Markup.Escape(smartData?.ModelNumber ?? drive.Name)}[/]"),
+          new Markup($"[white]{Markup.Escape(smartData?.DeviceModel ?? drive.Name)}[/]"),
           new Markup("[bold cyan]Sériové číslo:[/]"),
           new Markup($"[white]{Markup.Escape(smartData?.SerialNumber ?? "N/A")}[/]")
       );
@@ -669,17 +782,19 @@ public class MainConsoleMenu
           new Markup("[bold cyan]Celková kapacita:[/]"),
           new Markup($"[green]{FormatBytes(drive.TotalSize)}[/]"),
           new Markup("[bold cyan]Testováno:[/]"),
-          new Markup($"[yellow]{FormatBytes(totalBytesToTest)}[/] [dim]({totalBytesToTest * 100.0 / drive.TotalSize:F1}%)[/])
+          new Markup($"[yellow]Zápis {FormatBytes(writeBytes)}[/] [dim]({writePercent:F1}%)[/] | [yellow]Ověření {FormatBytes(verifyBytes)}[/] [dim]({verifyPercent:F1}%)[/]")
       );
 
       // Row 3: Temperature and Hours
-      if(smartData != null)
+      var hasTemp = currentTemp > 0;
+      var hoursText = currentPowerOnHours.HasValue ? FormatHours(currentPowerOnHours.Value) : "N/A";
+      if(smartData != null || hasTemp || currentPowerOnHours.HasValue)
       {
          grid.AddRow(
              new Markup("[bold cyan]Teplota:[/]"),
-             new Markup($"[white]{smartData.Temperature}°C[/]"),
+             new Markup(hasTemp ? $"[white]{currentTemp}°C[/]" : "[dim]N/A[/]"),
              new Markup("[bold cyan]Odpracováno:[/]"),
-             new Markup($"[white]{FormatHours(smartData.PowerOnHours)}[/]")
+             new Markup($"[white]{hoursText}[/]")
          );
       }
       else
@@ -692,11 +807,16 @@ public class MainConsoleMenu
          );
       }
 
-      return new Panel(grid)
-          .Border(BoxBorder.Rounded)
-          .BorderColor(Color.Cyan)
-          .Header("[bold cyan] INFORMACE O TESTOVANÉM DISKU [/")
-          .Padding(1, 0);
+      var panel = new Panel(grid)
+      {
+         Width = panelWidth
+      };
+
+      panel.Border(BoxBorder.Rounded);
+      panel.BorderColor(Color.Cyan);
+      panel.Header("[bold cyan] INFORMACE O TESTOVANÉM DISKU [/]");
+      panel.Padding(1, 0);
+      return panel;
    }
 
    /// <summary>
@@ -709,6 +829,7 @@ public class MainConsoleMenu
       Table table = new Table()
           .Border(TableBorder.Rounded)
           .Centered()
+          .Width(PanelWidth)
           .AddColumn(new TableColumn("Fáze").Width(20))
           .AddColumn(new TableColumn("Rychlost").Width(14))
           .AddColumn(new TableColumn("Data").Width(12))
@@ -745,6 +866,25 @@ public class MainConsoleMenu
           verifyProgress > 0 ? $"[yellow]{verifyEta}[/]" : "[dim]--:--:--[/]");
 
       return table;
+   }
+
+   private static Panel CreateTemperaturePanel(SmartaData? smartData, int currentTemp, int minTemp, int maxTemp, int panelWidth)
+   {
+      if(currentTemp <= 0)
+      {
+         var panel = new Panel(new Markup("[dim]SMART teplota není dostupná[/]"))
+         {
+            Width = panelWidth
+         };
+
+         panel.Border(BoxBorder.Rounded);
+         panel.BorderColor(Color.Cyan);
+         panel.Header("[bold cyan] TEPLOTA DISKU [/]");
+         panel.Padding(1, 0);
+         return panel;
+      }
+
+      return TestVisualizationComponents.CreateTemperatureGauge(currentTemp, minTemp, maxTemp, panelWidth);
    }
 
    /// <summary>
@@ -878,7 +1018,7 @@ public class MainConsoleMenu
          }
 
          int diskNumber = int.Parse(driveNumber);
-         string partitionLabel = AnsiConsole.Ask<string>("Zadejte název partice", "STORAGE");
+         string partitionLabel = AnsiConsole.Ask<string>("Zadejte názv partice", "STORAGE");
 
          // Use diskpart for Windows disk partitioning
          string diskpartScript = $@"list disk
@@ -1305,7 +1445,7 @@ assign";
       }
    }
 
-   private static string FormatBytes(long bytes)
+   internal static string FormatBytes(long bytes)
    {
       string[] sizes = { "B", "KB", "MB", "GB", "TB" };
       int i = 0;
@@ -1316,6 +1456,24 @@ assign";
          i++;
       }
       return $"{b:F1} {sizes[i]}";
+   }
+
+   private static string FormatHours(int hours)
+   {
+      if(hours < 24)
+         return $"{hours} h";
+
+      var days = hours / 24;
+      if(days < 30)
+         return $"{days} dní";
+
+      var months = days / 30;
+      if(months < 12)
+         return $"{months} měsíců";
+
+      var years = months / 12;
+      var remainingMonths = months % 12;
+      return remainingMonths > 0 ? $"{years} let {remainingMonths} měsíců" : $"{years} let";
    }
 
    /// <summary>
@@ -1368,7 +1526,7 @@ assign";
       AnsiConsole.MarkupLine("[dim]Aktuálně připojené disky:[/]");
       foreach(CoreDriveInfo drive in initialDrives)
       {
-         AnsiConsole.MarkupLine($"  • {Markup.Escape(drive.Name)} - {FormatBytes(drive.TotalSize)}");
+        AnsiConsole.MarkupLine($"  • {Markup.Escape(drive.Name)} - {FormatBytes(drive.TotalSize)}");
       }
       AnsiConsole.WriteLine();
       AnsiConsole.MarkupLine("[yellow]Stiskněte Enter když je disk odpojen...[/]");
@@ -1454,6 +1612,18 @@ assign";
       AnsiConsole.MarkupLine("[red]⚠️  Disk nebyl nalezen v aktuálním seznamu. Zkuste znovu.[/]", detectedDisk.Path);
       WaitForReturn();
       return null;
+   }
+
+   private static string FormatDrivePathForDisplay(string path)
+   {
+      if(string.IsNullOrWhiteSpace(path))
+         return string.Empty;
+
+      var physicalIndex = path.IndexOf("PhysicalDrive", StringComparison.OrdinalIgnoreCase);
+      if(physicalIndex >= 0)
+         return path[physicalIndex..];
+
+      return path.Replace("\\\\.\\", string.Empty).Replace("\\\\", string.Empty);
    }
 
 }

@@ -4,6 +4,7 @@ using Microsoft.Win32.SafeHandles;
 using System.Diagnostics;
 using System.Runtime.InteropServices;
 using System.Text;
+using System.Text.RegularExpressions;
 
 namespace DiskChecker.Infrastructure.Hardware;
 
@@ -202,6 +203,14 @@ public class RawDiskSanitizationExecutor : ISurfaceTestExecutor
             physicalDrivePath = $@"\\.\PHYSICALDRIVE{diskIndex.Value}";
          }
       }
+      else
+      {
+          var match = Regex.Match(drive.Path, @"PhysicalDrive(?<index>\d+)", RegexOptions.IgnoreCase);
+          if(match.Success && int.TryParse(match.Groups["index"].Value, out int diskIndex))
+          {
+             physicalDrivePath = $@"\\.\PHYSICALDRIVE{diskIndex}";
+          }
+       }
 
       if(string.IsNullOrEmpty(physicalDrivePath))
       {

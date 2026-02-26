@@ -122,7 +122,7 @@ public class LinuxSmartaProvider : ISmartaProvider
         var psi = new ProcessStartInfo
         {
             FileName = "bash",
-            Arguments = "-c \"ls /dev/sd* /dev/nvme* 2>/dev/null | head -20\"",
+            Arguments = "-c \"ls /dev/sd* /dev/nvme* 2>/dev/null\"",
             RedirectStandardOutput = true,
             UseShellExecute = false,
             CreateNoWindow = true

@@ -1,4 +1,5 @@
 using Spectre.Console;
+using System.Text;
 
 namespace DiskChecker.UI.Console;
 
@@ -10,7 +11,7 @@ public static class TestVisualizationComponents
     /// <summary>
     /// Creates a temperature gauge bar with color gradient (green→yellow→red) and temperature cursor.
     /// </summary>
-    public static Panel CreateTemperatureGauge(int currentTemp, int minTemp, int maxTemp)
+    public static Panel CreateTemperatureGauge(int currentTemp, int minTemp, int maxTemp, int panelWidth)
     {
         const int GAUGE_WIDTH = 40;
         const int MIN_SAFE = 20;    // Green
@@ -71,11 +72,15 @@ public static class TestVisualizationComponents
         var healthText = maxTemp < 40 ? "✓ OK" : maxTemp < 55 ? "⚠ VAROVÁNÍ" : "❌ KRITICKÉ";
         
         var panel = new Panel(grid)
-            .Border(BoxBorder.Rounded)
-            .BorderColor(healthColor == "green" ? Color.Green : healthColor == "yellow" ? Color.Yellow : Color.Red)
-            .Header($"[bold {healthColor}] STAV TEPLOTY - {healthText} [/]")
-            .Padding(1, 0);
-        
+        {
+            Width = panelWidth
+        };
+
+        panel.Border(BoxBorder.Rounded);
+        panel.BorderColor(healthColor == "green" ? Color.Green : healthColor == "yellow" ? Color.Yellow : Color.Red);
+        panel.Header($"[bold {healthColor}] STAV TEPLOTY - {healthText} [/]");
+        panel.Padding(1, 0);
+
         return panel;
     }
     
@@ -88,7 +93,10 @@ public static class TestVisualizationComponents
         string writeEta,
         string verifyEta,
         long totalBytes,
-        long testedBytes)
+        long testedBytes,
+        TimeSpan elapsed,
+        string overallEta,
+        int panelWidth)
     {
         const int GAUGE_WIDTH = 60;
         
@@ -124,6 +132,11 @@ public static class TestVisualizationComponents
             new Markup("[bold cyan]Ověření:[/]"),
             new Markup($"[yellow]{verifyProgress:F1}%[/] ETA: {verifyEta}")
         );
+
+        grid.AddRow(
+            new Markup("[bold cyan]Čas:[/]"),
+            new Markup($"[white]{FormatDuration(elapsed)}[/] [dim]Zbývá: {overallEta}[/]")
+        );
         
         grid.AddRow(
             new Markup("[bold cyan]Stav:[/]"),
@@ -131,11 +144,15 @@ public static class TestVisualizationComponents
         );
         
         var panel = new Panel(grid)
-            .Border(BoxBorder.Rounded)
-            .BorderColor(Color.Cyan)
-            .Header("[bold cyan] CELKOVÝ PRŮBĚH TESTU [/]")
-            .Padding(1, 0);
-        
+        {
+            Width = panelWidth
+        };
+
+        panel.Border(BoxBorder.Rounded);
+        panel.BorderColor(Color.Cyan);
+        panel.Header("[bold cyan] CELKOVÝ PRŮBĚH TESTU [/]");
+        panel.Padding(1, 0);
+
         return panel;
     }
     
@@ -212,5 +229,11 @@ public static class TestVisualizationComponents
             .Padding(1, 0);
         
         return panel;
+    }
+
+    private static string FormatDuration(TimeSpan elapsed)
+    {
+        var totalHours = (int)elapsed.TotalHours;
+        return $"{totalHours:00}:{elapsed.Minutes:00}:{elapsed.Seconds:00}";
     }
 }

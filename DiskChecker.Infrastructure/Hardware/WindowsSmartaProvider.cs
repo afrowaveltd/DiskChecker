@@ -255,11 +255,22 @@ $res | ConvertTo-Json -Compress";
             {
                 // Ultra-simple script that always works with PowerShell 5.1
                 var simpleScript = @"$result = @()
-Get-CimInstance Win32_DiskDrive | ForEach-Object {
-    $result += [PSCustomObject]@{
-        DeviceID = $_.DeviceID
-        Model = $_.Model
-        Size = $_.Size
+if (Get-Command Get-Disk -ErrorAction SilentlyContinue) {
+    Get-Disk | ForEach-Object {
+        $result += [PSCustomObject]@{
+            DeviceID = ""\\\\.\\PhysicalDrive$($_.Number)""
+            Model = $_.FriendlyName
+            Size = $_.Size
+        }
+    }
+}
+if ($result.Count -eq 0) {
+    Get-CimInstance Win32_DiskDrive | ForEach-Object {
+        $result += [PSCustomObject]@{
+            DeviceID = $_.DeviceID
+            Model = $_.Model
+            Size = $_.Size
+        }
     }
 }
 $result | ConvertTo-Json";
