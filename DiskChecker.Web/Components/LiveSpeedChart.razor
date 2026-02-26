@@ -15,7 +15,9 @@
     public bool IsRunning { get; set; }
 
     private ElementReference chartCanvas;
+#pragma warning disable CS0649 // Field is assigned via JSInterop
     private IJSObjectReference? module;
+#pragma warning restore CS0649
     private dynamic? chartInstance;
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
@@ -171,7 +173,7 @@ canvas {
     max-height: 300px;
 }
 
-@media (prefers-color-scheme: dark) {
+@@media (prefers-color-scheme: dark) {
     .live-speed-chart {
         background: #2d2d2d;
     }

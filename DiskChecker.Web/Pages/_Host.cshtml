@@ -19,6 +19,20 @@
     </app>
 
     <script src="_framework/blazor.server.js"></script>
+    
+    <!-- Theme Initialization Script -->
+    <script>
+        // Initialize theme from localStorage or system preference
+        (function() {
+            const storedTheme = localStorage.getItem('darkMode');
+            const prefersDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+            const isDarkMode = storedTheme ? storedTheme === 'True' || storedTheme === 'true' : prefersDark;
+            
+            document.documentElement.setAttribute('data-theme', isDarkMode ? 'dark' : 'light');
+            console.log('Theme initialized:', isDarkMode ? 'dark' : 'light');
+        })();
+    </script>
+    
     <!-- Chart.js Interop Script -->
     <script>
         window.chartInterop = {

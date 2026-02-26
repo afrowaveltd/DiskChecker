@@ -42,10 +42,41 @@ builder.Services.AddScoped<TestCompletionNotificationService>(); // NEW: Email n
 
 var app = builder.Build();
 
+// Database initialization
 using (var scope = app.Services.CreateScope())
 {
     var context = scope.ServiceProvider.GetRequiredService<DiskCheckerDbContext>();
     context.Database.EnsureCreated();
+}
+
+// Admin privilege check
+if (System.Runtime.InteropServices.RuntimeInformation.IsOSPlatform(System.Runtime.InteropServices.OSPlatform.Windows))
+{
+    var isAdmin = new System.Security.Principal.WindowsPrincipal(System.Security.Principal.WindowsIdentity.GetCurrent())
+        .IsInRole(System.Security.Principal.WindowsBuiltInRole.Administrator);
+    
+    if (isAdmin)
+    {
+        Console.ForegroundColor = ConsoleColor.Yellow;
+        Console.WriteLine("╔════════════════════════════════════════════════════════════════╗");
+        Console.WriteLine("║  ⚠️  VAROVÁNÍ: Aplikace běží s ADMIN právy                   ║");
+        Console.WriteLine("║                                                                ║");
+        Console.WriteLine("║  Pro správnou funkci webového rozhraní spusťte browser        ║");
+        Console.WriteLine("║  TAKÉ JAKO ADMIN nebo spusťte aplikaci BEZ admin práv.        ║");
+        Console.WriteLine("║                                                                ║");
+        Console.WriteLine("║  Důvod: Windows UAC blokuje komunikaci mezi různými           ║");
+        Console.WriteLine("║  privilegovanými procesy (app=admin, browser=user).           ║");
+        Console.WriteLine("║                                                                ║");
+        Console.WriteLine("║  Řešení:                                                       ║");
+        Console.WriteLine("║  1. Spusťte browser jako admin:                               ║");
+        Console.WriteLine("║     > Start-Process msedge http://localhost:5128 -Verb RunAs  ║");
+        Console.WriteLine("║                                                                ║");
+        Console.WriteLine("║  2. NEBO spusťte aplikaci BEZ admin práv                      ║");
+        Console.WriteLine("║     (testy vyžadující admin práva pak budou vyžadovat UAC)    ║");
+        Console.WriteLine("╚════════════════════════════════════════════════════════════════╝");
+        Console.ResetColor();
+        Console.WriteLine();
+    }
 }
 
 if (!app.Environment.IsDevelopment())
@@ -59,7 +90,7 @@ app.UseStaticFiles();
 app.UseRouting();
 
 app.MapBlazorHub();
-app.MapHub<DiskTestHub>("/hubs/disk-test"); // NEW: SignalR hub endpoint
+app.MapHub<DiskTestHub>("/hubs/disk-test");
 app.MapFallbackToPage("/_Host");
 
 app.Run();

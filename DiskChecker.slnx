@@ -1,7 +1,21 @@
 <Solution>
-  <Project Path="DiskChecker.Application/DiskChecker.Application.csproj" />
-  <Project Path="DiskChecker.Core/DiskChecker.Core.csproj" />
-  <Project Path="DiskChecker.Infrastructure/DiskChecker.Infrastructure.csproj" />
-  <Project Path="DiskChecker.UI/DiskChecker.UI.csproj" />
-  <Project Path="DiskChecker.Web/DiskChecker.Web.csproj" />
+  <Configurations>
+    <Platform Name="Any CPU" />
+    <Platform Name="x64" />
+  </Configurations>
+  <Project Path="DiskChecker.Application/DiskChecker.Application.csproj">
+    <Platform Solution="*|x64" Project="x64" />
+  </Project>
+  <Project Path="DiskChecker.Core/DiskChecker.Core.csproj">
+    <Platform Solution="*|x64" Project="x64" />
+  </Project>
+  <Project Path="DiskChecker.Infrastructure/DiskChecker.Infrastructure.csproj">
+    <Platform Solution="*|x64" Project="x64" />
+  </Project>
+  <Project Path="DiskChecker.UI/DiskChecker.UI.csproj">
+    <Platform Solution="*|x64" Project="x64" />
+  </Project>
+  <Project Path="DiskChecker.Web/DiskChecker.Web.csproj">
+    <Platform Solution="*|x64" Project="x64" />
+  </Project>
 </Solution>

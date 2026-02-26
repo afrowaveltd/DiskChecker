@@ -15,6 +15,7 @@
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <NoWarn>CA1822;CA1860;CA1861;CA1862;CA1305;CA1707;CA1859</NoWarn>
+    <Platforms>AnyCPU;x64</Platforms>
   </PropertyGroup>
 
 </Project>

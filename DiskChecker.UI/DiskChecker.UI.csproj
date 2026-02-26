@@ -1,4 +1,4 @@
-<Project Sdk="Microsoft.NET.Sdk">
+﻿<Project Sdk="Microsoft.NET.Sdk">
 
   <ItemGroup>
     <ProjectReference Include="..\DiskChecker.Application\DiskChecker.Application.csproj" />
@@ -24,7 +24,26 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <NoWarn>CA1822;CA1860;CA1861;CA1862;CA1305</NoWarn>
+    
+    <!-- Application Icon -->
+    <ApplicationIcon>Resources\icon.ico</ApplicationIcon>
+    <Win32Resource></Win32Resource>
+    
+    <!-- Multi-platform support -->
+    <RuntimeIdentifiers>win-x64;linux-x64;linux-arm64;osx-x64;osx-arm64</RuntimeIdentifiers>
+    
+    <!-- Publish to timestamped folder -->
+    <PublishDir Condition="'$(PublishDir)' == ''">$(MSBuildProjectDirectory)\..\publish\$(Configuration)-$([System.DateTime]::Now.ToString('yyyyMMdd-HHmmss'))\</PublishDir>
   </PropertyGroup>
+
+  <ItemGroup>
+    <None Update="Resources\icon.svg">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Update="Resources\icon-dark.svg">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+  </ItemGroup>
 
 </Project>
 

@@ -7,11 +7,27 @@ namespace DiskChecker.Application.Services;
 /// <summary>
 /// Service for sending test completion notifications via email.
 /// </summary>
-public class TestCompletionNotificationService
+public partial class TestCompletionNotificationService
 {
     private readonly IEmailSender _emailSender;
     private readonly IEmailSettingsService _emailSettingsService;
     private readonly ILogger<TestCompletionNotificationService> _logger;
+
+    // LoggerMessage delegates for better performance
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Email address is empty, skipping notification")]
+    private partial void LogEmptyEmail();
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Test completion notification sent to {RecipientEmail}")]
+    private partial void LogNotificationSent(string recipientEmail);
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "Failed to send test completion notification to {RecipientEmail}")]
+    private partial void LogNotificationFailed(Exception ex, string recipientEmail);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Test completion notification with report sent to {RecipientEmail}")]
+    private partial void LogNotificationWithReportSent(string recipientEmail);
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "Failed to send test completion notification with report to {RecipientEmail}")]
+    private partial void LogNotificationWithReportFailed(Exception ex, string recipientEmail);
 
     public TestCompletionNotificationService(
         IEmailSender emailSender,
@@ -34,7 +50,7 @@ public class TestCompletionNotificationService
     {
         if (string.IsNullOrWhiteSpace(recipientEmail))
         {
-            _logger.LogWarning("Email address is empty, skipping notification");
+            LogEmptyEmail();
             return;
         }
 
@@ -53,11 +69,11 @@ public class TestCompletionNotificationService
 
             await _emailSender.SendAsync(message, cancellationToken);
 
-            _logger.LogInformation("Test completion notification sent to {recipientEmail}", recipientEmail);
+            LogNotificationSent(recipientEmail);
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Failed to send test completion notification to {recipientEmail}", recipientEmail);
+            LogNotificationFailed(ex, recipientEmail);
         }
     }
 
@@ -73,7 +89,7 @@ public class TestCompletionNotificationService
     {
         if (string.IsNullOrWhiteSpace(recipientEmail))
         {
-            _logger.LogWarning("Email address is empty, skipping notification");
+            LogEmptyEmail();
             return;
         }
 
@@ -92,11 +108,11 @@ public class TestCompletionNotificationService
 
             await _emailSender.SendAsync(message, cancellationToken);
 
-            _logger.LogInformation("Test completion notification with report sent to {recipientEmail}", recipientEmail);
+            LogNotificationWithReportSent(recipientEmail);
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Failed to send test completion notification with report to {recipientEmail}", recipientEmail);
+            LogNotificationWithReportFailed(ex, recipientEmail);
         }
     }
 

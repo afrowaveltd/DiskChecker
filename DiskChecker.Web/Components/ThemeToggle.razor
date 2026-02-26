@@ -17,17 +17,32 @@
 @code {
     private bool IsDarkMode = false;
 
-    protected override async Task OnInitializedAsync()
+    protected override async Task OnAfterRenderAsync(bool firstRender)
     {
-        // Check system preference
-        try
+        if (firstRender)
         {
-            IsDarkMode = await JS.InvokeAsync<bool>("eval", 
-                "window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches");
-        }
-        catch
-        {
-            IsDarkMode = false;
+            // Check localStorage first, then system preference
+            try
+            {
+                var stored = await JS.InvokeAsync<string>("localStorage.getItem", "darkMode");
+                if (!string.IsNullOrEmpty(stored))
+                {
+                    IsDarkMode = bool.Parse(stored);
+                }
+                else
+                {
+                    IsDarkMode = await JS.InvokeAsync<bool>("eval", 
+                        "window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches");
+                }
+                
+                // Apply theme
+                await ApplyThemeAsync();
+                StateHasChanged();
+            }
+            catch
+            {
+                IsDarkMode = false;
+            }
         }
     }
 
@@ -35,19 +50,31 @@
     {
         IsDarkMode = !IsDarkMode;
         
-        // Store preference in localStorage
+        // Store preference and apply theme
         try
         {
             await JS.InvokeVoidAsync("localStorage.setItem", "darkMode", IsDarkMode.ToString());
-            
-            // Note: CSS media query is preferred, but you can also use JS to apply class
+            await ApplyThemeAsync();
+        }
+        catch
+        {
+            // Ignore JS errors
+        }
+    }
+
+    private async Task ApplyThemeAsync()
+    {
+        try
+        {
             if (IsDarkMode)
             {
-                await JS.InvokeVoidAsync("document.documentElement.setAttribute", "data-theme", "dark");
+                await JS.InvokeVoidAsync("eval", 
+                    "document.documentElement.setAttribute('data-theme', 'dark')");
             }
             else
             {
-                await JS.InvokeVoidAsync("document.documentElement.setAttribute", "data-theme", "light");
+                await JS.InvokeVoidAsync("eval", 
+                    "document.documentElement.setAttribute('data-theme', 'light')");
             }
         }
         catch
@@ -79,7 +106,7 @@
     background: #357ABD;
 }
 
-@media (prefers-color-scheme: dark) {
+@@media (prefers-color-scheme: dark) {
     .theme-button {
         background: #6bb6ff;
         color: #1a1a1a;

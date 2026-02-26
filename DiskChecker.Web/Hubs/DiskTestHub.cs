@@ -7,9 +7,21 @@ namespace DiskChecker.Web.Hubs;
 /// SignalR hub for real-time disk test progress updates.
 /// Enables push notifications instead of polling.
 /// </summary>
-public class DiskTestHub : Hub
+public partial class DiskTestHub : Hub
 {
     private readonly ILogger<DiskTestHub> _logger;
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Client connected: {ConnectionId}")]
+    private partial void LogClientConnected(string connectionId);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Client disconnected: {ConnectionId}")]
+    private partial void LogClientDisconnected(string connectionId);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Client {ConnectionId} joined test {TestId}")]
+    private partial void LogClientJoinedTest(string connectionId, string testId);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Client {ConnectionId} left test {TestId}")]
+    private partial void LogClientLeftTest(string connectionId, string testId);
 
     public DiskTestHub(ILogger<DiskTestHub> logger)
     {
@@ -18,13 +30,13 @@ public class DiskTestHub : Hub
 
     public override async Task OnConnectedAsync()
     {
-        _logger.LogInformation("Client connected: {connectionId}", Context.ConnectionId);
+        LogClientConnected(Context.ConnectionId);
         await base.OnConnectedAsync();
     }
 
     public override async Task OnDisconnectedAsync(Exception? exception)
     {
-        _logger.LogInformation("Client disconnected: {connectionId}", Context.ConnectionId);
+        LogClientDisconnected(Context.ConnectionId);
         await base.OnDisconnectedAsync(exception);
     }
 
@@ -34,7 +46,7 @@ public class DiskTestHub : Hub
     public async Task JoinTestRoom(string testId)
     {
         await Groups.AddToGroupAsync(Context.ConnectionId, $"test-{testId}");
-        _logger.LogInformation("Client {connectionId} joined test {testId}", Context.ConnectionId, testId);
+        LogClientJoinedTest(Context.ConnectionId, testId);
     }
 
     /// <summary>
@@ -43,7 +55,7 @@ public class DiskTestHub : Hub
     public async Task LeaveTestRoom(string testId)
     {
         await Groups.RemoveFromGroupAsync(Context.ConnectionId, $"test-{testId}");
-        _logger.LogInformation("Client {connectionId} left test {testId}", Context.ConnectionId, testId);
+        LogClientLeftTest(Context.ConnectionId, testId);
     }
 
     /// <summary>
@@ -75,10 +87,19 @@ public class DiskTestHub : Hub
 /// <summary>
 /// Service for broadcasting test updates via SignalR.
 /// </summary>
-public class TestProgressBroadcaster
+public partial class TestProgressBroadcaster
 {
     private readonly IHubContext<DiskTestHub> _hubContext;
     private readonly ILogger<TestProgressBroadcaster> _logger;
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "Error broadcasting progress for test {TestId}")]
+    private partial void LogBroadcastProgressError(Exception ex, string testId);
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "Error broadcasting completion for test {TestId}")]
+    private partial void LogBroadcastCompleteError(Exception ex, string testId);
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "Error broadcasting error for test {TestId}")]
+    private partial void LogBroadcastErrorError(Exception ex, string testId);
 
     public TestProgressBroadcaster(IHubContext<DiskTestHub> hubContext, ILogger<TestProgressBroadcaster> logger)
     {
@@ -94,7 +115,7 @@ public class TestProgressBroadcaster
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error broadcasting progress for test {testId}", testId);
+            LogBroadcastProgressError(ex, testId);
         }
     }
 
@@ -106,7 +127,7 @@ public class TestProgressBroadcaster
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error broadcasting completion for test {testId}", testId);
+            LogBroadcastCompleteError(ex, testId);
         }
     }
 
@@ -118,7 +139,7 @@ public class TestProgressBroadcaster
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error broadcasting error for test {testId}", testId);
+            LogBroadcastErrorError(ex, testId);
         }
     }
 }

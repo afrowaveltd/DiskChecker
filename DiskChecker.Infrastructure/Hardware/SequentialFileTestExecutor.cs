@@ -256,13 +256,30 @@ public class SequentialFileTestExecutor : ISurfaceTestExecutor
                         // Verify content (after header should be zeros)
                         if(fileStream.Position > HeaderSize)
                         {
+                           int nonZeroCount = 0;
+                           long firstErrorOffset = -1;
+                           
                            for(int j = 0; j < bytesRead; j++)
                            {
                               if(buffer[j] != 0)
                               {
-                                 result.ErrorCount++;
-                                 break;
+                                 nonZeroCount++;
+                                 if(firstErrorOffset < 0)
+                                 {
+                                    firstErrorOffset = fileStream.Position - bytesRead + j;
+                                 }
                               }
+                           }
+                           
+                           // Report error ONLY if there are non-zero bytes
+                           if(nonZeroCount > 0)
+                           {
+                              result.ErrorCount++;
+                              if(result.Notes == null || !result.Notes.Contains("Detekováno"))
+                              {
+                                 result.Notes = $"Detekováno {nonZeroCount} non-zero byte(s) v souboru {fileName} na offsetu {firstErrorOffset}. ";
+                              }
+                              // Don't break - continue verification to get full error count
                            }
                         }
 
@@ -304,8 +321,38 @@ public class SequentialFileTestExecutor : ISurfaceTestExecutor
             }
          }
 
-         result.Notes = $"Hotovo. Souborů: {filesWritten} (ověřeno {filesVerified}). Chyb: {result.ErrorCount}";
-         result.SecureErasePerformed = true;
+         // Build detailed final notes
+         var finalNotes = new System.Text.StringBuilder();
+         finalNotes.AppendLine($"✓ Test dokončen úspěšně");
+         finalNotes.AppendLine($"📊 Statistiky:");
+         finalNotes.AppendLine($"  • Souborů vytvořeno: {filesWritten}");
+         finalNotes.AppendLine($"  • Souborů ověřeno: {filesVerified}");
+         finalNotes.AppendLine($"  • Zapsáno: {FormatBytes(totalBytesWritten)}");
+         finalNotes.AppendLine($"  • Přečteno: {FormatBytes(totalBytesRead)}");
+         finalNotes.AppendLine($"  • Celkem testováno: {FormatBytes(totalBytesWritten + totalBytesRead)}");
+         
+         if(result.ErrorCount > 0)
+         {
+            finalNotes.AppendLine();
+            finalNotes.AppendLine($"⚠️ VAROVÁNÍ:");
+            finalNotes.AppendLine($"  • Počet chybových bloků: {result.ErrorCount}");
+            finalNotes.AppendLine($"  • Typ chyby: Non-zero byty při ověřování (data nebyla správně zapsána jako nuly)");
+            finalNotes.AppendLine($"  • Možné příčiny:");
+            finalNotes.AppendLine($"    - Vadné sektory na disku");
+            finalNotes.AppendLine($"    - Cache problém systému");
+            finalNotes.AppendLine($"    - Problém s ovladačem disku");
+            if(result.Notes?.Contains("Detekováno") == true)
+            {
+               finalNotes.AppendLine($"  • Detail první chyby: {result.Notes}");
+            }
+         }
+         else
+         {
+            finalNotes.AppendLine();
+            finalNotes.AppendLine($"✅ VÝSLEDEK: Žádné chyby nenalezeny - disk je v pořádku");
+         }
+         
+         result.Notes = finalNotes.ToString();
       }
       catch(Exception ex)
       {
@@ -450,19 +497,36 @@ public class SequentialFileTestExecutor : ISurfaceTestExecutor
    {
       try
       {
-         // Check if already mounted
-         if(drive.Path.Length == 3 && char.IsLetter(drive.Path[0]) && drive.Path[1] == ':')
+         // Check if already mounted (drive letter like "D:" or "D:\")
+         if(drive.Path.Length >= 2 && char.IsLetter(drive.Path[0]) && drive.Path[1] == ':')
          {
             var driveLetter = drive.Path[0].ToString().ToUpperInvariant();
-            result.Notes = $"✓ Disk je již připojen na {driveLetter}: - přeskakuji formátování";
-            System.Diagnostics.Debug.WriteLine($"Drive already mounted: {driveLetter}");
-            return driveLetter + ":";
+            var drivePath = driveLetter + ":";
+            
+            // Verify drive exists and is accessible
+            try
+            {
+               var driveInfo = new DriveInfo(drivePath);
+               if (driveInfo.IsReady)
+               {
+                  result.Notes = $"✓ Disk je již připojen na {driveLetter}: - používám pro test";
+                  System.Diagnostics.Debug.WriteLine($"Drive already mounted and ready: {driveLetter}");
+                  return drivePath;
+               }
+            }
+            catch (Exception ex)
+            {
+               result.Notes = $"CHYBA: Disk {driveLetter}: není přístupný - {ex.Message}";
+               System.Diagnostics.Debug.WriteLine($"Drive {driveLetter}: not accessible: {ex.Message}");
+               return null;
+            }
          }
 
+         // If path is physical drive (\\.\PHYSICALDRIVE2), extract number
          var driveNumber = new string(drive.Path.Where(char.IsDigit).ToArray());
          if(string.IsNullOrEmpty(driveNumber))
          {
-            result.Notes = "CHYBA: Nelze určit číslo disku";
+            result.Notes = $"CHYBA: Nelze určit číslo disku z cesty: {drive.Path}. Podporované formáty: 'D:' nebo '\\\\.\\PHYSICALDRIVE2'";
             return null;
          }
 
@@ -625,5 +689,20 @@ exit";
          var x when x.StartsWith("SANDISK", StringComparison.Ordinal) => "SanDisk",
          _ => null
       };
+   }
+
+   private static string FormatBytes(long byteCount)
+   {
+      string[] suffixes = { "B", "kB", "MB", "GB", "TB" };
+      double size = byteCount;
+      int order = 0;
+
+      while(size >= 1024 && order < suffixes.Length - 1)
+      {
+         order++;
+         size = size / 1024;
+      }
+
+      return $"{size:0.##} {suffixes[order]}";
    }
 }

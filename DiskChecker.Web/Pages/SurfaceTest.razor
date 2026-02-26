@@ -15,6 +15,21 @@
 
 <h3>Povrchový test disku</h3>
 
+@if (!IsRunningAsAdmin && SelectedProfile == SurfaceTestProfile.FullDiskSanitization)
+{
+    <div class="warning-box" style="margin-bottom: 20px;">
+        <strong>⚠️ VAROVÁNÍ: Nedostatečná oprávnění</strong>
+        <p>Aplikace NEBĚŽÍ s administrátorskými právy.</p>
+        <p>Pro test "Kompletní vymazání disku" jsou vyžadována admin práva pro:</p>
+        <ul>
+            <li>Formátování disku pomocí diskpart</li>
+            <li>Přímý přístup k diskovým sektorům</li>
+            <li>Vymazání všech dat</li>
+        </ul>
+        <p><strong>Řešení:</strong> Restartujte aplikaci jako administrátor nebo vyberte jiný profil testu.</p>
+    </div>
+}
+
 @if (IsLoading)
 {
     <p>Načítám data...</p>
@@ -62,17 +77,33 @@ else
                     <select @bind="SelectedProfile" disabled="@IsRunning">
                         <option value="@SurfaceTestProfile.HddFull">HDD - Úplný test (zápis + ověřování)</option>
                         <option value="@SurfaceTestProfile.SsdQuick">SSD - Rychlý test (čtení)</option>
+                        <option value="@SurfaceTestProfile.FullDiskSanitization">⚠️ Kompletní vymazání disku (sanitizace)</option>
                     </select>
                 </div>
 
-                @if (SelectedProfile == SurfaceTestProfile.HddFull)
+                @if (SelectedProfile == SurfaceTestProfile.HddFull || SelectedProfile == SurfaceTestProfile.FullDiskSanitization)
                 {
-                    <div class="form-group">
+                    <div class="form-group warning-box">
                         <label>
-                            <input type="checkbox" @bind="ConfirmDestructive" disabled="@IsRunning" />
-                            ⚠️ Potvrzuji smazání dat - test PŘEPÍŠE všechna data na disku!
+                            <input type="checkbox" @bind="ConfirmDestructive" @bind:event="onchange" disabled="@IsRunning" />
+                            <span class="warning-text">⚠️ VAROVÁNÍ: Tento test SMAŽE všechna data na vybraném disku! Potvrďte, že rozumíte riziku.</span>
                         </label>
                     </div>
+
+                    @if (SelectedProfile == SurfaceTestProfile.FullDiskSanitization)
+                    {
+                        <div class="info-box">
+                            <strong>ℹ️ Kompletní vymazání disku</strong>
+                            <p>Tento režim provede:</p>
+                            <ul>
+                                <li>Úplné přepsání všech dat nulovými hodnotami</li>
+                                <li>Ověření všech sektorů</li>
+                                <li>Detekci vadných sektorů</li>
+                                <li>Příprava disku pro prodej nebo likvidaci</li>
+                            </ul>
+                            <p class="warning-text">⚠️ Tento proces může trvat několik hodin v závislosti na velikosti disku!</p>
+                        </div>
+                    }
                 }
 
                 <button class="btn btn-primary" @onclick="RunTestAsync" disabled="@IsRunDisabled">
@@ -183,6 +214,19 @@ else
     private System.Threading.Timer? _smartUpdateTimer;
     private List<SurfaceTestSample> SamplesList = new();
 
+    private bool IsRunningAsAdmin
+    {
+        get
+        {
+            if (!System.Runtime.InteropServices.RuntimeInformation.IsOSPlatform(System.Runtime.InteropServices.OSPlatform.Windows))
+                return true; // On Linux, assume sufficient privileges
+
+            var identity = System.Security.Principal.WindowsIdentity.GetCurrent();
+            var principal = new System.Security.Principal.WindowsPrincipal(identity);
+            return principal.IsInRole(System.Security.Principal.WindowsBuiltInRole.Administrator);
+        }
+    }
+
     protected override async Task OnInitializedAsync()
     {
         Drives = await DiskCheckerService.ListDrivesAsync();
@@ -215,7 +259,7 @@ else
     }
 
     private bool IsRunDisabled => IsRunning || string.IsNullOrWhiteSpace(SelectedPath) ||
-        (SelectedProfile == SurfaceTestProfile.HddFull && !ConfirmDestructive);
+        ((SelectedProfile == SurfaceTestProfile.HddFull || SelectedProfile == SurfaceTestProfile.FullDiskSanitization) && !ConfirmDestructive);
 
     private async Task RunTestAsync()
     {

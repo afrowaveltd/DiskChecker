@@ -1,6 +1,7 @@
+@using DiskChecker.Core.Models
 @using DiskChecker.Application.Services
 @using Microsoft.Extensions.Logging
-@inject TestCompletionNotificationService NotificationService
+@inject DiskChecker.Application.Services.TestCompletionNotificationService NotificationService
 @inject ILogger<TestNotificationPanel> Logger
 
 <div class="notification-panel">
@@ -224,7 +225,7 @@
     border-left: 4px solid #17a2b8;
 }
 
-@media (prefers-color-scheme: dark) {
+@@media (prefers-color-scheme: dark) {
     .notification-panel {
         background: #2d2d2d;
         color: #eee;

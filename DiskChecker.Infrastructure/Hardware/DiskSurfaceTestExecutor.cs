@@ -278,7 +278,7 @@ public class DiskSurfaceTestExecutor : ISurfaceTestExecutor
                 {
                     ReportProgress(
                         bytesRead, maxBytesToTest, sampleStopwatch, samples,
-                        progress, result, ref peak, ref min, phasePercent: 75);
+                        progress, result, ref peak, ref min, phasePercent: 75, bytesProcessedPreviousPhases: bytesWritten);
 
                     lastProgressReport = DateTime.UtcNow;
                     sampleStopwatch.Restart();
@@ -430,7 +430,7 @@ public class DiskSurfaceTestExecutor : ISurfaceTestExecutor
                 {
                     ReportProgress(
                         bytesRead, maxBytesToTest, sampleStopwatch, samples,
-                        progress, result, ref peak, ref min, phasePercent: 75);
+                        progress, result, ref peak, ref min, phasePercent: 75, bytesProcessedPreviousPhases: bytesWritten);
 
                     lastProgressReport = DateTime.UtcNow;
                     sampleStopwatch.Restart();
@@ -474,24 +474,25 @@ public class DiskSurfaceTestExecutor : ISurfaceTestExecutor
     }
 
     private static void ReportProgress(
-        long bytesProcessed,
-        long totalBytes,
+        long bytesProcessedThisPhase,
+        long totalBytesThisPhase,
         Stopwatch sampleStopwatch,
         List<SurfaceTestSample> samples,
         IProgress<SurfaceTestProgress>? progress,
         SurfaceTestResult result,
         ref double peak,
         ref double min,
-        double phasePercent)
+        double phasePercent,
+        long? bytesProcessedPreviousPhases = null)  // NEW: accumulate from previous phases
     {
         if (sampleStopwatch.Elapsed.TotalSeconds <= 0)
             return;
 
-        var throughput = bytesProcessed / (1024d * 1024d) / sampleStopwatch.Elapsed.TotalSeconds;
+        var throughput = bytesProcessedThisPhase / (1024d * 1024d) / sampleStopwatch.Elapsed.TotalSeconds;
 
         samples.Add(new SurfaceTestSample
         {
-            OffsetBytes = bytesProcessed,
+            OffsetBytes = bytesProcessedThisPhase,
             BlockSizeBytes = 4096,
             ThroughputMbps = Math.Round(throughput, 2),
             TimestampUtc = DateTime.UtcNow,
@@ -501,12 +502,16 @@ public class DiskSurfaceTestExecutor : ISurfaceTestExecutor
         peak = Math.Max(peak, throughput);
         min = Math.Min(min, throughput);
 
-        var percentComplete = Math.Max(0, Math.Min(100, (bytesProcessed * phasePercent / totalBytes)));
-
+        var percentComplete = Math.Max(0, Math.Min(100, (bytesProcessedThisPhase * phasePercent / totalBytesThisPhase)));
+        
+        // For multi-phase tests, report ONLY current phase bytes for UI display
+        // The UI should show "Fáze 2: XXX GB" not total accumulated bytes
+        long reportedBytes = bytesProcessedThisPhase;
+        
         progress?.Report(new SurfaceTestProgress
         {
             TestId = Guid.Parse(result.TestId),
-            BytesProcessed = bytesProcessed,
+            BytesProcessed = reportedBytes,  // Report ONLY this phase bytes
             PercentComplete = percentComplete,
             CurrentThroughputMbps = Math.Round(throughput, 2),
             TimestampUtc = DateTime.UtcNow

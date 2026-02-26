@@ -20,6 +20,7 @@ public class SurfaceTestExecutorFactory
     /// <summary>
     /// Creates a surface test executor appropriate for the given request.
     /// Uses low-level disk access (no OS buffering) by default for accurate testing.
+    /// For FullDiskSanitization, uses raw disk sanitization executor.
     /// </summary>
     /// <param name="request">The surface test request with profile information.</param>
     /// <returns>An appropriate ISurfaceTestExecutor implementation.</returns>
@@ -27,7 +28,13 @@ public class SurfaceTestExecutorFactory
     {
         ArgumentNullException.ThrowIfNull(request);
         
-        // Use low-level disk surface test for all profiles (no OS buffering)
+        // For full disk sanitization, use raw disk sanitization executor
+        if (request.Profile == SurfaceTestProfile.FullDiskSanitization)
+        {
+            return new RawDiskSanitizationExecutor(_smartaProvider);
+        }
+        
+        // Use low-level disk surface test for all other profiles (no OS buffering)
         // This ensures accurate throughput measurements and complete surface verification
         return new DiskSurfaceTestExecutor(_smartaProvider);
     }
