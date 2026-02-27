@@ -672,8 +672,8 @@ public class MainConsoleMenu
                       currentPowerOnHours = smartData.PowerOnHours;
                    }
 
-                   // OverallTestedBytes = write bytes + verify bytes
-                   overallTestedBytes = writeBytes + verifyBytes;
+                   // Stav má při ověřování začínat od nuly, ne sčítat write + verify
+                   overallTestedBytes = currentPhase == "verify" ? verifyBytes : writeBytes;
 
                    TimeSpan totalElapsed = DateTime.UtcNow - startTime;
                    double overallEtaSeconds;
@@ -1613,6 +1613,10 @@ assign";
    }
 
 }
+
+
+
+
 
 
 
