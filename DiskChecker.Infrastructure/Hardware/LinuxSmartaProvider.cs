@@ -287,4 +287,41 @@ public class LinuxSmartaProvider : ISmartaProvider
             _isSmartctlInstalled = false;
         }
     }
+
+    /// <inheritdoc />
+    public async Task<int?> GetTemperatureOnlyAsync(string drivePath, CancellationToken cancellationToken = default)
+    {
+        // On Linux, we can use smartctl with -A flag to get just attributes (faster)
+        // Or parse /sys/class/hwmon if available
+        try
+        {
+            var psi = new ProcessStartInfo
+            {
+                FileName = "smartctl",
+                Arguments = $"-A {drivePath} --json=c",
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                UseShellExecute = false,
+                CreateNoWindow = true
+            };
+
+            using var process = Process.Start(psi);
+            if (process == null) return null;
+
+            var output = await process.StandardOutput.ReadToEndAsync(cancellationToken);
+            await process.WaitForExitAsync(cancellationToken);
+
+            if (string.IsNullOrWhiteSpace(output))
+                return null;
+
+            var data = SmartctlJsonParser.Parse(output);
+            return data?.Temperature > 0 ? (int)Math.Round(data.Temperature, MidpointRounding.AwayFromZero) : null;
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    /// <inheritdoc />
 }

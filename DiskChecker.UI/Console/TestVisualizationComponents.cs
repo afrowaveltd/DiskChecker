@@ -11,9 +11,9 @@ public static class TestVisualizationComponents
     /// <summary>
     /// Creates a temperature gauge bar with color gradient (green→yellow→red) and temperature cursor.
     /// </summary>
-    public static Panel CreateTemperatureGauge(int currentTemp, int minTemp, int maxTemp, int panelWidth)
+    public static Panel CreateTemperatureGauge(int currentTemp, int minTemp, int maxTemp, int panelWidth, DateTime? lastUpdate = null)
     {
-        const int GAUGE_WIDTH = 40;
+        const int GAUGE_WIDTH = 30;  // ZKRÁCENO z 40 na 30
         const int MIN_SAFE = 20;    // Green
         const int YELLOW_START = 40; // Yellow warning
         const int RED_START = 55;    // Red critical
@@ -51,20 +51,40 @@ public static class TestVisualizationComponents
             }
         }
         
-        // Temperature stats
+        // Temperature stats with optional last update time
         var grid = new Grid();
+        grid.AddColumn(new GridColumn().Width(10));
+        grid.AddColumn(new GridColumn().Width(32));
         grid.AddColumn(new GridColumn().Width(12));
-        grid.AddColumn(new GridColumn().Width(28));
+        grid.AddColumn(new GridColumn().Width(14));
         grid.AddColumn(new GridColumn().Width(12));
-        grid.AddColumn(new GridColumn().Width(12));
-        grid.AddColumn(new GridColumn().Width(12));
+        
+        // Build current temp display with optional update time
+        string currentTempDisplay = $"[bold white]{currentTemp}°C[/]";
+        if (lastUpdate.HasValue)
+        {
+            var secondsAgo = (int)(DateTime.UtcNow - lastUpdate.Value).TotalSeconds;
+            string updateInfo = secondsAgo < 60 
+                ? $"[dim]({secondsAgo}s)[/]" 
+                : "[dim](>1m)[/]";
+            currentTempDisplay = $"[bold white]{currentTemp}°C[/] {updateInfo}";
+        }
         
         grid.AddRow(
             new Markup("[bold cyan]Teplota:[/]"),
             new Markup(bar.ToString()),
             new Markup($"[bold green]Min: {minTemp}°C[/]"),
-            new Markup($"[bold white]Aktuální: {currentTemp}°C[/]"),
-            new Markup($"[bold red]Max: {maxTemp}°C[/]")
+            new Markup($"[bold white]Aktuální:[/]"),
+            new Markup(currentTempDisplay)
+        );
+        
+        // Add second row with max temp
+        grid.AddRow(
+            new Text(""),
+            new Text(""),
+            new Text(""),
+            new Markup($"[bold red]Max: {maxTemp}°C[/]"),
+            new Text("")
         );
         
         // Health indicator color based on max temp
@@ -78,7 +98,8 @@ public static class TestVisualizationComponents
 
         panel.Border(BoxBorder.Rounded);
         panel.BorderColor(healthColor == "green" ? Color.Green : healthColor == "yellow" ? Color.Yellow : Color.Red);
-        panel.Header($"[bold {healthColor}] STAV TEPLOTY - {healthText} [/]");
+        panel.Header($"STAV TEPLOTY - {healthText}");
+        panel.HeaderAlignment(Justify.Center);
         panel.Padding(1, 0);
 
         return panel;
@@ -150,7 +171,8 @@ public static class TestVisualizationComponents
 
         panel.Border(BoxBorder.Rounded);
         panel.BorderColor(Color.Cyan);
-        panel.Header("[bold cyan] CELKOVÝ PRŮBĚH TESTU [/]");
+        panel.Header("CELKOVÝ PRŮBĚH TESTU");
+        panel.HeaderAlignment(Justify.Center);
         panel.Padding(1, 0);
 
         return panel;

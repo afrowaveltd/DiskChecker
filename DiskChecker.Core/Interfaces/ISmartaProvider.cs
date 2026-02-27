@@ -9,6 +9,12 @@ public interface ISmartaProvider
     Task<IReadOnlyList<CoreDriveInfo>> ListDrivesAsync(CancellationToken cancellationToken = default);
     
     /// <summary>
+    /// Gets ONLY the temperature from the drive (fast, works even during disk operations).
+    /// Returns null if temperature cannot be determined.
+    /// </summary>
+    Task<int?> GetTemperatureOnlyAsync(string drivePath, CancellationToken cancellationToken = default);
+    
+    /// <summary>
     /// Gets instructions on how to install missing system dependencies.
     /// Returns null if all dependencies are satisfied.
     /// </summary>

@@ -45,6 +45,14 @@ public class RawDiskSanitizationExecutor : ISurfaceTestExecutor
        IntPtr lpOverlapped);
 
    [DllImport("kernel32.dll", SetLastError = true)]
+   private static extern bool ReadFile(
+       IntPtr hFile,
+       IntPtr lpBuffer,
+       uint nNumberOfBytesToRead,
+       out uint lpNumberOfBytesRead,
+       IntPtr lpOverlapped);
+
+   [DllImport("kernel32.dll", SetLastError = true)]
    private static extern bool DeviceIoControl(
        SafeFileHandle hDevice,
        uint dwIoControlCode,
@@ -543,7 +551,7 @@ public class RawDiskSanitizationExecutor : ISurfaceTestExecutor
          System.Diagnostics.Debug.WriteLine($"Failed to create log file: {ex.Message}");
       }
 
-      result.Notes = $"Příprava disku pro sanitizaci...\nLog: {logFilePath}";
+      result.Notes = "Příprava disku pro sanitizaci...";
       
       // === CRITICAL: Get ACTUAL physical disk size ===
       // request.Drive.TotalSize is often PARTITION size, not disk size!
@@ -876,18 +884,141 @@ public class RawDiskSanitizationExecutor : ISurfaceTestExecutor
             }
          }
 
+         // === PHASE 2: VERIFY (Read back and verify zeros) ===
+         result.Notes += "\n\n✓ Zápis dokončen. Zahajuji ověřování (čtení zpět)...";
+         
+         long bytesVerified = 0;
+         int verifyErrors = 0;
+         
+         // Allocate read buffer
+         IntPtr readBuffer = Marshal.AllocHGlobal(bufferSize + SECTOR_SIZE);
+         IntPtr readBufferPtr = new IntPtr((readBuffer.ToInt64() + SECTOR_SIZE - 1) & ~(SECTOR_SIZE - 1));
+         
+         try
+         {
+            Stopwatch verifySampleStopwatch = Stopwatch.StartNew();
+            long verifySampleBytes = 0;
+            
+            // Reset file pointer to beginning
+            if(!SetFilePointerEx(diskHandle.DangerousGetHandle(), 0, out long resetPos, FILE_BEGIN))
+            {
+               result.Notes += $"\n❌ CHYBA: Nelze resetovat file pointer pro verify fázi";
+               verifyErrors++;
+            }
+            else
+            {
+               while(bytesVerified < totalBytes && !cancellationToken.IsCancellationRequested)
+               {
+                  long remaining = totalBytes - bytesVerified;
+                  int toRead = (int)Math.Min(bufferSize, remaining);
+                  toRead = toRead / SECTOR_SIZE * SECTOR_SIZE;
+                  
+                  if(toRead <= 0) break;
+                  
+                  try
+                  {
+                     // Read data
+                     uint bytesRead = 0;
+                     bool success = ReadFile(
+                         diskHandle.DangerousGetHandle(),
+                         readBufferPtr,
+                         (uint)toRead,
+                         out bytesRead,
+                         IntPtr.Zero);
+                     
+                     if(!success)
+                     {
+                        verifyErrors++;
+                        if(verifyErrors > 10)
+                        {
+                           result.Notes += $"\n❌ Příliš mnoho verify chyb ({verifyErrors}). Ověření přerušeno.";
+                           break;
+                        }
+                        bytesVerified += toRead;
+                        continue;
+                     }
+                     
+                     // Verify zeros
+                     unsafe
+                     {
+                        byte* bufferPtr = (byte*)readBufferPtr;
+                        for(int i = 0; i < bytesRead; i++)
+                        {
+                           if(bufferPtr[i] != 0)
+                           {
+                              verifyErrors++;
+                              break;
+                           }
+                        }
+                     }
+                     
+                     bytesVerified += bytesRead;
+                     verifySampleBytes += bytesRead;
+                     
+                     // Report verify progress
+                     if(verifySampleBytes >= 128 * 1024 * 1024 || verifySampleStopwatch.Elapsed.TotalMilliseconds >= 500)
+                     {
+                        double throughput = verifySampleBytes / (1024.0 * 1024.0) / verifySampleStopwatch.Elapsed.TotalSeconds;
+                        
+                        samples.Add(new SurfaceTestSample
+                        {
+                           OffsetBytes = bytesVerified - verifySampleBytes,
+                           BlockSizeBytes = bufferSize,
+                           ThroughputMbps = Math.Round(throughput, 2),
+                           TimestampUtc = DateTime.UtcNow,
+                           ErrorCount = verifyErrors
+                        });
+                        
+                        // Report progress: totalBytes (write) + bytesVerified (verify)
+                        progress?.Report(new SurfaceTestProgress
+                        {
+                           TestId = Guid.Parse(result.TestId),
+                           BytesProcessed = totalBytes + bytesVerified,  // Write complete + verify progress
+                           PercentComplete = Math.Min(100, 50 + (bytesVerified * 50.0 / totalBytes)),  // 50-100%
+                           CurrentThroughputMbps = Math.Round(throughput, 2),
+                           TimestampUtc = DateTime.UtcNow
+                        });
+                        
+                        verifySampleBytes = 0;
+                        verifySampleStopwatch.Restart();
+                     }
+                  }
+                  catch(Exception ex)
+                  {
+                     verifyErrors++;
+                     System.Diagnostics.Debug.WriteLine($"Verify error at offset {bytesVerified}: {ex.Message}");
+                     
+                     if(verifyErrors > 10)
+                     {
+                        result.Notes += $"\n❌ Příliš mnoho verify chyb. Ověření přerušeno.";
+                        break;
+                     }
+                     
+                     bytesVerified += SECTOR_SIZE;
+                  }
+               }
+            }
+         }
+         finally
+         {
+            if(readBuffer != IntPtr.Zero)
+            {
+               Marshal.FreeHGlobal(readBuffer);
+            }
+         }
+
          // Unlock volume
          UnlockVolume(diskHandle);
 
          result.SecureErasePerformed = true;
-         result.TotalBytesTested = bytesWritten;
-         result.ErrorCount = errorCount;
+         result.TotalBytesTested = bytesWritten + bytesVerified;  // Total includes both phases
+         result.ErrorCount = errorCount + verifyErrors;
          result.Samples = samples;
          result.CompletedAtUtc = DateTime.UtcNow;
 
          if(stopwatch.Elapsed.TotalSeconds > 0)
          {
-            result.AverageSpeedMbps = bytesWritten / (1024.0 * 1024.0) / stopwatch.Elapsed.TotalSeconds;
+            result.AverageSpeedMbps = (bytesWritten + bytesVerified) / (1024.0 * 1024.0) / stopwatch.Elapsed.TotalSeconds;
          }
 
          if(samples.Any())
@@ -1267,3 +1398,16 @@ public class RawDiskSanitizationExecutor : ISurfaceTestExecutor
       return $"{size:0.##} {suffixes[order]}";
    }
 }
+
+
+
+
+
+
+
+
+
+
+
+
+

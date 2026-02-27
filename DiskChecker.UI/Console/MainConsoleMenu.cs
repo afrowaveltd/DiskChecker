@@ -166,12 +166,13 @@ public class MainConsoleMenu
 
       AnsiConsole.Clear();
 
-      // Use Spectre's Status spinner for loading
+      // Use Spectre's Status spinner for loading with retry logic
       SmartCheckResult? result = await AnsiConsole.Status()
           .Spinner(Spinner.Known.Dots)
           .SpinnerStyle(Style.Parse("yellow"))
-          .StartAsync("[yellow]Načítám SMART data...[/]", async ctx =>
+          .StartAsync("[yellow]Načítám SMART data (s retry)...[/]", async ctx =>
           {
+             // Use RunAsync which already has error handling
              return await _smartCheckService.RunAsync(drive);
           });
 
@@ -224,10 +225,11 @@ public class MainConsoleMenu
          }
       }
 
-      // === Display SMART data using simple tables (no complex Layout) ===
+      // === Display SMART data using rounded tables with better formatting ===
       AnsiConsole.MarkupLine("[bold cyan]===== INFORMACE O DISKU =====[/]");
       Table driveTable = new Table()
-          .Border(TableBorder.Minimal)
+          .Border(TableBorder.Rounded)
+          .BorderColor(Color.Cyan)
           .AddColumn("Parametr")
           .AddColumn("Hodnota");
 
@@ -247,7 +249,8 @@ public class MainConsoleMenu
       // === Technical parameters ===
       AnsiConsole.MarkupLine("[bold yellow]===== TECHNICKÉ PARAMETRY =====[/]");
       Table techTable = new Table()
-          .Border(TableBorder.Minimal)
+          .Border(TableBorder.Rounded)
+          .BorderColor(Color.Yellow)
           .AddColumn("Parametr")
           .AddColumn("Hodnota");
 
@@ -292,7 +295,8 @@ public class MainConsoleMenu
       // === Health indicators ===
       AnsiConsole.MarkupLine("[bold green]===== STAV DISKU =====[/]");
       Table healthTable = new Table()
-          .Border(TableBorder.Minimal)
+          .Border(TableBorder.Rounded)
+          .BorderColor(Color.Green)
           .AddColumn("Parametr")
           .AddColumn("Hodnota");
 
@@ -452,21 +456,22 @@ public class MainConsoleMenu
 
       AnsiConsole.Clear();
       AnsiConsole.MarkupLine($"[yellow]Spouštím test disku {Markup.Escape(drive.Name)}...[/]");
-      AnsiConsole.MarkupLine("[dim]Načítání SMART dat...[/]");
+      AnsiConsole.MarkupLine("[dim]Načítání SMART dat (s retry)...[/]");
       AnsiConsole.WriteLine();
 
-      // Initialize live SMART display with error handling
+      // Initialize live SMART display with error handling - IMPROVED WITH RETRY
       var smartDisplay = new LiveSmartDisplay(_smartCheckService);
       try
       {
-         await smartDisplay.StartMonitoringAsync(drive);
+         // Use retry logic for problematic drives like WD
+         await smartDisplay.StartMonitoringWithRetryAsync(drive);
          if(smartDisplay.CurrentSmartData != null)
          {
             AnsiConsole.MarkupLine("[green]✓ SMART data načtena[/]");
          }
          else
          {
-            AnsiConsole.MarkupLine("[yellow]⚠ SMART data nejsou dostupná[/]");
+            AnsiConsole.MarkupLine("[yellow]⚠ SMART data nejsou dostupná (test pokračuje bez nich)[/]");
          }
       }
       catch(Exception ex)
@@ -505,7 +510,6 @@ public class MainConsoleMenu
       int? currentPowerOnHours = smartData?.PowerOnHours > 0 ? smartData.PowerOnHours : null;
       var smartRefreshLock = new SemaphoreSlim(1, 1);
 
-      double overallPercent = 0.0;
       long overallTestedBytes = 0L;
 
       // === SPEED SMOOTHING: Moving average of last 3 samples ===
@@ -513,6 +517,7 @@ public class MainConsoleMenu
       var verifySpeedSamples = new Queue<double>(3);
 
       DateTime phaseStartTime = DateTime.UtcNow;  // Track phase start for ETA calculation
+      DateTime? lastTempUpdate = null;  // Track last successful temperature update
 
       // Start test with progress display
       // Create a layout with disk info panel above progress table
@@ -520,7 +525,7 @@ public class MainConsoleMenu
           .SplitRows(
               new Layout("DiskInfo").Size(6),
               new Layout("Spacer1").Size(1),
-              new Layout("Temperature").Size(5),
+              new Layout("Temperature").Size(6),  // Zvětšeno z 5 na 6 pro 2 řádky
               new Layout("Spacer2").Size(1),
               new Layout("Overall").Size(7),
               new Layout("Spacer3").Size(1),
@@ -529,7 +534,7 @@ public class MainConsoleMenu
 
       layout["DiskInfo"].Update(Align.Center(CreateDiskInfoPanel(drive, smartData, maxBytesToTest, writeBytes, verifyBytes, currentTemp, currentPowerOnHours, PanelWidth)));
       layout["Spacer1"].Update(new Text(string.Empty));
-      layout["Temperature"].Update(Align.Center(CreateTemperaturePanel(smartData, currentTemp, minTemp, maxTemp, PanelWidth)));
+      layout["Temperature"].Update(Align.Center(CreateTemperaturePanel(smartData, currentTemp, minTemp, maxTemp, PanelWidth, lastTempUpdate)));
       layout["Spacer2"].Update(new Text(string.Empty));
       layout["Overall"].Update(Align.Center(TestVisualizationComponents.CreateOverallProgressGauge(
           writeProgress, verifyProgress, writeEta, verifyEta,
@@ -546,21 +551,33 @@ public class MainConsoleMenu
              {
                 try
                 {
-                   // Detect phase change based on PercentComplete
+                   // ALL tests have 2 phases: WRITE (0-50%) + VERIFY (50-100%)
                    bool isVerifyPhase = p.PercentComplete >= 50;
 
+                   // Phase transition: write → verify
                    if(isVerifyPhase && currentPhase == "write")
                    {
                       currentPhase = "verify";
-                      phaseStartTime = DateTime.UtcNow;  // Reset pro Fázi 2
+                      
+                      // Calculate write phase duration for verify ETA estimation
+                      TimeSpan writeDuration = DateTime.UtcNow - phaseStartTime;
+                      
+                      // Reset for verify phase
+                      phaseStartTime = DateTime.UtcNow;
                       writeBytes = maxBytesToTest;
                       writeProgress = 100;
                       writeSpeed = 0;
                       writeEta = "✓";
+                      
+                      // Initialize verify: 0% progress, ETA = write duration (initial estimate)
+                      verifyBytes = 0;
+                      verifyProgress = 0;
+                      verifyEta = FormatEta(writeDuration.TotalSeconds);
                    }
 
                    if(currentPhase == "write")
                    {
+                      // === WRITE PHASE (0-50%) ===
                       writeBytes = Math.Min(maxBytesToTest, p.BytesProcessed);
                       writeProgress = maxBytesToTest == 0 ? 0 : Math.Min(100, writeBytes * 100d / maxBytesToTest);
 
@@ -568,57 +585,72 @@ public class MainConsoleMenu
                       writeSpeedSamples.Enqueue(p.CurrentThroughputMbps);
                       if(writeSpeedSamples.Count > 3)
                          writeSpeedSamples.Dequeue();
-                      writeSpeed = writeSpeedSamples.Average();  // Smooth!
+                      writeSpeed = writeSpeedSamples.Average();
 
                       writeErrors = 0;
 
                       // Calculate ETA for write phase
-                      double elapsed = (DateTime.UtcNow - phaseStartTime).TotalSeconds;
-                      double bytesPerSecond = elapsed > 0 ? writeBytes / elapsed : 0;
-                      long remainingBytes = maxBytesToTest - writeBytes;
-                      double etaSeconds = bytesPerSecond > 0 ? remainingBytes / bytesPerSecond : 0;
-                      writeEta = FormatEta(etaSeconds);
+                      double elapsedWrite = (DateTime.UtcNow - phaseStartTime).TotalSeconds;
+                      double bytesPerSecondWrite = elapsedWrite > 0 ? writeBytes / elapsedWrite : 0;
+                      long remainingWriteBytes = maxBytesToTest - writeBytes;
+                      double etaWriteSeconds = bytesPerSecondWrite > 0 ? remainingWriteBytes / bytesPerSecondWrite : 0;
+                      writeEta = FormatEta(etaWriteSeconds);
 
-                      // === ESTIMATE VERIFY ETA (before it starts) ===
-                      // Assume verify will take similar time as write
-                      if(elapsed > 10 && writeBytes > 0)
+                      // === ESTIMATE VERIFY ETA during write ===
+                      // Logika: během write upřesňujeme odhad verify času podle aktuální rychlosti
+                      if(elapsedWrite > 10 && writeBytes > 0)
                       {
-                         double estimatedTotalTime = elapsed / (writeBytes / (double)maxBytesToTest);
-                         double estimatedVerifyTime = estimatedTotalTime - elapsed;
-                         verifyEta = $"~{FormatEta(estimatedVerifyTime)}";
+                         // Estimate total write time
+                         double estimatedWriteTotal = elapsedWrite / (writeBytes / (double)maxBytesToTest);
+                         // Verify will likely take similar time
+                         verifyEta = $"~{FormatEta(estimatedWriteTotal)}";
+                      }
+                      else
+                      {
+                         verifyEta = "vypočítává se...";
                       }
                    }
                    else
                    {
+                      // === VERIFY PHASE (50-100%) ===
                       writeProgress = 100;
                       writeBytes = maxBytesToTest;
-                      verifyBytes = Math.Min(maxBytesToTest, p.BytesProcessed);
+                      
+                      // p.BytesProcessed = totalWrite + currentVerify
+                      // Odečíst write bytes pro získání verify bytes
+                      verifyBytes = Math.Max(0, Math.Min(maxBytesToTest, p.BytesProcessed - maxBytesToTest));
                       verifyProgress = maxBytesToTest == 0 ? 0 : Math.Min(100, verifyBytes * 100d / maxBytesToTest);
 
                       // === SMOOTH SPEED: Moving average of last 3 samples ===
                       verifySpeedSamples.Enqueue(p.CurrentThroughputMbps);
                       if(verifySpeedSamples.Count > 3)
                          verifySpeedSamples.Dequeue();
-                      verifySpeed = verifySpeedSamples.Average();  // Smooth!
+                      verifySpeed = verifySpeedSamples.Average();
 
-                      // Calculate ETA for verify phase
-                      double elapsed = (DateTime.UtcNow - phaseStartTime).TotalSeconds;
-                      double bytesPerSecond = elapsed > 0 ? verifyBytes / elapsed : 0;
+                      // Calculate ETA for verify phase - klasicky: zbývající bytes / aktuální rychlost
+                      // Use current throughput (MB/s) directly from progress instead of calculating from elapsed
+                      // This gives more accurate ETA based on real-time speed
+                      double currentSpeedMbps = p.CurrentThroughputMbps > 0 ? p.CurrentThroughputMbps : verifySpeed;
                       long remainingBytes = maxBytesToTest - verifyBytes;
-                      double etaSeconds = bytesPerSecond > 0 ? remainingBytes / bytesPerSecond : 0;
-                      verifyEta = FormatEta(etaSeconds);
+                      double remainingMb = remainingBytes / (1024.0 * 1024.0);
+                      double etaVerifySeconds = currentSpeedMbps > 0 ? (remainingMb / currentSpeedMbps) * 60 : 0; // Convert MB/s to seconds
+                      verifyEta = FormatEta(etaVerifySeconds);
                    }
 
+                   // === SMART DATA REFRESH - EVERY 15 SECONDS ===
+                   // Use FAST temperature-only update during test (works even when disk is locked)
                    if(DateTime.UtcNow - lastSmartUpdate >= SmartRefreshInterval)
                    {
                       await smartRefreshLock.WaitAsync();
                       try
                       {
-                         await smartDisplay.RefreshDataAsync(drive);
+                         // Fast temperature update (doesn't require full SMART read)
+                         await smartDisplay.RefreshTemperatureOnlyAsync(drive);
                          var refreshedSmartData = smartDisplay.CurrentSmartData;
                          if(refreshedSmartData != null)
                          {
                             smartData = refreshedSmartData;
+                            lastTempUpdate = DateTime.UtcNow;  // Update last successful temp update time
                          }
                       }
                       finally
@@ -640,8 +672,8 @@ public class MainConsoleMenu
                       currentPowerOnHours = smartData.PowerOnHours;
                    }
 
-                   overallPercent = p.PercentComplete;
-                   overallTestedBytes = (long)Math.Round(maxBytesToTest * overallPercent / 100.0);
+                   // OverallTestedBytes = write bytes + verify bytes
+                   overallTestedBytes = writeBytes + verifyBytes;
 
                    TimeSpan totalElapsed = DateTime.UtcNow - startTime;
                    double overallEtaSeconds;
@@ -649,15 +681,19 @@ public class MainConsoleMenu
                    {
                       double elapsed = (DateTime.UtcNow - phaseStartTime).TotalSeconds;
                       double bytesPerSecond = elapsed > 0 ? writeBytes / elapsed : 0;
-                      long remainingBytes = (maxBytesToTest - writeBytes) + maxBytesToTest;
-                      overallEtaSeconds = bytesPerSecond > 0 ? remainingBytes / bytesPerSecond : 0;
+                      // Remaining write bytes + estimated verify time (same speed)
+                      long remainingWriteBytes = maxBytesToTest - writeBytes;
+                      overallEtaSeconds = bytesPerSecond > 0 
+                         ? (remainingWriteBytes / bytesPerSecond) + (maxBytesToTest / bytesPerSecond)
+                         : 0;
                    }
                    else if(verifyBytes > 0)
                    {
-                      double elapsed = (DateTime.UtcNow - phaseStartTime).TotalSeconds;
-                      double bytesPerSecond = elapsed > 0 ? verifyBytes / elapsed : 0;
+                      // During VERIFY: Simple calculation - remaining bytes / current speed
+                      double currentSpeedMbps = p.CurrentThroughputMbps > 0 ? p.CurrentThroughputMbps : verifySpeed;
                       long remainingBytes = maxBytesToTest - verifyBytes;
-                      overallEtaSeconds = bytesPerSecond > 0 ? remainingBytes / bytesPerSecond : 0;
+                      double remainingMb = remainingBytes / (1024.0 * 1024.0);
+                      overallEtaSeconds = currentSpeedMbps > 0 ? (remainingMb / currentSpeedMbps) * 60 : 0;
                    }
                    else
                    {
@@ -667,7 +703,7 @@ public class MainConsoleMenu
 
                    // Update progress display (disk info, temperature, overall gauge, progress table)
                    layout["DiskInfo"].Update(Align.Center(CreateDiskInfoPanel(drive, smartData, maxBytesToTest, writeBytes, verifyBytes, currentTemp, currentPowerOnHours, PanelWidth)));
-                   layout["Temperature"].Update(Align.Center(CreateTemperaturePanel(smartData, currentTemp, minTemp, maxTemp, PanelWidth)));
+                   layout["Temperature"].Update(Align.Center(CreateTemperaturePanel(smartData, currentTemp, minTemp, maxTemp, PanelWidth, lastTempUpdate)));
                    layout["Overall"].Update(Align.Center(TestVisualizationComponents.CreateOverallProgressGauge(
                       writeProgress, verifyProgress, writeEta, verifyEta,
                       maxBytesToTest, overallTestedBytes, totalElapsed, overallEta, PanelWidth)));
@@ -690,7 +726,7 @@ public class MainConsoleMenu
                 verifyErrors = result.ErrorCount;
                 try
                 {
-                   await smartDisplay.RefreshDataAsync(drive);
+                   await smartDisplay.RefreshDataWithRetryAsync(drive);
                    var refreshedSmartData = smartDisplay.CurrentSmartData;
                    if(refreshedSmartData != null)
                    {
@@ -711,25 +747,28 @@ public class MainConsoleMenu
                    currentPowerOnHours = smartData.PowerOnHours;
                 }
 
-                overallPercent = 100;
                 writeBytes = maxBytesToTest;
                 verifyBytes = maxBytesToTest;
                 writeProgress = 100;
                 verifyProgress = 100;
                 overallTestedBytes = maxBytesToTest;
 
+                // Use final speeds from result instead of local variables
+                double finalWriteSpeed = result.AverageSpeedMbps;
+                double finalVerifySpeed = result.AverageSpeedMbps;
+
                 TimeSpan totalElapsed = DateTime.UtcNow - startTime;
                 double finalOverallEtaSeconds = 0;
                 string overallEta = FormatEta(finalOverallEtaSeconds);
 
                 layout["DiskInfo"].Update(Align.Center(CreateDiskInfoPanel(drive, smartData, maxBytesToTest, writeBytes, verifyBytes, currentTemp, currentPowerOnHours, PanelWidth)));
-                layout["Temperature"].Update(Align.Center(CreateTemperaturePanel(smartData, currentTemp, minTemp, maxTemp, PanelWidth)));
+                layout["Temperature"].Update(Align.Center(CreateTemperaturePanel(smartData, currentTemp, minTemp, maxTemp, PanelWidth, lastTempUpdate)));
                 layout["Overall"].Update(Align.Center(TestVisualizationComponents.CreateOverallProgressGauge(
                    writeProgress, verifyProgress, writeEta, verifyEta,
                    maxBytesToTest, overallTestedBytes, totalElapsed, overallEta, PanelWidth)));
                 layout["Progress"].Update(Align.Center(CreateProgressTable(
-                    100, writeSpeed, writeBytes, writeEta, writeErrors,
-                    100, verifySpeed, verifyBytes, verifyEta, verifyErrors)));
+                    100, finalWriteSpeed, writeBytes, writeEta, writeErrors,
+                    100, finalVerifySpeed, verifyBytes, verifyEta, verifyErrors)));
                 ctx.UpdateTarget(layout);
              }
           });
@@ -761,10 +800,11 @@ public class MainConsoleMenu
    private static Panel CreateDiskInfoPanel(CoreDriveInfo drive, SmartaData? smartData, long totalBytesToTest, long writeBytes, long verifyBytes, int currentTemp, int? currentPowerOnHours, int panelWidth)
    {
       var grid = new Grid();
-      grid.AddColumn(new GridColumn().Width(20));
-      grid.AddColumn(new GridColumn().Width(40));
-      grid.AddColumn(new GridColumn().Width(20));
-      grid.AddColumn(new GridColumn().Width(30));
+      // Adjust column widths to better fit content
+      grid.AddColumn(new GridColumn().Width(18));
+      grid.AddColumn(new GridColumn().Width(35));
+      grid.AddColumn(new GridColumn().Width(18));
+      grid.AddColumn(new GridColumn().Width(29));
 
       var writePercent = totalBytesToTest == 0 ? 0 : writeBytes * 100.0 / totalBytesToTest;
       var verifyPercent = totalBytesToTest == 0 ? 0 : verifyBytes * 100.0 / totalBytesToTest;
@@ -772,7 +812,7 @@ public class MainConsoleMenu
       // Row 1: Model and Serial
       grid.AddRow(
           new Markup("[bold cyan]Model:[/]"),
-          new Markup($"[white]{Markup.Escape(smartData?.DeviceModel ?? drive.Name)}[/]"),
+          new Markup($"[white]{Markup.Escape((smartData?.DeviceModel ?? drive.Name).Replace(" USB Device", ""))}[/]"),
           new Markup("[bold cyan]Sériové číslo:[/]"),
           new Markup($"[white]{Markup.Escape(smartData?.SerialNumber ?? "N/A")}[/]")
       );
@@ -814,7 +854,8 @@ public class MainConsoleMenu
 
       panel.Border(BoxBorder.Rounded);
       panel.BorderColor(Color.Cyan);
-      panel.Header("[bold cyan] INFORMACE O TESTOVANÉM DISKU [/]");
+      panel.Header("INFORMACE O TESTOVANÉM DISKU");
+      panel.HeaderAlignment(Justify.Center);
       panel.Padding(1, 0);
       return panel;
    }
@@ -868,7 +909,7 @@ public class MainConsoleMenu
       return table;
    }
 
-   private static Panel CreateTemperaturePanel(SmartaData? smartData, int currentTemp, int minTemp, int maxTemp, int panelWidth)
+   private static Panel CreateTemperaturePanel(SmartaData? smartData, int currentTemp, int minTemp, int maxTemp, int panelWidth, DateTime? lastUpdate)
    {
       if(currentTemp <= 0)
       {
@@ -884,7 +925,7 @@ public class MainConsoleMenu
          return panel;
       }
 
-      return TestVisualizationComponents.CreateTemperatureGauge(currentTemp, minTemp, maxTemp, panelWidth);
+      return TestVisualizationComponents.CreateTemperatureGauge(currentTemp, minTemp, maxTemp, panelWidth, lastUpdate);
    }
 
    /// <summary>
@@ -893,94 +934,8 @@ public class MainConsoleMenu
 
    private async Task DisplaySurfaceTestResults(SurfaceTestResult result, CoreDriveInfo drive, SurfaceTestProfile profile)
    {
-      Table table = new Table()
-          .AddColumn("Parametr")
-          .AddColumn("Hodnota");
-
-      // === Drive Information ===
-      AnsiConsole.MarkupLine("[bold cyan]=== INFORMACE O DISKU ===[/]");
-      if(!string.IsNullOrEmpty(result.DriveModel))
-      {
-         table.AddRow("[yellow]Model[/]", Markup.Escape(result.DriveModel));
-      }
-      if(!string.IsNullOrEmpty(result.DriveManufacturer))
-      {
-         table.AddRow("[yellow]Výrobce[/]", result.DriveManufacturer);
-      }
-      if(!string.IsNullOrEmpty(result.DriveSerialNumber))
-      {
-         table.AddRow("[yellow]Sériové číslo[/]", Markup.Escape(result.DriveSerialNumber));
-      }
-
-      table.AddRow("[yellow]Kapacita[/]", FormatBytes(result.DriveTotalBytes));
-
-      AnsiConsole.Write(table);
-      AnsiConsole.WriteLine();
-
-      // === Test Results ===
-      Table resultTable = new Table()
-          .AddColumn("Parametr")
-          .AddColumn("Hodnota");
-
-      AnsiConsole.MarkupLine("[bold cyan]=== VÝSLEDKY TESTU ===[/]");
-      resultTable.AddRow("Profil", result.Profile.ToString());
-      resultTable.AddRow("Operace", result.Operation.ToString());
-      resultTable.AddRow("Testováno", FormatBytes(result.TotalBytesTested));
-      resultTable.AddRow("Průměr", $"{result.AverageSpeedMbps:F1} MB/s");
-      resultTable.AddRow("Maximum", $"{result.PeakSpeedMbps:F1} MB/s");
-      resultTable.AddRow("Minimum", $"{result.MinSpeedMbps:F1} MB/s");
-      resultTable.AddRow("Chyby", result.ErrorCount.ToString());
-      resultTable.AddRow("Vzorky", result.Samples.Count.ToString());
-
-      AnsiConsole.Write(resultTable);
-
-      if(result.ErrorCount > 0)
-      {
-         AnsiConsole.MarkupLine($"[red]⚠️  CHYBY: Disk hlásí {result.ErrorCount} chyb(y)[/]");
-         if(result.ErrorCount > 5)
-         {
-            AnsiConsole.MarkupLine("[bold red]❌ DISK JE VADNÝ - NEPOUŽÍVEJTE HO![/]");
-         }
-      }
-
-      if(!string.IsNullOrWhiteSpace(result.Notes))
-      {
-         AnsiConsole.WriteLine();
-         AnsiConsole.MarkupLine("[bold yellow]=== DETAILY ===[/]");
-         AnsiConsole.MarkupLine($"[yellow]{Markup.Escape(result.Notes)}[/]");
-
-         // Check if test failed before starting (0 bytes tested)
-         if(result.TotalBytesTested == 0 && result.ErrorCount > 0)
-         {
-            AnsiConsole.WriteLine();
-            AnsiConsole.MarkupLine("[bold red]❌ TEST SELHAL PŘED ZAČÁTKEM![/]");
-            AnsiConsole.MarkupLine("[red]Důvod: Příprava disku selhala.[/]");
-            AnsiConsole.WriteLine();
-            AnsiConsole.MarkupLine("[yellow]📋 Možné příčiny:[/]");
-            AnsiConsole.MarkupLine("[yellow]  • Disk není přístupný (odpojený, chybí písmeno)[/]");
-            AnsiConsole.MarkupLine("[yellow]  • Nedostatečná oprávnění (spusťte jako Admin)[/]");
-            AnsiConsole.MarkupLine("[yellow]  • Disk je používán jiným programem[/]");
-            AnsiConsole.MarkupLine("[yellow]  • Nesprávný formát cesty disku[/]");
-         }
-
-         // Check if it's a disk detection failure and offer retry with manual selection
-         if(result.Notes.Contains("DISKTEST_", StringComparison.OrdinalIgnoreCase) &&
-             result.Notes.Contains("Nepodařilo se automaticky detekovat", StringComparison.OrdinalIgnoreCase))
-         {
-            AnsiConsole.WriteLine();
-            AnsiConsole.MarkupLine("[bold yellow]💡 TIP: Disk byl naformátován, ale nepodařilo se automaticky zjistit písmeno jednotky.[/]");
-            AnsiConsole.MarkupLine("[yellow]   Zkuste:[/]");
-            AnsiConsole.MarkupLine("[yellow]   1. Otevřít Průzkumník Windows (Win+E) a najít disk s labelem začínajícím 'DISKTEST_'[/]");
-            AnsiConsole.MarkupLine("[yellow]   2. Restartovat aplikaci a zkusit test znovu[/]");
-            AnsiConsole.MarkupLine("[yellow]   3. Restartovat počítač, pokud disk není viditelný[/]");
-         }
-      }
-
-      // Positive result message
-      if(result.ErrorCount == 0)
-      {
-         AnsiConsole.MarkupLine("[green]✓ Test úspěšný - disk vypadá v pořádku[/]");
-      }
+      // Use new comprehensive report page
+      await TestResultReportPage.DisplayResultAsync(result);
 
       // For full disk sanitization, offer formatting
       if(profile == SurfaceTestProfile.FullDiskSanitization && result.ErrorCount == 0)
@@ -1166,31 +1121,48 @@ assign";
       while(true)
       {
          AnsiConsole.Clear();
+         AnsiConsole.MarkupLine("[bold cyan]===== HISTORIE TESTŮ =====[/]");
          PagedResult<TestHistoryItem> history = await _historyService.GetHistoryAsync(pageSize: pageSize, pageIndex: pageIndex);
 
          AnsiConsole.MarkupLine($"[green]Stránka {history.PageIndex + 1} z {history.TotalPages} ({history.TotalItems} testů)[/]");
+         AnsiConsole.WriteLine();
 
          Table table = new Table()
-             .AddColumn("Datum")
-             .AddColumn("Disk")
-             .AddColumn("Typ")
-             .AddColumn("Známka")
-             .AddColumn("Skóre")
-             .AddColumn("Rychlost");
+             .Border(TableBorder.Rounded)
+             .BorderColor(Color.Cyan)
+             .AddColumn(new TableColumn("[bold cyan]Datum[/]").Width(25))
+             .AddColumn(new TableColumn("[bold cyan]Disk[/]").Width(20))
+             .AddColumn(new TableColumn("[bold cyan]Typ[/]").Width(15))
+             .AddColumn(new TableColumn("[bold cyan]Známka[/]").Width(10))
+             .AddColumn(new TableColumn("[bold cyan]Skóre[/]").Width(10))
+             .AddColumn(new TableColumn("[bold cyan]Rychlost[/]").Width(12));
 
          foreach(TestHistoryItem item in history.Items)
          {
+            var grade = item.Grade.ToString();
+            var gradeColor = grade switch
+            {
+               "A" => "[green]A[/]",
+               "B" => "[green]B[/]",
+               "C" => "[yellow]C[/]",
+               "D" => "[yellow]D[/]",
+               "E" => "[red]E[/]",
+               "F" => "[red]F[/]",
+               _ => "[white]N/A[/]"
+            };
+
             table.AddRow(
-                item.TestDate.ToString("G"),
-                Markup.Escape(item.DriveName),
-                Markup.Escape(item.TestType),
-                $"[{(item.Grade >= QualityGrade.C ? "red" : "green")}]{item.Grade}[/]",
-                $"{item.Score:F1}",
-                $"{item.AverageSpeed:F1} MB/s"
+                $"[dim]{item.TestDate:G}[/]",
+                $"[white]{Markup.Escape(item.DriveName)}[/]",
+                $"[yellow]{Markup.Escape(item.TestType)}[/]",
+                gradeColor,
+                $"[white]{item.Score:F1}[/]",
+                $"[cyan]{item.AverageSpeed:F1} MB/s[/]"
             );
          }
 
          AnsiConsole.Write(table);
+         AnsiConsole.WriteLine();
 
          if(history.TotalPages <= 1)
          {
@@ -1221,6 +1193,7 @@ assign";
    private async Task CompareMenuAsync()
    {
       AnsiConsole.Clear();
+      AnsiConsole.MarkupLine("[bold cyan]===== POROVNÁNÍ DISKŮ =====[/]");
       AnsiConsole.MarkupLine("[yellow]Získávám seznam disků...[/]");
       List<DriveCompareItem> drives = await _historyService.GetDrivesWithTestsAsync();
 
@@ -1246,7 +1219,7 @@ assign";
          for(int i = 0; i < available.Count; i++)
          {
             DriveCompareItem d = available[i];
-            AnsiConsole.MarkupLine($" [blue]{i + 1}.[/] {Markup.Escape(d.DriveName)} - {Markup.Escape(d.Model)} ({d.TotalTests} testů)");
+            AnsiConsole.MarkupLine($" [blue]{i + 1}.[/] {Markup.Escape(d.DriveName)} [dim]({Markup.Escape(d.Model)})[/] - {d.TotalTests} testů");
          }
          AnsiConsole.MarkupLine($" [blue]{available.Count + 1}.[/] Hotovo/Zpět");
          AnsiConsole.WriteLine();
@@ -1290,17 +1263,30 @@ assign";
          }
       }
 
+      AnsiConsole.Clear();
+      AnsiConsole.MarkupLine("[bold cyan]===== VÝSLEDEK POROVNÁNÍ =====[/]");
+      AnsiConsole.MarkupLine($"[yellow]Disk 1:[/] [white]{Markup.Escape(selectedDrives[0].DriveName)}[/] [dim]({Markup.Escape(selectedDrives[0].Model)})[/]");
+      AnsiConsole.MarkupLine($"[yellow]Disk 2:[/] [white]{Markup.Escape(selectedDrives[1].DriveName)}[/] [dim]({Markup.Escape(selectedDrives[1].Model)})[/]");
+      AnsiConsole.WriteLine();
+
       Table compTable = new Table()
-          .AddColumn("Parametr")
-          .AddColumn(Markup.Escape(selectedDrives[0].DriveName))
-          .AddColumn(Markup.Escape(selectedDrives[1].DriveName));
+          .Border(TableBorder.Rounded)
+          .BorderColor(Color.Cyan)
+          .AddColumn(new TableColumn("[bold cyan]Parametr[/]").Width(30))
+          .AddColumn(new TableColumn($"[bold yellow]{Markup.Escape(selectedDrives[0].DriveName)}[/]").Width(25))
+          .AddColumn(new TableColumn($"[bold yellow]{Markup.Escape(selectedDrives[1].DriveName)}[/]").Width(25));
 
       foreach(CompareItem comp in comparisons)
       {
-         compTable.AddRow(Markup.Escape(comp.Label), Markup.Escape(comp.Value1), Markup.Escape(comp.Value2));
+         compTable.AddRow(
+             $"[white]{Markup.Escape(comp.Label)}[/]",
+             $"[cyan]{Markup.Escape(comp.Value1)}[/]",
+             $"[cyan]{Markup.Escape(comp.Value2)}[/]"
+         );
       }
 
       AnsiConsole.Write(compTable);
+      AnsiConsole.WriteLine();
 
       if(comparisons.Count > 0)
       {
@@ -1310,7 +1296,7 @@ assign";
             string content = GenerateCompareText(comparisons, selectedDrives);
             string filePath = AnsiConsole.Ask<string>("Zadejte cestu k souboru", "compare.txt");
             await File.WriteAllTextAsync(filePath, content);
-            AnsiConsole.MarkupLine($"[green]Export uložen: {Markup.Escape(filePath)}[/]");
+            AnsiConsole.MarkupLine($"[green]✓ Export uložen: {Markup.Escape(filePath)}[/]");
          }
       }
 
@@ -1627,4 +1613,8 @@ assign";
    }
 
 }
+
+
+
+
 

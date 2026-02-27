@@ -24,31 +24,113 @@ public static class SmartctlJsonParser
         {
             using var document = JsonDocument.Parse(json);
             var root = document.RootElement;
+            
+            // Try multiple ways to get temperature - it can be nested differently
+            double? temperature = null;
+            
+            // Method 1: Direct temperature property
+            if (root.TryGetProperty("temperature", out var tempElement))
+            {
+                if (tempElement.TryGetProperty("current", out var currentTemp))
+                    temperature = GetDouble(currentTemp, null) ?? GetDouble(tempElement, "current");
+                else
+                    temperature = GetDouble(tempElement, null);
+            }
+            
+            // Method 2: ata_smart_attributes might have temperature in SMART table
+            if (!temperature.HasValue && root.TryGetProperty("ata_smart_attributes", out var ataAttribs))
+            {
+                if (ataAttribs.TryGetProperty("table", out var table) && table.ValueKind == JsonValueKind.Array)
+                {
+                    foreach (var entry in table.EnumerateArray())
+                    {
+                        var id = GetInt(entry, "id");
+                        if ((id == 194 || id == 190) && entry.TryGetProperty("raw", out var raw))
+                        {
+                            if (raw.TryGetProperty("value", out var val) && val.TryGetInt32(out var tempVal))
+                            {
+                                temperature = tempVal;
+                                break;
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Method 3: nvme temperature
+            if (!temperature.HasValue && root.TryGetProperty("nvme_smart_health_information_log", out var nvmeLog))
+            {
+                temperature = GetDouble(nvmeLog, "temperature");
+            }
+
+            // Try multiple ways to get PowerOnHours
+            int? powerOnHours = null;
+            
+            // Method 1: ATA attributes
+            if (root.TryGetProperty("ata_smart_attributes", out var ataAttributes))
+            {
+                if (ataAttributes.TryGetProperty("table", out var table) && table.ValueKind == JsonValueKind.Array)
+                {
+                    foreach (var entry in table.EnumerateArray())
+                    {
+                        var id = GetInt(entry, "id");
+                        if (id == 9) // Power On Hours attribute ID
+                        {
+                            if (entry.TryGetProperty("raw", out var raw))
+                            {
+                                if (raw.TryGetProperty("value", out var val) && val.TryGetInt32(out var hours))
+                                {
+                                    powerOnHours = hours;
+                                    break;
+                                }
+                                else if (raw.ValueKind == JsonValueKind.Number)
+                                {
+                                    powerOnHours = (int)raw.GetInt64();
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            
+            // Method 2: NVMe Power on hours
+            if (!powerOnHours.HasValue && root.TryGetProperty("nvme_smart_health_information_log", out var nvmeLog2))
+            {
+                powerOnHours = GetInt(nvmeLog2, "power_on_hours");
+            }
+
+            // Parse model name and clean up USB device suffixes
+            var deviceModel = GetString(root, "model_name") ?? GetString(root, "model_number") ?? GetString(root, "device_model");
+            if (deviceModel != null)
+            {
+                // Remove common USB device suffixes
+                deviceModel = System.Text.RegularExpressions.Regex.Replace(deviceModel, @"\s+(USB\s+)?Device\s*$", "", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+                deviceModel = System.Text.RegularExpressions.Regex.Replace(deviceModel, @"\s+USB\s*$", "", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+            }
+
+            // Parse serial number - prefer actual disk SN over USB controller ID
+            // Smartctl returns it in "serial_number" field
+            string? serialNumber = GetString(root, "serial_number");
+            
             var smartaData = new SmartaData
             {
                 ModelFamily = GetString(root, "model_family"),
-                DeviceModel = GetString(root, "model_name") ?? GetString(root, "model_number") ?? GetString(root, "device_model"),
-                SerialNumber = GetString(root, "serial_number"),
-                FirmwareVersion = GetString(root, "firmware_version")
+                DeviceModel = deviceModel,
+                SerialNumber = serialNumber,
+                FirmwareVersion = GetString(root, "firmware_version"),
+                Temperature = temperature ?? 0,
+                PowerOnHours = powerOnHours ?? 0
             };
 
-            if (root.TryGetProperty("ata_smart_attributes", out var ataAttributes))
+            if (root.TryGetProperty("ata_smart_attributes", out var ataAttributes2))
             {
-                PopulateAtaAttributes(ataAttributes, smartaData);
+                PopulateAtaAttributes(ataAttributes2, smartaData);
             }
 
             if (root.TryGetProperty("nvme_smart_health_information_log", out var nvmeAttributes))
             {
                 PopulateNvmeAttributes(nvmeAttributes, smartaData);
-            }
-
-            if (root.TryGetProperty("temperature", out var temperature))
-            {
-                var tempValue = GetDouble(temperature, "current");
-                if (tempValue.HasValue)
-                {
-                    smartaData.Temperature = tempValue.Value;
-                }
             }
 
             return smartaData;
@@ -196,8 +278,16 @@ public static class SmartctlJsonParser
         return null;
     }
 
-    private static double? GetDouble(JsonElement root, string property)
+    private static double? GetDouble(JsonElement root, string? property)
     {
+        // If no property specified, try to parse the element itself as double
+        if (string.IsNullOrEmpty(property))
+        {
+            if (root.ValueKind == JsonValueKind.Number) return root.GetDouble();
+            if (root.ValueKind == JsonValueKind.String && double.TryParse(root.GetString(), out var parsed)) return parsed;
+            return null;
+        }
+
         if (root.TryGetProperty(property, out var value))
         {
             if (value.ValueKind == JsonValueKind.Number) return value.GetDouble();

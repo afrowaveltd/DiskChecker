@@ -1,6 +1,10 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
 
   <ItemGroup>
+    <Content Include="Resources\icon.ico" />
+  </ItemGroup>
+
+  <ItemGroup>
     <ProjectReference Include="..\DiskChecker.Application\DiskChecker.Application.csproj" />
     <ProjectReference Include="..\DiskChecker.Infrastructure\DiskChecker.Infrastructure.csproj" />
   </ItemGroup>

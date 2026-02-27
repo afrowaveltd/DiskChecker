@@ -174,4 +174,60 @@ public class SmartCheckService
         ArgumentNullException.ThrowIfNull(drive);
         return await _smartaProvider.GetSmartaDataAsync(drive.Path, cancellationToken);
     }
+
+    /// <summary>
+    /// Reads SMART data snapshot with retry logic for more reliable updates during testing.
+    /// </summary>
+    /// <param name="drive">Drive to read.</param>
+    /// <param name="maxRetries">Maximum retry attempts.</param>
+    /// <param name="cancellationToken">Token to cancel the operation.</param>
+    /// <returns>SMART data snapshot or <c>null</c> when unavailable after retries.</returns>
+    public async Task<SmartaData?> GetSmartaDataWithRetryAsync(CoreDriveInfo drive, int maxRetries = 3, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(drive);
+
+        for (int attempt = 0; attempt < maxRetries; attempt++)
+        {
+            try
+            {
+                var data = await _smartaProvider.GetSmartaDataAsync(drive.Path, cancellationToken);
+                if (data != null)
+                {
+                    return data;
+                }
+            }
+            catch
+            {
+                // Silently retry on any error
+            }
+
+            if (attempt < maxRetries - 1)
+            {
+                await Task.Delay((int)(500 * Math.Pow(2, attempt)), cancellationToken);
+            }
+        }
+
+        return null;
+    }
+
+    /// <summary>
+    /// Gets ONLY the temperature (fast, works even during disk operations).
+    /// This is useful for live temperature updates during surface tests.
+    /// </summary>
+    /// <param name="drive">Drive to check.</param>
+    /// <param name="cancellationToken">Token to cancel the operation.</param>
+    /// <returns>Temperature in Celsius or <c>null</c> when unavailable.</returns>
+    public async Task<int?> GetTemperatureOnlyAsync(CoreDriveInfo drive, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(drive);
+
+        try
+        {
+            return await _smartaProvider.GetTemperatureOnlyAsync(drive.Path, cancellationToken);
+        }
+        catch
+        {
+            return null;
+        }
+    }
 }

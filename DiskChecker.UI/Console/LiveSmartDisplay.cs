@@ -47,6 +47,28 @@ public class LiveSmartDisplay
     }
 
     /// <summary>
+    /// Starts live SMART data monitoring for the specified drive with retry logic for problematic drives.
+    /// </summary>
+    /// <param name="drive">Drive to monitor.</param>
+    /// <param name="maxRetries">Maximum retry attempts.</param>
+    /// <param name="updateAction">Action to call when data is updated.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    public async Task StartMonitoringWithRetryAsync(
+        CoreDriveInfo drive,
+        int maxRetries = 3,
+        Action? updateAction = null,
+        CancellationToken cancellationToken = default)
+    {
+        // Load initial data with retry logic for problematic drives like WD
+        var initialData = await _smartCheckService.GetSmartaDataWithRetryAsync(drive, maxRetries, cancellationToken);
+        if (initialData != null)
+        {
+            _currentSmartData = initialData;
+            updateAction?.Invoke();
+        }
+    }
+
+    /// <summary>
     /// Updates SMART data once (for manual refresh).
     /// </summary>
     /// <param name="drive">Drive to check.</param>
@@ -57,6 +79,37 @@ public class LiveSmartDisplay
         if (data != null)
         {
             _currentSmartData = data;
+        }
+    }
+
+    /// <summary>
+    /// Updates SMART data with retry logic for more reliable updates during testing.
+    /// </summary>
+    /// <param name="drive">Drive to check.</param>
+    /// <param name="maxRetries">Maximum retry attempts.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    public async Task RefreshDataWithRetryAsync(CoreDriveInfo drive, int maxRetries = 2, CancellationToken cancellationToken = default)
+    {
+        var data = await _smartCheckService.GetSmartaDataWithRetryAsync(drive, maxRetries, cancellationToken);
+        if (data != null)
+        {
+            _currentSmartData = data;
+        }
+    }
+
+    /// <summary>
+    /// Refreshes ONLY temperature (fast, works even during disk operations).
+    /// Updates CurrentSmartData.Temperature if successful.
+    /// </summary>
+    /// <param name="drive">Drive to check.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    public async Task RefreshTemperatureOnlyAsync(CoreDriveInfo drive, CancellationToken cancellationToken = default)
+    {
+        var temp = await _smartCheckService.GetTemperatureOnlyAsync(drive, cancellationToken);
+        if (temp.HasValue && _currentSmartData != null)
+        {
+            // Update only temperature, keep other values
+            _currentSmartData.Temperature = temp.Value;
         }
     }
 

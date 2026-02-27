@@ -34,4 +34,10 @@ public class TestDiskProvider : ISmartaProvider
     {
         return Task.FromResult(true);
     }
+
+    public Task<int?> GetTemperatureOnlyAsync(string drivePath, CancellationToken cancellationToken = default)
+    {
+        // Return mock temperature for testing
+        return Task.FromResult<int?>(35);
+    }
 }
