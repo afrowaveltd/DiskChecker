@@ -19,7 +19,7 @@
         <!-- ============ HEADER ============ -->
         <Border Grid.Row="0" Background="{DynamicResource ThemePanelBrush}" BorderBrush="{DynamicResource ThemeBorderBrush}" BorderThickness="0,0,0,1" Padding="20">
             <StackPanel Margin="0,0,0,10">
-                <TextBlock Text="🖴 Test Povrchu Disku - Defragmentace Style" 
+                <TextBlock Text="🖴 Test Povrchu Disku" 
                            FontSize="24" FontWeight="Bold" Foreground="#1a1a1a" Margin="0,0,0,10"/>
                 <TextBlock Text="{Binding SelectedDriveInfo}" 
                            FontSize="14" Foreground="#666666" Margin="0,0,0,5"/>
@@ -98,7 +98,7 @@
                 <!-- Block Visualization Area -->
                 <Border Background="{DynamicResource ThemePanelBrush}" BorderBrush="{DynamicResource ThemeBorderBrush}" BorderThickness="1" Padding="15" Margin="0,0,0,20">
                     <StackPanel>
-                        <TextBlock Text="📊 Vizualizace Povrchu Disku (Defrag Mode)" 
+                        <TextBlock Text="📊 Vizualizace Povrchu Disku" 
                                    FontSize="13" FontWeight="Bold" Foreground="#333333" Margin="0,0,0,15"/>
                         
                         <!-- Legend -->

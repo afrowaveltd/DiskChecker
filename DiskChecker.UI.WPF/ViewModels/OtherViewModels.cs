@@ -66,7 +66,9 @@ public partial class SurfaceTestViewModel : ViewModelBase, IDisposable
    public enum SurfaceRunMode
    {
       FullWriteRead,
-      ReadOnlyFullScan
+      ReadOnlyFullScan,
+      FullDiskErase,
+      NonDestructiveFileWriteRead
    }
 
    public class SurfaceRunModeOption
@@ -166,7 +168,9 @@ public partial class SurfaceTestViewModel : ViewModelBase, IDisposable
    private readonly IReadOnlyList<SurfaceRunModeOption> _availableRunModes =
    [
       new() { Value = SurfaceRunMode.FullWriteRead, Label = "Kompletní test (zápis + čtení)" },
-      new() { Value = SurfaceRunMode.ReadOnlyFullScan, Label = "Nedestruktivní test čtení celého povrchu" }
+      new() { Value = SurfaceRunMode.ReadOnlyFullScan, Label = "Nedestruktivní test čtení celého povrchu" },
+      new() { Value = SurfaceRunMode.FullDiskErase, Label = "Kompletní výmaz disku (sanitizace)" },
+      new() { Value = SurfaceRunMode.NonDestructiveFileWriteRead, Label = "Nedestruktivní test souboru na partition (zápis + čtení)" }
    ];
    private string _systemDiskProtectionMessage = string.Empty;
    private PlotModel _speedPlotModel;
@@ -307,7 +311,7 @@ public partial class SurfaceTestViewModel : ViewModelBase, IDisposable
          return;
       }
 
-      var isDestructiveMode = SelectedRunMode == SurfaceRunMode.FullWriteRead;
+      var isDestructiveMode = SelectedRunMode is SurfaceRunMode.FullWriteRead or SurfaceRunMode.FullDiskErase;
       if(isDestructiveMode && await IsSystemDiskAsync(SelectedDrive))
       {
          SystemDiskProtectionMessage = "⛔ Destruktivní test je z bezpečnostních důvodů zamčen pro systémový disk host OS.";
@@ -339,17 +343,7 @@ public partial class SurfaceTestViewModel : ViewModelBase, IDisposable
 
       try
       {
-         SurfaceTestRequest request = new SurfaceTestRequest
-         {
-            Drive = SelectedDrive,
-            Profile = SurfaceTestProfile.HddFull,
-            Operation = SelectedRunMode == SurfaceRunMode.ReadOnlyFullScan
-               ? SurfaceTestOperation.ReadOnly
-               : SurfaceTestOperation.WriteZeroFill,
-            BlockSizeBytes = 1024 * 1024, // 1 MB
-            SampleIntervalBlocks = 128,
-            AllowDeviceWrite = SelectedRunMode != SurfaceRunMode.ReadOnlyFullScan
-         };
+         var request = BuildSurfaceRequest(SelectedDrive, SelectedRunMode);
 
          Progress<SurfaceTestProgress> progress = new Progress<SurfaceTestProgress>(OnTestProgress);
 
@@ -388,10 +382,90 @@ public partial class SurfaceTestViewModel : ViewModelBase, IDisposable
       {
          SystemDiskProtectionMessage = "✅ Nedestruktivní režim: provádí se pouze čtení povrchu bez změny dat.";
       }
+      else if(SelectedRunMode == SurfaceRunMode.NonDestructiveFileWriteRead)
+      {
+         SystemDiskProtectionMessage = "✅ Nedestruktivní souborový režim: zapisuje a ověřuje pouze testovací soubor na partition.";
+      }
+      else if(SelectedRunMode == SurfaceRunMode.FullDiskErase)
+      {
+         SystemDiskProtectionMessage = "⚠️ Sanitizace: kompletní výmaz testovaného disku.";
+      }
       else
       {
          SystemDiskProtectionMessage = string.Empty;
       }
+   }
+
+   private static SurfaceTestRequest BuildSurfaceRequest(CoreDriveInfo selectedDrive, SurfaceRunMode mode)
+   {
+      var request = new SurfaceTestRequest
+      {
+         Drive = selectedDrive,
+         Profile = SurfaceTestProfile.HddFull,
+         Operation = SurfaceTestOperation.WriteZeroFill,
+         BlockSizeBytes = 1024 * 1024,
+         SampleIntervalBlocks = 128,
+         AllowDeviceWrite = true
+      };
+
+      switch(mode)
+      {
+         case SurfaceRunMode.ReadOnlyFullScan:
+            request.Operation = SurfaceTestOperation.ReadOnly;
+            request.AllowDeviceWrite = false;
+            break;
+
+         case SurfaceRunMode.FullDiskErase:
+            request.Profile = SurfaceTestProfile.FullDiskSanitization;
+            request.Operation = SurfaceTestOperation.WriteZeroFill;
+            request.SecureErase = true;
+            request.AllowDeviceWrite = true;
+            break;
+
+         case SurfaceRunMode.NonDestructiveFileWriteRead:
+            request.Profile = SurfaceTestProfile.Custom;
+            request.Operation = SurfaceTestOperation.WritePattern;
+            request.AllowDeviceWrite = true;
+            request.MaxBytesToTest = 2L * 1024 * 1024 * 1024;
+            request.Drive = new CoreDriveInfo
+            {
+               Name = selectedDrive.Name,
+               FileSystem = selectedDrive.FileSystem,
+               FreeSpace = selectedDrive.FreeSpace,
+               TotalSize = selectedDrive.TotalSize,
+               Path = ResolveSafeTestFilePath(selectedDrive)
+            };
+            break;
+      }
+
+      return request;
+   }
+
+   private static string ResolveSafeTestFilePath(CoreDriveInfo drive)
+   {
+      if(!string.IsNullOrWhiteSpace(drive.Path) && !drive.Path.StartsWith("\\\\.\\", StringComparison.OrdinalIgnoreCase))
+      {
+         if(Directory.Exists(drive.Path))
+         {
+            return Path.Combine(drive.Path, "diskchecker_surface_test.bin");
+         }
+
+         var root = Path.GetPathRoot(drive.Path);
+         if(!string.IsNullOrWhiteSpace(root) && Directory.Exists(root))
+         {
+            return Path.Combine(root, "diskchecker_surface_test.bin");
+         }
+      }
+
+      var tempFolder = Path.Combine(Path.GetTempPath(), "DiskChecker");
+      Directory.CreateDirectory(tempFolder);
+      var safeName = new string(drive.Name.Where(ch => char.IsLetterOrDigit(ch) || ch == '_').ToArray());
+      if(string.IsNullOrWhiteSpace(safeName))
+      {
+         safeName = "drive";
+      }
+
+      return Path.Combine(tempFolder, $"surface_{safeName}.bin");
    }
 
    /// <summary>
@@ -959,7 +1033,8 @@ public partial class SmartCheckViewModel : ViewModelBase, IDisposable
       {
          SmartScanProgressPercent = 40;
          SmartScanProgressText = "Načítání SMART atributů...";
-         var result = await _smartCheckService.RunAsync(SelectedDrive);
+         using var quickSmartCts = new CancellationTokenSource(TimeSpan.FromSeconds(20));
+         var result = await _smartCheckService.RunAsync(SelectedDrive, quickSmartCts.Token);
          if(result == null)
          {
             var instructions = await _smartCheckService.GetDependencyInstructionsAsync();
@@ -974,8 +1049,9 @@ public partial class SmartCheckViewModel : ViewModelBase, IDisposable
          SmartScanProgressPercent = 70;
          SmartScanProgressText = "Vyhodnocuji výsledky testu...";
          MapResult(result);
-         await LoadAdvancedSmartDataAsync();
-         await RefreshMaintenanceActionsAsync();
+         using var advancedCts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+         await LoadAdvancedSmartDataAsync(advancedCts.Token);
+         await RefreshMaintenanceActionsAsync(advancedCts.Token);
          if(_temperatureMonitoringTask == null || _temperatureMonitoringTask.IsCompleted)
          {
             _temperatureMonitoringTask = StartTemperatureMonitoringAsync();
@@ -998,6 +1074,11 @@ public partial class SmartCheckViewModel : ViewModelBase, IDisposable
       {
          StatusMessage = $"❌ SMART kontrola selhala kvůli schématu databáze: {ex.Message}";
          SmartScanProgressText = "❌ SMART test selhal (schema DB).";
+      }
+      catch(OperationCanceledException)
+      {
+         StatusMessage = "⚠️ SMART kontrola vypršela časově (timeout). Část detailů může chybět.";
+         SmartScanProgressText = "⚠️ SMART test dokončen s timeoutem.";
       }
       finally
       {
@@ -1096,7 +1177,7 @@ public partial class SmartCheckViewModel : ViewModelBase, IDisposable
                AddTemperatureSample(temperature.Value);
             }
 
-            await RefreshSelfTestStatusAsync();
+            await RefreshSelfTestStatusAsync(token);
             await Task.Delay(TimeSpan.FromSeconds(5), token);
          }
       }
@@ -1145,14 +1226,14 @@ public partial class SmartCheckViewModel : ViewModelBase, IDisposable
    /// Načte aktuální stav SMART self-testu.
    /// </summary>
    [RelayCommand]
-   public async Task RefreshSelfTestStatusAsync()
+   public async Task RefreshSelfTestStatusAsync(CancellationToken cancellationToken = default)
    {
       if(SelectedDrive == null)
       {
          return;
       }
 
-      var status = await _smartCheckService.GetSelfTestStatusAsync(SelectedDrive);
+      var status = await _smartCheckService.GetSelfTestStatusAsync(SelectedDrive, cancellationToken);
       if(status == null)
       {
          SelfTestStatusText = "Stav self-testu není dostupný.";
@@ -1170,14 +1251,14 @@ public partial class SmartCheckViewModel : ViewModelBase, IDisposable
    /// Načte log SMART self-testů.
    /// </summary>
    [RelayCommand]
-   public async Task RefreshSelfTestLogAsync()
+   public async Task RefreshSelfTestLogAsync(CancellationToken cancellationToken = default)
    {
       if(SelectedDrive == null)
       {
          return;
       }
 
-      var logEntries = await _smartCheckService.GetSelfTestLogAsync(SelectedDrive);
+      var logEntries = await _smartCheckService.GetSelfTestLogAsync(SelectedDrive, cancellationToken);
       SelfTestLogEntries = new ObservableCollection<SmartaSelfTestEntry>(logEntries.OrderByDescending(e => e.Number));
    }
 
@@ -1281,7 +1362,7 @@ public partial class SmartCheckViewModel : ViewModelBase, IDisposable
       }
    }
 
-   private async Task LoadAdvancedSmartDataAsync()
+   private async Task LoadAdvancedSmartDataAsync(CancellationToken cancellationToken = default)
    {
       if(SelectedDrive == null)
       {
@@ -1289,19 +1370,19 @@ public partial class SmartCheckViewModel : ViewModelBase, IDisposable
       }
 
       SmartAttributes = new ObservableCollection<SmartaAttributeItem>(
-          (await _smartCheckService.GetSmartAttributesAsync(SelectedDrive)).OrderBy(a => a.Id));
-      await RefreshSelfTestStatusAsync();
-      await RefreshSelfTestLogAsync();
+          (await _smartCheckService.GetSmartAttributesAsync(SelectedDrive, cancellationToken)).OrderBy(a => a.Id));
+      await RefreshSelfTestStatusAsync(cancellationToken);
+      await RefreshSelfTestLogAsync(cancellationToken);
    }
 
-   private async Task RefreshMaintenanceActionsAsync()
+   private async Task RefreshMaintenanceActionsAsync(CancellationToken cancellationToken = default)
    {
       if(SelectedDrive == null)
       {
          return;
       }
 
-      var supported = await _smartCheckService.GetSupportedMaintenanceActionsAsync(SelectedDrive);
+      var supported = await _smartCheckService.GetSupportedMaintenanceActionsAsync(SelectedDrive, cancellationToken);
       if(supported.Count == 0)
       {
          return;
