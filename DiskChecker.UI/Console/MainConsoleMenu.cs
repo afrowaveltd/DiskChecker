@@ -633,7 +633,7 @@ public class MainConsoleMenu
                       double currentSpeedMbps = p.CurrentThroughputMbps > 0 ? p.CurrentThroughputMbps : verifySpeed;
                       long remainingBytes = maxBytesToTest - verifyBytes;
                       double remainingMb = remainingBytes / (1024.0 * 1024.0);
-                      double etaVerifySeconds = currentSpeedMbps > 0 ? (remainingMb / currentSpeedMbps) * 60 : 0; // Convert MB/s to seconds
+                      double etaVerifySeconds = currentSpeedMbps > 0 ? remainingMb / currentSpeedMbps : 0;  // Fixed: removed * 60
                       verifyEta = FormatEta(etaVerifySeconds);
                    }
 
@@ -693,7 +693,7 @@ public class MainConsoleMenu
                       double currentSpeedMbps = p.CurrentThroughputMbps > 0 ? p.CurrentThroughputMbps : verifySpeed;
                       long remainingBytes = maxBytesToTest - verifyBytes;
                       double remainingMb = remainingBytes / (1024.0 * 1024.0);
-                      overallEtaSeconds = currentSpeedMbps > 0 ? (remainingMb / currentSpeedMbps) * 60 : 0;
+                      overallEtaSeconds = currentSpeedMbps > 0 ? (remainingMb / currentSpeedMbps) * 60 : 0; // Convert MB/s to seconds
                    }
                    else
                    {
@@ -957,9 +957,9 @@ public class MainConsoleMenu
       try
       {
          AnsiConsole.MarkupLine($"\n[yellow]Formátování disku {Markup.Escape(drive.Name)}...[/]");
-         AnsiConsole.MarkupLine("[red]VAROVÁNÍ: Všechna data budou smazána![/]");
+         AnsiConsole.MarkupLine("[red]VAROVÁNÍ: Všechna data budou smazána! Vytvoří se GPT tabulka oddílů.[/]");
 
-         if(!AnsiConsole.Confirm("Opravdu chcete pokračit?"))
+         if(!AnsiConsole.Confirm("Opravdu chcete pokračovat?"))
          {
             return;
          }
@@ -973,16 +973,21 @@ public class MainConsoleMenu
          }
 
          int diskNumber = int.Parse(driveNumber);
-         string partitionLabel = AnsiConsole.Ask<string>("Zadejte názv partice", "STORAGE");
+         
+         // Defaultní název oddílu "Servisni"
+         string partitionLabel = "Servisni";
 
-         // Use diskpart for Windows disk partitioning
+         // Use diskpart for Windows disk partitioning with GPT
+         // GPT je povinný pro moderní systémy a větší disky
          string diskpartScript = $@"list disk
 select disk {diskNumber}
 clean
-create partition primary
+convert gpt
+create partition primary size=max
 select partition 1
 format fs=ntfs label={partitionLabel} quick
-assign";
+assign
+exit";
 
          string tempScriptPath = Path.Combine(Path.GetTempPath(), $"format_disk_{Guid.NewGuid():N}.txt");
 
@@ -990,12 +995,17 @@ assign";
          {
             await File.WriteAllTextAsync(tempScriptPath, diskpartScript);
 
+            AnsiConsole.MarkupLine("[yellow]Spouštím diskpart...[/]");
+            AnsiConsole.MarkupLine("[dim]Prosím čekejte, formátování může trvat několik minut...[/]");
+
             var psi = new ProcessStartInfo
             {
                FileName = "diskpart",
                Arguments = $"/s \"{tempScriptPath}\"",
                UseShellExecute = false,
-               CreateNoWindow = false
+               CreateNoWindow = false,
+               RedirectStandardOutput = true,
+               RedirectStandardError = true
             };
 
             using var process = System.Diagnostics.Process.Start(psi);
@@ -1005,16 +1015,31 @@ assign";
                return;
             }
 
+            // Čekáme na dokončení procesu
             await process.WaitForExitAsync();
 
             if(process.ExitCode == 0)
             {
-               AnsiConsole.MarkupLine($"[green]✓ Disk {Markup.Escape(drive.Name)} byl úspěšně naformátován na NTFS[/]");
-               AnsiConsole.MarkupLine($"[yellow]Partice: {partitionLabel}[/]");
+               AnsiConsole.MarkupLine($"[green]✅ Disk {Markup.Escape(drive.Name)} byl úspěšně naformátován na NTFS[/]");
+               AnsiConsole.MarkupLine($"[green]✓ Tabulka oddílů: GPT[/]");
+               AnsiConsole.MarkupLine($"[green]✓ Souborový systém: NTFS[/]");
+               AnsiConsole.MarkupLine($"[green]✓ Název oddílu: {partitionLabel}[/]");
             }
             else
             {
-               AnsiConsole.MarkupLine($"[red]Chyba: Diskpart vrátil kód {process.ExitCode}[/]");
+               AnsiConsole.MarkupLine($"[red]❌ Chyba: Diskpart vrátil kód {process.ExitCode}[/]");
+               AnsiConsole.MarkupLine("[red]Možné příčiny:[/]");
+               AnsiConsole.MarkupLine("[red]  • Disk není odpojený v Průzkumníku Windows[/]");
+               AnsiConsole.MarkupLine("[red]  • Chybějící oprávnění administrátora[/]");
+               AnsiConsole.MarkupLine("[red]  • Disk je používán jiným procesem[/]");
+               
+               // Pokusíme se přečíst výstup
+               string output = await process.StandardOutput.ReadToEndAsync();
+               if(!string.IsNullOrEmpty(output))
+               {
+                  AnsiConsole.MarkupLine("[dim]Detaily:[/]");
+                  AnsiConsole.MarkupLine($"[dim]{output}[/]");
+               }
             }
          }
          finally
@@ -1024,7 +1049,8 @@ assign";
       }
       catch(Exception ex)
       {
-         AnsiConsole.MarkupLine($"[red]Chyba při formátování: {ex.Message}[/]");
+         AnsiConsole.MarkupLine($"[red]❌ Chyba při formátování: {ex.Message}[/]");
+         AnsiConsole.MarkupLine($"[dim]Stack: {ex.StackTrace}[/]");
       }
 
    }

@@ -12,6 +12,7 @@
   <Project Path="DiskChecker.Infrastructure/DiskChecker.Infrastructure.csproj">
     <Platform Solution="*|x64" Project="x64" />
   </Project>
+  <Project Path="DiskChecker.UI.WPF/DiskChecker.UI.WPF.csproj" />
   <Project Path="DiskChecker.UI/DiskChecker.UI.csproj">
     <Platform Solution="*|x64" Project="x64" />
   </Project>

@@ -1,0 +1,49 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <UseWPF>true</UseWPF>
+    <AssemblyName>DiskChecker</AssemblyName>
+    <RootNamespace>DiskChecker.UI.WPF</RootNamespace>
+    <Version>1.0.0</Version>
+    <Description>DiskChecker - Windows WPF Desktop Application</Description>
+  </PropertyGroup>
+
+  <!-- References na ostatní projekty -->
+  <ItemGroup>
+    <ProjectReference Include="..\DiskChecker.Core\DiskChecker.Core.csproj" />
+    <ProjectReference Include="..\DiskChecker.Application\DiskChecker.Application.csproj" />
+    <ProjectReference Include="..\DiskChecker.Infrastructure\DiskChecker.Infrastructure.csproj" />
+  </ItemGroup>
+
+  <!-- NuGet balíčky pro MVVM a UI -->
+  <ItemGroup>
+    <!-- MVVM Toolkit -->
+    <PackageReference Include="CommunityToolkit.Mvvm" Version="8.3.0" />
+    
+    <!-- Dependency Injection (match versions with Core) -->
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="10.0.3" />
+    
+    <!-- Logging -->
+    <PackageReference Include="Microsoft.Extensions.Logging" Version="10.0.3" />
+    <PackageReference Include="Microsoft.Extensions.Logging.Console" Version="10.0.3" />
+    
+    <!-- Configuration -->
+    <PackageReference Include="Microsoft.Extensions.Configuration" Version="10.0.3" />
+    <PackageReference Include="Microsoft.Extensions.Configuration.Json" Version="10.0.3" />
+    
+    <!-- Grafování -->
+    <PackageReference Include="OxyPlot.Wpf" Version="2.1.2" />
+    <PackageReference Include="OxyPlot.Core" Version="2.1.2" />
+    
+    <!-- Modern WPF controls -->
+    <PackageReference Include="MahApps.Metro" Version="2.4.10" />
+    
+    <!-- Notifications -->
+    <PackageReference Include="Hardcodet.NotifyIcon.Wpf" Version="1.1.0" />
+  </ItemGroup>
+
+</Project>

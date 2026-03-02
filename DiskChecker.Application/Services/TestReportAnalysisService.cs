@@ -215,9 +215,9 @@ public class TestReportAnalysisService
     /// </summary>
     private string ScoreToGrade(int score) => score switch
     {
-        >= 95 => "A+",
+        >= 95 => "A",  // Changed from "A+"
         >= 90 => "A",
-        >= 85 => "B+",
+        >= 85 => "B",  // Changed from "B+"
         >= 80 => "B",
         >= 70 => "C",
         >= 60 => "D",
@@ -229,13 +229,13 @@ public class TestReportAnalysisService
     /// </summary>
     private string GenerateHealthAssessment(SurfaceTestResult result, TestAnalytics analytics) => analytics.Score switch
     {
-        >= 95 => "✅ EXCELLENT: Disk performs perfectly with no anomalies detected. Ready for production.",
-        >= 90 => "✅ VERY GOOD: Disk performs well with minimal issues. Safe to use.",
-        >= 85 => "✅ GOOD: Disk is healthy with minor speed variations. Generally acceptable.",
-        >= 80 => "⚠️ ACCEPTABLE: Some issues detected, but disk is still usable. Monitor closely.",
-        >= 70 => "⚠️ QUESTIONABLE: Significant performance issues or errors detected. Use caution.",
-        >= 60 => "❌ POOR: Serious issues detected. Not recommended for critical data.",
-        _ => "❌ CRITICAL: Disk has critical issues. Replacement strongly recommended."
+        >= 95 => "✅ VYNIKAJÍCÍ: Disk funguje dokonale bez anomálií. Připraven na produkci.",
+        >= 90 => "✅ VELMI DOBRÝ: Disk funguje dobře s minimálními problémy. Bezpečný k použití.",
+        >= 85 => "✅ DOBRÝ: Disk je zdravý s malými variacemi rychlosti. Obecně přijatelný.",
+        >= 80 => "⚠️ PŘIJATELNÝ: Zjištěny některé problémy, disk je stále použitelný. Monitorujte.",
+        >= 70 => "⚠️ POCHYBNÝ: Zjištěny významné problémy s výkonem. Opatrně.",
+        >= 60 => "❌ ŠPATNÝ: Zjištěny vážné problémy. Nedoporučuje se pro kritická data.",
+        _ => "❌ KRITICKÝ: Disk má kritické problémy. Okamžitá výměna."
     };
 
     /// <summary>
@@ -246,47 +246,47 @@ public class TestReportAnalysisService
         var sb = new StringBuilder();
 
         sb.AppendLine("╔════════════════════════════════════════════════════════════════════════════════╗");
-        sb.AppendLine("║                            DISK TEST REPORT                                   ║");
+        sb.AppendLine("║                      ZPRÁVA O TESTU DISKU                                    ║");
         sb.AppendLine("╚════════════════════════════════════════════════════════════════════════════════╝");
         sb.AppendLine();
 
         // Overall Grade
-        sb.AppendLine($"📊 OVERALL GRADE: [{analytics.Grade}]  Score: {analytics.Score}/100");
+        sb.AppendLine($"📊 CELKOVÉ HODNOCENÍ: [{analytics.Grade}]  Skóre: {analytics.Score}/100");
         sb.AppendLine($"   {analytics.HealthAssessment}");
         sb.AppendLine();
 
         // Disk Information
-        sb.AppendLine("╔─ DISK INFORMATION ─────────────────────────────────────────────────────────────╗");
-        sb.AppendLine($"║ Model:              {result.DriveModel,-65}║");
-        sb.AppendLine($"║ Serial Number:      {result.DriveSerialNumber ?? "N/A",-65}║");
-        sb.AppendLine($"║ Manufacturer:       {result.DriveManufacturer ?? "N/A",-65}║");
-        sb.AppendLine($"║ Interface:          {result.DriveInterface ?? "N/A",-65}║");
-        sb.AppendLine($"║ Capacity:           {FormatBytes(result.DriveTotalBytes),-65}║");
-        sb.AppendLine($"║ Temperature:        {(result.CurrentTemperatureCelsius.HasValue ? $"{result.CurrentTemperatureCelsius}°C" : "N/A"),-65}║");
-        sb.AppendLine($"║ Power-On Hours:     {(result.PowerOnHours.HasValue ? $"{result.PowerOnHours} hours" : "N/A"),-65}║");
+        sb.AppendLine("╔─ INFORMACE O DISKU ────────────────────────────────────────────────────────────╗");
+        sb.AppendLine($"║ Model:              {SafeFormat(result.DriveModel, 65)}║");
+        sb.AppendLine($"║ Sériové číslo:      {SafeFormat(result.DriveSerialNumber ?? "N/A", 65)}║");
+        sb.AppendLine($"║ Výrobce:            {SafeFormat(result.DriveManufacturer ?? "N/A", 65)}║");
+        sb.AppendLine($"║ Rozhraní:           {SafeFormat(result.DriveInterface ?? "N/A", 65)}║");
+        sb.AppendLine($"║ Kapacita:           {SafeFormat(FormatBytes(result.DriveTotalBytes), 65)}║");
+        sb.AppendLine($"║ Teplota:            {SafeFormat(result.CurrentTemperatureCelsius.HasValue ? $"{result.CurrentTemperatureCelsius}°C" : "N/A", 65)}║");
+        sb.AppendLine($"║ Provozní hodiny:    {SafeFormat(result.PowerOnHours.HasValue ? $"{result.PowerOnHours} h" : "N/A", 65)}║");
         sb.AppendLine("╚──────────────────────────────────────────────────────────────────────────────────╝");
         sb.AppendLine();
 
         // Performance Metrics
-        sb.AppendLine("╔─ PERFORMANCE METRICS ──────────────────────────────────────────────────────────╗");
-        sb.AppendLine($"║ Test Duration:      {analytics.Duration.ToString("hh\\:mm\\:ss"),-65}║");
-        sb.AppendLine($"║ Total Tested:       {FormatBytes(result.TotalBytesTested),-65}║");
-        sb.AppendLine($"║ Average Speed:      {result.AverageSpeedMbps:F2} MB/s {GetSpeedBar(result.AverageSpeedMbps, analytics.FilteredMaxSpeedMbps),-35}║");
-        sb.AppendLine($"║ Peak Speed:         {result.PeakSpeedMbps:F2} MB/s (may include cache)");
-        sb.AppendLine($"║ Realistic Peak:     {analytics.FilteredMaxSpeedMbps:F2} MB/s (cache filtered)");
-        sb.AppendLine($"║ Realistic Min:      {analytics.FilteredMinSpeedMbps:F2} MB/s {GetSpeedBar(analytics.FilteredMinSpeedMbps, analytics.FilteredMaxSpeedMbps),-35}║");
-        sb.AppendLine($"║ Speed Variance:     ±{analytics.SpeedStdDev:F2} MB/s (σ)");
+        sb.AppendLine("╔─ METRIKY VÝKONU ──────────────────────────────────────────────────────────────╗");
+        sb.AppendLine($"║ Doba testu:         {SafeFormat(analytics.Duration.ToString("hh\\:mm\\:ss"), 65)}║");
+        sb.AppendLine($"║ Celkem testováno:   {SafeFormat(FormatBytes(result.TotalBytesTested), 65)}║");
+        sb.AppendLine($"║ Průměrná rychlost:  {SafeFormat($"{result.AverageSpeedMbps:F2} MB/s", 65)}║");
+        sb.AppendLine($"║ Maximální rychlost: {SafeFormat($"{result.PeakSpeedMbps:F2} MB/s (včetně cache)", 65)}║");
+        sb.AppendLine($"║ Reálná max:         {SafeFormat($"{analytics.FilteredMaxSpeedMbps:F2} MB/s (bez cache)", 65)}║");
+        sb.AppendLine($"║ Reálná min:         {SafeFormat($"{analytics.FilteredMinSpeedMbps:F2} MB/s", 65)}║");
+        sb.AppendLine($"║ Variance rychlosti: {SafeFormat($"±{analytics.SpeedStdDev:F2} MB/s", 65)}║");
         sb.AppendLine("╚──────────────────────────────────────────────────────────────────────────────────╝");
         sb.AppendLine();
 
         // Reliability
-        sb.AppendLine("╔─ RELIABILITY ──────────────────────────────────────────────────────────────────╗");
-        sb.AppendLine($"║ Errors Found:       {result.ErrorCount} {(result.ErrorCount == 0 ? "✅" : "❌"),-60}║");
-        sb.AppendLine($"║ Anomalies:          {analytics.AnomalyPercentage:F1}% of samples filtered");
-        sb.AppendLine($"║ Test Quality:       {(analytics.AnomalyPercentage < 5 ? "✅ Excellent" : analytics.AnomalyPercentage < 15 ? "⚠️ Good" : "❌ Poor"),-65}║");
+        sb.AppendLine("╔─ SPOLEHLIVOST ─────────────────────────────────────────────────────────────────╗");
+        sb.AppendLine($"║ Nalezené chyby:     {SafeFormat(result.ErrorCount == 0 ? "0 ✅" : $"{result.ErrorCount} ❌", 65)}║");
+        sb.AppendLine($"║ Anomálie:           {SafeFormat($"{analytics.AnomalyPercentage:F1}% vzorků filtrováno", 65)}║");
+        sb.AppendLine($"║ Kvalita testu:      {SafeFormat(analytics.AnomalyPercentage < 5 ? "✅ Vynikající" : analytics.AnomalyPercentage < 15 ? "⚠️ Dobrá" : "❌ Slabá", 65)}║");
         
         if (result.ReallocatedSectors.HasValue && result.ReallocatedSectors > 0)
-            sb.AppendLine($"║ ⚠️  Reallocated:    {result.ReallocatedSectors} sectors (disk wear detected)");
+            sb.AppendLine($"║ ⚠️ PŘEMÍSTĚNÉ SEKTORY: {result.ReallocatedSectors} (detekováno opotřebení)");
         
         sb.AppendLine("╚──────────────────────────────────────────────────────────────────────────────────╝");
         sb.AppendLine();
@@ -294,38 +294,38 @@ public class TestReportAnalysisService
         // Detected Issues
         if (analytics.DetectedAnomalies.Any())
         {
-            sb.AppendLine("╔─ ANALYSIS NOTES ───────────────────────────────────────────────────────────────╗");
+            sb.AppendLine("╔─ POZNAMENANÁ ZJIŠTĚNÍ ────────────────────────────────────────────────────────╗");
             foreach (var anomaly in analytics.DetectedAnomalies)
             {
-                sb.AppendLine($"║ • {anomaly,-74}║");
+                sb.AppendLine($"║ • {SafeFormat(anomaly, 74)}║");
             }
             sb.AppendLine("╚──────────────────────────────────────────────────────────────────────────────────╝");
             sb.AppendLine();
         }
 
         // Recommendations
-        sb.AppendLine("╔─ RECOMMENDATIONS ──────────────────────────────────────────────────────────────╗");
+        sb.AppendLine("╔─ DOPORUČENÍ ───────────────────────────────────────────────────────────────────╗");
         if (analytics.Score >= 90)
         {
-            sb.AppendLine("║ ✅ Disk is suitable for production use and data storage.                       ║");
+            sb.AppendLine("║ ✅ Disk je vhodný pro produkční použití a ukládání dat.                       ║");
         }
         else if (analytics.Score >= 80)
         {
-            sb.AppendLine("║ ⚠️  Disk is usable but monitor for issues. Keep regular backups.               ║");
+            sb.AppendLine("║ ⚠️ Disk je použitelný, ale monitorujte problémy. Pravidelně zálohujte.      ║");
         }
         else if (analytics.Score >= 70)
         {
-            sb.AppendLine("║ ⚠️  Disk has issues. Consider replacing soon. Avoid critical data.            ║");
+            sb.AppendLine("║ ⚠️ Disk má problémy. Zvažte výměnu. Nepoužívejte pro kritická data.         ║");
         }
         else
         {
-            sb.AppendLine("║ ❌ Disk is unreliable. Replacement strongly recommended immediately.         ║");
+            sb.AppendLine("║ ❌ Disk je nespolehlivý. Doporučuje se okamžitá výměna.                    ║");
         }
         sb.AppendLine("╚──────────────────────────────────────────────────────────────────────────────────╝");
         sb.AppendLine();
 
         // Footer
-        sb.AppendLine($"Generated: {DateTime.Now:yyyy-MM-dd HH:mm:ss} (Test ID: {result.TestId})");
+        sb.AppendLine($"Vygenerováno: {DateTime.Now:yyyy-MM-dd HH:mm:ss} (ID testu: {result.TestId})");
 
         return sb.ToString();
     }
@@ -420,5 +420,19 @@ public class TestReportAnalysisService
         if (max <= 0) return "";
         int filled = (int)((current / max) * width);
         return "[" + new string('█', filled) + new string('░', width - filled) + "]";
+    }
+
+    /// <summary>
+    /// Helper to safely format strings for fixed-width report columns.
+    /// </summary>
+    private static string SafeFormat(string? text, int width)
+    {
+        if (string.IsNullOrEmpty(text))
+            text = "N/A";
+        
+        if (text.Length > width)
+            return text[..(width - 3)] + "...";
+        
+        return text.PadRight(width);
     }
 }

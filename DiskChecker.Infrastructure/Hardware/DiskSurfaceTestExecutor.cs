@@ -508,6 +508,15 @@ public class DiskSurfaceTestExecutor : ISurfaceTestExecutor
             ? 0
             : Math.Min(100, bytesProcessedTotal * 100d / totalBytesOverall);
 
+        // For multi-phase tests, adjust percent to global scale:
+        // WRITE phase: 0-50%
+        // VERIFY phase: 50-100%
+        // This allows UI to detect phase change at PercentComplete >= 50
+        bool isVerifyPhase = bytesProcessedPreviousPhases.HasValue;
+        double globalPercentComplete = isVerifyPhase
+            ? 50 + (percentComplete / 2.0)  // Verify is 50-100% (scale 0-100% to 50-100%)
+            : (percentComplete / 2.0);       // Write is 0-50% (scale 0-100% to 0-50%)
+
         // For multi-phase tests, report ONLY current phase bytes for UI display
         // The UI should show "Fáze 2: XXX GB" not total accumulated bytes
         long reportedBytes = bytesProcessedThisPhase;
@@ -516,7 +525,7 @@ public class DiskSurfaceTestExecutor : ISurfaceTestExecutor
         {
             TestId = Guid.Parse(result.TestId),
             BytesProcessed = reportedBytes,  // Report ONLY this phase bytes
-            PercentComplete = percentComplete,
+            PercentComplete = globalPercentComplete,  // Report global percent (0-50% for write, 50-100% for verify)
             CurrentThroughputMbps = Math.Round(throughput, 2),
             TimestampUtc = DateTime.UtcNow
         });

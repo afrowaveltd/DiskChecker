@@ -850,7 +850,7 @@ public class RawDiskSanitizationExecutor : ISurfaceTestExecutor
                      {
                         TestId = Guid.Parse(result.TestId),
                         BytesProcessed = bytesWritten,
-                        PercentComplete = Math.Min(100, bytesWritten * 100.0 / totalBytes),
+                        PercentComplete = Math.Min(50, bytesWritten * 50.0 / totalBytes),  // Fixed: 0-50% for write phase
                         CurrentThroughputMbps = Math.Round(throughput, 2),
                         TimestampUtc = DateTime.UtcNow
                      });
@@ -1398,6 +1398,18 @@ public class RawDiskSanitizationExecutor : ISurfaceTestExecutor
       return $"{size:0.##} {suffixes[order]}";
    }
 }
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 

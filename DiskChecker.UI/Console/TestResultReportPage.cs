@@ -26,41 +26,45 @@ public static class TestResultReportPage
         // Clear screen and display report
         AnsiConsole.Clear();
         var report = analysisService.GenerateTerminalReport(result, analytics);
-        AnsiConsole.Write(new Panel(new Markup(EscapeMarkup(report)))
+        
+        // Report is plain text - wrap in Text object to prevent markup parsing
+        // This prevents errors if report contains brackets like [A]
+        AnsiConsole.Write(new Panel(new Text(report))
         {
             Border = BoxBorder.Rounded,
-            Padding = new Padding(1, 1)
-        }.BorderStyle(new Style(GetGradeColor(analytics.Grade))));
+            Padding = new Padding(1, 1),
+            BorderStyle = new Style(GetGradeColor(analytics.Grade))
+        });
 
         AnsiConsole.WriteLine();
 
-        // Export options
+        // Export options - translate to Czech
         var option = AnsiConsole.Prompt(
             new SelectionPrompt<string>()
-                .Title("[bold yellow]📊 What would you like to do?[/]")
+                .Title("[bold yellow]📊 Co chcete udělat?[/]")
                 .AddChoices(new[]
                 {
-                    "📋 View JSON Report",
-                    "📊 Export as CSV (for graphing)",
-                    "💾 Save Certificate (JSON)",
-                    "🔄 Return to Menu"
+                    "📋 Zobrazit JSON Report",
+                    "📊 Exportovat jako CSV (pro grafy)",
+                    "💾 Uložit Certifikát (JSON)",
+                    "🔄 Zpět do Menu"
                 }));
 
         switch (option)
         {
-            case "📋 View JSON Report":
+            case "📋 Zobrazit JSON Report":
                 await ViewJsonReportAsync(result, analysisService, analytics);
                 break;
 
-            case "📊 Export as CSV (for graphing)":
+            case "📊 Exportovat jako CSV (pro grafy)":
                 await ExportCsvAsync(result, analysisService);
                 break;
 
-            case "💾 Save Certificate (JSON)":
+            case "💾 Uložit Certifikát (JSON)":
                 await SaveCertificateAsync(result, analysisService, analytics);
                 break;
 
-            case "🔄 Return to Menu":
+            case "🔄 Zpět do Menu":
                 return;
         }
 
@@ -76,7 +80,7 @@ public static class TestResultReportPage
         var jsonReport = analysisService.GenerateJsonReport(result, analytics);
         
         AnsiConsole.MarkupLine("[bold cyan]📄 JSON Report:[/]\n");
-        AnsiConsole.Write(new Panel(new Markup(EscapeMarkup(jsonReport)))
+        AnsiConsole.Write(new Panel(jsonReport)
         {
             Border = BoxBorder.Rounded,
             Padding = new Padding(1, 0)
@@ -179,12 +183,4 @@ public static class TestResultReportPage
         "D" => Color.Orange1,
         _ => Color.Red
     };
-
-    private static string EscapeMarkup(string text)
-    {
-        // Escape special Markup characters to display them literally
-        return text
-            .Replace("[", "\\[")
-            .Replace("]", "\\]");
-    }
 }

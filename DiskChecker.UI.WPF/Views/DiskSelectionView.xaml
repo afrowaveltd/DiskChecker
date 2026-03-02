@@ -1,0 +1,112 @@
+<UserControl x:Class="DiskChecker.UI.WPF.Views.DiskSelectionView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006" 
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008" 
+             mc:Ignorable="d" 
+             d:DesignHeight="600" d:DesignWidth="1000"
+             Background="#F5F5F5">
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+
+        <!-- ========== HEADER ========== -->
+        <Border Grid.Row="0" Background="#FFFFFF" BorderBrush="#E0E0E0" BorderThickness="0,0,0,1" Padding="20">
+            <StackPanel Margin="0,0,0,5">
+                <TextBlock Text="💾 Vyberte Disk pro Testování" 
+                           FontSize="28" FontWeight="Bold" Foreground="#1a1a1a" Margin="0,0,0,5"/>
+                <TextBlock Text="Zvolte disk, který chcete diagnostikovat" 
+                           FontSize="13" Foreground="#666666"/>
+            </StackPanel>
+        </Border>
+
+        <!-- ========== DISK LIST ========== -->
+        <Border Grid.Row="1" Background="#FFFFFF" BorderBrush="#E0E0E0" BorderThickness="1" Margin="20,0,20,20">
+            <ListBox ItemsSource="{Binding Drives}" 
+                     SelectedItem="{Binding SelectedDrive}"
+                     Background="#FFFFFF" BorderThickness="0"
+                     ScrollViewer.VerticalScrollBarVisibility="Auto">
+                <ListBox.ItemTemplate>
+                    <DataTemplate>
+                        <Border Background="#FAFAFA" Padding="18" Margin="0,8" 
+                                BorderBrush="#E0E0E0" BorderThickness="1" Cursor="Hand">
+                            <Border.Style>
+                                <Style TargetType="Border">
+                                    <Setter Property="Background" Value="#FFFFFF"/>
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding RelativeSource={RelativeSource AncestorType=ListBoxItem}, Path=IsSelected}" Value="True">
+                                            <Setter Property="Background" Value="#E8F5FF"/>
+                                            <Setter Property="BorderBrush" Value="#007ACC"/>
+                                            <Setter Property="BorderThickness" Value="2"/>
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </Border.Style>
+
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="50"/>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+
+                                <!-- Icon -->
+                                <TextBlock Grid.Column="0" Text="💾" FontSize="32" 
+                                          VerticalAlignment="Center" HorizontalAlignment="Center"/>
+
+                                <!-- Info -->
+                                <StackPanel Grid.Column="1" Margin="20,0,20,0" VerticalAlignment="Center">
+                                    <TextBlock Text="{Binding Name}" FontSize="16" 
+                                              FontWeight="Bold" Foreground="#1a1a1a" Margin="0,0,0,5"/>
+                                    <TextBlock Text="{Binding Path}" FontSize="12" 
+                                              Foreground="#999999" Margin="0,0,0,4"/>
+                                    <TextBlock Text="{Binding Description}" FontSize="11" 
+                                              Foreground="#AAAAAA"/>
+                                </StackPanel>
+
+                                <!-- Size -->
+                                <StackPanel Grid.Column="2" VerticalAlignment="Center" HorizontalAlignment="Right" Margin="20,0,0,0">
+                                    <TextBlock Text="{Binding TotalSize, Converter={StaticResource BytesToStringConverter}}" 
+                                              FontSize="14" FontWeight="Bold" Foreground="#007ACC" TextAlignment="Right"/>
+                                    <TextBlock Text="Celková velikost" FontSize="10" Foreground="#999999" TextAlignment="Right"/>
+                                </StackPanel>
+                            </Grid>
+                        </Border>
+                    </DataTemplate>
+                </ListBox.ItemTemplate>
+            </ListBox>
+        </Border>
+
+        <!-- ========== ACTION BUTTONS ========== -->
+        <StackPanel Grid.Row="2" Orientation="Horizontal" HorizontalAlignment="Center" Margin="20,0,20,20">
+            <Button Content="🧪 Test Povrchu" 
+                    Command="{Binding NavigateToSurfaceTestCommand}"
+                    IsEnabled="{Binding SelectedDrive, Converter={StaticResource NotNullConverter}}"
+                    Background="#28A745" Foreground="White" 
+                    Padding="20,12" Margin="0,0,12,0"
+                    FontSize="13" FontWeight="Bold" Cursor="Hand" Width="200"/>
+            
+            <Button Content="🔧 SMART Check" 
+                    Command="{Binding NavigateToSmartCheckCommand}"
+                    IsEnabled="{Binding SelectedDrive, Converter={StaticResource NotNullConverter}}"
+                    Background="#007ACC" Foreground="White"
+                    Padding="20,12" Margin="0,0,12,0"
+                    FontSize="13" FontWeight="Bold" Cursor="Hand" Width="200"/>
+
+            <Button Content="📊 Detail Disku" 
+                    Background="#6C757D" Foreground="White"
+                    Padding="20,12"
+                    FontSize="13" FontWeight="Bold" Cursor="Hand" Width="200"/>
+        </StackPanel>
+
+        <!-- ========== STATUS BAR ========== -->
+        <TextBlock Grid.Row="3" Text="{Binding StatusMessage}" 
+                   Background="#F0F0F0" Padding="20,8" 
+                   FontSize="11" Foreground="#666666"
+                   TextTrimming="CharacterEllipsis"/>
+    </Grid>
+</UserControl>
