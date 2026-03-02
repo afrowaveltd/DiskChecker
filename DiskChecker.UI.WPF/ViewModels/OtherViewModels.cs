@@ -2,6 +2,7 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using DiskChecker.Application.Services;
 using DiskChecker.Core.Models;
+using DiskChecker.Core.Interfaces;
 using System.Collections.ObjectModel;
 
 namespace DiskChecker.UI.WPF.ViewModels;
@@ -53,7 +54,7 @@ public class SpeedSample
 /// </summary>
 public partial class SurfaceTestViewModel : ViewModelBase, IDisposable
 {
-   private readonly SurfaceTestService _surfaceTestService;
+   private readonly ISurfaceTestService _surfaceTestService;
    private CancellationTokenSource? _testCancellationTokenSource;
    private DateTime _testStartTime;
    private readonly int _totalBlocks = 2048; // Default počet bloků k vizualizaci
@@ -103,7 +104,7 @@ public partial class SurfaceTestViewModel : ViewModelBase, IDisposable
    /// <summary>
    /// Initializes a new instance of the <see cref="SurfaceTestViewModel"/> class.
    /// </summary>
-   public SurfaceTestViewModel(SurfaceTestService surfaceTestService)
+   public SurfaceTestViewModel(ISurfaceTestService surfaceTestService)
    {
       _surfaceTestService = surfaceTestService;
       InitializeBlocks();
@@ -285,7 +286,7 @@ public partial class SurfaceTestViewModel : ViewModelBase, IDisposable
       if(bytes >= mb)
          return $"{bytes / (double)mb:F2} MB";
       if(bytes >= kb)
-         return $"{bytes / (double)kb:F2} KB";
+         return($"{bytes / (double)kb:F2} KB");
       return $"{bytes} B";
    }
 
