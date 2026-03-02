@@ -1,5 +1,8 @@
 ﻿using DiskChecker.Application.Services;
+using DiskChecker.Core;
+using DiskChecker.Core.Interfaces;
 using DiskChecker.Infrastructure.Hardware;
+using DiskChecker.Infrastructure.Persistence;
 using DiskChecker.UI.WPF.Services;
 using DiskChecker.UI.WPF.ViewModels;
 using DiskChecker.UI.WPF.Views;
@@ -14,6 +17,7 @@ namespace DiskChecker.UI.WPF;
 /// </summary>
 public partial class App : System.Windows.Application
 {
+   private const string DefaultConnectionString = "Data Source=DiskChecker.db";
    private readonly ServiceProvider _serviceProvider;
 
    /// <summary>
@@ -30,11 +34,17 @@ public partial class App : System.Windows.Application
          config.SetMinimumLevel(LogLevel.Information);
       });
 
+      services.AddCoreServices();
+      services.AddPersistence(DefaultConnectionString);
+
       // Core Services
       services.AddScoped<DiskCheckerService>();
       services.AddScoped<SmartCheckService>();
       services.AddScoped<HistoryService>();
+      services.AddScoped<DatabaseMaintenanceService>();
+      services.AddScoped<DiskHistoryArchiveService>();
       services.AddScoped<TestReportAnalysisService>();
+      services.AddScoped<ISurfaceTestService, SurfaceTestService>();
       services.AddScoped<SurfaceTestService>();
       services.AddScoped<SurfaceTestExecutorFactory>();
       services.AddScoped<SurfaceTestPersistenceService>();
@@ -47,6 +57,7 @@ public partial class App : System.Windows.Application
       services.AddTransient<DiskSelectionViewModel>();
       services.AddTransient<SmartCheckViewModel>();
       services.AddTransient<SurfaceTestViewModel>();
+      services.AddTransient<AnalysisViewModel>();
       services.AddTransient<ReportViewModel>();
       services.AddTransient<HistoryViewModel>();
       services.AddTransient<SettingsViewModel>();
@@ -67,6 +78,7 @@ public partial class App : System.Windows.Application
       navigationService.RegisterViewForViewModel<DiskSelectionViewModel, DiskSelectionView>();
       navigationService.RegisterViewForViewModel<SurfaceTestViewModel, SurfaceTestView>();
       navigationService.RegisterViewForViewModel<SmartCheckViewModel, SmartCheckView>();
+      navigationService.RegisterViewForViewModel<AnalysisViewModel, AnalysisView>();
       navigationService.RegisterViewForViewModel<ReportViewModel, ReportView>();
       navigationService.RegisterViewForViewModel<HistoryViewModel, HistoryView>();
       navigationService.RegisterViewForViewModel<SettingsViewModel, SettingsView>();
@@ -77,6 +89,13 @@ public partial class App : System.Windows.Application
    /// </summary>
    private void Application_Startup(object sender, StartupEventArgs e)
    {
+      using(var scope = _serviceProvider.CreateScope())
+      {
+         var dbContext = scope.ServiceProvider.GetRequiredService<DiskCheckerDbContext>();
+         dbContext.Database.EnsureCreated();
+         SchemaCompatibilityPatcher.Apply(dbContext);
+      }
+
       // Vytvořit a zobrazit MainWindow
       var mainVM = _serviceProvider.GetRequiredService<MainWindowViewModel>();
       MainWindow mainWindow = new MainWindow

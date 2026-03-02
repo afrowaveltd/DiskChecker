@@ -4,20 +4,66 @@
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006" 
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008" 
              mc:Ignorable="d" 
-             d:DesignHeight="450" d:DesignWidth="800"
+             d:DesignHeight="600" d:DesignWidth="1000"
              Background="#F5F5F5">
     <Grid>
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
             <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
         </Grid.RowDefinitions>
 
         <Border Grid.Row="0" Background="#FFFFFF" BorderBrush="#E0E0E0" BorderThickness="0,0,0,1" Padding="20">
             <TextBlock Text="📚 Historie Testů" FontSize="24" FontWeight="Bold" Foreground="#1a1a1a"/>
         </Border>
 
-        <Border Grid.Row="1" Background="#FFFFFF" Margin="20" BorderBrush="#E0E0E0" BorderThickness="1" Padding="20">
-            <TextBlock Text="{Binding StatusMessage}" FontSize="14" Foreground="#666666" VerticalAlignment="Center" HorizontalAlignment="Center"/>
+        <Border Grid.Row="1" Background="#FFFFFF" Margin="20,15,20,10" BorderBrush="#E0E0E0" BorderThickness="1" Padding="12">
+            <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                <Button Content="🔄 Obnovit historii"
+                        Command="{Binding RefreshHistoryCommand}"
+                        IsEnabled="{Binding IsBusy, Converter={StaticResource InvertBoolConverter}}"
+                        Style="{StaticResource ActionButtonStyle}"
+                        Background="#004B93"
+                        Foreground="White"
+                        Padding="12,8"
+                        FontWeight="Bold"
+                        Cursor="Hand"/>
+                <TextBlock Text="{Binding TotalItems, StringFormat=Celkem testů: {0}}"
+                           Margin="15,0,0,0"
+                           VerticalAlignment="Center"
+                           Foreground="#666666"
+                           FontSize="12"/>
+            </StackPanel>
         </Border>
+
+        <Border Grid.Row="2" Background="#FFFFFF" Margin="20,0,20,10" BorderBrush="#E0E0E0" BorderThickness="1" Padding="10">
+            <DataGrid ItemsSource="{Binding HistoryItems}"
+                      SelectedItem="{Binding SelectedItem}"
+                      AutoGenerateColumns="False"
+                      IsReadOnly="True"
+                      GridLinesVisibility="Horizontal"
+                      HeadersVisibility="Column"
+                      RowHeaderWidth="0"
+                      Background="White"
+                      BorderThickness="0">
+                <DataGrid.Columns>
+                    <DataGridTextColumn Header="Datum" Binding="{Binding TestDate, StringFormat={}{0:dd.MM.yyyy HH:mm}}" Width="180"/>
+                    <DataGridTextColumn Header="Disk" Binding="{Binding DriveName}" Width="*"/>
+                    <DataGridTextColumn Header="Typ testu" Binding="{Binding TestType}" Width="180"/>
+                    <DataGridTextColumn Header="Známka" Binding="{Binding Grade}" Width="90"/>
+                    <DataGridTextColumn Header="Skóre" Binding="{Binding Score, StringFormat={}{0:F1}}" Width="90"/>
+                    <DataGridTextColumn Header="Chyby" Binding="{Binding ErrorCount}" Width="90"/>
+                </DataGrid.Columns>
+            </DataGrid>
+        </Border>
+
+        <TextBlock Grid.Row="3"
+                   Text="{Binding StatusMessage}"
+                   Background="#F0F0F0"
+                   Padding="20,8"
+                   FontSize="11"
+                   Foreground="#666666"
+                   TextTrimming="CharacterEllipsis"/>
     </Grid>
 </UserControl>

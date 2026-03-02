@@ -34,7 +34,11 @@ public class SurfaceTestPersistenceService
         ArgumentNullException.ThrowIfNull(drive);
 
         var testDate = result.CompletedAtUtc == default ? DateTime.UtcNow : result.CompletedAtUtc;
-        var serialKey = result.DriveSerialNumber ?? (string.IsNullOrWhiteSpace(drive.Path) ? drive.Name : drive.Path);
+        var serialKey = DriveIdentityResolver.BuildIdentityKey(
+            drive.Path,
+            result.DriveSerialNumber,
+            result.DriveModel ?? drive.Name,
+            null);
 
         var driveRecord = await _dbContext.Drives
             .SingleOrDefaultAsync(d => d.SerialNumber == serialKey, cancellationToken);
@@ -47,6 +51,7 @@ public class SurfaceTestPersistenceService
                 Path = drive.Path,
                 Name = result.DriveModel ?? drive.Name,
                 SerialNumber = serialKey,
+                FirmwareVersion = string.Empty,
                 FileSystem = drive.FileSystem,
                 TotalSize = result.DriveTotalBytes > 0 ? result.DriveTotalBytes : drive.TotalSize,
                 FreeSpace = drive.FreeSpace,
@@ -91,7 +96,8 @@ public class SurfaceTestPersistenceService
             SurfaceProfile = result.Profile,
             SurfaceOperation = result.Operation,
             SurfaceTechnology = DriveTechnology.Unknown,
-            SecureErasePerformed = result.SecureErasePerformed
+            SecureErasePerformed = result.SecureErasePerformed,
+            IsCompleted = result.CompletedAtUtc != default && result.ErrorCount >= 0
         };
 
         foreach (var sample in result.Samples)

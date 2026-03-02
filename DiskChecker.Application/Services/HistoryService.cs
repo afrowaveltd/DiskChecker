@@ -25,6 +25,7 @@ public class HistoryService
     {
         var query = _context.Tests
             .Include(t => t.Drive)
+            .Where(t => t.IsCompleted && !t.IsArchived)
             .AsQueryable();
 
         if (!string.IsNullOrWhiteSpace(driveSerial))
@@ -84,6 +85,7 @@ public class HistoryService
     {
         return await _context.Tests
             .Include(t => t.Drive)
+            .Where(t => t.IsCompleted && !t.IsArchived)
             .OrderByDescending(t => t.TestDate)
             .Take(take)
             .Select(t => new TestHistoryItem
@@ -111,7 +113,7 @@ public class HistoryService
             .Include(t => t.Drive)
             .Include(t => t.SmartaData)
             .Include(t => t.SurfaceSamples)
-            .FirstOrDefaultAsync(t => t.Id == testId, cancellationToken);
+            .FirstOrDefaultAsync(t => t.Id == testId && t.IsCompleted && !t.IsArchived, cancellationToken);
 
         if (test is null)
         {
@@ -192,8 +194,8 @@ public class HistoryService
                 DriveName = d.Name,
                 SerialNumber = d.SerialNumber,
                 Model = d.DeviceModel,
-                TotalTests = d.TotalTests,
-                LastTestDate = d.Tests.Max(t => t.TestDate)
+                TotalTests = d.Tests.Count(t => t.IsCompleted && !t.IsArchived),
+                LastTestDate = d.Tests.Where(t => t.IsCompleted && !t.IsArchived).Max(t => (DateTime?)t.TestDate)
             })
             .ToListAsync(cancellationToken);
     }
@@ -212,7 +214,7 @@ public class HistoryService
 
         var tests = await _context.Tests
             .Include(t => t.Drive)
-            .Where(t => t.Drive.Name == driveName)
+            .Where(t => t.Drive.Name == driveName && t.IsCompleted && !t.IsArchived)
             .OrderBy(t => t.TestDate)
             .ToListAsync(cancellationToken);
 

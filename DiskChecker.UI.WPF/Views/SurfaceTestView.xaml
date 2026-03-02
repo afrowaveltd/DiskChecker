@@ -3,9 +3,10 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006" 
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008" 
+             xmlns:oxy="http://oxyplot.org/wpf"
              mc:Ignorable="d" 
              d:DesignHeight="800" d:DesignWidth="1000"
-             Background="#F5F5F5">
+             Background="{DynamicResource ThemeBackgroundBrush}">
     <Grid>
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto"/>
@@ -16,7 +17,7 @@
         </Grid.RowDefinitions>
 
         <!-- ============ HEADER ============ -->
-        <Border Grid.Row="0" Background="#FFFFFF" BorderBrush="#E0E0E0" BorderThickness="0,0,0,1" Padding="20">
+        <Border Grid.Row="0" Background="{DynamicResource ThemePanelBrush}" BorderBrush="{DynamicResource ThemeBorderBrush}" BorderThickness="0,0,0,1" Padding="20">
             <StackPanel Margin="0,0,0,10">
                 <TextBlock Text="🖴 Test Povrchu Disku - Defragmentace Style" 
                            FontSize="24" FontWeight="Bold" Foreground="#1a1a1a" Margin="0,0,0,10"/>
@@ -28,7 +29,7 @@
         </Border>
 
         <!-- ============ DISK SELECTION ============ -->
-        <Border Grid.Row="1" Background="#FFFFFF" BorderBrush="#E0E0E0" BorderThickness="0,0,0,1" Margin="20,0,20,15" Padding="12">
+        <Border Grid.Row="1" Background="{DynamicResource ThemePanelBrush}" BorderBrush="{DynamicResource ThemeBorderBrush}" BorderThickness="0,0,0,1" Margin="20,0,20,15" Padding="12">
             <Grid>
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="Auto"/>
@@ -41,21 +42,52 @@
                 <StackPanel Grid.Column="1" VerticalAlignment="Center">
                     <TextBlock Text="{Binding SelectedDrive.Name}" FontSize="13" FontWeight="Bold" Foreground="#333333"/>
                     <TextBlock Text="{Binding SelectedDrive.Path}" FontSize="11" Foreground="#999999" Margin="0,2,0,0"/>
+                    <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
+                        <TextBlock Text="Disk:" FontSize="11" Foreground="#666666" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                        <ComboBox Width="320"
+                                  ItemsSource="{Binding AvailableDrives}"
+                                  DisplayMemberPath="Name"
+                                  SelectedItem="{Binding SelectedDrive}"
+                                  FontSize="11"
+                                  IsEnabled="{Binding IsTestRunning, Converter={StaticResource InvertBoolConverter}}"/>
+                        <Button Content="↻" Command="{Binding ReloadAvailableDrivesCommand}" Style="{StaticResource ActionButtonStyle}" Background="#5F6B7A" Foreground="White" Margin="8,0,0,0" Padding="10,6"/>
+                    </StackPanel>
+                    <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
+                        <TextBlock Text="Režim:" FontSize="11" Foreground="#666666" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                        <ComboBox Width="320"
+                                  ItemsSource="{Binding AvailableRunModes}"
+                                  DisplayMemberPath="Label"
+                                  SelectedValuePath="Value"
+                                  SelectedValue="{Binding SelectedRunMode}"
+                                  FontSize="11"/>
+                    </StackPanel>
+                    <TextBlock Text="{Binding SystemDiskProtectionMessage}" FontSize="11" Foreground="#B35A00" Margin="0,4,0,0" TextWrapping="Wrap"/>
                 </StackPanel>
                 
                 <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center" Margin="15,0,0,0">
                     <Button Content="▶️ START" 
                             Command="{Binding StartTestCommand}"
                             IsEnabled="{Binding IsTestRunning, Converter={StaticResource InvertBoolConverter}}"
+                            Style="{StaticResource ActionButtonStyle}"
                             Background="#28A745" Foreground="White" 
                             Padding="12,8" Margin="0,0,8,0"
-                            FontSize="11" FontWeight="Bold" Cursor="Hand"/>
+                            FontSize="11"/>
                     <Button Content="⏹️ STOP" 
                             Command="{Binding StopTestCommand}"
                             IsEnabled="{Binding IsTestRunning}"
+                            Style="{StaticResource ActionButtonStyle}"
                             Background="#DC3545" Foreground="White"
+                            Padding="12,8" Margin="0,0,8,0"
+                            FontSize="11"/>
+
+                    <Button Content="🖨️ CERTIFIKÁT A4"
+                            Command="{Binding PrintCertificateCommand}"
+                            IsEnabled="{Binding CanPrintCertificate}"
+                            Style="{StaticResource ActionButtonStyle}"
+                            Background="#6C63FF" Foreground="White"
                             Padding="12,8"
-                            FontSize="11" FontWeight="Bold" Cursor="Hand"/>
+                            FontSize="11"
+                            ToolTip="Vytisknout barevný A4 certifikát po kompletním testu"/>
                 </StackPanel>
             </Grid>
         </Border>
@@ -64,7 +96,7 @@
         <ScrollViewer Grid.Row="2" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
             <StackPanel Margin="20,0,20,20">
                 <!-- Block Visualization Area -->
-                <Border Background="#FFFFFF" BorderBrush="#E0E0E0" BorderThickness="1" Padding="15" Margin="0,0,0,20">
+                <Border Background="{DynamicResource ThemePanelBrush}" BorderBrush="{DynamicResource ThemeBorderBrush}" BorderThickness="1" Padding="15" Margin="0,0,0,20">
                     <StackPanel>
                         <TextBlock Text="📊 Vizualizace Povrchu Disku (Defrag Mode)" 
                                    FontSize="13" FontWeight="Bold" Foreground="#333333" Margin="0,0,0,15"/>
@@ -132,7 +164,7 @@
                 </Border>
 
                 <!-- Progress Bar -->
-                <Border Background="#FFFFFF" BorderBrush="#E0E0E0" BorderThickness="1" Padding="15" Margin="0,0,0,20">
+                <Border Background="{DynamicResource ThemePanelBrush}" BorderBrush="{DynamicResource ThemeBorderBrush}" BorderThickness="1" Padding="15" Margin="0,0,0,20">
                     <StackPanel>
                         <TextBlock Text="📈 Průběh Testu" FontSize="13" FontWeight="Bold" Foreground="#333333" Margin="0,0,0,10"/>
                         
@@ -181,7 +213,7 @@
                 </Border>
 
                 <!-- Speed Graph -->
-                <Border Background="#FFFFFF" BorderBrush="#E0E0E0" BorderThickness="1" Padding="15">
+                <Border Background="{DynamicResource ThemePanelBrush}" BorderBrush="{DynamicResource ThemeBorderBrush}" BorderThickness="1" Padding="15">
                     <StackPanel>
                         <Grid Margin="0,0,0,10">
                             <Grid.ColumnDefinitions>
@@ -199,15 +231,45 @@
                             </StackPanel>
                         </Grid>
 
-                        <!-- Speed Graph Placeholder -->
-                        <Border Background="#F9F9F9" Height="200" BorderBrush="#E0E0E0" BorderThickness="1">
-                            <Grid>
-                                <Canvas x:Name="SpeedGraphCanvas" Background="#FAFAFA"/>
-                                <TextBlock Text="📊 Real-time Speed Graph" 
-                                          VerticalAlignment="Center" HorizontalAlignment="Center"
-                                          Foreground="#CCCCCC" FontSize="14"/>
-                            </Grid>
+                        <Grid Margin="0,0,0,8">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto"/>
+                                <ColumnDefinition Width="Auto"/>
+                                <ColumnDefinition Width="Auto"/>
+                                <ColumnDefinition Width="*"/>
+                            </Grid.ColumnDefinitions>
+
+                            <TextBlock Grid.Column="0" Text="Rozsah:" VerticalAlignment="Center" FontSize="11" Foreground="#666666" Margin="0,0,8,0"/>
+                            <ComboBox Grid.Column="1"
+                                      Width="190"
+                                      ItemsSource="{Binding AvailableGraphTimeRanges}"
+                                      DisplayMemberPath="Label"
+                                      SelectedValuePath="Value"
+                                      SelectedValue="{Binding SelectedGraphTimeRange}"
+                                      Margin="0,0,12,0"/>
+
+                            <ComboBox Grid.Column="2"
+                                      Width="220"
+                                      ItemsSource="{Binding AvailableGraphOverlayModes}"
+                                      DisplayMemberPath="Label"
+                                      SelectedValuePath="Value"
+                                      SelectedValue="{Binding SelectedGraphOverlayMode}"
+                                      Margin="0,0,8,0"/>
+
+                            <Button Grid.Column="3"
+                                    Content="📥 Načíst referenční overlay"
+                                    Command="{Binding LoadReferenceOverlayCommand}"
+                                    Style="{StaticResource ActionButtonStyle}"
+                                    Background="#5F6B7A"
+                                    Foreground="White"
+                                    HorizontalAlignment="Left"/>
+                        </Grid>
+
+                        <Border Background="#F9F9F9" Height="260" BorderBrush="#E0E0E0" BorderThickness="1">
+                            <oxy:PlotView Model="{Binding SpeedPlotModel}"/>
                         </Border>
+
+                        <TextBlock Text="{Binding ReferenceOverlayStatus}" FontSize="11" Foreground="#666666" Margin="0,8,0,0"/>
 
                         <StackPanel Orientation="Horizontal" Margin="0,10,0,0">
                             <TextBlock Text="Průměr:" FontSize="11" Foreground="#666666" Margin="0,0,8,0"/>
@@ -220,10 +282,11 @@
         </ScrollViewer>
 
         <!-- ============ STATISTICS ============ -->
-        <Border Grid.Row="3" Background="#FFFFFF" Margin="20,20,20,10" BorderBrush="#E0E0E0" 
+        <Border Grid.Row="3" Background="{DynamicResource ThemePanelBrush}" Margin="20,20,20,10" BorderBrush="{DynamicResource ThemeBorderBrush}" 
                 BorderThickness="1" Padding="15">
             <Grid>
                 <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
                     <ColumnDefinition Width="*"/>
                     <ColumnDefinition Width="*"/>
                     <ColumnDefinition Width="*"/>
@@ -249,6 +312,11 @@
                 <StackPanel Grid.Column="3" HorizontalAlignment="Right">
                     <TextBlock Text="📊 Vzorky" FontSize="11" Foreground="#666666" Margin="0,0,0,5"/>
                     <TextBlock Text="{Binding SpeedSamples.Count}" FontSize="18" FontWeight="Bold" Foreground="#28A745"/>
+                </StackPanel>
+
+                <StackPanel Grid.Column="4" Margin="15,0,0,0">
+                    <TextBlock Text="📄 Certifikát" FontSize="11" Foreground="#666666" Margin="0,0,0,5"/>
+                    <TextBlock Text="{Binding CertificateStatus}" FontSize="12" FontWeight="SemiBold" Foreground="#6C63FF" TextWrapping="Wrap"/>
                 </StackPanel>
             </Grid>
         </Border>

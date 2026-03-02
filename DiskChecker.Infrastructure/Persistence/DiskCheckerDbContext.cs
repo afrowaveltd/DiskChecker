@@ -32,6 +32,15 @@ public class DiskCheckerDbContext : DbContext
         modelBuilder.Entity<TestRecord>()
             .HasIndex(t => t.TestDate);
 
+        modelBuilder.Entity<TestRecord>()
+            .HasIndex(t => new { t.IsCompleted, t.IsArchived, t.TestType });
+
+        modelBuilder.Entity<TestRecord>()
+            .HasOne(t => t.SmartaData)
+            .WithOne(s => s.Test)
+            .HasForeignKey<SmartaRecord>(s => s.TestId)
+            .OnDelete(DeleteBehavior.Cascade);
+
         modelBuilder.Entity<SurfaceTestSampleRecord>()
             .HasIndex(s => s.TestId);
 
@@ -114,6 +123,9 @@ public class TestRecord
     /// Gets or sets whether secure erase was performed.
     /// </summary>
     public bool? SecureErasePerformed { get; set; }
+    public bool IsCompleted { get; set; } = true;
+    public bool IsArchived { get; set; }
+    public Guid? ArchiveBatchId { get; set; }
 
     public DriveRecord Drive { get; set; } = null!;
     public SmartaRecord SmartaData { get; set; } = null!;

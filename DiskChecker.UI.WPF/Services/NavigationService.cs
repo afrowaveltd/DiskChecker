@@ -1,5 +1,7 @@
 using System;
 using System.Collections.Generic;
+using DiskChecker.Core.Models;
+using DiskChecker.UI.WPF.ViewModels;
 
 namespace DiskChecker.UI.WPF.Services;
 
@@ -112,10 +114,12 @@ public class NavigationService : INavigationService
             window.DataContext = viewModel;
         }
 
-        // Inicializovat ViewModel pokud má metodu
+        ApplyNavigationParameter(viewModel, parameter);
+
+        // Inicializovat ViewModel asynchronně, aby nedošlo k blokování UI threadu.
         if (viewModel is ViewModels.ViewModelBase vmBase)
         {
-            vmBase.InitializeAsync().GetAwaiter().GetResult();
+            _ = InitializeViewModelAsync(vmBase);
         }
 
         // Uložit předchozí stav
@@ -135,6 +139,29 @@ public class NavigationService : INavigationService
             View = view,
             ViewModel = viewModel
         });
+    }
+
+    private static async Task InitializeViewModelAsync(ViewModels.ViewModelBase vmBase)
+    {
+        await vmBase.InitializeAsync();
+    }
+
+    private static void ApplyNavigationParameter(object viewModel, object? parameter)
+    {
+        if (parameter is not CoreDriveInfo drive)
+        {
+            return;
+        }
+
+        switch (viewModel)
+        {
+            case SurfaceTestViewModel surfaceTestViewModel:
+                surfaceTestViewModel.SetSelectedDrive(drive);
+                break;
+            case SmartCheckViewModel smartCheckViewModel:
+                smartCheckViewModel.SetSelectedDrive(drive);
+                break;
+        }
     }
 
     public void GoBack()

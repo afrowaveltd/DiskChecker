@@ -8,16 +8,16 @@
         Height="700" 
         Width="1300"
         WindowStartupLocation="CenterScreen"
-        Background="#F5F5F5">
+        Background="{DynamicResource ThemeBackgroundBrush}">
     <Grid>
         <Grid.RowDefinitions>
-            <RowDefinition Height="60"/>
+            <RowDefinition Height="64"/>
             <RowDefinition Height="*"/>
             <RowDefinition Height="35"/>
         </Grid.RowDefinitions>
 
         <!-- ========== HEADER/TOOLBAR ========== -->
-        <Border Grid.Row="0" Background="#FFFFFF" BorderBrush="#E0E0E0" BorderThickness="0,0,0,1">
+        <Border Grid.Row="0" Background="{DynamicResource ThemePanelBrush}" BorderBrush="{DynamicResource ThemeBorderBrush}" BorderThickness="0,0,0,1">
             <Grid>
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="*"/>
@@ -26,69 +26,167 @@
 
                 <!-- Logo Area -->
                 <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center" Margin="20,0">
-                    <TextBlock Text="🖴" FontSize="28" Margin="0,0,10,0" VerticalAlignment="Center"/>
+                    <TextBlock Text="🖴" FontSize="30" Margin="0,0,10,0" VerticalAlignment="Center"/>
                     <StackPanel VerticalAlignment="Center">
-                        <TextBlock Text="DiskChecker" FontSize="18" FontWeight="Bold" Foreground="#007ACC"/>
+                        <TextBlock Text="DiskChecker" FontSize="19" FontWeight="Bold" Foreground="{DynamicResource ThemePrimaryBrush}"/>
                         <TextBlock Text="Profesionální Diagnóza Disků" FontSize="10" Foreground="#999999" Margin="0,-3,0,0"/>
                     </StackPanel>
                 </StackPanel>
 
                 <!-- Navigation Menu -->
                 <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center" Margin="0,0,20,0">
-                    <Button Content="🏠 Home" 
+                    <Button Content="🏠 Přehled" 
                             Command="{Binding NavigateToDiskSelectionCommand}"
                             Background="Transparent" Foreground="#333333"
                             Padding="15,20" BorderThickness="0"
-                            FontSize="11" FontWeight="SemiBold" Cursor="Hand"
-                            ToolTip="Vrátit se na výběr disku"/>
+                            FontSize="12" FontWeight="SemiBold" Cursor="Hand"
+                            ToolTip="Vrátit se na přehled disků">
+                        <Button.Style>
+                            <Style TargetType="Button">
+                                <Setter Property="Background" Value="Transparent"/>
+                                <Setter Property="Foreground" Value="#333333"/>
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding IsDiskSelectionActive}" Value="True">
+                                        <Setter Property="Background" Value="#E6EEF7"/>
+                                        <Setter Property="Foreground" Value="#004B93"/>
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </Button.Style>
+                    </Button>
                     
-                    <Button Content="🧪 Surface Test" 
+                    <Button Content="🧪 Test povrchu" 
                             Command="{Binding NavigateToSurfaceTestCommand}"
                             Background="Transparent" Foreground="#333333"
                             Padding="15,20" BorderThickness="0"
-                            FontSize="11" FontWeight="SemiBold" Cursor="Hand"
-                            ToolTip="Spustit test povrchu disku"/>
+                            FontSize="12" FontWeight="SemiBold" Cursor="Hand"
+                            ToolTip="Spustit test povrchu disku">
+                        <Button.Style>
+                            <Style TargetType="Button">
+                                <Setter Property="Background" Value="Transparent"/>
+                                <Setter Property="Foreground" Value="#333333"/>
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding IsSurfaceTestActive}" Value="True">
+                                        <Setter Property="Background" Value="#E6EEF7"/>
+                                        <Setter Property="Foreground" Value="#004B93"/>
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </Button.Style>
+                    </Button>
                     
-                    <Button Content="🔧 SMART Check" 
+                    <Button Content="🔧 SMART kontrola" 
                             Command="{Binding NavigateToSmartCheckCommand}"
                             Background="Transparent" Foreground="#333333"
                             Padding="15,20" BorderThickness="0"
-                            FontSize="11" FontWeight="SemiBold" Cursor="Hand"
-                            ToolTip="Zobrazit SMART data"/>
+                            FontSize="12" FontWeight="SemiBold" Cursor="Hand"
+                            ToolTip="Zobrazit SMART data">
+                        <Button.Style>
+                            <Style TargetType="Button">
+                                <Setter Property="Background" Value="Transparent"/>
+                                <Setter Property="Foreground" Value="#333333"/>
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding IsSmartCheckActive}" Value="True">
+                                        <Setter Property="Background" Value="#E6EEF7"/>
+                                        <Setter Property="Foreground" Value="#004B93"/>
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </Button.Style>
+                    </Button>
+
+                    <Button Content="📈 Analýza" 
+                            Command="{Binding NavigateToAnalysisCommand}"
+                            Background="Transparent" Foreground="#333333"
+                            Padding="15,20" BorderThickness="0"
+                            FontSize="12" FontWeight="SemiBold" Cursor="Hand"
+                            ToolTip="Trend disku v čase">
+                        <Button.Style>
+                            <Style TargetType="Button">
+                                <Setter Property="Background" Value="Transparent"/>
+                                <Setter Property="Foreground" Value="#333333"/>
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding IsAnalysisActive}" Value="True">
+                                        <Setter Property="Background" Value="#E6EEF7"/>
+                                        <Setter Property="Foreground" Value="#004B93"/>
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </Button.Style>
+                    </Button>
                     
-                    <Button Content="📄 Reports" 
+                    <Button Content="📄 Reporty" 
                             Command="{Binding NavigateToReportCommand}"
                             Background="Transparent" Foreground="#333333"
                             Padding="15,20" BorderThickness="0"
-                            FontSize="11" FontWeight="SemiBold" Cursor="Hand"
-                            ToolTip="Zobrazit reporty"/>
+                            FontSize="12" FontWeight="SemiBold" Cursor="Hand"
+                            ToolTip="Zobrazit reporty">
+                        <Button.Style>
+                            <Style TargetType="Button">
+                                <Setter Property="Background" Value="Transparent"/>
+                                <Setter Property="Foreground" Value="#333333"/>
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding IsReportActive}" Value="True">
+                                        <Setter Property="Background" Value="#E6EEF7"/>
+                                        <Setter Property="Foreground" Value="#004B93"/>
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </Button.Style>
+                    </Button>
                     
-                    <Button Content="📚 History" 
+                    <Button Content="📚 Historie" 
                             Command="{Binding NavigateToHistoryCommand}"
                             Background="Transparent" Foreground="#333333"
                             Padding="15,20" BorderThickness="0"
-                            FontSize="11" FontWeight="SemiBold" Cursor="Hand"
-                            ToolTip="Historie testů"/>
+                            FontSize="12" FontWeight="SemiBold" Cursor="Hand"
+                            ToolTip="Historie testů">
+                        <Button.Style>
+                            <Style TargetType="Button">
+                                <Setter Property="Background" Value="Transparent"/>
+                                <Setter Property="Foreground" Value="#333333"/>
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding IsHistoryActive}" Value="True">
+                                        <Setter Property="Background" Value="#E6EEF7"/>
+                                        <Setter Property="Foreground" Value="#004B93"/>
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </Button.Style>
+                    </Button>
                     
                     <Separator Background="#E0E0E0" Width="1" Margin="5,10"/>
                     
-                    <Button Content="⚙️ Settings" 
+                    <Button Content="⚙️ Nastavení" 
                             Command="{Binding NavigateToSettingsCommand}"
                             Background="Transparent" Foreground="#666666"
                             Padding="15,20" BorderThickness="0"
-                            FontSize="11" FontWeight="SemiBold" Cursor="Hand"
-                            ToolTip="Nastavení aplikace"/>
+                            FontSize="12" FontWeight="SemiBold" Cursor="Hand"
+                            ToolTip="Nastavení aplikace">
+                        <Button.Style>
+                            <Style TargetType="Button">
+                                <Setter Property="Background" Value="Transparent"/>
+                                <Setter Property="Foreground" Value="#666666"/>
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding IsSettingsActive}" Value="True">
+                                        <Setter Property="Background" Value="#E6EEF7"/>
+                                        <Setter Property="Foreground" Value="#004B93"/>
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </Button.Style>
+                    </Button>
                 </StackPanel>
             </Grid>
         </Border>
 
         <!-- ========== CONTENT AREA ========== -->
-        <Border Grid.Row="1" Background="#F5F5F5" Margin="0">
+        <Border Grid.Row="1" Background="{DynamicResource ThemeBackgroundBrush}" Margin="0">
             <ContentControl Content="{Binding CurrentContent}"/>
         </Border>
 
         <!-- ========== STATUS BAR ========== -->
-        <StatusBar Grid.Row="2" Background="#FFFFFF" BorderBrush="#E0E0E0" BorderThickness="0,1,0,0">
+        <StatusBar Grid.Row="2" Background="#FAFBFD" BorderBrush="#D7E0EA" BorderThickness="0,1,0,0">
             <Grid Width="{Binding RelativeSource={RelativeSource AncestorType=StatusBar}, Path=ActualWidth}">
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="*"/>
@@ -96,10 +194,12 @@
                 </Grid.ColumnDefinitions>
 
                 <TextBlock Grid.Column="0" Text="{Binding StatusMessage}" 
-                          Foreground="#666666" VerticalAlignment="Center" Margin="10,0"/>
+                          Foreground="#4F5B66" VerticalAlignment="Center" Margin="10,0"
+                          FontSize="11" FontWeight="SemiBold"/>
                 
                 <TextBlock Grid.Column="1" Text="v1.0.0" 
-                          Foreground="#999999" VerticalAlignment="Center" Margin="10,0"/>
+                          Foreground="#7A8794" VerticalAlignment="Center" Margin="10,0"
+                          FontSize="10" FontWeight="SemiBold"/>
             </Grid>
         </StatusBar>
     </Grid>

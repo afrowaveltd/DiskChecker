@@ -21,6 +21,27 @@ public partial class MainWindowViewModel : ViewModelBase
     [ObservableProperty]
     private string title = "DiskChecker - Diagnóza Disků 🖴";
 
+    [ObservableProperty]
+    private bool isDiskSelectionActive;
+
+    [ObservableProperty]
+    private bool isSurfaceTestActive;
+
+    [ObservableProperty]
+    private bool isSmartCheckActive;
+
+    [ObservableProperty]
+    private bool isAnalysisActive;
+
+    [ObservableProperty]
+    private bool isReportActive;
+
+    [ObservableProperty]
+    private bool isHistoryActive;
+
+    [ObservableProperty]
+    private bool isSettingsActive;
+
     /// <summary>
     /// Initializes a new instance of the <see cref="MainWindowViewModel"/> class.
     /// </summary>
@@ -49,6 +70,15 @@ public partial class MainWindowViewModel : ViewModelBase
     public void NavigateToSmartCheck()
     {
         _navigationService.NavigateTo<SmartCheckViewModel>();
+    }
+
+    /// <summary>
+    /// Navigates to analysis view.
+    /// </summary>
+    [RelayCommand]
+    public void NavigateToAnalysis()
+    {
+        _navigationService.NavigateTo<AnalysisViewModel>();
     }
 
     /// <summary>
@@ -103,6 +133,14 @@ public partial class MainWindowViewModel : ViewModelBase
     {
         CurrentContent = e.View;
         CurrentViewModel = e.ViewModel as ViewModelBase;
+
+        IsDiskSelectionActive = e.ViewModel is DiskSelectionViewModel;
+        IsSurfaceTestActive = e.ViewModel is SurfaceTestViewModel;
+        IsSmartCheckActive = e.ViewModel is SmartCheckViewModel;
+        IsAnalysisActive = e.ViewModel is AnalysisViewModel;
+        IsReportActive = e.ViewModel is ReportViewModel;
+        IsHistoryActive = e.ViewModel is HistoryViewModel;
+        IsSettingsActive = e.ViewModel is SettingsViewModel;
     }
 
     /// <summary>

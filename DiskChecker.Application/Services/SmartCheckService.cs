@@ -22,6 +22,8 @@ public class SmartCheckService
     private readonly DiskCheckerDbContext _dbContext;
     private readonly ILogger<SmartCheckService> _logger;
 
+    private IAdvancedSmartaProvider? AdvancedProvider => _smartaProvider as IAdvancedSmartaProvider;
+
     /// <summary>
     /// Initializes a new instance of the <see cref="SmartCheckService"/> class.
     /// </summary>
@@ -59,10 +61,25 @@ public class SmartCheckService
         }
 
         var rating = _qualityCalculator.CalculateQuality(smartaData);
+        IReadOnlyList<SmartaAttributeItem> attributes = Array.Empty<SmartaAttributeItem>();
+        SmartaSelfTestStatus? selfTestStatus = null;
+        IReadOnlyList<SmartaSelfTestEntry> selfTestLog = Array.Empty<SmartaSelfTestEntry>();
+
+        if (AdvancedProvider != null)
+        {
+            attributes = await AdvancedProvider.GetSmartAttributesAsync(drive.Path, cancellationToken);
+            selfTestStatus = await AdvancedProvider.GetSelfTestStatusAsync(drive.Path, cancellationToken);
+            selfTestLog = await AdvancedProvider.GetSelfTestLogAsync(drive.Path, cancellationToken);
+        }
+
         var testDate = DateTime.UtcNow;
         smartaData.LastChecked = testDate;
 
-        var serialKey = (string.IsNullOrWhiteSpace(smartaData.SerialNumber) ? drive.Path : smartaData.SerialNumber).Trim();
+        var serialKey = DriveIdentityResolver.BuildIdentityKey(
+            drive.Path,
+            smartaData.SerialNumber,
+            smartaData.DeviceModel ?? drive.Name,
+            smartaData.FirmwareVersion);
         var driveRecord = await _dbContext.Drives
             .SingleOrDefaultAsync(d => d.SerialNumber == serialKey, cancellationToken);
 
@@ -76,6 +93,7 @@ public class SmartCheckService
                 ModelFamily = smartaData.ModelFamily ?? string.Empty,
                 DeviceModel = smartaData.DeviceModel ?? string.Empty,
                 SerialNumber = serialKey,
+                FirmwareVersion = smartaData.FirmwareVersion ?? string.Empty,
                 FileSystem = drive.FileSystem,
                 TotalSize = drive.TotalSize,
                 FreeSpace = drive.FreeSpace,
@@ -92,6 +110,7 @@ public class SmartCheckService
             driveRecord.Name = drive.Name;
             driveRecord.ModelFamily = smartaData.ModelFamily ?? driveRecord.ModelFamily;
             driveRecord.DeviceModel = smartaData.DeviceModel ?? driveRecord.DeviceModel;
+            driveRecord.FirmwareVersion = smartaData.FirmwareVersion ?? driveRecord.FirmwareVersion;
             driveRecord.FileSystem = drive.FileSystem;
             driveRecord.TotalSize = drive.TotalSize;
             driveRecord.FreeSpace = drive.FreeSpace;
@@ -110,10 +129,12 @@ public class SmartCheckService
             PeakSpeed = 0,
             MinSpeed = 0,
             TotalBytesWritten = 0,
+            TotalBytesTested = 0,
             Errors = 0,
             Grade = rating.Grade,
             Score = rating.Score,
-            CertificatePath = string.Empty
+            CertificatePath = string.Empty,
+            IsCompleted = true
         };
 
         var smartaRecord = new SmartaRecord
@@ -143,7 +164,135 @@ public class SmartCheckService
             SmartaData = smartaData,
             Rating = rating,
             TestDate = testDate,
-            TestId = testRecord.Id
+            TestId = testRecord.Id,
+            Attributes = attributes,
+            SelfTestStatus = selfTestStatus,
+            SelfTestLog = selfTestLog
+        };
+    }
+
+    /// <summary>
+    /// Gets available SMART maintenance actions supported by current provider.
+    /// </summary>
+    public async Task<IReadOnlyList<SmartaMaintenanceAction>> GetSupportedMaintenanceActionsAsync(CoreDriveInfo drive, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(drive);
+        if (AdvancedProvider == null)
+        {
+            return Array.Empty<SmartaMaintenanceAction>();
+        }
+
+        return await AdvancedProvider.GetSupportedMaintenanceActionsAsync(drive.Path, cancellationToken);
+    }
+
+    /// <summary>
+    /// Executes selected SMART maintenance action on drive.
+    /// </summary>
+    public async Task<bool> ExecuteMaintenanceActionAsync(CoreDriveInfo drive, SmartaMaintenanceAction action, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(drive);
+        if (AdvancedProvider == null)
+        {
+            return false;
+        }
+
+        return await AdvancedProvider.ExecuteMaintenanceActionAsync(drive.Path, action, cancellationToken);
+    }
+
+    /// <summary>
+    /// Gets detailed SMART attributes when provider supports advanced SMART operations.
+    /// </summary>
+    public async Task<IReadOnlyList<SmartaAttributeItem>> GetSmartAttributesAsync(CoreDriveInfo drive, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(drive);
+        if (AdvancedProvider == null)
+        {
+            return Array.Empty<SmartaAttributeItem>();
+        }
+
+        return await AdvancedProvider.GetSmartAttributesAsync(drive.Path, cancellationToken);
+    }
+
+    /// <summary>
+    /// Starts SMART self-test when provider supports advanced SMART operations.
+    /// </summary>
+    public async Task<bool> StartSelfTestAsync(CoreDriveInfo drive, SmartaSelfTestType selfTestType, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(drive);
+        if (AdvancedProvider == null)
+        {
+            return false;
+        }
+
+        return await AdvancedProvider.StartSelfTestAsync(drive.Path, selfTestType, cancellationToken);
+    }
+
+    /// <summary>
+    /// Gets current SMART self-test status when supported.
+    /// </summary>
+    public async Task<SmartaSelfTestStatus?> GetSelfTestStatusAsync(CoreDriveInfo drive, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(drive);
+        if (AdvancedProvider == null)
+        {
+            return null;
+        }
+
+        return await AdvancedProvider.GetSelfTestStatusAsync(drive.Path, cancellationToken);
+    }
+
+    /// <summary>
+    /// Gets SMART self-test log entries when supported.
+    /// </summary>
+    public async Task<IReadOnlyList<SmartaSelfTestEntry>> GetSelfTestLogAsync(CoreDriveInfo drive, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(drive);
+        if (AdvancedProvider == null)
+        {
+            return Array.Empty<SmartaSelfTestEntry>();
+        }
+
+        return await AdvancedProvider.GetSelfTestLogAsync(drive.Path, cancellationToken);
+    }
+
+    /// <summary>
+    /// Builds a comprehensive self-test report from current status and self-test log entries.
+    /// </summary>
+    /// <param name="drive">Drive under test.</param>
+    /// <param name="requestedType">Requested self-test type.</param>
+    /// <param name="startedAtUtc">Start time of self-test monitoring.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    /// <returns>Comprehensive self-test report.</returns>
+    public async Task<SmartaSelfTestReport> BuildSelfTestReportAsync(
+        CoreDriveInfo drive,
+        SmartaSelfTestType requestedType,
+        DateTime startedAtUtc,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(drive);
+
+        var status = await GetSelfTestStatusAsync(drive, cancellationToken);
+        var log = await GetSelfTestLogAsync(drive, cancellationToken);
+        var latestEntry = log.OrderByDescending(e => e.Number).FirstOrDefault();
+
+        var summary = latestEntry == null
+            ? "Self-test log není dostupný."
+            : $"{latestEntry.TestType}: {latestEntry.Status}";
+
+        var completed = status?.IsRunning == false || latestEntry != null;
+        var passed = latestEntry != null
+            && latestEntry.Status.Contains("without error", StringComparison.OrdinalIgnoreCase)
+            || latestEntry != null && latestEntry.Status.Contains("completed", StringComparison.OrdinalIgnoreCase);
+
+        return new SmartaSelfTestReport
+        {
+            RequestedTestType = requestedType,
+            Completed = completed,
+            Passed = passed,
+            Summary = summary,
+            StartedAtUtc = startedAtUtc,
+            FinishedAtUtc = DateTime.UtcNow,
+            RecentEntries = log.Take(10).ToList()
         };
     }
 

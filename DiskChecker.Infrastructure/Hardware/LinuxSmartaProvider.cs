@@ -1,11 +1,12 @@
 using System.Diagnostics;
 using System.Text.RegularExpressions;
+using System.ComponentModel;
 using DiskChecker.Core.Interfaces;
 using DiskChecker.Core.Models;
 
 namespace DiskChecker.Infrastructure.Hardware;
 
-public class LinuxSmartaProvider : ISmartaProvider
+public class LinuxSmartaProvider : ISmartaProvider, IAdvancedSmartaProvider
 {
     private bool? _isSmartctlInstalled;
 
@@ -324,4 +325,170 @@ public class LinuxSmartaProvider : ISmartaProvider
     }
 
     /// <inheritdoc />
+    public async Task<IReadOnlyList<SmartaAttributeItem>> GetSmartAttributesAsync(string drivePath, CancellationToken cancellationToken = default)
+    {
+        var json = await RunSmartctlJsonAsync(drivePath, "-a", cancellationToken);
+        return string.IsNullOrWhiteSpace(json) ? Array.Empty<SmartaAttributeItem>() : SmartctlJsonParser.ParseAttributes(json);
+    }
+
+    /// <inheritdoc />
+    public async Task<bool> StartSelfTestAsync(string drivePath, SmartaSelfTestType selfTestType, CancellationToken cancellationToken = default)
+    {
+        var testArg = selfTestType switch
+        {
+            SmartaSelfTestType.Quick => "short",
+            SmartaSelfTestType.Extended => "long",
+            SmartaSelfTestType.Conveyance => "conveyance",
+            SmartaSelfTestType.Selective => "selective",
+            SmartaSelfTestType.Offline => "offline",
+            SmartaSelfTestType.Abort => "abort",
+            _ => "short"
+        };
+
+        var psi = new ProcessStartInfo
+        {
+            FileName = "smartctl",
+            Arguments = $"-t {testArg} \"{drivePath}\"",
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            UseShellExecute = false,
+            CreateNoWindow = true
+        };
+
+        try
+        {
+            using var process = Process.Start(psi);
+            if (process == null)
+            {
+                return false;
+            }
+
+            var output = await process.StandardOutput.ReadToEndAsync(cancellationToken);
+            var errors = await process.StandardError.ReadToEndAsync(cancellationToken);
+            await process.WaitForExitAsync(cancellationToken);
+
+            return process.ExitCode is 0 or 4 || output.Contains("Please wait", StringComparison.OrdinalIgnoreCase) || errors.Contains("Please wait", StringComparison.OrdinalIgnoreCase);
+        }
+        catch (InvalidOperationException)
+        {
+            return false;
+        }
+        catch (Win32Exception)
+        {
+            return false;
+        }
+    }
+
+    /// <inheritdoc />
+    public async Task<SmartaSelfTestStatus?> GetSelfTestStatusAsync(string drivePath, CancellationToken cancellationToken = default)
+    {
+        var json = await RunSmartctlJsonAsync(drivePath, "-a", cancellationToken);
+        return string.IsNullOrWhiteSpace(json) ? null : SmartctlJsonParser.ParseSelfTestStatus(json);
+    }
+
+    /// <inheritdoc />
+    public async Task<IReadOnlyList<SmartaSelfTestEntry>> GetSelfTestLogAsync(string drivePath, CancellationToken cancellationToken = default)
+    {
+        var json = await RunSmartctlJsonAsync(drivePath, "-a", cancellationToken);
+        return string.IsNullOrWhiteSpace(json) ? Array.Empty<SmartaSelfTestEntry>() : SmartctlJsonParser.ParseSelfTestLog(json);
+    }
+
+    /// <inheritdoc />
+    public Task<IReadOnlyList<SmartaMaintenanceAction>> GetSupportedMaintenanceActionsAsync(string drivePath, CancellationToken cancellationToken = default)
+    {
+        IReadOnlyList<SmartaMaintenanceAction> actions =
+        [
+            SmartaMaintenanceAction.EnableSmart,
+            SmartaMaintenanceAction.DisableSmart,
+            SmartaMaintenanceAction.EnableAutoSave,
+            SmartaMaintenanceAction.DisableAutoSave,
+            SmartaMaintenanceAction.RunOfflineDataCollection,
+            SmartaMaintenanceAction.AbortSelfTest
+        ];
+        return Task.FromResult(actions);
+    }
+
+    /// <inheritdoc />
+    public async Task<bool> ExecuteMaintenanceActionAsync(string drivePath, SmartaMaintenanceAction action, CancellationToken cancellationToken = default)
+    {
+        var arguments = action switch
+        {
+            SmartaMaintenanceAction.EnableSmart => "-s on",
+            SmartaMaintenanceAction.DisableSmart => "-s off",
+            SmartaMaintenanceAction.EnableAutoSave => "-S on",
+            SmartaMaintenanceAction.DisableAutoSave => "-S off",
+            SmartaMaintenanceAction.RunOfflineDataCollection => "-t offline",
+            SmartaMaintenanceAction.AbortSelfTest => "-X",
+            _ => string.Empty
+        };
+
+        if (string.IsNullOrWhiteSpace(arguments))
+        {
+            return false;
+        }
+
+        var psi = new ProcessStartInfo
+        {
+            FileName = "smartctl",
+            Arguments = $"{arguments} \"{drivePath}\"",
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            UseShellExecute = false,
+            CreateNoWindow = true
+        };
+
+        try
+        {
+            using var process = Process.Start(psi);
+            if (process == null)
+            {
+                return false;
+            }
+
+            await process.WaitForExitAsync(cancellationToken);
+            return process.ExitCode is 0 or 4;
+        }
+        catch (InvalidOperationException)
+        {
+            return false;
+        }
+        catch (Win32Exception)
+        {
+            return false;
+        }
+    }
+
+    private static async Task<string?> RunSmartctlJsonAsync(string drivePath, string commandArgs, CancellationToken cancellationToken)
+    {
+        var psi = new ProcessStartInfo
+        {
+            FileName = "smartctl",
+            Arguments = $"-j {commandArgs} \"{drivePath}\"",
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            UseShellExecute = false,
+            CreateNoWindow = true
+        };
+
+        try
+        {
+            using var process = Process.Start(psi);
+            if (process == null)
+            {
+                return null;
+            }
+
+            var output = await process.StandardOutput.ReadToEndAsync(cancellationToken);
+            await process.WaitForExitAsync(cancellationToken);
+            return string.IsNullOrWhiteSpace(output) ? null : output;
+        }
+        catch (InvalidOperationException)
+        {
+            return null;
+        }
+        catch (Win32Exception)
+        {
+            return null;
+        }
+    }
 }

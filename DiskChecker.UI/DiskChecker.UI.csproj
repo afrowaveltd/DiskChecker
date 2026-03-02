@@ -1,7 +1,7 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
 
   <ItemGroup>
-    <Content Include="Resources\icon.ico" />
+    <Content Include="Resources\icon-terminal.ico" />
   </ItemGroup>
 
   <ItemGroup>
@@ -30,7 +30,7 @@
     <NoWarn>CA1822;CA1860;CA1861;CA1862;CA1305</NoWarn>
     
     <!-- Application Icon -->
-    <ApplicationIcon>Resources\icon.ico</ApplicationIcon>
+    <ApplicationIcon>Resources\icon-terminal.ico</ApplicationIcon>
     <Win32Resource></Win32Resource>
     
     <!-- Multi-platform support -->

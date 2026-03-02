@@ -15,6 +15,16 @@ public class SmartaData
     public DateTime? LastChecked { get; set; }
 }
 
+public enum SmartaMaintenanceAction
+{
+    EnableSmart,
+    DisableSmart,
+    EnableAutoSave,
+    DisableAutoSave,
+    RunOfflineDataCollection,
+    AbortSelfTest
+}
+
 public class CoreDriveInfo
 {
     public string Path { get; set; } = string.Empty;
@@ -70,6 +80,98 @@ public class SmartCheckResult
     // Gets or sets the persisted test identifier.
     // </summary>
     public Guid TestId { get; set; }
+
+    /// <summary>
+    /// Gets or sets parsed SMART attributes when available.
+    /// </summary>
+    public IReadOnlyList<SmartaAttributeItem> Attributes { get; set; } = Array.Empty<SmartaAttributeItem>();
+
+    /// <summary>
+    /// Gets or sets current SMART self-test status.
+    /// </summary>
+    public SmartaSelfTestStatus? SelfTestStatus { get; set; }
+
+    /// <summary>
+    /// Gets or sets recent SMART self-test log entries.
+    /// </summary>
+    public IReadOnlyList<SmartaSelfTestEntry> SelfTestLog { get; set; } = Array.Empty<SmartaSelfTestEntry>();
+}
+
+public enum SmartaSelfTestType
+{
+    Quick,
+    Extended,
+    Conveyance,
+    Selective,
+    Offline,
+    Abort
+}
+
+public class SmartaAttributeItem
+{
+    public int Id { get; set; }
+    public string Name { get; set; } = string.Empty;
+    public int? Current { get; set; }
+    public int? Worst { get; set; }
+    public int? Threshold { get; set; }
+    public long RawValue { get; set; }
+    public string? WhenFailed { get; set; }
+
+    /// <summary>
+    /// Indicates whether this SMART attribute should be treated as critical in UI.
+    /// </summary>
+    public bool IsCritical
+    {
+        get
+        {
+            if (Current.HasValue && Threshold.HasValue && Current.Value <= Threshold.Value)
+            {
+                return true;
+            }
+
+            if (RawValue <= 0)
+            {
+                return false;
+            }
+
+            return Id is 5 or 197 or 198;
+        }
+    }
+}
+
+public class SmartaSelfTestStatus
+{
+    public bool IsRunning { get; set; }
+    public string StatusText { get; set; } = string.Empty;
+    public int? RemainingPercent { get; set; }
+    public DateTime CheckedAtUtc { get; set; } = DateTime.UtcNow;
+}
+
+public class SmartaSelfTestEntry
+{
+    public int? Number { get; set; }
+    public string TestType { get; set; } = string.Empty;
+    public string Status { get; set; } = string.Empty;
+    public int? RemainingPercent { get; set; }
+    public int? LifeTimeHours { get; set; }
+    public long? LbaOfFirstError { get; set; }
+}
+
+public class SmartaSelfTestReport
+{
+    public SmartaSelfTestType RequestedTestType { get; set; }
+    public bool Completed { get; set; }
+    public bool Passed { get; set; }
+    public string Summary { get; set; } = string.Empty;
+    public DateTime StartedAtUtc { get; set; } = DateTime.UtcNow;
+    public DateTime FinishedAtUtc { get; set; } = DateTime.UtcNow;
+    public IReadOnlyList<SmartaSelfTestEntry> RecentEntries { get; set; } = Array.Empty<SmartaSelfTestEntry>();
+}
+
+public class TemperatureHistoryPoint
+{
+    public DateTime TimestampUtc { get; set; }
+    public double TemperatureCelsius { get; set; }
 }
 
 public class SpeedSample

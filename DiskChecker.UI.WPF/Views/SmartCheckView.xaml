@@ -3,21 +3,324 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006" 
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008" 
+             xmlns:oxy="http://oxyplot.org/wpf"
              mc:Ignorable="d" 
-             d:DesignHeight="450" d:DesignWidth="800"
-             Background="#F5F5F5">
+             d:DesignHeight="760" d:DesignWidth="1200"
+             Background="{DynamicResource ThemeBackgroundBrush}">
     <Grid>
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
             <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
         </Grid.RowDefinitions>
 
-        <Border Grid.Row="0" Background="#FFFFFF" BorderBrush="#E0E0E0" BorderThickness="0,0,0,1" Padding="20">
-            <TextBlock Text="🔧 SMART Kontrola Disku" FontSize="24" FontWeight="Bold" Foreground="#1a1a1a"/>
+        <Border Grid.Row="0" Background="{DynamicResource ThemePanelBrush}" BorderBrush="{DynamicResource ThemeBorderBrush}" BorderThickness="0,0,0,1" Padding="20">
+            <StackPanel>
+                <TextBlock Text="🔧 SMART Kontrola Disku" FontSize="24" FontWeight="Bold" Foreground="#1a1a1a"/>
+                <TextBlock Text="{Binding SelectedDriveInfo}" FontSize="12" Foreground="#666666" Margin="0,6,0,0"/>
+                <Border Background="{Binding SmartDataSourceBadgeBackground}" Padding="8,3" Margin="0,8,0,0" HorizontalAlignment="Left" CornerRadius="4">
+                    <TextBlock Text="{Binding SmartDataSourceText}" Foreground="White" FontSize="11" FontWeight="SemiBold"/>
+                </Border>
+            </StackPanel>
         </Border>
 
-        <Border Grid.Row="1" Background="#FFFFFF" Margin="20" BorderBrush="#E0E0E0" BorderThickness="1" Padding="20">
-            <TextBlock Text="{Binding StatusMessage}" FontSize="14" Foreground="#666666" VerticalAlignment="Center" HorizontalAlignment="Center"/>
+        <Border Grid.Row="1" Background="{DynamicResource ThemePanelBrush}" Margin="20,15,20,10" BorderBrush="{DynamicResource ThemeBorderBrush}" BorderThickness="1" Padding="15">
+            <StackPanel>
+                <StackPanel Orientation="Horizontal" Margin="0,0,0,10">
+                    <TextBlock Text="Disk:" VerticalAlignment="Center" FontSize="11" Foreground="#666666" Margin="0,0,8,0"/>
+                    <ComboBox Width="340"
+                              ItemsSource="{Binding AvailableDrives}"
+                              DisplayMemberPath="Name"
+                              SelectedItem="{Binding SelectedDrive}"
+                              Margin="0,0,8,0"/>
+                    <Button Content="↻"
+                            Command="{Binding ReloadAvailableDrivesCommand}"
+                            Style="{StaticResource ActionButtonStyle}"
+                            Background="#5F6B7A"
+                            Foreground="White"
+                            Padding="10,6"/>
+                </StackPanel>
+
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="20"/>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="*"/>
+                    </Grid.ColumnDefinitions>
+
+                    <Button Grid.Column="0"
+                            Content="▶️ Rychlý SMART test"
+                            Command="{Binding RunSmartCheckCommand}"
+                            IsEnabled="{Binding IsBusy, Converter={StaticResource InvertBoolConverter}}"
+                            Style="{StaticResource ActionButtonStyle}"
+                            Background="#004B93"
+                            Foreground="White"
+                            Padding="12,8"
+                            Margin="0,0,8,0"
+                            FontWeight="Bold"
+                            Cursor="Hand"/>
+
+                    <Button Grid.Column="1"
+                            Content="🌡️ Start monitoringu"
+                            Command="{Binding StartTemperatureMonitoringCommand}"
+                            Style="{StaticResource ActionButtonStyle}"
+                            Background="#005A2B"
+                            Foreground="White"
+                            Padding="12,8"
+                            Margin="0,0,8,0"
+                            FontWeight="Bold"
+                            Cursor="Hand"/>
+
+                    <Button Grid.Column="2"
+                            Content="⏹️ Stop monitoringu"
+                            Command="{Binding StopTemperatureMonitoringCommand}"
+                            Style="{StaticResource ActionButtonStyle}"
+                            Background="#B02A37"
+                            Foreground="White"
+                            Padding="12,8"
+                            FontWeight="Bold"
+                            Cursor="Hand"/>
+
+                    <ComboBox Grid.Column="4"
+                              Width="220"
+                              ItemsSource="{Binding AvailableSelfTestTypes}"
+                              DisplayMemberPath="Label"
+                              SelectedValuePath="Value"
+                              SelectedValue="{Binding SelectedSelfTestType}"
+                              VerticalAlignment="Center"
+                              Margin="0,0,8,0"/>
+
+                    <Button Grid.Column="5"
+                            Content="🧪 Spustit self-test"
+                            Command="{Binding StartSelfTestCommand}"
+                            IsEnabled="{Binding IsBusy, Converter={StaticResource InvertBoolConverter}}"
+                            Style="{StaticResource ActionButtonStyle}"
+                            Background="#F7C600"
+                            Foreground="#1A1A1A"
+                            Padding="12,8"
+                            FontWeight="Bold"
+                            Cursor="Hand"/>
+                </Grid>
+
+                <Grid Margin="0,10,0,0">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+
+                    <ProgressBar Grid.Column="0"
+                                 Height="18"
+                                 Maximum="100"
+                                 Value="{Binding SmartScanProgressPercent}"
+                                 Background="#E6EAF0"
+                                 Foreground="#004B93"/>
+                    <TextBlock Grid.Column="1"
+                               Text="{Binding SmartScanProgressPercent, StringFormat={}{0:F0}%}"
+                               Margin="10,0,0,0"
+                               VerticalAlignment="Center"
+                               FontWeight="SemiBold"
+                               Foreground="#333333"/>
+                </Grid>
+
+                <TextBlock Text="{Binding SmartScanProgressText}"
+                           Margin="0,6,0,0"
+                           FontSize="11"
+                           Foreground="#666666"/>
+
+                <Grid Margin="0,10,0,0">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="*"/>
+                    </Grid.ColumnDefinitions>
+
+                    <ComboBox Grid.Column="0"
+                              Width="260"
+                              ItemsSource="{Binding AvailableMaintenanceActions}"
+                              DisplayMemberPath="Label"
+                              SelectedValuePath="Value"
+                              SelectedValue="{Binding SelectedMaintenanceAction}"
+                              Margin="0,0,8,0"/>
+
+                    <Button Grid.Column="1"
+                            Content="🛠️ SMART akce"
+                            Command="{Binding ExecuteMaintenanceActionCommand}"
+                            Style="{StaticResource ActionButtonStyle}"
+                            Background="#5F6B7A"
+                            Foreground="White"
+                            Margin="0,0,8,0"/>
+
+                    <TextBlock Grid.Column="2"
+                               Text="{Binding MaintenanceActionStatusText}"
+                               VerticalAlignment="Center"
+                               TextWrapping="Wrap"
+                               FontSize="11"
+                               Foreground="#666666"/>
+                </Grid>
+            </StackPanel>
         </Border>
+
+        <Border Grid.Row="2" Background="{DynamicResource ThemePanelBrush}" Margin="20,0,20,10" BorderBrush="{DynamicResource ThemeBorderBrush}" BorderThickness="1" Padding="20">
+            <Grid>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="*"/>
+                </Grid.RowDefinitions>
+
+                <Grid Grid.Row="0" Margin="0,0,0,12">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="*"/>
+                    </Grid.ColumnDefinitions>
+
+                    <StackPanel Grid.Column="0" Margin="0,0,20,0">
+                        <TextBlock Text="Známka kvality:" FontWeight="SemiBold"/>
+                        <TextBlock Text="{Binding QualityGrade}" Margin="0,4,0,8"/>
+                        <TextBlock Text="Skóre:" FontWeight="SemiBold"/>
+                        <TextBlock Text="{Binding QualityScore, StringFormat={}{0:F1}}" Margin="0,4,0,8"/>
+                        <TextBlock Text="Teplota:" FontWeight="SemiBold"/>
+                        <TextBlock Text="{Binding TemperatureCelsius, StringFormat={}{0:F1} °C}" Margin="0,4,0,0"/>
+                    </StackPanel>
+
+                    <StackPanel Grid.Column="1" Margin="0,0,20,0">
+                        <TextBlock Text="Provozní hodiny:" FontWeight="SemiBold"/>
+                        <TextBlock Text="{Binding PowerOnHours}" Margin="0,4,0,8"/>
+                        <TextBlock Text="Přemapované sektory:" FontWeight="SemiBold"/>
+                        <TextBlock Text="{Binding ReallocatedSectorCount}" Margin="0,4,0,8"/>
+                        <TextBlock Text="Čekající sektory:" FontWeight="SemiBold"/>
+                        <TextBlock Text="{Binding PendingSectorCount}" Margin="0,4,0,0"/>
+                    </StackPanel>
+
+                    <StackPanel Grid.Column="2">
+                        <TextBlock Text="Neopravitelné chyby:" FontWeight="SemiBold"/>
+                        <TextBlock Text="{Binding UncorrectableErrorCount}" Margin="0,4,0,8"/>
+                        <TextBlock Text="Stav self-testu:" FontWeight="SemiBold"/>
+                        <TextBlock Text="{Binding SelfTestStatusText}" TextWrapping="Wrap" Margin="0,4,0,8"/>
+                        <ProgressBar Height="12" Maximum="100" Value="{Binding SelfTestProgressPercent}" Background="#E6EAF0" Foreground="#005A2B" Margin="0,0,0,8"/>
+                        <TextBlock Text="{Binding SelfTestReportText}" TextWrapping="Wrap" FontSize="11" Foreground="#555555" Margin="0,0,0,8"/>
+                        <TextBlock Text="Poslední update teploty:" FontWeight="SemiBold"/>
+                        <TextBlock Text="{Binding LastTemperatureUpdate, StringFormat={}{0:dd.MM.yyyy HH:mm:ss}}" Margin="0,4,0,0"/>
+                    </StackPanel>
+                </Grid>
+
+                <Grid Grid.Row="1">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="2*"/>
+                        <ColumnDefinition Width="3*"/>
+                    </Grid.ColumnDefinitions>
+
+                    <Border Grid.Column="0" BorderBrush="#E0E0E0" BorderThickness="1" Padding="8" Margin="0,0,10,0">
+                        <oxy:PlotView Model="{Binding TemperaturePlotModel}"/>
+                    </Border>
+
+                    <TabControl Grid.Column="1">
+                        <TabItem Header="SMART atributy">
+                            <Grid>
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto"/>
+                                    <RowDefinition Height="*"/>
+                                </Grid.RowDefinitions>
+
+                                <Grid Grid.Row="0" Margin="0,0,0,8">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="2*"/>
+                                        <ColumnDefinition Width="Auto"/>
+                                    </Grid.ColumnDefinitions>
+
+                                    <Grid Grid.Column="0" Margin="0,0,8,0">
+                                        <TextBox x:Name="SmartAttributeFilterBox"
+                                                 Text="{Binding SmartAttributeFilterText, UpdateSourceTrigger=PropertyChanged}"
+                                                 VerticalAlignment="Center"
+                                                 MinHeight="28"
+                                                 ToolTip="Filtruj podle ID nebo názvu SMART atributu"/>
+                                        <TextBlock Text="Hledej ID nebo název atributu..."
+                                                   Margin="8,0,0,0"
+                                                   Foreground="#999999"
+                                                   VerticalAlignment="Center"
+                                                   IsHitTestVisible="False">
+                                            <TextBlock.Style>
+                                                <Style TargetType="TextBlock">
+                                                    <Setter Property="Visibility" Value="Collapsed"/>
+                                                    <Style.Triggers>
+                                                        <DataTrigger Binding="{Binding Text, ElementName=SmartAttributeFilterBox}" Value="">
+                                                            <Setter Property="Visibility" Value="Visible"/>
+                                                        </DataTrigger>
+                                                    </Style.Triggers>
+                                                </Style>
+                                            </TextBlock.Style>
+                                        </TextBlock>
+                                    </Grid>
+
+                                    <ComboBox Grid.Column="1"
+                                              Width="160"
+                                              ItemsSource="{Binding AvailableSmartAttributeSortOptions}"
+                                              DisplayMemberPath="Label"
+                                              SelectedValuePath="Value"
+                                              SelectedValue="{Binding SelectedSmartAttributeSort}"
+                                              VerticalAlignment="Center"/>
+                                </Grid>
+
+                                <DataGrid Grid.Row="1"
+                                          ItemsSource="{Binding FilteredSmartAttributes}"
+                                          AutoGenerateColumns="False"
+                                          IsReadOnly="True"
+                                          RowHeaderWidth="0">
+                                    <DataGrid.RowStyle>
+                                        <Style TargetType="DataGridRow">
+                                            <Setter Property="ToolTip" Value="{Binding Description}"/>
+                                            <Style.Triggers>
+                                                <DataTrigger Binding="{Binding IsCritical}" Value="True">
+                                                    <Setter Property="Background" Value="#FFFDECEC"/>
+                                                    <Setter Property="Foreground" Value="#FF8B0000"/>
+                                                    <Setter Property="FontWeight" Value="SemiBold"/>
+                                                </DataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </DataGrid.RowStyle>
+                                    <DataGrid.Columns>
+                                        <DataGridTextColumn Header="ID" Binding="{Binding Attribute.Id}" Width="70"/>
+                                        <DataGridTextColumn Header="Název" Binding="{Binding Attribute.Name}" Width="*"/>
+                                        <DataGridTextColumn Header="Aktuální" Binding="{Binding Attribute.Current}" Width="80"/>
+                                        <DataGridTextColumn Header="Nejhorší" Binding="{Binding Attribute.Worst}" Width="80"/>
+                                        <DataGridTextColumn Header="Práh" Binding="{Binding Attribute.Threshold}" Width="90"/>
+                                        <DataGridTextColumn Header="Surová hodnota" Binding="{Binding Attribute.RawValue}" Width="120"/>
+                                    </DataGrid.Columns>
+                                </DataGrid>
+                            </Grid>
+                        </TabItem>
+
+                        <TabItem Header="Log self-testů">
+                            <DataGrid ItemsSource="{Binding SelfTestLogEntries}"
+                                      AutoGenerateColumns="False"
+                                      IsReadOnly="True"
+                                      RowHeaderWidth="0">
+                                <DataGrid.Columns>
+                                    <DataGridTextColumn Header="#" Binding="{Binding Number}" Width="60"/>
+                                    <DataGridTextColumn Header="Typ" Binding="{Binding TestType}" Width="150"/>
+                                    <DataGridTextColumn Header="Stav" Binding="{Binding Status}" Width="*"/>
+                                    <DataGridTextColumn Header="Zbývá %" Binding="{Binding RemainingPercent}" Width="90"/>
+                                    <DataGridTextColumn Header="Hodiny" Binding="{Binding LifeTimeHours}" Width="90"/>
+                                    <DataGridTextColumn Header="LBA chyba" Binding="{Binding LbaOfFirstError}" Width="110"/>
+                                </DataGrid.Columns>
+                            </DataGrid>
+                        </TabItem>
+                    </TabControl>
+                </Grid>
+            </Grid>
+        </Border>
+
+        <TextBlock Grid.Row="3"
+                   Text="{Binding StatusMessage}"
+                   Background="#F0F0F0"
+                   Padding="20,8"
+                   FontSize="11"
+                   Foreground="#666666"
+                   TextTrimming="CharacterEllipsis"/>
     </Grid>
 </UserControl>
