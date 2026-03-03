@@ -518,6 +518,12 @@ public class MainConsoleMenu
 
       DateTime phaseStartTime = DateTime.UtcNow;  // Track phase start for ETA calculation
       DateTime? lastTempUpdate = null;  // Track last successful temperature update
+      
+      // === LIVE SPEED GAUGE DATA ===
+      double currentLiveSpeed = 0.0;
+      
+      // === LIVE GRAPH DATA ===
+      var liveGraphSamples = new List<SurfaceTestSample>();
 
       // Start test with progress display
       // Create a layout with disk info panel above progress table
@@ -529,6 +535,8 @@ public class MainConsoleMenu
               new Layout("Spacer2").Size(1),
               new Layout("Overall").Size(7),
               new Layout("Spacer3").Size(1),
+              new Layout("SpeedGraph").Size(11),
+              new Layout("Spacer4").Size(1),
               new Layout("Progress")
           );
 
@@ -540,6 +548,8 @@ public class MainConsoleMenu
           writeProgress, verifyProgress, writeEta, verifyEta,
           maxBytesToTest, overallTestedBytes, TimeSpan.Zero, FormatEta(0), PanelWidth)));
       layout["Spacer3"].Update(new Text(string.Empty));
+      layout["SpeedGraph"].Update(Align.Center(CreateLiveSpeedBarChart(liveGraphSamples, currentLiveSpeed, PanelWidth)));
+      layout["Spacer4"].Update(new Text(string.Empty));
       layout["Progress"].Update(Align.Center(CreateProgressTable(
               writeProgress, writeSpeed, writeBytes, writeEta, writeErrors,
               verifyProgress, verifySpeed, verifyBytes, verifyEta, verifyErrors)));
@@ -551,8 +561,22 @@ public class MainConsoleMenu
              {
                 try
                 {
-                   // ALL tests have 2 phases: WRITE (0-50%) + VERIFY (50-100%)
-                   bool isVerifyPhase = p.PercentComplete >= 50;
+                   // === COLLECT SAMPLE FOR GRAPH ===
+                   var sample = new SurfaceTestSample
+                   {
+                      OffsetBytes = p.BytesProcessed,
+                      BlockSizeBytes = 4096,
+                      ThroughputMbps = p.CurrentThroughputMbps,
+                      TimestampUtc = p.TimestampUtc,
+                      ErrorCount = 0
+                   };
+                   liveGraphSamples.Add(sample);
+                    
+                   // === UPDATE LIVE SPEED GAUGE ===
+                   currentLiveSpeed = p.CurrentThroughputMbps;
+                     
+                    // ALL tests have 2 phases: WRITE (0-50%) + VERIFY (50-100%)
+                    bool isVerifyPhase = p.PercentComplete >= 50;
 
                    // Phase transition: write → verify
                    if(isVerifyPhase && currentPhase == "write")
@@ -707,6 +731,7 @@ public class MainConsoleMenu
                    layout["Overall"].Update(Align.Center(TestVisualizationComponents.CreateOverallProgressGauge(
                       writeProgress, verifyProgress, writeEta, verifyEta,
                       maxBytesToTest, overallTestedBytes, totalElapsed, overallEta, PanelWidth)));
+                   layout["SpeedGraph"].Update(Align.Center(CreateLiveSpeedBarChart(liveGraphSamples, currentLiveSpeed, PanelWidth)));
                    layout["Progress"].Update(Align.Center(CreateProgressTable(
                       writeProgress, writeSpeed, writeBytes, writeEta, writeErrors,
                       verifyProgress, verifySpeed, verifyBytes, verifyEta, verifyErrors)));
@@ -756,8 +781,11 @@ public class MainConsoleMenu
                 // Use final speeds from result instead of local variables
                 double finalWriteSpeed = result.AverageSpeedMbps;
                 double finalVerifySpeed = result.AverageSpeedMbps;
+                
+                // Update currentLiveSpeed to final average for final display
+                currentLiveSpeed = result.AverageSpeedMbps;
 
-                TimeSpan totalElapsed = DateTime.UtcNow - startTime;
+                 TimeSpan totalElapsed = DateTime.UtcNow - startTime;
                 double finalOverallEtaSeconds = 0;
                 string overallEta = FormatEta(finalOverallEtaSeconds);
 
@@ -766,9 +794,10 @@ public class MainConsoleMenu
                 layout["Overall"].Update(Align.Center(TestVisualizationComponents.CreateOverallProgressGauge(
                    writeProgress, verifyProgress, writeEta, verifyEta,
                    maxBytesToTest, overallTestedBytes, totalElapsed, overallEta, PanelWidth)));
+                layout["SpeedGraph"].Update(Align.Center(CreateLiveSpeedBarChart(liveGraphSamples, result.AverageSpeedMbps, PanelWidth)));
                 layout["Progress"].Update(Align.Center(CreateProgressTable(
-                    100, finalWriteSpeed, writeBytes, writeEta, writeErrors,
-                    100, finalVerifySpeed, verifyBytes, verifyEta, verifyErrors)));
+                     100, finalWriteSpeed, writeBytes, writeEta, writeErrors,
+                     100, finalVerifySpeed, verifyBytes, verifyEta, verifyErrors)));
                 ctx.UpdateTarget(layout);
              }
           });
@@ -959,7 +988,7 @@ public class MainConsoleMenu
          AnsiConsole.MarkupLine($"\n[yellow]Formátování disku {Markup.Escape(drive.Name)}...[/]");
          AnsiConsole.MarkupLine("[red]VAROVÁNÍ: Všechna data budou smazána! Vytvoří se GPT tabulka oddílů.[/]");
 
-         if(!AnsiConsole.Confirm("Opravdu chcete pokračovat?"))
+         if(!AnsiConsole.Confirm("Opravdu chcete pokračit?"))
          {
             return;
          }
@@ -987,7 +1016,7 @@ create partition primary size=max
 select partition 1
 format fs=ntfs label={partitionLabel} quick
 assign
-exit";
+exit@";
 
          string tempScriptPath = Path.Combine(Path.GetTempPath(), $"format_disk_{Guid.NewGuid():N}.txt");
 
@@ -1638,13 +1667,76 @@ exit";
       return path.Replace("\\\\.\\", string.Empty).Replace("\\\\", string.Empty);
    }
 
+   /// <summary>
+   /// Creates a live speed bar chart that displays current and recent speeds as horizontal bars.
+   /// </summary>
+   private static Panel CreateLiveSpeedBarChart(List<SurfaceTestSample> samples, double currentSpeed, int width = 78)
+   {
+        if (!samples.Any())
+        {
+            return new Panel(new Markup("[dim]Čekám na data...[/]"))
+            {
+                Width = width,
+                Border = BoxBorder.Rounded,
+                BorderStyle = new Style(Color.Cyan)
+            };
+        }
+
+        // Vezmeme posledních 5 vzorků pro zobrazení trendů
+        var recentSamples = samples.TakeLast(5).ToList();
+        double maxSpeed = Math.Max(currentSpeed, recentSamples.Max(s => s.ThroughputMbps)) * 1.1; // 110% pro prostor
+        
+        if (maxSpeed == 0)
+            maxSpeed = 100;
+
+        const int barWidth = 40;
+        var sb = new StringBuilder();
+        
+        sb.AppendLine("[bold cyan]📈 TREND RYCHLOSTI[/]");
+        sb.AppendLine();
+
+        // Zobrazíme posledních 5 samples
+        foreach (var sample in recentSamples)
+        {
+            int barLength = (int)((sample.ThroughputMbps / maxSpeed) * barWidth);
+            barLength = Math.Max(1, Math.Min(barWidth, barLength));
+
+            // Vybereme barvu podle výkonu
+            string color = sample.ThroughputMbps >= maxSpeed * 0.8 ? "green" :
+                          sample.ThroughputMbps >= maxSpeed * 0.6 ? "yellow" :
+                          sample.ThroughputMbps >= maxSpeed * 0.4 ? "orange1" :
+                          "red";
+
+            string bar = new string('█', barLength) + new string('░', barWidth - barLength);
+            sb.AppendLine($"  [{color}]{bar}[/] {sample.ThroughputMbps:F0} MB/s");
+        }
+
+        // Přidáme trenutní rychlost
+        sb.AppendLine();
+        int currentBarLength = (int)((currentSpeed / maxSpeed) * barWidth);
+        currentBarLength = Math.Max(1, Math.Min(barWidth, currentBarLength));
+        string currentColor = currentSpeed >= maxSpeed * 0.8 ? "green" :
+                            currentSpeed >= maxSpeed * 0.6 ? "yellow" :
+                            currentSpeed >= maxSpeed * 0.4 ? "orange1" :
+                            "red";
+        string currentBar = new string('█', currentBarLength) + new string('░', barWidth - currentBarLength);
+        sb.AppendLine($"[bold cyan]Aktuálně:[/] [{currentColor}]{currentBar}[/] [bold]{currentSpeed:F0} MB/s[/]");
+        
+        // Přidáme max a min
+        double minSpeed = recentSamples.Min(s => s.ThroughputMbps);
+        sb.AppendLine($"[dim]Min: {minSpeed:F0} MB/s | Max: {recentSamples.Max(s => s.ThroughputMbps):F0} MB/s[/]");
+
+        var chartContent = new Markup(sb.ToString());
+        
+        var panel = new Panel(chartContent)
+        {
+            Width = width,
+            Border = BoxBorder.Rounded,
+            BorderStyle = new Style(Color.Cyan),
+            Padding = new Padding(1, 0)
+        };
+
+        return panel;
+    }
 }
-
-
-
-
-
-
-
-
 

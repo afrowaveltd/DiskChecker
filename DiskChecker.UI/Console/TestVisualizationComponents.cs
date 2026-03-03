@@ -253,6 +253,91 @@ public static class TestVisualizationComponents
         return panel;
     }
 
+    /// <summary>
+    /// Creates a live speed gauge panel showing current throughput with visual indicator.
+    /// </summary>
+    public static Panel CreateLiveSpeedGauge(double currentSpeedMbps, double maxExpectedSpeed = 600, int panelWidth = 78)
+    {
+        // Normalize speed to percentage (0-100%)
+        double speedPercent = Math.Min(100, (currentSpeedMbps / maxExpectedSpeed) * 100);
+        
+        // Create speed bar
+        const int BAR_WIDTH = 50;
+        var filledBars = (int)(speedPercent / 100 * BAR_WIDTH);
+        
+        // Determine color based on speed
+        string speedColor = currentSpeedMbps > maxExpectedSpeed * 0.8 ? "[green]" :
+                           currentSpeedMbps > maxExpectedSpeed * 0.6 ? "[yellow]" :
+                           currentSpeedMbps > maxExpectedSpeed * 0.4 ? "[orange1]" :
+                           "[red]";
+        
+        // Determine status text
+        string statusEmoji = currentSpeedMbps > maxExpectedSpeed * 0.8 ? "🟢" :
+                            currentSpeedMbps > maxExpectedSpeed * 0.6 ? "🟡" :
+                            currentSpeedMbps > maxExpectedSpeed * 0.4 ? "🟠" :
+                            "🔴";
+        
+        string statusText = currentSpeedMbps > maxExpectedSpeed * 0.8 ? "VÝBORNÉ" :
+                           currentSpeedMbps > maxExpectedSpeed * 0.6 ? "DOBRÉ" :
+                           currentSpeedMbps > maxExpectedSpeed * 0.4 ? "PŘIJATELNÉ" :
+                           "NÍZKÉ";
+        
+        // Create speed bar with colors
+        var speedBar = new StringBuilder();
+        for (int i = 0; i < BAR_WIDTH; i++)
+        {
+            if (i < filledBars)
+            {
+                speedBar.Append(speedColor + "█[/]");
+            }
+            else
+            {
+                speedBar.Append("[dim]░[/]");
+            }
+        }
+        
+        // Create grid with speed information
+        var grid = new Grid();
+        grid.AddColumn(new GridColumn().Width(20));
+        grid.AddColumn(new GridColumn().Width(58));
+        
+        grid.AddRow(
+            new Markup($"[bold white]{statusEmoji} RYCHLOST[/]"),
+            new Markup($"{speedBar} [bold cyan]{currentSpeedMbps:F1} MB/s[/]")
+        );
+        
+        grid.AddRow(
+            new Markup($"[dim]Status:[/]"),
+            new Markup($"[bold {(currentSpeedMbps > maxExpectedSpeed * 0.8 ? "green" : 
+                                 currentSpeedMbps > maxExpectedSpeed * 0.6 ? "yellow" :
+                                 currentSpeedMbps > maxExpectedSpeed * 0.4 ? "orange1" : "red")}]{statusText}[/]")
+        );
+        
+        // Capacity indicator (percentage of max expected)
+        grid.AddRow(
+            new Markup("[dim]Kapacita:[/]"),
+            new Markup($"[cyan]{speedPercent:F0}%[/] z {maxExpectedSpeed} MB/s")
+        );
+        
+        var panel = new Panel(grid)
+        {
+            Width = panelWidth
+        };
+
+        panel.Border(BoxBorder.Rounded);
+        string borderColor = currentSpeedMbps > maxExpectedSpeed * 0.8 ? "green" : 
+                            currentSpeedMbps > maxExpectedSpeed * 0.6 ? "yellow" :
+                            "red";
+        panel.BorderColor(borderColor == "green" ? Color.Green : 
+                         borderColor == "yellow" ? Color.Yellow : 
+                         Color.Red);
+        panel.Header("📊 MONITOR RYCHLOSTI");
+        panel.HeaderAlignment(Justify.Center);
+        panel.Padding(1, 0);
+
+        return panel;
+    }
+
     private static string FormatDuration(TimeSpan elapsed)
     {
         var totalHours = (int)elapsed.TotalHours;
