@@ -5,7 +5,7 @@
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008" 
              xmlns:oxy="http://oxyplot.org/wpf"
              mc:Ignorable="d" 
-             d:DesignHeight="760" d:DesignWidth="1200"
+             d:DesignHeight="1920" d:DesignWidth="1080"
              Background="{DynamicResource ThemeBackgroundBrush}">
     <Grid>
         <Grid.RowDefinitions>
@@ -37,7 +37,7 @@
                     <Button Content="↻"
                             Command="{Binding ReloadAvailableDrivesCommand}"
                             Style="{StaticResource ActionButtonStyle}"
-                            Background="#5F6B7A"
+                            Background="#4F5B6A"
                             Foreground="White"
                             Padding="10,6"/>
                 </StackPanel>
