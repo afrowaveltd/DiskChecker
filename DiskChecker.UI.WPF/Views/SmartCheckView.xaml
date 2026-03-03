@@ -348,8 +348,8 @@
                                       RowHeaderWidth="0">
                                 <DataGrid.Columns>
                                     <DataGridTextColumn Header="#" Binding="{Binding Number}" Width="60"/>
-                                    <DataGridTextColumn Header="Typ" Binding="{Binding TestType}" Width="150"/>
-                                    <DataGridTextColumn Header="Stav" Binding="{Binding Status}" Width="*"/>
+                                    <DataGridTextColumn Header="Typ" Binding="{Binding TranslatedTestType}" Width="150"/>
+                                    <DataGridTextColumn Header="Stav" Binding="{Binding TranslatedStatus}" Width="*"/>
                                     <DataGridTextColumn Header="Zbývá %" Binding="{Binding RemainingPercent}" Width="90"/>
                                     <DataGridTextColumn Header="Hodiny" Binding="{Binding LifeTimeHours}" Width="90"/>
                                     <DataGridTextColumn Header="LBA chyba" Binding="{Binding LbaOfFirstError}" Width="110"/>

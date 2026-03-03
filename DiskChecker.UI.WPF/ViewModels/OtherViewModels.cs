@@ -1226,9 +1226,10 @@ public partial class SmartCheckViewModel : ViewModelBase, IDisposable
       }
 
       IsSelfTestRunning = status.IsRunning;
+      var translatedStatus = TranslateSelfTestStatus(status.StatusText);
       SelfTestStatusText = status.RemainingPercent.HasValue
-          ? $"{status.StatusText} (zbývá {status.RemainingPercent.Value} %)"
-          : status.StatusText;
+          ? $"{translatedStatus} (zbývá {status.RemainingPercent.Value} %)"
+          : translatedStatus;
    }
 
    /// <summary>
@@ -1285,6 +1286,14 @@ public partial class SmartCheckViewModel : ViewModelBase, IDisposable
 
       try
       {
+         // Měření teploty PŘED testem
+         var tempBefore = await _smartCheckService.GetTemperatureOnlyAsync(SelectedDrive, token);
+         if(tempBefore.HasValue)
+         {
+            AddTemperatureSample(tempBefore.Value);
+            StatusMessage = $"🌡️ Teplota před testem: {tempBefore.Value:F1} °C";
+         }
+
          while(!token.IsCancellationRequested)
          {
             var status = await _smartCheckService.GetSelfTestStatusAsync(SelectedDrive, token);
@@ -1299,25 +1308,78 @@ public partial class SmartCheckViewModel : ViewModelBase, IDisposable
                ? Math.Max(0, 100 - status.RemainingPercent.Value)
                : (status.IsRunning ? SelfTestProgressPercent : 100);
 
+            var translatedStatus = TranslateSelfTestStatus(status.StatusText);
             SelfTestStatusText = status.RemainingPercent.HasValue
-               ? $"{status.StatusText} (zbývá {status.RemainingPercent.Value} %)"
-               : status.StatusText;
+               ? $"{translatedStatus} (zbývá {status.RemainingPercent.Value} %)"
+               : translatedStatus;
 
-            await RefreshSelfTestLogAsync();
+            // Měření teploty BĚHEM testu (každých 10s)
+            var tempDuring = await _smartCheckService.GetTemperatureOnlyAsync(SelectedDrive, token);
+            if(tempDuring.HasValue)
+            {
+               AddTemperatureSample(tempDuring.Value);
+            }
+
+            await RefreshSelfTestLogAsync(token);
 
             if(!status.IsRunning)
             {
                break;
             }
 
-            await Task.Delay(TimeSpan.FromSeconds(3), token);
+            await Task.Delay(TimeSpan.FromSeconds(10), token);
          }
 
+         // Test dokončen - načti aktualizovaná data a zobraz report
+         StatusMessage = "✅ SMART self-test dokončen, načítám výsledky...";
+         
+         // Měření teploty PO testu
+         var tempAfter = await _smartCheckService.GetTemperatureOnlyAsync(SelectedDrive, token);
+         if(tempAfter.HasValue)
+         {
+            AddTemperatureSample(tempAfter.Value);
+         }
+
+         // Načti kompletní SMART data po testu
+         var smartResult = await _smartCheckService.RunAsync(SelectedDrive, token);
+         if(smartResult != null)
+         {
+            MapResult(smartResult);
+         }
+
+         // Načti finální self-test log
+         await RefreshSelfTestLogAsync(token);
+
+         // Vytvoř a zobraz report
          var report = await _smartCheckService.BuildSelfTestReportAsync(SelectedDrive, SelectedSelfTestType, startedAtUtc, token);
-         SelfTestReportText = $"{report.RequestedTestType}: {(report.Passed ? "Úspěch" : "Dokončeno s upozorněním")}. {report.Summary}";
+         var translatedTestType = TranslateTestTypeName(SelectedSelfTestType);
+         var translatedSummary = TranslateSelfTestStatus(report.Summary);
+         var duration = report.FinishedAtUtc - report.StartedAtUtc;
+         
+         SelfTestReportText = $"✅ {translatedTestType} dokončen!\n" +
+            $"Trvání: {duration.TotalMinutes:F1} min\n" +
+            $"Výsledek: {translatedSummary}\n" +
+            $"Stav: {(report.Passed ? "✅ Test prošel" : "⚠️ Dokončeno s upozorněním")}";
+         
+         SelfTestProgressPercent = 100;
+         StatusMessage = report.Passed 
+            ? $"✅ {translatedTestType} úspěšně dokončen! ({duration.TotalMinutes:F1} min)" 
+            : $"⚠️ {translatedTestType} dokončen s upozorněním ({duration.TotalMinutes:F1} min)";
       }
       catch(OperationCanceledException)
       {
+         StatusMessage = "⚠️ Monitorování self-testu bylo přerušeno.";
+         SelfTestStatusText = "Test byl přerušen.";
+      }
+      catch(Exception ex)
+      {
+         StatusMessage = $"❌ Chyba během self-testu: {ex.Message}";
+         SelfTestStatusText = "Chyba během testu.";
+         System.Diagnostics.Debug.WriteLine($"MonitorSelfTestProgressAsync error: {ex.Message}");
+      }
+      finally
+      {
+         IsSelfTestRunning = false;
       }
    }
 
@@ -1385,6 +1447,21 @@ public partial class SmartCheckViewModel : ViewModelBase, IDisposable
          _ => englishStatus
       };
    }
+
+   private static string TranslateTestTypeName(SmartaSelfTestType testType)
+   {
+      return testType switch
+      {
+         SmartaSelfTestType.Quick => "Krátký test",
+         SmartaSelfTestType.Extended => "Rozšířený test",
+         SmartaSelfTestType.Conveyance => "Přepravní test",
+         SmartaSelfTestType.Selective => "Selektivní test",
+         SmartaSelfTestType.Offline => "Offline test",
+         SmartaSelfTestType.Abort => "Přerušení testu",
+         _ => testType.ToString()
+      };
+   }
+
    private void MapResult(SmartCheckResult result)
    {
       QualityGrade = result.Rating.Grade.ToString();
@@ -1404,9 +1481,10 @@ public partial class SmartCheckViewModel : ViewModelBase, IDisposable
       if(result.SelfTestStatus != null)
       {
          IsSelfTestRunning = result.SelfTestStatus.IsRunning;
+         var translatedStatus = TranslateSelfTestStatus(result.SelfTestStatus.StatusText);
          SelfTestStatusText = result.SelfTestStatus.RemainingPercent.HasValue
-             ? $"{result.SelfTestStatus.StatusText} (zbývá {result.SelfTestStatus.RemainingPercent.Value} %)"
-             : result.SelfTestStatus.StatusText;
+             ? $"{translatedStatus} (zbývá {result.SelfTestStatus.RemainingPercent.Value} %)"
+             : translatedStatus;
       }
    }
 
@@ -1578,10 +1656,11 @@ public partial class SmartCheckViewModel : ViewModelBase, IDisposable
 
       if(path.StartsWith("\\\\.\\PhysicalDrive", StringComparison.OrdinalIgnoreCase))
       {
-         return path.Replace("\\\\.\\", string.Empty, StringComparison.OrdinalIgnoreCase);
+         string driveNumber = path.Replace("\\\\.\\PhysicalDrive", string.Empty, StringComparison.OrdinalIgnoreCase);
+         return $"Fyzický disk {driveNumber}";
       }
 
-      return path;
+      return path.Replace("\\\\.\\", string.Empty, StringComparison.OrdinalIgnoreCase);
    }
 }
 
