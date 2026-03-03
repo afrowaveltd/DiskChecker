@@ -1,41 +1,20 @@
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using DiskChecker.Application.Services;
-using DiskChecker.Core.Models;
 using DiskChecker.Core.Interfaces;
+using DiskChecker.Core.Models;
+using Microsoft.Data.Sqlite;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Win32;
+using OxyPlot;
+using OxyPlot.Axes;
+using OxyPlot.Series;
 using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.Diagnostics;
 using System.IO;
-using Microsoft.Win32;
-using Microsoft.Data.Sqlite;
-using Microsoft.EntityFrameworkCore;
-using OxyPlot;
-using OxyPlot.Axes;
-using OxyPlot.Series;
 
 namespace DiskChecker.UI.WPF.ViewModels;
-
-/// <summary>
-/// Represents the status of a single disk block during surface testing.
-/// </summary>
-public class BlockStatus
-{
-   /// <summary>
-   /// Block index in the disk.
-   /// </summary>
-   public int Index { get; set; }
-
-   /// <summary>
-   /// Status: 0 = untested, 1 = writing, 2 = write ok, 3 = read ok, 4 = error
-   /// </summary>
-   public int Status { get; set; }
-
-   /// <summary>
-   /// Error message if status is error.
-   /// </summary>
-   public string? ErrorMessage { get; set; }
-}
 
 /// <summary>
 /// Represents a single speed sample point in the real-time graph.
@@ -285,6 +264,7 @@ public partial class SurfaceTestViewModel : ViewModelBase, IDisposable
       };
       _speedPlotModel = CreateSpeedPlotModel();
       InitializeBlocks();
+      InitializeProgressHandling();
    }
 
    /// <summary>
@@ -311,7 +291,7 @@ public partial class SurfaceTestViewModel : ViewModelBase, IDisposable
          return;
       }
 
-      var isDestructiveMode = SelectedRunMode is SurfaceRunMode.FullWriteRead or SurfaceRunMode.FullDiskErase;
+      bool isDestructiveMode = SelectedRunMode is SurfaceRunMode.FullWriteRead or SurfaceRunMode.FullDiskErase;
       if(isDestructiveMode && await IsSystemDiskAsync(SelectedDrive))
       {
          SystemDiskProtectionMessage = "⛔ Destruktivní test je z bezpečnostních důvodů zamčen pro systémový disk host OS.";
@@ -341,17 +321,27 @@ public partial class SurfaceTestViewModel : ViewModelBase, IDisposable
       CurrentPhase = "🔵 Příprava zápisu...";
       StatusMessage = $"Zahájena test povrchu: {SelectedDrive.Name}";
 
+      System.Diagnostics.Debug.WriteLine($"[StartTest] Začínám test: {SelectedDrive.Name}, režim: {SelectedRunMode}");
+
       try
       {
          var request = BuildSurfaceRequest(SelectedDrive, SelectedRunMode);
 
+         System.Diagnostics.Debug.WriteLine($"[StartTest] Request vytvořen: Profile={request.Profile}, Operation={request.Operation}");
+
+         // DŮLEŽITÉ: Progress musí být vytvořen NA UI THREAD aby callback běžel na UI!
          Progress<SurfaceTestProgress> progress = new Progress<SurfaceTestProgress>(OnTestProgress);
 
+         System.Diagnostics.Debug.WriteLine($"[StartTest] Volám _surfaceTestService.RunAsync...");
+
+         // NEPOUŽÍVAT Task.Run! Progress<T> potřebuje UI context!
          var result = await _surfaceTestService.RunAsync(
              request,
              progress,
              _testCancellationTokenSource.Token
-         );
+         ).ConfigureAwait(true); // true = pokračuj na UI thread pro result handling
+
+         System.Diagnostics.Debug.WriteLine($"[StartTest] Test dokončen! Result: {result.TestId}");
 
          _lastSurfaceTestResult = result;
          await LoadSmartDataForCertificateAsync();
@@ -372,6 +362,7 @@ public partial class SurfaceTestViewModel : ViewModelBase, IDisposable
       finally
       {
          IsTestRunning = false;
+         _uiUpdateTimer?.Stop();
          _testCancellationTokenSource?.Dispose();
       }
    }
@@ -450,16 +441,16 @@ public partial class SurfaceTestViewModel : ViewModelBase, IDisposable
             return Path.Combine(drive.Path, "diskchecker_surface_test.bin");
          }
 
-         var root = Path.GetPathRoot(drive.Path);
+         string? root = Path.GetPathRoot(drive.Path);
          if(!string.IsNullOrWhiteSpace(root) && Directory.Exists(root))
          {
             return Path.Combine(root, "diskchecker_surface_test.bin");
          }
       }
 
-      var tempFolder = Path.Combine(Path.GetTempPath(), "DiskChecker");
+      string tempFolder = Path.Combine(Path.GetTempPath(), "DiskChecker");
       Directory.CreateDirectory(tempFolder);
-      var safeName = new string(drive.Name.Where(ch => char.IsLetterOrDigit(ch) || ch == '_').ToArray());
+      string safeName = new string(drive.Name.Where(ch => char.IsLetterOrDigit(ch) || ch == '_').ToArray());
       if(string.IsNullOrWhiteSpace(safeName))
       {
          safeName = "drive";
@@ -507,36 +498,18 @@ public partial class SurfaceTestViewModel : ViewModelBase, IDisposable
    /// </summary>
    private void OnTestProgress(SurfaceTestProgress progress)
    {
-      System.Windows.Application.Current?.Dispatcher.Invoke(() =>
+      // DEBUG: Loguj že progress přišel
+      System.Diagnostics.Debug.WriteLine($"[Progress] {progress.PercentComplete:F1}% - {progress.BytesProcessed} bytes - {progress.CurrentThroughputMbps:F1} MB/s");
+      
+      // Lehký handler - jen uloží latest progress do field
+      _latestProgress = progress;
+      
+      // Pokud timer není spuštěn, spusť ho
+      if(_uiUpdateTimer != null && !_uiUpdateTimer.IsEnabled)
       {
-         BytesProcessed = progress.BytesProcessed;
-         ProgressPercent = progress.PercentComplete;
-         CurrentThroughputMbps = progress.CurrentThroughputMbps;
-
-         // Aktualizuj elapsed time
-         ElapsedTime = DateTime.UtcNow - _testStartTime;
-
-         // Vypočítej ETA
-         if(progress.PercentComplete > 0 && progress.PercentComplete < 100)
-         {
-            var timePerPercent = ElapsedTime.TotalSeconds / progress.PercentComplete;
-            var remainingSeconds = timePerPercent * (100 - progress.PercentComplete);
-            EstimatedTimeRemaining = TimeSpan.FromSeconds(remainingSeconds);
-         }
-
-         // Aktualizuj block vizualizaci
-         UpdateBlockVisualization(progress);
-
-         // Přidej speed sample
-         SpeedSample sample = new SpeedSample
-         {
-            TimeSeconds = ElapsedTime.TotalSeconds,
-            ThroughputMbps = progress.CurrentThroughputMbps,
-            Phase = progress.PercentComplete < 50 ? 0 : 1 // 0=write, 1=read
-         };
-         SpeedSamples.Add(sample);
-         UpdateSpeedPlot();
-      });
+         System.Diagnostics.Debug.WriteLine("[Timer] Spouštím UI update timer");
+         _uiUpdateTimer.Start();
+      }
    }
 
    /// <summary>
@@ -602,7 +575,7 @@ public partial class SurfaceTestViewModel : ViewModelBase, IDisposable
    private void UpdateBlockVisualization(SurfaceTestProgress progress)
    {
       // Vypočítej kolik bloků by mělo být v jaké fázi
-      var blockProgress = Math.Min(progress.PercentComplete / 100.0 * Blocks.Count, Blocks.Count);
+      double blockProgress = Math.Min(progress.PercentComplete / 100.0 * Blocks.Count, Blocks.Count);
 
       for(int i = 0; i < Blocks.Count; i++)
       {
@@ -653,7 +626,7 @@ public partial class SurfaceTestViewModel : ViewModelBase, IDisposable
       if(bytes >= mb)
          return $"{bytes / (double)mb:F2} MB";
       if(bytes >= kb)
-         return($"{bytes / (double)kb:F2} KB");
+         return $"{bytes / (double)kb:F2} KB";
       return $"{bytes} B";
    }
 
@@ -691,8 +664,8 @@ public partial class SurfaceTestViewModel : ViewModelBase, IDisposable
          return sampleList;
       }
 
-      var maxSeconds = sampleList.Max(s => s.TimeSeconds);
-      var windowSeconds = SelectedGraphTimeRange switch
+      double maxSeconds = sampleList.Max(s => s.TimeSeconds);
+      double windowSeconds = SelectedGraphTimeRange switch
       {
          GraphTimeRange.Last1Minute => 60,
          GraphTimeRange.Last5Minutes => 300,
@@ -749,19 +722,19 @@ public partial class SurfaceTestViewModel : ViewModelBase, IDisposable
          return false;
       }
 
-      var systemRoot = Path.GetPathRoot(Environment.SystemDirectory);
+      string? systemRoot = Path.GetPathRoot(Environment.SystemDirectory);
       if(string.IsNullOrWhiteSpace(systemRoot) || !systemRoot.EndsWith(":\\", StringComparison.OrdinalIgnoreCase))
       {
          return false;
       }
 
-      if(!TryExtractPhysicalDiskNumber(drive.Path, out var selectedDiskNumber))
+      if(!TryExtractPhysicalDiskNumber(drive.Path, out int selectedDiskNumber))
       {
          return false;
       }
 
-      var driveLetter = systemRoot[0];
-      var command = $"(Get-Partition -DriveLetter '{driveLetter}' | Get-Disk).Number";
+      char driveLetter = systemRoot[0];
+      string command = $"(Get-Partition -DriveLetter '{driveLetter}' | Get-Disk).Number";
       var psi = new ProcessStartInfo
       {
          FileName = "powershell.exe",
@@ -780,10 +753,10 @@ public partial class SurfaceTestViewModel : ViewModelBase, IDisposable
             return selectedDiskNumber == 0;
          }
 
-         var output = await process.StandardOutput.ReadToEndAsync();
+         string output = await process.StandardOutput.ReadToEndAsync();
          await process.WaitForExitAsync();
 
-         return int.TryParse(output.Trim(), out var systemDiskNumber)
+         return int.TryParse(output.Trim(), out int systemDiskNumber)
             ? systemDiskNumber == selectedDiskNumber
             : selectedDiskNumber == 0;
       }
@@ -805,7 +778,7 @@ public partial class SurfaceTestViewModel : ViewModelBase, IDisposable
          return false;
       }
 
-      var digits = new string(path.Where(char.IsDigit).ToArray());
+      string digits = new string(path.Where(char.IsDigit).ToArray());
       return int.TryParse(digits, out diskNumber);
    }
 
@@ -814,6 +787,8 @@ public partial class SurfaceTestViewModel : ViewModelBase, IDisposable
    /// </summary>
    public void Dispose()
    {
+      _uiUpdateTimer?.Stop();
+      _uiUpdateTimer = null;
       _testCancellationTokenSource?.Dispose();
       GC.SuppressFinalize(this);
    }
@@ -946,6 +921,9 @@ public partial class SmartCheckViewModel : ViewModelBase, IDisposable
    private string selfTestStatusText = "Stav self-testu není načten.";
 
    [ObservableProperty]
+   private string selfTestStatusForeground = "#333333";
+
+   [ObservableProperty]
    private bool isSelfTestRunning;
 
    [ObservableProperty]
@@ -1037,7 +1015,7 @@ public partial class SmartCheckViewModel : ViewModelBase, IDisposable
          var result = await _smartCheckService.RunAsync(SelectedDrive, quickSmartCts.Token);
          if(result == null)
          {
-            var instructions = await _smartCheckService.GetDependencyInstructionsAsync();
+            string? instructions = await _smartCheckService.GetDependencyInstructionsAsync();
             SmartDataSourceText = "Zdroj dat: OS fallback (SMART nedostupné)";
             SmartDataSourceBadgeBackground = "#B35A00";
             StatusMessage = string.IsNullOrWhiteSpace(instructions)
@@ -1102,7 +1080,7 @@ public partial class SmartCheckViewModel : ViewModelBase, IDisposable
          return;
       }
 
-      var success = await _smartCheckService.ExecuteMaintenanceActionAsync(SelectedDrive, SelectedMaintenanceAction);
+      bool success = await _smartCheckService.ExecuteMaintenanceActionAsync(SelectedDrive, SelectedMaintenanceAction);
       MaintenanceActionStatusText = success
          ? $"✅ SMART akce provedena: {SelectedMaintenanceAction}."
          : $"⚠️ SMART akci nelze provést: {SelectedMaintenanceAction}.";
@@ -1122,6 +1100,12 @@ public partial class SmartCheckViewModel : ViewModelBase, IDisposable
       SelectedDriveInfo = value == null
           ? "Vyber disk pro SMART kontrolu"
           : $"💾 {value.Name} ({NormalizeDrivePath(value.Path)})";
+
+      // Automaticky načti základní SMART data při změně disku
+      if(value != null)
+      {
+         _ = LoadInitialSmartDataAsync();
+      }
    }
 
    /// <summary>
@@ -1171,7 +1155,7 @@ public partial class SmartCheckViewModel : ViewModelBase, IDisposable
       {
          while(!token.IsCancellationRequested)
          {
-            var temperature = await _smartCheckService.GetTemperatureOnlyAsync(SelectedDrive, token);
+            int? temperature = await _smartCheckService.GetTemperatureOnlyAsync(SelectedDrive, token);
             if(temperature.HasValue)
             {
                AddTemperatureSample(temperature.Value);
@@ -1209,7 +1193,7 @@ public partial class SmartCheckViewModel : ViewModelBase, IDisposable
 
       IsBusy = true;
       var startedAt = DateTime.UtcNow;
-      var started = await _smartCheckService.StartSelfTestAsync(SelectedDrive, SelectedSelfTestType);
+      bool started = await _smartCheckService.StartSelfTestAsync(SelectedDrive, SelectedSelfTestType);
       if(started)
       {
          StatusMessage = $"✅ SMART self-test ({SelectedSelfTestType}) byl spuštěn.";
@@ -1337,6 +1321,70 @@ public partial class SmartCheckViewModel : ViewModelBase, IDisposable
       }
    }
 
+
+   private async Task LoadSmartDataAfterSelfTestAsync(DateTime startedAtUtc, CancellationToken cancellationToken)
+   {
+      if(SelectedDrive == null)
+      {
+         return;
+      }
+
+      try
+      {
+         using var smartCts = new CancellationTokenSource(TimeSpan.FromSeconds(15));
+         var result = await _smartCheckService.RunAsync(SelectedDrive, smartCts.Token);
+
+         if(result != null)
+         {
+            MapResult(result);
+            StatusMessage = $"✅ SMART kontrola dokončena: známka {result.Rating.Grade}, skóre {result.Rating.Score:F1}";
+         }
+
+         var report = await _smartCheckService.BuildSelfTestReportAsync(
+            SelectedDrive,
+            SelectedSelfTestType,
+            startedAtUtc,
+            cancellationToken);
+
+         var duration = report.FinishedAtUtc - report.StartedAtUtc;
+         string resultIcon = report.Passed ? "✅" : "❌";
+         string resultText = report.Passed ? "ÚSPĚŠNÝ" : "NEÚSPĚŠNÝ";
+
+         SelfTestReportText = $"{resultIcon} Self-Test: {resultText}\n\n" +
+            $"Typ: {SelectedSelfTestType}\n" +
+            $"Trvání: {duration.TotalMinutes:F1} min\n" +
+            $"Výsledek: {TranslateSelfTestStatus(report.Summary)}";
+      }
+      catch(Exception ex)
+      {
+         System.Diagnostics.Debug.WriteLine($"LoadSmartDataAfterSelfTestAsync error: {ex.Message}");
+         StatusMessage = $"⚠️ Chyba při načítání dat po testu: {ex.Message}";
+      }
+   }
+
+   private static string TranslateSelfTestStatus(string englishStatus)
+   {
+      if(string.IsNullOrWhiteSpace(englishStatus))
+      {
+         return "Neznámý stav";
+      }
+
+      return englishStatus.ToLowerInvariant() switch
+      {
+         var s when s.Contains("completed without error") => "✅ Dokončeno bez chyb",
+         var s when s.Contains("aborted by host") => "⚠️ Přerušeno systémem",
+         var s when s.Contains("interrupted") => "⚠️ Přerušeno",
+         var s when s.Contains("fatal error") => "❌ Kritická chyba",
+         var s when s.Contains("unknown error") => "❌ Neznámá chyba",
+         var s when s.Contains("electrical error") => "❌ Elektrická chyba",
+         var s when s.Contains("servo error") => "❌ Servo chyba",
+         var s when s.Contains("read error") => "❌ Chyba čtení",
+         var s when s.Contains("handling damage") => "❌ Mechanické poškození",
+         var s when s.Contains("in progress") => "⏳ Probíhá test...",
+         var s when s.Contains("reserved") => "🔒 Vyhrazeno",
+         _ => englishStatus
+      };
+   }
    private void MapResult(SmartCheckResult result)
    {
       QualityGrade = result.Rating.Grade.ToString();
@@ -1392,7 +1440,7 @@ public partial class SmartCheckViewModel : ViewModelBase, IDisposable
       AvailableMaintenanceActions = supported.Select(a => new MaintenanceActionOptionItem
       {
          Value = a,
-         Label = labels.TryGetValue(a, out var label) ? label : a.ToString()
+         Label = labels.TryGetValue(a, out string? label) ? label : a.ToString()
       }).ToList();
       SelectedMaintenanceAction = AvailableMaintenanceActions[0].Value;
    }
@@ -1423,7 +1471,7 @@ public partial class SmartCheckViewModel : ViewModelBase, IDisposable
 
       if(!string.IsNullOrWhiteSpace(SmartAttributeFilterText))
       {
-         var filter = SmartAttributeFilterText.Trim();
+         string filter = SmartAttributeFilterText.Trim();
          query = query.Where(a => a.Name.Contains(filter, StringComparison.OrdinalIgnoreCase)
              || a.Id.ToString().Contains(filter, StringComparison.OrdinalIgnoreCase));
       }
@@ -1634,7 +1682,7 @@ public partial class ReportViewModel : ViewModelBase
           }));
 
       StatusMessage = history.Count == 0
-          ? "Zatím nejsou k dispozici žádné reporty." 
+          ? "Zatím nejsou k dispozici žádné reporty."
           : $"✅ Načteno {history.Count} testů do reportu.";
       IsBusy = false;
    }
@@ -1821,8 +1869,8 @@ public partial class SettingsViewModel : ViewModelBase
          return;
       }
 
-      var invalid = await _maintenanceService.DeleteInvalidAndIncompleteTestsAsync();
-      var duplicates = await _maintenanceService.RemoveDuplicateTestsAsync();
+      int invalid = await _maintenanceService.DeleteInvalidAndIncompleteTestsAsync();
+      int duplicates = await _maintenanceService.RemoveDuplicateTestsAsync();
       await RefreshDatabaseOverviewAsync();
       StatusMessage = $"Údržba DB dokončena. Smazáno neplatných: {invalid}, duplicit: {duplicates}.";
       IsBusy = false;
@@ -1841,14 +1889,14 @@ public partial class SettingsViewModel : ViewModelBase
       }
 
       IsBusy = true;
-      var folder = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments), "DiskCheckerArchives");
+      string folder = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments), "DiskCheckerArchives");
       Directory.CreateDirectory(folder);
-      var safeName = string.IsNullOrWhiteSpace(SelectedDrive.DriveName)
+      string safeName = string.IsNullOrWhiteSpace(SelectedDrive.DriveName)
           ? SelectedDrive.DriveId.ToString()
           : SelectedDrive.DriveName.Replace(' ', '_');
-      var targetZip = Path.Combine(folder, $"{safeName}_{DateTime.Now:yyyyMMdd_HHmmss}.zip");
+      string targetZip = Path.Combine(folder, $"{safeName}_{DateTime.Now:yyyyMMdd_HHmmss}.zip");
 
-      var archivedCount = await _archiveService.ArchiveDriveHistoryAsync(SelectedDrive.DriveId, targetZip);
+      int archivedCount = await _archiveService.ArchiveDriveHistoryAsync(SelectedDrive.DriveId, targetZip);
       ArchivePath = targetZip;
       await RefreshDatabaseOverviewAsync();
       StatusMessage = archivedCount == 0
@@ -1863,7 +1911,7 @@ public partial class SettingsViewModel : ViewModelBase
    [RelayCommand]
    public async Task ImportArchiveAsync()
    {
-      var path = ArchivePath;
+      string path = ArchivePath;
       if(string.IsNullOrWhiteSpace(path))
       {
          var dialog = new OpenFileDialog
@@ -1882,9 +1930,10 @@ public partial class SettingsViewModel : ViewModelBase
       }
 
       IsBusy = true;
-      var imported = await _archiveService.ImportDriveHistoryArchiveAsync(path);
+      int imported = await _archiveService.ImportDriveHistoryArchiveAsync(path);
       await RefreshDatabaseOverviewAsync();
       StatusMessage = $"Import dokončen. Načteno {imported} testů ze souboru {Path.GetFileName(path)}.";
       IsBusy = false;
    }
 }
+

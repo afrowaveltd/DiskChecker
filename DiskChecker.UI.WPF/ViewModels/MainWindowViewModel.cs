@@ -42,6 +42,9 @@ public partial class MainWindowViewModel : ViewModelBase
     [ObservableProperty]
     private bool isSettingsActive;
 
+    [ObservableProperty]
+    private string statusMessage = string.Empty;
+
     /// <summary>
     /// Initializes a new instance of the <see cref="MainWindowViewModel"/> class.
     /// </summary>
@@ -50,8 +53,12 @@ public partial class MainWindowViewModel : ViewModelBase
         _navigationService = navigationService;
         _navigationService.ViewChanged += OnViewChanged;
 
-        // Iniciální navigace
-        NavigateToDiskSelection();
+        // Iniciální navigace na UI threadu s malým zpožděním
+        _ = System.Windows.Application.Current.Dispatcher.InvokeAsync(async () =>
+        {
+            await Task.Delay(100); // Počkej aby se MainWindow zobrazila
+            NavigateToDiskSelection();
+        });
     }
 
     /// <summary>
@@ -96,7 +103,9 @@ public partial class MainWindowViewModel : ViewModelBase
     [RelayCommand]
     public void NavigateToReport()
     {
-        _navigationService.NavigateTo<ReportViewModel>();
+        // TODO: Implementovat ReportViewModel
+        StatusMessage = "⚠️ Report view zatím není implementován";
+        // _navigationService.NavigateTo<ReportViewModel>();
     }
 
     /// <summary>
@@ -105,7 +114,9 @@ public partial class MainWindowViewModel : ViewModelBase
     [RelayCommand]
     public void NavigateToHistory()
     {
-        _navigationService.NavigateTo<HistoryViewModel>();
+        // TODO: Implementovat HistoryViewModel
+        StatusMessage = "⚠️ Historie view zatím není implementována";
+        // _navigationService.NavigateTo<HistoryViewModel>();
     }
 
     /// <summary>
@@ -114,7 +125,9 @@ public partial class MainWindowViewModel : ViewModelBase
     [RelayCommand]
     public void NavigateToSettings()
     {
-        _navigationService.NavigateTo<SettingsViewModel>();
+        // TODO: Implementovat SettingsViewModel
+        StatusMessage = "⚠️ Nastavení view zatím není implementováno";
+        // _navigationService.NavigateTo<SettingsViewModel>();
     }
 
     /// <summary>
@@ -138,9 +151,10 @@ public partial class MainWindowViewModel : ViewModelBase
         IsSurfaceTestActive = e.ViewModel is SurfaceTestViewModel;
         IsSmartCheckActive = e.ViewModel is SmartCheckViewModel;
         IsAnalysisActive = e.ViewModel is AnalysisViewModel;
-        IsReportActive = e.ViewModel is ReportViewModel;
-        IsHistoryActive = e.ViewModel is HistoryViewModel;
-        IsSettingsActive = e.ViewModel is SettingsViewModel;
+        // TODO: Až budou implementované, odkomentovat
+        IsReportActive = false; // e.ViewModel is ReportViewModel;
+        IsHistoryActive = false; // e.ViewModel is HistoryViewModel;
+        IsSettingsActive = false; // e.ViewModel is SettingsViewModel;
     }
 
     /// <summary>

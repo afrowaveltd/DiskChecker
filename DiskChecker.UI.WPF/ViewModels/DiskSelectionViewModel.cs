@@ -20,16 +20,88 @@ public class HomeRecentTestItem
    public double Score { get; set; }
 }
 
-public class DiskStatusCardItem
+public class DiskStatusCardItem : INotifyPropertyChanged
 {
+   private bool _isSelected;
+
+   /// <summary>
+   /// Základní informace o disku.
+   /// </summary>
    public required CoreDriveInfo Drive { get; init; }
+
+   /// <summary>
+   /// Zobrazované jméno disku.
+   /// </summary>
    public string DisplayName { get; init; } = string.Empty;
+
+   /// <summary>
+   /// Zobrazovaná cesta disku.
+   /// </summary>
    public string DisplayPath { get; init; } = string.Empty;
+
+   /// <summary>
+   /// Kapacita disku.
+   /// </summary>
    public string CapacityText { get; init; } = string.Empty;
+
+   /// <summary>
+   /// Známka kvality SMART.
+   /// </summary>
    public string GradeText { get; init; } = "-";
+
+   /// <summary>
+   /// Zdroj SMART dat.
+   /// </summary>
    public string DataSourceText { get; init; } = "SMART";
+
+   /// <summary>
+   /// Aktuální teplota.
+   /// </summary>
    public string TemperatureText { get; init; } = "N/A";
+
+   /// <summary>
+   /// Počet provozních hodin.
+   /// </summary>
    public string PowerOnHoursText { get; init; } = "N/A";
+
+   /// <summary>
+   /// Zda se jedná o systémový disk.
+   /// </summary>
+   public bool IsSystemDisk { get; init; }
+
+   /// <summary>
+   /// Label pro systémový disk.
+   /// </summary>
+   public string IsSystemDiskLabel => "⚠️ Systémový disk";
+
+   /// <summary>
+   /// Zda je disk vybraný.
+   /// </summary>
+   public bool IsSelected
+   {
+      get => _isSelected;
+      set
+      {
+         if(_isSelected != value)
+         {
+            _isSelected = value;
+            OnPropertyChanged(nameof(IsSelected));
+         }
+      }
+   }
+
+   /// <summary>
+   /// Implementace INotifyPropertyChanged.
+   /// </summary>
+   public event PropertyChangedEventHandler? PropertyChanged;
+
+   /// <summary>
+   /// Vyvolá PropertyChanged event.
+   /// </summary>
+   protected virtual void OnPropertyChanged(string propertyName)
+   {
+      PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
+   }
 }
 
 /// <summary>
@@ -188,7 +260,6 @@ public partial class DiskSelectionViewModel : ViewModelBase
             RecentTests = new ObservableCollection<HomeRecentTestItem>(_cachedRecentTests);
             LoadingState = $"Načteno z cache ({_cacheTimestampUtc:HH:mm:ss})";
             StatusMessage = $"✅ Nalezeno {Drives.Count} disků (cache)";
-            await LoadSystemDiskQuickReportAsync();
             return;
          }
 
@@ -197,22 +268,67 @@ public partial class DiskSelectionViewModel : ViewModelBase
          IReadOnlyList<CoreDriveInfo> driveList = await _diskCheckerService.ListDrivesAsync();
          Drives = driveList.ToList();
 
+         // Vytvořit prázdné karty hned
+         DiskCards = new ObservableCollection<DiskStatusCardItem>(
+            Drives.Select(d => new DiskStatusCardItem
+            {
+               Drive = d,
+               DisplayName = d.Name,
+               DisplayPath = FormatDrivePath(d.Path),
+               CapacityText = FormatCapacity(d.TotalSize),
+               GradeText = "...",
+               DataSourceText = "Načítání...",
+               TemperatureText = "-",
+               PowerOnHoursText = "-",
+               IsSystemDisk = false
+            }));
+
          LoadingState = "Načítám SMART data disků...";
-         await LoadDiskCardsAsync();
-
-         LoadingState = "Načítám rychlý report systémového disku...";
-         await LoadSystemDiskQuickReportAsync();
-
-         LoadingState = "Načítám poslední testy...";
-         await LoadRecentHistoryAsync();
-
-         _cachedDrives = Drives.ToList();
-         _cachedDiskCards = new ObservableCollection<DiskStatusCardItem>(DiskCards);
-         _cachedRecentTests = new ObservableCollection<HomeRecentTestItem>(RecentTests);
-         _cacheTimestampUtc = DateTime.UtcNow;
+         StatusMessage = "⚙️ Načítám SMART data...";
+         
+         // Aktualizuj SMART data asynchronně na pozadí
+         _ = UpdateDiskCardsWithSmartDataAsync();
 
          LoadingState = "Hotovo";
          StatusMessage = $"✅ Nalezeno {Drives.Count} disků";
+
+         // Paralelně načítej systemový disk report a historii na pozadí bez čekání
+         _ = Task.Run(async () =>
+         {
+            try
+            {
+               await LoadSystemDiskQuickReportAsync();
+            }
+            catch(Exception ex)
+            {
+               System.Diagnostics.Debug.WriteLine($"LoadSystemDiskQuickReportAsync bg error: {ex.Message}");
+            }
+         });
+
+         _ = Task.Run(async () =>
+         {
+            try
+            {
+               await LoadRecentHistoryAsync();
+            }
+            catch(Exception ex)
+            {
+               System.Diagnostics.Debug.WriteLine($"LoadRecentHistoryAsync bg error: {ex.Message}");
+            }
+         });
+
+         // Cache uložíme AŽ PO NAČTENÍ SMART DAT
+         // Čekáme trochu aby se SMART data načetla
+         _ = Task.Run(async () =>
+         {
+            await Task.Delay(4000); // 4 sekundy by mělo stačit
+            _cachedDrives = Drives.ToList();
+            _cachedDiskCards = new ObservableCollection<DiskStatusCardItem>(DiskCards);
+            _cachedRecentTests = new ObservableCollection<HomeRecentTestItem>(RecentTests);
+            _cacheTimestampUtc = DateTime.UtcNow;
+            System.Diagnostics.Debug.WriteLine("Cache saved after SMART data loaded");
+         });
+
       }
       catch(InvalidOperationException ex)
       {
@@ -230,131 +346,129 @@ public partial class DiskSelectionViewModel : ViewModelBase
       }
    }
 
-   private async Task LoadSystemDiskQuickReportAsync()
+   private async Task UpdateDiskCardsWithSmartDataAsync()
    {
-      var systemDisk = await TryGetSystemDiskAsync();
-      if(systemDisk == null)
+      try
       {
-         SystemDiskSummary = "Nelze mapovat systémový disk pro rychlý SMART report.";
-         return;
+         System.Diagnostics.Debug.WriteLine("=== UpdateDiskCardsWithSmartDataAsync START ===");
+         await LoadDiskCardsAsync();
+         System.Diagnostics.Debug.WriteLine("=== UpdateDiskCardsWithSmartDataAsync SUCCESS ===");
       }
-
-      var smartData = await GetSmartSnapshotWithTimeoutAsync(systemDisk, TimeSpan.FromSeconds(6));
-      if(smartData == null)
+      catch(Exception ex)
       {
-         SystemDiskName = $"Systémový disk: {systemDisk.Name}";
-         SystemDiskGrade = "OS";
-         SystemDiskTemperature = "N/A";
-         SystemDiskSummary = "SMART data nejsou dostupná.";
-         return;
+         System.Diagnostics.Debug.WriteLine($"=== UpdateDiskCardsWithSmartDataAsync ERROR ===");
+         System.Diagnostics.Debug.WriteLine($"Exception: {ex.GetType().Name}");
+         System.Diagnostics.Debug.WriteLine($"Message: {ex.Message}");
+         System.Diagnostics.Debug.WriteLine($"StackTrace: {ex.StackTrace}");
       }
-
-      var quality = _qualityCalculator.CalculateQuality(smartData);
-      SystemDiskName = $"Systémový disk: {systemDisk.Name}";
-      SystemDiskGrade = quality.Grade.ToString();
-      SystemDiskTemperature = smartData.Temperature > 0 ? $"{smartData.Temperature:F1} °C" : "N/A";
-      SystemDiskSummary = quality.Warnings.Count == 0
-         ? "Bez kritických varování"
-         : string.Join(" | ", quality.Warnings.Take(2));
-   }
-
-   private async Task LoadRecentHistoryAsync()
-   {
-      var history = await _historyService.GetForCompareAsync(6);
-      RecentTests = new ObservableCollection<HomeRecentTestItem>(history
-         .OrderByDescending(t => t.TestDate)
-         .Select(t => new HomeRecentTestItem
-         {
-            TestDate = t.TestDate,
-            DriveName = t.DriveName,
-            TestType = t.TestType,
-            Grade = t.Grade.ToString(),
-            Score = t.Score
-         }));
-   }
-
-   private async Task<CoreDriveInfo?> TryGetSystemDiskAsync()
-   {
-      if(!OperatingSystem.IsWindows())
-      {
-         return Drives.FirstOrDefault();
-      }
-
-      var systemRoot = Path.GetPathRoot(Environment.SystemDirectory);
-      if(string.IsNullOrWhiteSpace(systemRoot))
-      {
-         return Drives.FirstOrDefault();
-      }
-
-      var driveLetter = systemRoot[0];
-      var command = $"(Get-Partition -DriveLetter '{driveLetter}' | Get-Disk).Number";
-      var psi = new ProcessStartInfo
-      {
-         FileName = "powershell.exe",
-         Arguments = $"-NoProfile -Command \"{command}\"",
-         RedirectStandardOutput = true,
-         UseShellExecute = false,
-         CreateNoWindow = true
-      };
-
-      using var process = Process.Start(psi);
-      if(process == null)
-      {
-         return Drives.FirstOrDefault();
-      }
-
-      var output = await process.StandardOutput.ReadToEndAsync();
-      await process.WaitForExitAsync();
-
-      if(!int.TryParse(output.Trim(), out var systemDiskNumber))
-      {
-         return Drives.FirstOrDefault();
-      }
-
-      return Drives.FirstOrDefault(d => TryExtractDiskNumber(d.Path, out var number) && number == systemDiskNumber)
-         ?? Drives.FirstOrDefault();
-   }
-
-   private static bool TryExtractDiskNumber(string path, out int diskNumber)
-   {
-      diskNumber = -1;
-      if(string.IsNullOrWhiteSpace(path))
-      {
-         return false;
-      }
-
-      var digits = new string(path.Where(char.IsDigit).ToArray());
-      return int.TryParse(digits, out diskNumber);
    }
 
    private async Task LoadDiskCardsAsync()
    {
-      var cards = new List<DiskStatusCardItem>(Drives.Count);
-      var total = Drives.Count;
-      var index = 0;
+      System.Diagnostics.Debug.WriteLine("LoadDiskCardsAsync: Starting");
 
-      foreach(var drive in Drives)
+      try
       {
-         index++;
-         LoadingState = $"SMART načítání disku {index}/{total}: {drive.Name}";
-
-         var smartData = await GetSmartSnapshotWithTimeoutAsync(drive, TimeSpan.FromSeconds(6));
-         var quality = smartData == null ? null : _qualityCalculator.CalculateQuality(smartData);
-
-         cards.Add(new DiskStatusCardItem
+         // Paralelně načítej SMART data pro všechny disky
+         var smartDataTasks = Drives.Select(async drive =>
          {
-            Drive = drive,
-            DisplayName = drive.Name,
-            DisplayPath = FormatDrivePath(drive.Path),
-            CapacityText = FormatCapacity(drive.TotalSize),
-            GradeText = quality?.Grade.ToString() ?? "OS",
-            DataSourceText = smartData == null ? "OS fallback" : "SMART",
-            TemperatureText = smartData?.Temperature > 0 ? $"{smartData.Temperature:F1} °C" : "N/A",
-            PowerOnHoursText = smartData?.PowerOnHours > 0 ? smartData.PowerOnHours.ToString() : "N/A"
+            try
+            {
+               System.Diagnostics.Debug.WriteLine($"LoadDiskCardsAsync: Starting SMART load for {drive.Name}");
+               var smartData = await GetSmartSnapshotWithTimeoutAsync(drive, TimeSpan.FromSeconds(1.5));
+               var quality = smartData == null ? null : _qualityCalculator.CalculateQuality(smartData);
+               return (drive, smartData, quality, success: true);
+            }
+            catch(Exception ex)
+            {
+               System.Diagnostics.Debug.WriteLine($"LoadDiskCardsAsync: SMART load error for {drive.Name}: {ex.Message}");
+               return (drive, smartData: null as SmartaData, quality: null as QualityRating, success: false);
+            }
+         }).ToList();
+
+         System.Diagnostics.Debug.WriteLine("LoadDiskCardsAsync: Waiting for SMART tasks");
+         var allSmartTask = Task.WhenAll(smartDataTasks);
+         var timeoutTask = Task.Delay(TimeSpan.FromSeconds(3));
+         
+         var completedTask = await Task.WhenAny(allSmartTask, timeoutTask);
+
+         List<(CoreDriveInfo, SmartaData?, QualityRating?, bool)> results;
+         if(completedTask == allSmartTask && allSmartTask.IsCompletedSuccessfully)
+         {
+            results = allSmartTask.Result.ToList();
+            System.Diagnostics.Debug.WriteLine("LoadDiskCardsAsync: SMART tasks completed successfully");
+         }
+         else
+         {
+            System.Diagnostics.Debug.WriteLine("LoadDiskCardsAsync: SMART tasks timeout - returning partial results");
+            results = smartDataTasks
+               .Where(t => t.IsCompleted && !t.IsFaulted)
+               .Select(t => t.Result)
+               .ToList();
+         }
+
+         // Zjisti systémový disk
+         System.Diagnostics.Debug.WriteLine("LoadDiskCardsAsync: Getting system disk");
+         var systemDisk = await Task.Run(async () =>
+         {
+            try
+            {
+               using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(1));
+               return await TryGetSystemDiskAsync(cts.Token);
+            }
+            catch(Exception ex)
+            {
+               System.Diagnostics.Debug.WriteLine($"LoadDiskCardsAsync: System disk error: {ex.Message}");
+               return null;
+            }
+         });
+
+         System.Diagnostics.Debug.WriteLine($"LoadDiskCardsAsync: Updating {results.Count} cards");
+         
+         // AKTUALIZUJ EXISTUJÍCÍ KARTY místo vytváření nových!
+         System.Windows.Application.Current?.Dispatcher.Invoke(() =>
+         {
+            System.Diagnostics.Debug.WriteLine("LoadDiskCardsAsync: Updating cards on UI thread");
+            
+            foreach(var (drive, smartData, quality, success) in results)
+            {
+               // Najdi existující kartu pro tento disk
+               var card = DiskCards.FirstOrDefault(c => c.Drive.Path == drive.Path);
+               if(card != null)
+               {
+                  // Aktualizuj data v existující kartě
+                  var isSystemDisk = systemDisk != null && 
+                                    (string.Equals(systemDisk.Name, drive.Name, StringComparison.OrdinalIgnoreCase) ||
+                                     string.Equals(systemDisk.Path, drive.Path, StringComparison.OrdinalIgnoreCase));
+
+                  // POZOR: DiskStatusCardItem properties jsou init-only!
+                  // Musíme vytvořit novou kartu a nahradit ji
+                  var index = DiskCards.IndexOf(card);
+                  DiskCards[index] = new DiskStatusCardItem
+                  {
+                     Drive = drive,
+                     DisplayName = drive.Name,
+                     DisplayPath = FormatDrivePath(drive.Path),
+                     CapacityText = FormatCapacity(drive.TotalSize),
+                     GradeText = quality?.Grade.ToString() ?? "OS",
+                     DataSourceText = smartData == null ? "OS fallback" : "SMART",
+                     TemperatureText = smartData?.Temperature > 0 ? $"{smartData.Temperature:F1} °C" : "N/A",
+                     PowerOnHoursText = smartData?.PowerOnHours > 0 ? smartData.PowerOnHours.ToString() : "N/A",
+                     IsSystemDisk = isSystemDisk
+                  };
+               }
+            }
+            
+            System.Diagnostics.Debug.WriteLine("LoadDiskCardsAsync: Cards updated successfully");
          });
       }
+      catch(Exception ex)
+      {
+         System.Diagnostics.Debug.WriteLine($"LoadDiskCardsAsync: CRITICAL ERROR - {ex.GetType().Name}: {ex.Message}");
+         System.Diagnostics.Debug.WriteLine($"StackTrace: {ex.StackTrace}");
+      }
 
-      DiskCards = new ObservableCollection<DiskStatusCardItem>(cards);
+      System.Diagnostics.Debug.WriteLine("LoadDiskCardsAsync: Finished");
    }
 
    private async Task<SmartaData?> GetSmartSnapshotWithTimeoutAsync(CoreDriveInfo drive, TimeSpan timeout)
@@ -372,6 +486,84 @@ public partial class DiskSelectionViewModel : ViewModelBase
       {
          return null;
       }
+   }
+
+   private async Task<CoreDriveInfo?> TryGetSystemDiskAsync(CancellationToken cancellationToken = default)
+   {
+      if(!OperatingSystem.IsWindows())
+      {
+         return Drives.FirstOrDefault();
+      }
+
+      var systemRoot = Path.GetPathRoot(Environment.SystemDirectory);
+      if(string.IsNullOrWhiteSpace(systemRoot))
+      {
+         return Drives.FirstOrDefault();
+      }
+
+      if(!systemRoot.EndsWith(":\\", StringComparison.OrdinalIgnoreCase))
+      {
+         return Drives.FirstOrDefault();
+      }
+
+      try
+      {
+         var driveLetter = systemRoot[0];
+         var command = $"(Get-Partition -DriveLetter '{driveLetter}' | Get-Disk).Number";
+         var psi = new ProcessStartInfo
+         {
+            FileName = "powershell.exe",
+            Arguments = $"-NoProfile -Command \"{command}\"",
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            UseShellExecute = false,
+            CreateNoWindow = true
+         };
+
+         using var process = Process.Start(psi);
+         if(process == null)
+         {
+            return Drives.FirstOrDefault();
+         }
+
+         var outputTask = process.StandardOutput.ReadToEndAsync(cancellationToken);
+         var waitTask = process.WaitForExitAsync(cancellationToken);
+
+         await Task.WhenAll(outputTask, waitTask);
+
+         var output = outputTask.Result;
+         if(!int.TryParse(output.Trim(), out var systemDiskNumber))
+         {
+            return Drives.FirstOrDefault();
+         }
+
+         return Drives.FirstOrDefault(d => TryExtractDiskNumber(d.Path, out var number) && number == systemDiskNumber)
+            ?? Drives.FirstOrDefault();
+      }
+      catch(OperationCanceledException)
+      {
+         System.Diagnostics.Debug.WriteLine("TryGetSystemDiskAsync timeout");
+         return Drives.FirstOrDefault();
+      }
+      catch(Exception ex)
+      {
+         System.Diagnostics.Debug.WriteLine($"TryGetSystemDiskAsync error: {ex.Message}");
+         return Drives.FirstOrDefault();
+      }
+   }
+
+   private static bool TryExtractDiskNumber(string path, out int number)
+   {
+      number = -1;
+      if(path.Contains("PhysicalDrive", StringComparison.OrdinalIgnoreCase))
+      {
+         var numStr = new string(path.Where(char.IsDigit).ToArray());
+         if(int.TryParse(numStr, out number))
+         {
+            return true;
+         }
+      }
+      return false;
    }
 
    private static string FormatDrivePath(string path)
@@ -491,5 +683,88 @@ public partial class DiskSelectionViewModel : ViewModelBase
       StatusMessage = archived == 0
          ? "Archivace přeskočena (disk má pouze poslední měření)."
          : $"Archivováno {archived} testů disku {match.DriveName} do {targetZip}";
+   }
+
+   private async Task LoadSystemDiskQuickReportAsync()
+   {
+      try
+      {
+         // Timeout 2 sekundy na systémový disk lookup
+         using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(2));
+         var systemDisk = await TryGetSystemDiskAsync(cts.Token);
+         
+         if(systemDisk == null)
+         {
+            SystemDiskSummary = "Nelze mapovat systémový disk.";
+            return;
+         }
+
+         // Timeout 2 sekundy na SMART data
+         var smartData = await GetSmartSnapshotWithTimeoutAsync(systemDisk, TimeSpan.FromSeconds(2));
+         if(smartData == null)
+         {
+            SystemDiskName = $"Systémový disk: {systemDisk.Name}";
+            SystemDiskGrade = "OS";
+            SystemDiskTemperature = "N/A";
+            SystemDiskSummary = "SMART data nejsou dostupná.";
+            return;
+         }
+
+         var quality = _qualityCalculator.CalculateQuality(smartData);
+         SystemDiskName = $"Systémový disk: {systemDisk.Name}";
+         SystemDiskGrade = quality.Grade.ToString();
+         SystemDiskTemperature = smartData.Temperature > 0 ? $"{smartData.Temperature:F1} °C" : "N/A";
+         SystemDiskSummary = quality.Warnings.Count == 0
+            ? "Bez kritických varování"
+            : string.Join(" | ", quality.Warnings.Take(2));
+      }
+      catch(OperationCanceledException)
+      {
+         System.Diagnostics.Debug.WriteLine("LoadSystemDiskQuickReportAsync timeout");
+         SystemDiskSummary = "Časový limit při načítání reportu.";
+      }
+      catch(Exception ex)
+      {
+         System.Diagnostics.Debug.WriteLine($"LoadSystemDiskQuickReportAsync error: {ex.Message}");
+         SystemDiskSummary = "Chyba při načítání SMART reportu.";
+      }
+   }
+
+   private async Task LoadRecentHistoryAsync()
+   {
+      try
+      {
+         // Pokud je databáze pomalá, skip to
+         var historyTask = _historyService.GetForCompareAsync(6);
+         var timeoutTask = Task.Delay(TimeSpan.FromSeconds(2));
+         
+         var completedTask = await Task.WhenAny(historyTask, timeoutTask);
+         
+         if(completedTask == historyTask && historyTask.IsCompletedSuccessfully)
+         {
+            var history = historyTask.Result;
+            RecentTests = new ObservableCollection<HomeRecentTestItem>(history
+               .OrderByDescending(t => t.TestDate)
+               .Select(t => new HomeRecentTestItem
+               {
+                  TestDate = t.TestDate,
+                  DriveName = t.DriveName,
+                  TestType = t.TestType,
+                  Grade = t.Grade.ToString(),
+                  Score = t.Score
+               }));
+         }
+         else
+         {
+            // Timeout - databáze je pomalá
+            System.Diagnostics.Debug.WriteLine("LoadRecentHistoryAsync timeout - databáze je pomalá");
+            RecentTests = [];
+         }
+      }
+      catch(Exception ex)
+      {
+         System.Diagnostics.Debug.WriteLine($"LoadRecentHistoryAsync error: {ex.Message}");
+         RecentTests = [];
+      }
    }
 }

@@ -58,9 +58,10 @@ public partial class App : System.Windows.Application
       services.AddTransient<SmartCheckViewModel>();
       services.AddTransient<SurfaceTestViewModel>();
       services.AddTransient<AnalysisViewModel>();
-      services.AddTransient<ReportViewModel>();
-      services.AddTransient<HistoryViewModel>();
-      services.AddTransient<SettingsViewModel>();
+      // TODO: Implementovat ReportViewModel, HistoryViewModel, SettingsViewModel
+      // services.AddTransient<ReportViewModel>();
+      // services.AddTransient<HistoryViewModel>();
+      // services.AddTransient<SettingsViewModel>();
 
       _serviceProvider = services.BuildServiceProvider();
 
@@ -79,30 +80,65 @@ public partial class App : System.Windows.Application
       navigationService.RegisterViewForViewModel<SurfaceTestViewModel, SurfaceTestView>();
       navigationService.RegisterViewForViewModel<SmartCheckViewModel, SmartCheckView>();
       navigationService.RegisterViewForViewModel<AnalysisViewModel, AnalysisView>();
-      navigationService.RegisterViewForViewModel<ReportViewModel, ReportView>();
-      navigationService.RegisterViewForViewModel<HistoryViewModel, HistoryView>();
-      navigationService.RegisterViewForViewModel<SettingsViewModel, SettingsView>();
+      // TODO: Implementovat views pro ReportViewModel, HistoryViewModel, SettingsViewModel
+      // navigationService.RegisterViewForViewModel<ReportViewModel, ReportView>();
+      // navigationService.RegisterViewForViewModel<HistoryViewModel, HistoryView>();
+      // navigationService.RegisterViewForViewModel<SettingsViewModel, SettingsView>();
    }
 
    /// <summary>
    /// Handles application startup.
    /// </summary>
-   private void Application_Startup(object sender, StartupEventArgs e)
+   private async void Application_Startup(object sender, StartupEventArgs e)
    {
-      using(var scope = _serviceProvider.CreateScope())
-      {
-         var dbContext = scope.ServiceProvider.GetRequiredService<DiskCheckerDbContext>();
-         dbContext.Database.EnsureCreated();
-         SchemaCompatibilityPatcher.Apply(dbContext);
-      }
-
-      // Vytvořit a zobrazit MainWindow
+      // Vytvořit a zobrazit MainWindow HNED bez čekání na databázi
       var mainVM = _serviceProvider.GetRequiredService<MainWindowViewModel>();
       MainWindow mainWindow = new MainWindow
       {
          DataContext = mainVM
       };
       mainWindow.Show();
+
+      // Inicializuj databázi asynchronně na pozadí s timeoutem
+      _ = Task.Run(async () =>
+      {
+         try
+         {
+            System.Diagnostics.Debug.WriteLine("=== Database initialization START ===");
+            
+            using(var scope = _serviceProvider.CreateScope())
+            {
+               var dbContext = scope.ServiceProvider.GetRequiredService<DiskCheckerDbContext>();
+               
+               // Dej timeout na EnsureCreatedAsync
+               using(var cts = new CancellationTokenSource(TimeSpan.FromSeconds(5)))
+               {
+                  try
+                  {
+                     System.Diagnostics.Debug.WriteLine("Database: EnsureCreatedAsync");
+                     await dbContext.Database.EnsureCreatedAsync(cts.Token);
+                     System.Diagnostics.Debug.WriteLine("Database: EnsureCreatedAsync SUCCESS");
+                  }
+                  catch(OperationCanceledException)
+                  {
+                     System.Diagnostics.Debug.WriteLine("Database: EnsureCreatedAsync TIMEOUT");
+                  }
+               }
+               
+               System.Diagnostics.Debug.WriteLine("Database: SchemaCompatibilityPatcher.Apply");
+               SchemaCompatibilityPatcher.Apply(dbContext);
+               System.Diagnostics.Debug.WriteLine("Database: SchemaCompatibilityPatcher SUCCESS");
+            }
+            
+            System.Diagnostics.Debug.WriteLine("=== Database initialization SUCCESS ===");
+         }
+         catch(Exception ex)
+         {
+            System.Diagnostics.Debug.WriteLine($"=== Database initialization ERROR ===");
+            System.Diagnostics.Debug.WriteLine($"Exception: {ex.GetType().Name}: {ex.Message}");
+            System.Diagnostics.Debug.WriteLine($"StackTrace: {ex.StackTrace}");
+         }
+      });
    }
 
    /// <summary>

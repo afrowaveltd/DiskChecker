@@ -24,6 +24,7 @@
         <converters:NotNullConverter x:Key="NotNullConverter"/>
         <converters:StatusToColorConverter x:Key="StatusToColorConverter"/>
         <converters:TimeSpanConverter x:Key="TimeSpanConverter"/>
+        <BooleanToVisibilityConverter x:Key="BoolToVisibilityConverter"/>
 
         <Style x:Key="ActionButtonStyle" TargetType="Button">
             <Setter Property="BorderThickness" Value="0"/>
