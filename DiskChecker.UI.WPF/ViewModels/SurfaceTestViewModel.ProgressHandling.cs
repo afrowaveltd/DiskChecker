@@ -1,6 +1,5 @@
 using System.Windows.Threading;
 using DiskChecker.Core.Models;
-using OxyPlot;
 
 namespace DiskChecker.UI.WPF.ViewModels;
 
@@ -38,21 +37,45 @@ public partial class SurfaceTestViewModel
       }
 
       System.Diagnostics.Debug.WriteLine($"[Timer Tick] Updating UI - Progress: {_latestProgress.PercentComplete:F1}%");
-      
+
       _isUpdatingUi = true;
 
       try
       {
          var progress = _latestProgress;
-         
-         BytesProcessed = progress.BytesProcessed;
          ProgressPercent = progress.PercentComplete;
          CurrentThroughputMbps = progress.CurrentThroughputMbps;
 
-         // Aktualizuj elapsed time
+         bool isWritePhase = progress.PercentComplete < 50;
+         if(isWritePhase)
+         {
+            WriteBytesProcessed = Math.Min(TotalBytes, Math.Max(0, progress.BytesProcessed));
+            ReadBytesProcessed = 0;
+            _maxWriteSpeedMeasured = Math.Max(_maxWriteSpeedMeasured, progress.CurrentThroughputMbps);
+         }
+         else
+         {
+            WriteBytesProcessed = TotalBytes;
+            ReadBytesProcessed = Math.Min(TotalBytes, Math.Max(0, progress.BytesProcessed));
+            _maxReadSpeedMeasured = Math.Max(_maxReadSpeedMeasured, progress.CurrentThroughputMbps);
+         }
+
+         BytesProcessed = Math.Min(WriteBytesProcessed + ReadBytesProcessed, TotalBytes * 2);
+
+         CurrentWriteThroughputMbps = isWritePhase ? progress.CurrentThroughputMbps : 0;
+         CurrentReadThroughputMbps = isWritePhase ? 0 : progress.CurrentThroughputMbps;
+
+         double observedMax = Math.Max(_maxWriteSpeedMeasured, _maxReadSpeedMeasured);
+         GaugeMaxMbps = observedMax <= 0 ? 100 : Math.Ceiling(observedMax * 1.15);
+
+         UpdateBandState(true, CurrentWriteThroughputMbps);
+         UpdateBandState(false, CurrentReadThroughputMbps);
+
+         WriteNeedleAngle = CalculateNeedleAngle(CurrentWriteThroughputMbps, GaugeMaxMbps);
+         ReadNeedleAngle = CalculateNeedleAngle(CurrentReadThroughputMbps, GaugeMaxMbps);
+
          ElapsedTime = DateTime.UtcNow - _testStartTime;
 
-         // Vypočítej ETA
          if(progress.PercentComplete > 0 && progress.PercentComplete < 100)
          {
             double timePerPercent = ElapsedTime.TotalSeconds / progress.PercentComplete;
@@ -60,24 +83,21 @@ public partial class SurfaceTestViewModel
             EstimatedTimeRemaining = TimeSpan.FromSeconds(remainingSeconds);
          }
 
-         // Aktualizuj fázi textu
          if(progress.PercentComplete < 50)
          {
-            CurrentPhase = $"🔵 Zápis dat... {progress.PercentComplete:F1}%";
+            CurrentPhase = $"🔵 FÁZE 1/2: Zápis dat ({progress.PercentComplete:F1} %) • Zapsáno {FormatBytes(WriteBytesProcessed)} / {FormatBytes(TotalBytes)}";
          }
          else if(progress.PercentComplete < 100)
          {
-            CurrentPhase = $"🟢 Ověření čtení... {progress.PercentComplete:F1}%";
+            CurrentPhase = $"🟢 FÁZE 2/2: Ověření čtením ({progress.PercentComplete:F1} %) • Ověřeno {FormatBytes(ReadBytesProcessed)} / {FormatBytes(TotalBytes)}";
          }
          else
          {
-            CurrentPhase = "✅ Test dokončen!";
+            CurrentPhase = $"✅ Test dokončen! Zapsáno i ověřeno {FormatBytes(TotalBytes)}";
          }
 
-         // Aktualizuj block vizualizaci - throttlovaně
          UpdateBlockVisualizationThrottled(progress);
 
-         // Přidej speed sample - ale ne každý update, jen každých 2 sekundy
          if(SpeedSamples.Count == 0 || (ElapsedTime.TotalSeconds - SpeedSamples[^1].TimeSeconds) >= 2)
          {
             SpeedSample sample = new()
@@ -101,10 +121,11 @@ public partial class SurfaceTestViewModel
    /// </summary>
    private void UpdateBlockVisualizationThrottled(SurfaceTestProgress progress)
    {
-      int percentRounded = (int)(progress.PercentComplete / 5) * 5; // Zaokrouhli na 5%
-      int targetBlockIndex = (int)(percentRounded / 100.0 * Blocks.Count);
+      int visualizableCount = Math.Max(_activeBlockCount, 1);
+      int percentRounded = (int)(progress.PercentComplete / 5) * 5;
+      int targetBlockIndex = (int)(percentRounded / 100.0 * visualizableCount);
 
-      for(int i = 0; i < Blocks.Count && i <= targetBlockIndex; i++)
+      for(int i = 0; i < _activeBlockCount && i <= targetBlockIndex; i++)
       {
          int newStatus;
          if(i < targetBlockIndex * 0.5)
@@ -121,10 +142,9 @@ public partial class SurfaceTestViewModel
          }
          else
          {
-            continue; // Nech netestované bloky
+            continue;
          }
 
-         // Update jen pokud se změnil
          if(Blocks[i].Status != newStatus)
          {
             Blocks[i].Status = newStatus;

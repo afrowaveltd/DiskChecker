@@ -4,6 +4,7 @@
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006" 
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008" 
              xmlns:oxy="http://oxyplot.org/wpf"
+             xmlns:primitives="clr-namespace:System.Windows.Controls.Primitives;assembly=PresentationFramework"
              mc:Ignorable="d" 
              d:DesignHeight="800" d:DesignWidth="1000"
              Background="{DynamicResource ThemeBackgroundBrush}">
@@ -125,19 +126,23 @@
                                       Margin="0,0,0,10">
                             <ItemsControl.ItemsPanel>
                                 <ItemsPanelTemplate>
-                                    <WrapPanel Orientation="Horizontal" ItemWidth="24" ItemHeight="24"/>
+                                    <primitives:UniformGrid Rows="{Binding VisualGridRows}" Columns="{Binding VisualGridColumns}"/>
                                 </ItemsPanelTemplate>
                             </ItemsControl.ItemsPanel>
                             
                             <ItemsControl.ItemTemplate>
                                 <DataTemplate>
-                                    <Border Width="20" Height="20" Margin="2" 
-                                            BorderBrush="#CCCCCC" BorderThickness="1"
+                                    <Border Width="6" Height="10"
+                                            Margin="0"
+                                            BorderThickness="0"
                                             ToolTip="{Binding Index, Converter={StaticResource BlockLabelConverter}}">
                                         <Border.Style>
                                             <Style TargetType="{x:Type Border}">
                                                 <Setter Property="Background" Value="#E0E0E0"/>
                                                 <Style.Triggers>
+                                                    <DataTrigger Binding="{Binding IsAllocated}" Value="False">
+                                                        <Setter Property="Background" Value="Transparent"/>
+                                                    </DataTrigger>
                                                     <DataTrigger Binding="{Binding Status}" Value="1">
                                                         <Setter Property="Background" Value="#FFC107"/>
                                                     </DataTrigger>
@@ -158,8 +163,12 @@
                             </ItemsControl.ItemTemplate>
                         </ItemsControl>
 
-                        <TextBlock Text="{Binding Blocks.Count, Converter={StaticResource BlockCountLabelConverter}}" 
-                                   FontSize="10" Foreground="#999999" Margin="0,5,0,0"/>
+                        <TextBlock FontSize="10" Foreground="#999999" Margin="0,5,0,0">
+                            <Run Text="Aktivní pole: "/>
+                            <Run Text="{Binding ActiveBlockCount}"/>
+                            <Run Text=" / 1000 • 1 pole ≈ "/>
+                            <Run Text="{Binding BytesPerVisualizedBlock, Converter={StaticResource BytesToStringConverter}}"/>
+                        </TextBlock>
                     </StackPanel>
                 </Border>
 
@@ -189,21 +198,35 @@
                                 <ColumnDefinition Width="*"/>
                                 <ColumnDefinition Width="*"/>
                                 <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="*"/>
                             </Grid.ColumnDefinitions>
 
                             <StackPanel Grid.Column="0">
-                                <TextBlock Text="Zpracováno:" FontSize="11" Foreground="#666666"/>
+                                <TextBlock Text="Zapsáno:" FontSize="11" Foreground="#666666"/>
+                                <TextBlock Text="{Binding WriteBytesProcessed, Converter={StaticResource BytesToStringConverter}}" 
+                                          FontSize="12" FontWeight="Bold" Foreground="#4A90E2"/>
+                            </StackPanel>
+
+                            <StackPanel Grid.Column="1" Margin="12,0,0,0">
+                                <TextBlock Text="Ověřeno:" FontSize="11" Foreground="#666666"/>
+                                <TextBlock Text="{Binding ReadBytesProcessed, Converter={StaticResource BytesToStringConverter}}" 
+                                          FontSize="12" FontWeight="Bold" Foreground="#28A745"/>
+                            </StackPanel>
+
+                            <StackPanel Grid.Column="2" Margin="12,0,0,0">
+                                <TextBlock Text="Zpracováno celkem:" FontSize="11" Foreground="#666666"/>
                                 <TextBlock Text="{Binding BytesProcessed, Converter={StaticResource BytesToStringConverter}}" 
                                           FontSize="12" FontWeight="Bold" Foreground="#333333"/>
                             </StackPanel>
 
-                            <StackPanel Grid.Column="1" Margin="15,0">
+                            <StackPanel Grid.Column="3" Margin="12,0,0,0">
                                 <TextBlock Text="Uplynulo:" FontSize="11" Foreground="#666666"/>
                                 <TextBlock Text="{Binding ElapsedTime, Converter={StaticResource TimeSpanConverter}}" 
                                           FontSize="12" FontWeight="Bold" Foreground="#333333"/>
                             </StackPanel>
 
-                            <StackPanel Grid.Column="2" HorizontalAlignment="Right">
+                            <StackPanel Grid.Column="4" HorizontalAlignment="Right" Margin="12,0,0,0">
                                 <TextBlock Text="Zbývá:" FontSize="11" Foreground="#666666"/>
                                 <TextBlock Text="{Binding EstimatedTimeRemaining, Converter={StaticResource TimeSpanConverter}}" 
                                           FontSize="12" FontWeight="Bold" Foreground="#333333"/>
@@ -265,11 +288,52 @@
                                     HorizontalAlignment="Left"/>
                         </Grid>
 
+                        <Border Background="#F8F8F8" BorderBrush="#E0E0E0" BorderThickness="1" Padding="10" Margin="0,0,0,10">
+                            <StackPanel>
+                                <TextBlock Text="🎛️ Budík aktuální rychlosti" FontSize="12" FontWeight="SemiBold" Foreground="#333333" Margin="0,0,0,6"/>
+                                <Grid HorizontalAlignment="Left">
+                                    <Canvas Width="220" Height="130">
+                                        <Path Stroke="#B0B0B0" StrokeThickness="8" Data="M 20,110 A 90,90 0 0 1 200,110"/>
+                                        <Line X1="110" Y1="110" X2="110" Y2="35" Stroke="#DC3545" StrokeThickness="3" StrokeStartLineCap="Round" StrokeEndLineCap="Round">
+                                            <Line.RenderTransform>
+                                                <RotateTransform Angle="{Binding WriteNeedleAngle}" CenterX="110" CenterY="110"/>
+                                            </Line.RenderTransform>
+                                        </Line>
+                                        <Line X1="110" Y1="110" X2="110" Y2="45" Stroke="#28A745" StrokeThickness="3" StrokeStartLineCap="Round" StrokeEndLineCap="Round">
+                                            <Line.RenderTransform>
+                                                <RotateTransform Angle="{Binding ReadNeedleAngle}" CenterX="110" CenterY="110"/>
+                                            </Line.RenderTransform>
+                                        </Line>
+                                        <Ellipse Width="10" Height="10" Fill="#333333" Canvas.Left="105" Canvas.Top="105"/>
+                                        <TextBlock Text="0" FontSize="10" Foreground="#666666" Canvas.Left="10" Canvas.Top="108"/>
+                                        <TextBlock Text="{Binding GaugeMaxMbps}" FontSize="10" Foreground="#666666" Canvas.Left="176" Canvas.Top="108"/>
+                                    </Canvas>
+                                </Grid>
+                                <StackPanel Orientation="Horizontal">
+                                    <TextBlock Text="🔴 Zápis: " FontSize="11" Foreground="#666666"/>
+                                    <TextBlock Text="{Binding CurrentWriteThroughputMbps, Converter={StaticResource MbpsConverter}}" FontSize="11" FontWeight="SemiBold" Foreground="#DC3545" Margin="0,0,12,0"/>
+                                    <Border Background="{Binding WriteBandBrush}" Padding="6,1" CornerRadius="3" Margin="0,0,8,0">
+                                        <TextBlock Text="{Binding WriteBandText}" FontSize="10" Foreground="White"/>
+                                    </Border>
+                                    <TextBlock Text="🟢 Čtení: " FontSize="11" Foreground="#666666"/>
+                                    <TextBlock Text="{Binding CurrentReadThroughputMbps, Converter={StaticResource MbpsConverter}}" FontSize="11" FontWeight="SemiBold" Foreground="#28A745" Margin="0,0,12,0"/>
+                                    <Border Background="{Binding ReadBandBrush}" Padding="6,1" CornerRadius="3">
+                                        <TextBlock Text="{Binding ReadBandText}" FontSize="10" Foreground="White"/>
+                                    </Border>
+                                </StackPanel>
+                            </StackPanel>
+                        </Border>
+
                         <Border Background="#F9F9F9" Height="260" BorderBrush="#E0E0E0" BorderThickness="1">
                             <oxy:PlotView Model="{Binding SpeedPlotModel}"/>
                         </Border>
 
-                        <TextBlock Text="{Binding ReferenceOverlayStatus}" FontSize="11" Foreground="#666666" Margin="0,8,0,0"/>
+                        <StackPanel Margin="0,8,0,0">
+                            <TextBlock Text="{Binding WriteSpeedStats}" FontSize="11" Foreground="#4A90E2"/>
+                            <TextBlock Text="{Binding ReadSpeedStats}" FontSize="11" Foreground="#28A745"/>
+                        </StackPanel>
+
+                        <TextBlock Text="{Binding ReferenceOverlayStatus}" FontSize="11" Foreground="#666666" Margin="0,6,0,0"/>
 
                         <StackPanel Orientation="Horizontal" Margin="0,10,0,0">
                             <TextBlock Text="Průměr:" FontSize="11" Foreground="#666666" Margin="0,0,8,0"/>

@@ -21,6 +21,12 @@ public partial class BlockStatus : ObservableObject
    private int status;
 
    /// <summary>
+   /// Indicates whether this visual block is assigned to tested disk capacity.
+   /// </summary>
+   [ObservableProperty]
+   private bool isAllocated = true;
+
+   /// <summary>
    /// Error message if status is error.
    /// </summary>
    [ObservableProperty]

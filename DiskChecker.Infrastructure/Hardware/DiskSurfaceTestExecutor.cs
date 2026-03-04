@@ -501,31 +501,25 @@ public class DiskSurfaceTestExecutor : ISurfaceTestExecutor
         peak = Math.Max(peak, throughput);
         min = Math.Min(min, throughput);
 
-        var previousBytes = bytesProcessedPreviousPhases ?? 0;
-        var totalBytesOverall = totalBytesThisPhase + (bytesProcessedPreviousPhases ?? totalBytesThisPhase);
-        var bytesProcessedTotal = bytesProcessedThisPhase + previousBytes;
-        var percentComplete = totalBytesOverall == 0
-            ? 0
-            : Math.Min(100, bytesProcessedTotal * 100d / totalBytesOverall);
-
-        // For multi-phase tests, adjust percent to global scale:
-        // WRITE phase: 0-50%
-        // VERIFY phase: 50-100%
-        // This allows UI to detect phase change at PercentComplete >= 50
         bool isVerifyPhase = bytesProcessedPreviousPhases.HasValue;
-        double globalPercentComplete = isVerifyPhase
-            ? 50 + (percentComplete / 2.0)  // Verify is 50-100% (scale 0-100% to 50-100%)
-            : (percentComplete / 2.0);       // Write is 0-50% (scale 0-100% to 0-50%)
+        double phasePercent = totalBytesThisPhase == 0
+            ? 0
+            : Math.Min(100, bytesProcessedThisPhase * 100d / totalBytesThisPhase);
 
-        // For multi-phase tests, report ONLY current phase bytes for UI display
-        // The UI should show "Fáze 2: XXX GB" not total accumulated bytes
+        // WRITE phase: 0-50 %, VERIFY phase: 50-100 %
+        double globalPercentComplete = isVerifyPhase
+            ? 50 + (phasePercent / 2.0)
+            : (phasePercent / 2.0);
+
+        // Reportujeme vždy objem zpracovaný v AKTUÁLNÍ fázi,
+        // aby UI mohlo zobrazit zvlášť zapsaná a zvlášť ověřená data.
         long reportedBytes = bytesProcessedThisPhase;
 
         progress?.Report(new SurfaceTestProgress
         {
             TestId = Guid.Parse(result.TestId),
-            BytesProcessed = reportedBytes,  // Report ONLY this phase bytes
-            PercentComplete = globalPercentComplete,  // Report global percent (0-50% for write, 50-100% for verify)
+            BytesProcessed = reportedBytes,
+            PercentComplete = globalPercentComplete,
             CurrentThroughputMbps = Math.Round(throughput, 2),
             TimestampUtc = DateTime.UtcNow
         });
