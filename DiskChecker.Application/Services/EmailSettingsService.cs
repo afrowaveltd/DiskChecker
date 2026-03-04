@@ -72,7 +72,7 @@ public class EmailSettingsService : IEmailSettingsService
             UseSsl = record.UseSsl,
             UserName = record.UserName,
             Password = record.Password,
-            FromName = record.FromName,
+            FromName = record.FromName ?? "DiskChecker",
             FromAddress = record.FromAddress
         };
     }

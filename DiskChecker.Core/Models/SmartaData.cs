@@ -227,4 +227,5 @@ public class DriveCompareItem
     public string Model { get; set; } = string.Empty;
     public int TotalTests { get; set; }
     public DateTime? LastTestDate { get; set; }
+    public QualityGrade? LastGrade { get; set; }
 }

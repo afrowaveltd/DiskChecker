@@ -3,6 +3,7 @@ using System.Security.Principal;
 using System.Runtime.InteropServices;
 using System.Runtime.Versioning;
 using DiskChecker.Core.Interfaces;
+using DiskChecker.UI.Console.Pages;
 
 namespace DiskChecker.UI.Console;
 

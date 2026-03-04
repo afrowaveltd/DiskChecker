@@ -8,6 +8,7 @@ using DiskChecker.Infrastructure.Persistence;
 using DiskChecker.Infrastructure.Hardware;
 using DiskChecker.Core;
 using DiskChecker.UI.Console;
+using DiskChecker.UI.Console.Pages;
 
 var configuration = new ConfigurationBuilder()
     .AddJsonFile("appsettings.json", optional: true, reloadOnChange: true)

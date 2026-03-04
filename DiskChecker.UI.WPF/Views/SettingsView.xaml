@@ -21,6 +21,7 @@
                 <Grid.RowDefinitions>
                     <RowDefinition Height="Auto"/>
                     <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
                     <RowDefinition Height="*"/>
                     <RowDefinition Height="Auto"/>
                 </Grid.RowDefinitions>
@@ -28,13 +29,19 @@
                 <StackPanel Grid.Row="0" Orientation="Horizontal" Margin="0,0,0,12">
                     <Button Content="🔄 Obnovit přehled" Command="{Binding RefreshDatabaseOverviewCommand}" Style="{StaticResource ActionButtonStyle}" Background="#004B93" Foreground="White" Margin="0,0,10,0"/>
                     <Button Content="🧹 Údržba databáze" Command="{Binding CleanupDatabaseCommand}" Style="{StaticResource ActionButtonStyle}" Background="#B35A00" Foreground="White" Margin="0,0,10,0"/>
-                    <Button Content="📦 Archivovat vybraný disk" Command="{Binding ArchiveSelectedDriveCommand}" Style="{StaticResource ActionButtonStyle}" Background="#005A2B" Foreground="White"/>
+                    <Button Content="📦 Archivovat" Command="{Binding ArchiveSelectedDriveCommand}" Style="{StaticResource ActionButtonStyle}" Background="#005A2B" Foreground="White" Margin="0,0,10,0"/>
+                    <Button Content="📋 Pohřební list" Command="{Binding GenerateDecommissionReportCommand}" Style="{StaticResource ActionButtonStyle}" Background="#DC3545" Foreground="White"/>
                     <CheckBox Content="Dry-run (bez mazání)" IsChecked="{Binding IsDryRun}" Margin="14,0,0,0" VerticalAlignment="Center" FontWeight="SemiBold" Foreground="#5F6B7A"/>
                 </StackPanel>
 
-                <TextBlock Grid.Row="1" Text="{Binding TotalHistoryItems, StringFormat=Aktivní testy v DB: {0}}" FontWeight="SemiBold" Foreground="#333333" Margin="0,0,0,8"/>
+                <Border Grid.Row="1" Background="#FFF3CD" BorderBrush="#FFC107" BorderThickness="1" Padding="10" Margin="0,0,0,10" CornerRadius="4">
+                    <TextBlock Text="⚠️ Vyberte disk v tabulce pro archivaci nebo pohřební list. Pohřební list vytvoří dokument o životnosti disku při jeho vyřazení." 
+                               Foreground="#856404" FontSize="11" TextWrapping="Wrap"/>
+                </Border>
 
-                <DataGrid Grid.Row="2"
+                <TextBlock Grid.Row="2" Text="{Binding TotalHistoryItems, StringFormat=Aktivní testy v DB: {0}}" FontWeight="SemiBold" Foreground="#333333" Margin="0,0,0,8"/>
+
+                <DataGrid Grid.Row="3"
                           ItemsSource="{Binding Drives}"
                           SelectedItem="{Binding SelectedDrive}"
                           AutoGenerateColumns="False"
@@ -49,9 +56,9 @@
                     </DataGrid.Columns>
                 </DataGrid>
 
-                <StackPanel Grid.Row="3" Orientation="Horizontal" Margin="0,12,0,0">
-                    <TextBox Width="450" Text="{Binding ArchivePath, UpdateSourceTrigger=PropertyChanged}" Margin="0,0,8,0"/>
-                    <Button Content="📥 Importovat ZIP archiv" Command="{Binding ImportArchiveCommand}" Style="{StaticResource ActionButtonStyle}" Background="#5F6B7A" Foreground="White"/>
+                <StackPanel Grid.Row="4" Orientation="Horizontal" Margin="0,12,0,0">
+                    <TextBox Width="350" Text="{Binding ArchivePath, UpdateSourceTrigger=PropertyChanged}" Margin="0,0,8,0" VerticalAlignment="Center"/>
+                    <Button Content="📥 Importovat ZIP" Command="{Binding ImportArchiveCommand}" Style="{StaticResource ActionButtonStyle}" Background="#5F6B7A" Foreground="White"/>
                 </StackPanel>
             </Grid>
         </Border>

@@ -58,10 +58,9 @@ public partial class App : System.Windows.Application
       services.AddTransient<SmartCheckViewModel>();
       services.AddTransient<SurfaceTestViewModel>();
       services.AddTransient<AnalysisViewModel>();
-      // TODO: Implementovat ReportViewModel, HistoryViewModel, SettingsViewModel
-      // services.AddTransient<ReportViewModel>();
-      // services.AddTransient<HistoryViewModel>();
-      // services.AddTransient<SettingsViewModel>();
+      services.AddTransient<ReportViewModel>();
+      services.AddTransient<HistoryViewModel>();
+      services.AddTransient<SettingsViewModel>();
 
       _serviceProvider = services.BuildServiceProvider();
 
@@ -80,10 +79,9 @@ public partial class App : System.Windows.Application
       navigationService.RegisterViewForViewModel<SurfaceTestViewModel, SurfaceTestView>();
       navigationService.RegisterViewForViewModel<SmartCheckViewModel, SmartCheckView>();
       navigationService.RegisterViewForViewModel<AnalysisViewModel, AnalysisView>();
-      // TODO: Implementovat views pro ReportViewModel, HistoryViewModel, SettingsViewModel
-      // navigationService.RegisterViewForViewModel<ReportViewModel, ReportView>();
-      // navigationService.RegisterViewForViewModel<HistoryViewModel, HistoryView>();
-      // navigationService.RegisterViewForViewModel<SettingsViewModel, SettingsView>();
+      navigationService.RegisterViewForViewModel<ReportViewModel, ReportView>();
+      navigationService.RegisterViewForViewModel<HistoryViewModel, HistoryView>();
+      navigationService.RegisterViewForViewModel<SettingsViewModel, SettingsView>();
    }
 
    /// <summary>

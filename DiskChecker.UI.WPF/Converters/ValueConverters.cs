@@ -186,34 +186,41 @@ public class NotNullConverter : IValueConverter
 }
 
 /// <summary>
-/// Converts status number to color brush.
+/// Converts status and isAllocated to color.
 /// </summary>
-public class StatusToColorConverter : IValueConverter
+public class StatusToColorConverter : IMultiValueConverter
 {
     /// <summary>
-    /// Converts status to color.
+    /// Converts status and isAllocated to color.
     /// </summary>
-    public object Convert(object? value, Type targetType, object? parameter, CultureInfo culture)
+    public object Convert(object?[] values, Type targetType, object? parameter, CultureInfo culture)
     {
-        if (value is int status)
+        if (values == null || values.Length < 2)
+            return "#E0E0E0";
+
+        if (values[0] is not int status || values[1] is not bool isAllocated)
+            return "#E0E0E0";
+
+        // If not allocated, return transparent
+        if (!isAllocated)
+            return "#FFFFFF";
+
+        // Return color based on status
+        return status switch
         {
-            return status switch
-            {
-                0 => "#E0E0E0",  // Untested - light gray
-                1 => "#FFC107",  // Processing - yellow
-                2 => "#4A90E2",  // Write OK - blue
-                3 => "#28A745",  // Read OK - green
-                4 => "#DC3545",  // Error - red
-                _ => "#E0E0E0"
-            };
-        }
-        return "#E0E0E0";
+            0 => "#E0E0E0",  // Untested - light gray
+            1 => "#FFC107",  // Processing - yellow
+            2 => "#4A90E2",  // Write OK - blue
+            3 => "#28A745",  // Read OK - green
+            4 => "#DC3545",  // Error - red
+            _ => "#E0E0E0"
+        };
     }
 
     /// <summary>
     /// Not implemented.
     /// </summary>
-    public object ConvertBack(object? value, Type targetType, object? parameter, CultureInfo culture)
+    public object[] ConvertBack(object? value, Type[] targetTypes, object? parameter, CultureInfo culture)
     {
         throw new NotImplementedException();
     }

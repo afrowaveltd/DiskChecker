@@ -45,7 +45,7 @@ public class HistoryService
 
         if (gradeFilter.HasValue)
         {
-            query = query.Where(t => t.Grade == gradeFilter.Value);
+            query = query.Where(t => t.Grade == gradeFilter.Value.ToString());
         }
 
         query = query.OrderByDescending(t => t.TestDate);
@@ -63,7 +63,7 @@ public class HistoryService
                 SerialNumber = t.Drive.SerialNumber,
                 TestDate = t.TestDate,
                 TestType = t.TestType,
-                Grade = t.Grade,
+                Grade = Enum.Parse<QualityGrade>(t.Grade),
                 Score = t.Score,
                 AverageSpeed = t.AverageSpeed,
                 PeakSpeed = t.PeakSpeed,
@@ -97,7 +97,7 @@ public class HistoryService
                 SerialNumber = t.Drive.SerialNumber,
                 TestDate = t.TestDate,
                 TestType = t.TestType,
-                Grade = t.Grade,
+                Grade = Enum.Parse<QualityGrade>(t.Grade),
                 Score = t.Score,
                 AverageSpeed = t.AverageSpeed,
                 PeakSpeed = t.PeakSpeed,
@@ -129,7 +129,7 @@ public class HistoryService
             SerialNumber = test.Drive.SerialNumber,
             TestDate = test.TestDate,
             TestType = test.TestType,
-            Grade = test.Grade,
+            Grade = Enum.Parse<QualityGrade>(test.Grade),
             Score = test.Score,
             AverageSpeed = test.AverageSpeed,
             PeakSpeed = test.PeakSpeed,
@@ -148,9 +148,9 @@ public class HistoryService
             SurfaceSamples = test.SurfaceSamples.Select(s => new SpeedSample
             {
                 OffsetBytes = s.OffsetBytes,
-                BlockSizeBytes = s.BlockSizeBytes,
+                BlockSizeBytes = (int)s.BlockSizeBytes,
                 ThroughputMbps = s.ThroughputMbps,
-                TimestampUtc = s.TimestampUtc,
+                TimestampUtc = s.TimestampUtc ?? DateTime.MinValue,
                 ErrorCount = s.ErrorCount
             }).ToList()
         };
@@ -186,18 +186,28 @@ public class HistoryService
 
     public async Task<List<DriveCompareItem>> GetDrivesWithTestsAsync(CancellationToken cancellationToken = default)
     {
-        return await _context.Drives
+        var drives = await _context.Drives
+            .Include(d => d.Tests)
             .OrderBy(d => d.Name)
-            .Select(d => new DriveCompareItem
+            .ToListAsync(cancellationToken);
+
+        return drives.Select(d =>
+        {
+            var completedTests = d.Tests.Where(t => t.IsCompleted && !t.IsArchived).ToList();
+            var lastTest = completedTests.OrderByDescending(t => t.TestDate).FirstOrDefault();
+            return new DriveCompareItem
             {
                 DriveId = d.Id,
                 DriveName = d.Name,
                 SerialNumber = d.SerialNumber,
                 Model = d.DeviceModel,
-                TotalTests = d.Tests.Count(t => t.IsCompleted && !t.IsArchived),
-                LastTestDate = d.Tests.Where(t => t.IsCompleted && !t.IsArchived).Max(t => (DateTime?)t.TestDate)
-            })
-            .ToListAsync(cancellationToken);
+                TotalTests = completedTests.Count,
+                LastTestDate = lastTest?.TestDate,
+                LastGrade = lastTest != null && !string.IsNullOrEmpty(lastTest.Grade)
+                    ? Enum.Parse<QualityGrade>(lastTest.Grade)
+                    : null
+            };
+        }).ToList();
     }
 
     /// <summary>
@@ -225,7 +235,7 @@ public class HistoryService
             SerialNumber = t.Drive.SerialNumber,
             TestDate = t.TestDate,
             TestType = t.TestType,
-            Grade = t.Grade,
+            Grade = Enum.Parse<QualityGrade>(t.Grade),
             Score = t.Score,
             AverageSpeed = t.AverageSpeed,
             PeakSpeed = t.PeakSpeed,

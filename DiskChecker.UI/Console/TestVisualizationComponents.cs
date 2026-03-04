@@ -1,7 +1,7 @@
 using Spectre.Console;
 using System.Text;
 
-namespace DiskChecker.UI.Console;
+namespace DiskChecker.UI.Console.Pages;
 
 /// <summary>
 /// Custom Spectre.Console components for enhanced test visualization.
@@ -161,7 +161,7 @@ public static class TestVisualizationComponents
         
         grid.AddRow(
             new Markup("[bold cyan]Stav:[/]"),
-            new Markup($"[green]{DiskChecker.UI.Console.MainConsoleMenu.FormatBytes(testedBytes)}[/] / {DiskChecker.UI.Console.MainConsoleMenu.FormatBytes(totalBytes)}")
+            new Markup($"[green]{DiskChecker.UI.Console.Pages.MainConsoleMenu.FormatBytes(testedBytes)}[/] / {DiskChecker.UI.Console.Pages.MainConsoleMenu.FormatBytes(totalBytes)}")
         );
         
         var panel = new Panel(grid)
@@ -342,5 +342,209 @@ public static class TestVisualizationComponents
     {
         var totalHours = (int)elapsed.TotalHours;
         return $"{totalHours:00}:{elapsed.Minutes:00}:{elapsed.Seconds:00}";
+    }
+
+    public enum BlockStatus
+    {
+        NotTested = 0,
+        InProgress = 1,
+        WriteOk = 2,
+        ReadOk = 3,
+        Error = 4
+    }
+
+    public class SurfaceTestGridState
+    {
+        public const int GridColumns = 100;
+        public const int GridRows = 10;
+        public const int TotalBlocks = GridColumns * GridRows;
+
+        public BlockStatus[] Blocks { get; } = new BlockStatus[TotalBlocks];
+        public int BlocksCompleted { get; set; }
+        public int BlocksWithErrors { get; set; }
+        public int CurrentBlockIndex { get; set; } = -1;
+
+        public SurfaceTestGridState()
+        {
+            for (int i = 0; i < TotalBlocks; i++)
+            {
+                Blocks[i] = BlockStatus.NotTested;
+            }
+        }
+
+        public void UpdateProgress(long bytesProcessed, long totalBytes, bool isWritePhase, bool hasError)
+        {
+            if (totalBytes <= 0) return;
+
+            var progress = (double)bytesProcessed / totalBytes;
+            var blockIndex = (int)(progress * TotalBlocks);
+            blockIndex = Math.Min(blockIndex, TotalBlocks - 1);
+
+            if (blockIndex < 0 || blockIndex >= TotalBlocks) return;
+
+            for (int i = BlocksCompleted; i <= blockIndex; i++)
+            {
+                if (i == blockIndex)
+                {
+                    Blocks[i] = hasError ? BlockStatus.Error : BlockStatus.InProgress;
+                }
+                else if (i < blockIndex)
+                {
+                    if (Blocks[i] == BlockStatus.InProgress)
+                    {
+                        Blocks[i] = hasError ? BlockStatus.Error : (isWritePhase ? BlockStatus.WriteOk : BlockStatus.ReadOk);
+                    }
+                    else if (Blocks[i] == BlockStatus.NotTested)
+                    {
+                        Blocks[i] = isWritePhase ? BlockStatus.WriteOk : BlockStatus.ReadOk;
+                    }
+                }
+            }
+
+            BlocksCompleted = Math.Max(BlocksCompleted, blockIndex);
+            if (hasError) BlocksWithErrors++;
+            CurrentBlockIndex = blockIndex;
+        }
+
+        public void MarkComplete(bool hadWriteErrors)
+        {
+            for (int i = BlocksCompleted; i < TotalBlocks; i++)
+            {
+                if (Blocks[i] == BlockStatus.NotTested || Blocks[i] == BlockStatus.InProgress)
+                {
+                    Blocks[i] = hadWriteErrors ? BlockStatus.Error : BlockStatus.ReadOk;
+                }
+            }
+            BlocksCompleted = TotalBlocks;
+        }
+    }
+
+    public static Panel CreateSurfaceTestGrid(SurfaceTestGridState state, int panelWidth = 110)
+    {
+        var grid = new Grid();
+        for (int col = 0; col < SurfaceTestGridState.GridColumns; col++)
+        {
+            grid.AddColumn(new GridColumn().Width(1));
+        }
+
+        for (int row = 0; row < SurfaceTestGridState.GridRows; row++)
+        {
+            var rowCells = new List<Markup>();
+            for (int col = 0; col < SurfaceTestGridState.GridColumns; col++)
+            {
+                int index = row * SurfaceTestGridState.GridColumns + col;
+                var status = state.Blocks[index];
+                var cell = status switch
+                {
+                    BlockStatus.NotTested => "[dim]░[/]",
+                    BlockStatus.InProgress => "[yellow]▓[/]",
+                    BlockStatus.WriteOk => "[cyan]▓[/]",
+                    BlockStatus.ReadOk => "[green]█[/]",
+                    BlockStatus.Error => "[red]█[/]",
+                    _ => "[dim]░[/]"
+                };
+                rowCells.Add(new Markup(cell));
+            }
+            grid.AddRow(rowCells.ToArray());
+        }
+
+        var legend = new Grid();
+        legend.AddColumn(new GridColumn().Width(20));
+        legend.AddColumn(new GridColumn().Width(15));
+        legend.AddColumn(new GridColumn().Width(15));
+        legend.AddColumn(new GridColumn().Width(15));
+        legend.AddColumn(new GridColumn().Width(15));
+
+        legend.AddRow(
+            new Markup("[dim]░ Netestováno[/]"),
+            new Markup("[yellow]▓ Probíhá[/]"),
+            new Markup("[cyan]▓ Zápis OK[/]"),
+            new Markup("[green]█ Čtení OK[/]"),
+            new Markup("[red]█ Chyba[/]")
+        );
+
+        var statsGrid = new Grid();
+        statsGrid.AddColumn(new GridColumn().Width(28));
+        statsGrid.AddColumn(new GridColumn().Width(20));
+        statsGrid.AddColumn(new GridColumn().Width(20));
+        statsGrid.AddColumn(new GridColumn().Width(20));
+
+        var testedPercent = SurfaceTestGridState.TotalBlocks > 0
+            ? state.BlocksCompleted * 100.0 / SurfaceTestGridState.TotalBlocks
+            : 0;
+
+        statsGrid.AddRow(
+            new Markup($"[bold cyan]Bloků:[/] {state.BlocksCompleted}/{SurfaceTestGridState.TotalBlocks}"),
+            new Markup($"[bold green]Hotovo:[/] {testedPercent:F1}%"),
+            new Markup($"[bold red]Chyby:[/] {state.BlocksWithErrors}"),
+            new Markup($"[dim]Idx: {state.CurrentBlockIndex}[/]")
+        );
+
+        var contentGrid = new Grid();
+        contentGrid.AddColumn(new GridColumn());
+        contentGrid.AddRow(new Panel(grid).Border(BoxBorder.None));
+        contentGrid.AddRow(new Panel(legend).Border(BoxBorder.None).Padding(0, 0));
+        contentGrid.AddRow(new Panel(statsGrid).Border(BoxBorder.None).Padding(0, 0));
+
+        var panel = new Panel(contentGrid)
+        {
+            Width = panelWidth
+        };
+
+        panel.Border(BoxBorder.Rounded);
+        panel.BorderColor(Color.Blue);
+        panel.Header("[bold white]📊 POVCH TESTU DISKU - VIZUALIZACE[/]");
+        panel.HeaderAlignment(Justify.Center);
+        panel.Padding(1, 0);
+
+        return panel;
+    }
+
+    public static Panel CreateSurfaceTestGridCompact(SurfaceTestGridState state, int panelWidth = 110)
+    {
+        var sb = new StringBuilder();
+        sb.AppendLine();
+
+        for (int row = 0; row < SurfaceTestGridState.GridRows; row++)
+        {
+            sb.Append("  ");
+            for (int col = 0; col < SurfaceTestGridState.GridColumns; col++)
+            {
+                int index = row * SurfaceTestGridState.GridColumns + col;
+                var status = state.Blocks[index];
+                var cell = status switch
+                {
+                    BlockStatus.NotTested => "[dim]░[/]",
+                    BlockStatus.InProgress => "[yellow]▓[/]",
+                    BlockStatus.WriteOk => "[cyan]▓[/]",
+                    BlockStatus.ReadOk => "[green]█[/]",
+                    BlockStatus.Error => "[red]█[/]",
+                    _ => "[dim]░[/]"
+                };
+                sb.Append(cell);
+            }
+            sb.AppendLine();
+        }
+
+        var testedPercent = SurfaceTestGridState.TotalBlocks > 0
+            ? state.BlocksCompleted * 100.0 / SurfaceTestGridState.TotalBlocks
+            : 0;
+
+        sb.AppendLine();
+        sb.AppendLine($"[dim]░ Netestováno[/]  [yellow]▓ Probíhá/Zápis[/]  [green]█ Čtení OK[/]  [red]█ Chyba[/]  [bold]Progress: {testedPercent:F1}% ({state.BlocksCompleted}/{SurfaceTestGridState.TotalBlocks})[/]");
+
+        var panel = new Panel(new Markup(sb.ToString()))
+        {
+            Width = panelWidth
+        };
+
+        panel.Border(BoxBorder.Rounded);
+        var borderColor = state.BlocksWithErrors > 0 ? Color.Red : testedPercent >= 100 ? Color.Green : Color.Blue;
+        panel.BorderColor(borderColor);
+        panel.Header("[bold white]📊 POVCH TESTU[/]");
+        panel.HeaderAlignment(Justify.Center);
+        panel.Padding(1, 0);
+
+        return panel;
     }
 }

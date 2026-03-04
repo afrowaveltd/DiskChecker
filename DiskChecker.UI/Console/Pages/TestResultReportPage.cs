@@ -3,7 +3,7 @@ using DiskChecker.Application.Services;
 using Spectre.Console;
 using System.IO;
 
-namespace DiskChecker.UI.Console;
+namespace DiskChecker.UI.Console.Pages;
 
 /// <summary>
 /// Displays comprehensive test result report with analytics and export options.
@@ -37,6 +37,7 @@ public static class TestResultReportPage
                     "📋 Zobrazit JSON Report",
                     "📊 Exportovat jako CSV (pro grafy)",
                     "💾 Uložit Certifikát (JSON)",
+                    "🏷️ Vytisknout štítek disku",
                     "🔄 Zpět do Menu"
                 }));
 
@@ -52,6 +53,10 @@ public static class TestResultReportPage
 
             case "💾 Uložit Certifikát (JSON)":
                 await SaveCertificateAsync(result, analysisService, analytics);
+                break;
+
+            case "🏷️ Vytisknout štítek disku":
+                PrintDiskLabel(result, analytics);
                 break;
 
             case "🔄 Zpět do Menu":
@@ -85,7 +90,7 @@ public static class TestResultReportPage
         Color gradeColor = GetGradeColor(analytics.Grade);
         string gradeEmoji = GetGradeEmoji(analytics.Grade);
         
-        AnsiConsole.MarkupLine($"[bold {GetColorName(gradeColor)}]{gradeEmoji} Celkové hodnocení: [{analytics.Grade}]  Skóre: {analytics.Score}/100[/]");
+        AnsiConsole.MarkupLine($"[bold {GetColorName(gradeColor)}]{gradeEmoji} Celkové hodnocení: {analytics.Grade}  Skóre: {analytics.Score}/100[/]");
         AnsiConsole.MarkupLine($"[{GetColorName(GetScoreColor(analytics.Score))}]{analytics.HealthAssessment}[/]");
         AnsiConsole.WriteLine();
 
@@ -511,5 +516,145 @@ public static class TestResultReportPage
 
         AnsiConsole.Write(stats);
         AnsiConsole.WriteLine();
+    }
+
+    private static void PrintDiskLabel(SurfaceTestResult result, TestReportAnalysisService.TestAnalytics analytics)
+    {
+        AnsiConsole.WriteLine();
+        AnsiConsole.MarkupLine("[bold cyan]═══════════════════════════════════════════════════════════════[/]");
+        AnsiConsole.MarkupLine("[bold cyan]                    🏷️  ŠTÍTEK DISKU                               [/]");
+        AnsiConsole.MarkupLine("[bold cyan]═══════════════════════════════════════════════════════════════[/]");
+        AnsiConsole.WriteLine();
+
+        var labelTable = new Table()
+            .Border(TableBorder.Rounded)
+            .BorderColor(Color.Cyan)
+            .AddColumn(new TableColumn("[bold]Vlastnost[/]").Width(20))
+            .AddColumn(new TableColumn("[bold]Hodnota[/]").Width(40));
+
+        labelTable.AddRow("Model:", $"[white]{Markup.Escape(result.DriveModel ?? "N/A")}[/]");
+        labelTable.AddRow("Sériové číslo:", $"[yellow]{Markup.Escape(result.DriveSerialNumber ?? "N/A")}[/]");
+        labelTable.AddRow("Kapacita:", $"[green]{FormatBytes(result.DriveTotalBytes)}[/]");
+        labelTable.AddRow("Testováno:", $"[green]{FormatBytes(result.TotalBytesTested)}[/]");
+        labelTable.AddRow("Datum testu:", $"[cyan]{DateTime.Now:dd.MM.yyyy HH:mm}[/]");
+        
+        var gradeColor = GetGradeColor(analytics.Grade);
+        var gradeEmoji = GetGradeEmoji(analytics.Grade);
+        labelTable.AddRow("Známka:", $"[{GetColorName(gradeColor)}]{gradeEmoji} {analytics.Grade}[/]");
+        labelTable.AddRow("Skóre:", $"[white]{analytics.Score}/100[/]");
+        labelTable.AddRow("Rychlost:", $"[cyan]{result.AverageSpeedMbps:F0} MB/s[/]");
+        labelTable.AddRow("Teplota:", result.CurrentTemperatureCelsius.HasValue ? $"[yellow]{result.CurrentTemperatureCelsius}°C[/]" : "[dim]N/A[/]");
+        
+        string errorStatus = result.ErrorCount == 0 ? "[green]Žádné ✅[/]" : $"[red]{result.ErrorCount} ❌[/]";
+        labelTable.AddRow("Chyby:", errorStatus);
+
+        AnsiConsole.Write(labelTable);
+        AnsiConsole.WriteLine();
+
+        AnsiConsole.MarkupLine("[bold yellow]Doporučení pro tisk:[/]");
+        AnsiConsole.MarkupLine("  [dim]• Standardní štítek (50x25mm) - pro USB flash disky[/]");
+        AnsiConsole.MarkupLine("  [dim]• Malý štítek (74x52mm) - pro externí disky[/]");
+        AnsiConsole.MarkupLine("  [dim]• Velký štítek (A5) - pro archivaci[/]");
+        AnsiConsole.WriteLine();
+
+        var labelChoice = AnsiConsole.Prompt(
+            new SelectionPrompt<string>()
+                .Title("[bold yellow]Vyberte formát štítku:[/]")
+                .AddChoices(new[]
+                {
+                    "📋 Malý štítek (74x52mm)",
+                    "📄 Velký štítek (A5) - vhodný pro tiskárnu",
+                    "💾 Uložit jako textový soubor",
+                    "🔄 Zpět"
+                }));
+
+        switch(labelChoice)
+        {
+            case "📋 Malý štítek (74x52mm)":
+                PrintSmallLabel(result, analytics);
+                break;
+            case "📄 Velký štítek (A5) - vhodný pro tiskárnu":
+                PrintLargeLabel(result, analytics);
+                break;
+            case "💾 Uložit jako textový soubor":
+                SaveLabelToFile(result, analytics);
+                break;
+            case "🔄 Zpět":
+                return;
+        }
+    }
+
+    private static void PrintSmallLabel(SurfaceTestResult result, TestReportAnalysisService.TestAnalytics analytics)
+    {
+        AnsiConsole.WriteLine();
+        AnsiConsole.MarkupLine("[bold green]═══════════════════════════════════════════[/]");
+        AnsiConsole.MarkupLine($"[bold green]  DiskChecker ─ {DateTime.Now:dd.MM.yy}[/]");
+        var modelName = result.DriveModel ?? "N/A";
+        if(modelName.Length > 40) modelName = modelName[..37] + "...";
+        AnsiConsole.MarkupLine($"[white]  {Markup.Escape(modelName)}[/]");
+        AnsiConsole.MarkupLine($"[yellow]  SN: {Markup.Escape(result.DriveSerialNumber ?? "N/A")}[/]");
+        var gradeColor = GetGradeColor(analytics.Grade);
+        AnsiConsole.MarkupLine($"[{GetColorName(gradeColor)}]  ZNÁMKA: {analytics.Grade} ({analytics.Score}pts)[/]");
+        AnsiConsole.MarkupLine($"[cyan]  {result.AverageSpeedMbps:F0} MB/s | {FormatBytes(result.DriveTotalBytes)}[/]");
+        AnsiConsole.MarkupLine("[bold green]═══════════════════════════════════════════[/]");
+        AnsiConsole.WriteLine();
+        AnsiConsole.MarkupLine("[dim]Vynejte tento text a vytiskněte jako štítek 74x52mm[/]");
+    }
+
+    private static void PrintLargeLabel(SurfaceTestResult result, TestReportAnalysisService.TestAnalytics analytics)
+    {
+        var modelName = result.DriveModel ?? "N/A";
+        if(modelName.Length > 50) modelName = modelName[..47] + "...";
+        var gradeColor = GetGradeColor(analytics.Grade);
+        var gradeEmoji = GetGradeEmoji(analytics.Grade);
+        var temp = result.CurrentTemperatureCelsius ?? 0;
+        var errorText = result.ErrorCount == 0 ? "Žádné ✅" : $"{result.ErrorCount} ❌";
+        var errorColor = result.ErrorCount == 0 ? "green" : "red";
+        
+        AnsiConsole.WriteLine();
+        AnsiConsole.MarkupLine("[bold cyan]╔════════════════════════════════════════════════════════════════╗[/]");
+        AnsiConsole.MarkupLine("[bold cyan]║                    🖴 DISKCHECKER CERTIFIKÁT                  ║[/]");
+        AnsiConsole.MarkupLine("[bold cyan]╠════════════════════════════════════════════════════════════════╣[/]");
+        AnsiConsole.MarkupLine($"[bold cyan]║[/] Model:       [white]{Markup.Escape(modelName),-50}[/][bold cyan]║[/]");
+        AnsiConsole.MarkupLine($"[bold cyan]║[/] Sériové č.:  [yellow]{Markup.Escape(result.DriveSerialNumber ?? "N/A"),-50}[/][bold cyan]║[/]");
+        AnsiConsole.MarkupLine($"[bold cyan]║[/] Kapacita:    [green]{Markup.Escape(FormatBytes(result.DriveTotalBytes)),-50}[/][bold cyan]║[/]");
+        AnsiConsole.MarkupLine("[bold cyan]╠════════════════════════════════════════════════════════════════╣[/]");
+        AnsiConsole.MarkupLine($"[bold cyan]║[/] [{GetColorName(gradeColor)}]ZNÁMKA: {analytics.Grade} {gradeEmoji}   SKÓRE: {analytics.Score}/100[/][bold cyan]║[/]");
+        AnsiConsole.MarkupLine($"[bold cyan]║[/] Rychlost:    [cyan]{result.AverageSpeedMbps:F0} MB/s (průměr)[/][bold cyan]║[/]");
+        AnsiConsole.MarkupLine($"[bold cyan]║[/] Teplota:      [yellow]{temp}°C[/][bold cyan]║[/]");
+        AnsiConsole.MarkupLine($"[bold cyan]║[/] Chyby:       [{errorColor}]{errorText}[/][bold cyan]║[/]");
+        AnsiConsole.MarkupLine("[bold cyan]╠════════════════════════════════════════════════════════════════╣[/]");
+        AnsiConsole.MarkupLine($"[bold cyan]║[/] Datum testu: [white]{DateTime.Now:dd.MM.yyyy HH:mm}[/][bold cyan]║[/]");
+        AnsiConsole.MarkupLine($"[bold cyan]║[/] Test ID:     [dim]{result.TestId}[/][bold cyan]║[/]");
+        AnsiConsole.MarkupLine("[bold cyan]╚════════════════════════════════════════════════════════════════╝[/]");
+        AnsiConsole.WriteLine();
+        AnsiConsole.MarkupLine("[dim]Vytiskněte jako A5 nebo A4 certifikát[/]");
+    }
+
+    private static void SaveLabelToFile(SurfaceTestResult result, TestReportAnalysisService.TestAnalytics analytics)
+    {
+        var filename = Path.Combine(
+            AppContext.BaseDirectory,
+            $"disk_label_{result.DriveSerialNumber ?? "unknown"}_{DateTime.Now:yyyyMMdd_HHmm}.txt");
+
+        var sb = new System.Text.StringBuilder();
+        sb.AppendLine("═══════════════════════════════════════════════════════════════");
+        sb.AppendLine("                    DISKCHECKER - ŠTÍTEK DISKU");
+        sb.AppendLine("═══════════════════════════════════════════════════════════════");
+        sb.AppendLine($"Model:          {result.DriveModel ?? "N/A"}");
+        sb.AppendLine($"Sériové číslo: {result.DriveSerialNumber ?? "N/A"}");
+        sb.AppendLine($"Kapacita:       {FormatBytes(result.DriveTotalBytes)}");
+        sb.AppendLine("───────────────────────────────────────────────────────────────");
+        sb.AppendLine($"ZNÁMKA:         {analytics.Grade} ({analytics.Score}/100)");
+        sb.AppendLine($"Rychlost:       {result.AverageSpeedMbps:F0} MB/s (průměr)");
+        sb.AppendLine($"Teplota:        {result.CurrentTemperatureCelsius ?? 0}°C");
+        sb.AppendLine($"Chyby:          {result.ErrorCount}");
+        sb.AppendLine("───────────────────────────────────────────────────────────────");
+        sb.AppendLine($"Datum testu:   {DateTime.Now:dd.MM.yyyy HH:mm}");
+        sb.AppendLine($"Test ID:       {result.TestId}");
+        sb.AppendLine("═══════════════════════════════════════════════════════════════");
+
+        File.WriteAllText(filename, sb.ToString());
+        AnsiConsole.MarkupLine($"[green]✅ Štítek uložen: {filename}[/]");
     }
 }

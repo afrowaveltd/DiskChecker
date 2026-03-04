@@ -79,7 +79,20 @@ public partial class SurfaceTestViewModel : ViewModelBase, IDisposable
    private const int VisualGridRowCount = 10;
    private const int VisualGridColumnCount = 100;
    private const int TotalVisualBlocks = VisualGridRowCount * VisualGridColumnCount;
-   private const long BytesPerVisualBlock = 1024L * 1024L * 1024L;
+   private long _bytesPerVisualBlock = 1024L * 1024L * 1024L; // Default 1GB
+
+   public long BytesPerVisualBlock
+   {
+      get => _bytesPerVisualBlock;
+      set
+      {
+         if (_bytesPerVisualBlock != value)
+         {
+            _bytesPerVisualBlock = value;
+            OnPropertyChanged(nameof(BytesPerVisualBlock));
+         }
+      }
+   }
 
    [ObservableProperty]
    private bool isTestRunning;
@@ -151,7 +164,7 @@ public partial class SurfaceTestViewModel : ViewModelBase, IDisposable
    private int activeBlockCount;
 
    [ObservableProperty]
-   private long bytesPerVisualizedBlock = BytesPerVisualBlock;
+   private long bytesPerVisualizedBlock = 1024L * 1024L; // Will be updated based on disk size
 
    [ObservableProperty]
    private string writeSpeedStats = "Zápis: min/max/průměr -";
@@ -171,7 +184,8 @@ public partial class SurfaceTestViewModel : ViewModelBase, IDisposable
    [ObservableProperty]
    private string readBandText = "Nízké pásmo";
 
-   private bool _canPrintCertificate;
+    private bool _canPrintCertificate;
+    private bool _canPrintLabel;
    private string _certificateStatus = "Certifikát zatím není připraven.";
    private SurfaceRunMode _selectedRunMode = SurfaceRunMode.FullWriteRead;
    private readonly IReadOnlyList<SurfaceRunModeOption> _availableRunModes =
@@ -203,13 +217,19 @@ public partial class SurfaceTestViewModel : ViewModelBase, IDisposable
    private double _maxWriteSpeedMeasured;
    private double _maxReadSpeedMeasured;
 
-   public bool CanPrintCertificate
-   {
-      get => _canPrintCertificate;
-      private set => SetProperty(ref _canPrintCertificate, value);
-   }
+    public bool CanPrintCertificate
+    {
+       get => _canPrintCertificate;
+       private set => SetProperty(ref _canPrintCertificate, value);
+    }
 
-   public string CertificateStatus
+    public bool CanPrintLabel
+    {
+       get => _canPrintLabel;
+       private set => SetProperty(ref _canPrintLabel, value);
+    }
+
+    public string CertificateStatus
    {
       get => _certificateStatus;
       private set => SetProperty(ref _certificateStatus, value);
@@ -318,7 +338,7 @@ public partial class SurfaceTestViewModel : ViewModelBase, IDisposable
    }
 
    /// <summary>
-   /// Inicializuje kolekci bloků pro vizualizaci.
+   /// Inicializuje kolekci bloků pro vizualizaci synchronně.
    /// </summary>
    private void InitializeBlocks(long totalBytes)
    {
@@ -329,16 +349,51 @@ public partial class SurfaceTestViewModel : ViewModelBase, IDisposable
       _activeBlockCount = Math.Clamp(calculatedActiveBlocks, 0, TotalVisualBlocks);
       ActiveBlockCount = _activeBlockCount;
 
-      Blocks = new ObservableCollection<BlockStatus>(
-         Enumerable.Range(0, TotalVisualBlocks)
-            .Select(i => new BlockStatus
+      // Создаем пустую коллекцию с 1000 блоков
+      Blocks = new ObservableCollection<BlockStatus>();
+      for (int i = 0; i < TotalVisualBlocks; i++)
+      {
+         Blocks.Add(new BlockStatus
+         {
+            Index = i,
+            Status = 0,
+            IsAllocated = i < _activeBlockCount
+         });
+      }
+   }
+
+   /// <summary>
+   /// Asynchronně inicializuje kolekci bloků pro vizualizaci (po dohodě UI threadu).
+   /// </summary>
+   private async Task InitializeBlocksAsyncAsync(long totalBytes)
+   {
+      int calculatedActiveBlocks = totalBytes <= 0
+         ? 0
+         : (int)Math.Ceiling(totalBytes / (double)BytesPerVisualBlock);
+
+      _activeBlockCount = Math.Clamp(calculatedActiveBlocks, 0, TotalVisualBlocks);
+      ActiveBlockCount = _activeBlockCount;
+
+      // Vytvářet bloky v batches aby se neblokoval UI thread
+      var newBlocks = new List<BlockStatus>(TotalVisualBlocks);
+      
+      // Vytvořit bloky asynchronně v pozadí
+      await Task.Run(() =>
+      {
+         for (int i = 0; i < TotalVisualBlocks; i++)
+         {
+            newBlocks.Add(new BlockStatus
             {
                Index = i,
                Status = 0,
                IsAllocated = i < _activeBlockCount
-            })
-            .ToList());
-   }
+            });
+         }
+      });
+
+      // Přepsat kolekci na UI threadu
+      Blocks = new ObservableCollection<BlockStatus>(newBlocks);
+    }
 
    /// <summary>
    /// Aktualizuje diskové informace při změně výběru disku.
@@ -346,19 +401,29 @@ public partial class SurfaceTestViewModel : ViewModelBase, IDisposable
    /// <param name="value">Nově vybraný disk.</param>
    partial void OnSelectedDriveChanged(CoreDriveInfo? value)
    {
-      if(value != null)
-      {
-         SelectedDriveInfo = $"💾 {value.Name} ({FormatBytes(value.TotalSize)})";
-         TotalBytes = value.TotalSize;
-         InitializeBlocks(value.TotalSize);
-      }
-      else
-      {
-         SelectedDriveInfo = "Vyber disk pro test";
-         TotalBytes = 0;
-         InitializeBlocks(0);
-      }
-   }
+        if(value != null)
+        {
+            SelectedDriveInfo = $"💾 {value.Name} ({FormatBytes(value.TotalSize)})";
+            TotalBytes = value.TotalSize;
+            
+            // Dynamicky spočítat BytesPerVisualBlock aby se vešlo do 100x10 gridu
+            // Cíl: max 100 sloupců, takže celkem max 1000 bloků
+            // 1TB disk: 1TB / 1000 = 1GB per block
+            // 500GB disk: 500GB / 1000 = 512MB per block
+            long bytesPerBlock = Math.Max(1024L * 1024L, value.TotalSize / TotalVisualBlocks);
+            BytesPerVisualBlock = bytesPerBlock;
+            
+            // Inicializovat bloky asynchronně, aby se neblokoval UI thread
+            _ = InitializeBlocksAsyncAsync(value.TotalSize);
+        }
+        else
+        {
+            SelectedDriveInfo = "Vyber disk pro test";
+            TotalBytes = 0;
+            BytesPerVisualBlock = 1024L * 1024L * 1024L; // Reset na default 1GB
+            InitializeBlocks(0);
+        }
+    }
 
    /// <summary>
    /// Vypočítá úhel ručičky budíku z aktuální propustnosti.
@@ -420,8 +485,9 @@ public partial class SurfaceTestViewModel : ViewModelBase, IDisposable
       ReadBandBrush = "#DC3545";
       WriteBandText = "Nízké pásmo";
       ReadBandText = "Nízké pásmo";
-      CanPrintCertificate = false;
-      CertificateStatus = "Certifikát zatím není připraven.";
+       CanPrintCertificate = false;
+       CanPrintLabel = false;
+       CertificateStatus = "Certifikát zatím není připraven.";
       _lastSurfaceTestResult = null;
       _lastSmartCheckResult = null;
       SpeedSamples.Clear();
@@ -599,13 +665,44 @@ public partial class SurfaceTestViewModel : ViewModelBase, IDisposable
           _lastSurfaceTestResult,
           _lastSmartCheckResult);
 
-      var printDialog = new System.Windows.Controls.PrintDialog();
-      if(printDialog.ShowDialog() == true)
-      {
-         printDialog.PrintDocument(document.DocumentPaginator, "DiskChecker A4 certifikát");
-         StatusMessage = "🖨️ Certifikát byl odeslán do tisku.";
-      }
-   }
+       var printDialog = new System.Windows.Controls.PrintDialog();
+       if(printDialog.ShowDialog() == true)
+       {
+          printDialog.PrintDocument(document.DocumentPaginator, "DiskChecker A4 certifikát");
+          StatusMessage = "🖨️ Certifikát byl odeslán do tisku.";
+       }
+    }
+
+    [RelayCommand]
+    public void PrintLabel()
+    {
+       if(SelectedDrive == null || _lastSurfaceTestResult == null || _lastSmartCheckResult == null)
+       {
+          StatusMessage = "❌ Štítek nelze vytisknout. Nejprve dokončete kompletní test.";
+          return;
+       }
+
+       var dialog = new Views.LabelPrinterDialog();
+       if(dialog.ShowDialog() == true)
+       {
+          var labelSize = dialog.GetSelectedSize();
+          var testDate = DateTime.UtcNow;
+          
+          var document = Services.DiskLabelPrinterBuilder.CreateLabel(
+              SelectedDrive,
+              _lastSmartCheckResult,
+              _lastSurfaceTestResult,
+              labelSize,
+              testDate);
+
+          var printDialog = new System.Windows.Controls.PrintDialog();
+          if(printDialog.ShowDialog() == true)
+          {
+             printDialog.PrintDocument(document.DocumentPaginator, $"DiskChecker štítek - {labelSize}");
+             StatusMessage = $"🖨️ Štítek ({labelSize}) odeslán do tisku.";
+          }
+       }
+    }
 
    /// <summary>
    /// Zpracuje progress report z testu.
@@ -888,18 +985,20 @@ public partial class SurfaceTestViewModel : ViewModelBase, IDisposable
 
    private async Task LoadSmartDataForCertificateAsync()
    {
-      if(SelectedDrive == null)
-      {
-         CanPrintCertificate = false;
-         CertificateStatus = "SMART data nejsou dostupná.";
-         return;
-      }
+       if(SelectedDrive == null)
+       {
+          CanPrintCertificate = false;
+          CanPrintLabel = false;
+          CertificateStatus = "SMART data nejsou dostupná.";
+          return;
+       }
 
-      _lastSmartCheckResult = await _smartCheckService.RunAsync(SelectedDrive);
-      CanPrintCertificate = _lastSmartCheckResult != null && _lastSurfaceTestResult != null;
-      CertificateStatus = CanPrintCertificate
-          ? "✅ Certifikát připraven k tisku."
-          : "⚠️ SMART data nejsou dostupná, certifikát nelze dokončit.";
+       _lastSmartCheckResult = await _smartCheckService.RunAsync(SelectedDrive);
+       CanPrintCertificate = _lastSmartCheckResult != null && _lastSurfaceTestResult != null;
+       CanPrintLabel = CanPrintCertificate;
+       CertificateStatus = CanPrintCertificate
+           ? "✅ Certifikát připraven k tisku."
+           : "⚠️ SMART data nejsou dostupná, certifikát nelze dokončit.";
    }
 
    private static async Task<bool> IsSystemDiskAsync(CoreDriveInfo drive)
@@ -981,7 +1080,3 @@ public partial class SurfaceTestViewModel : ViewModelBase, IDisposable
       GC.SuppressFinalize(this);
    }
 }
-
-/// <summary>
-/// ViewModel pro SMART kontrolu disku.
-/// </summary>

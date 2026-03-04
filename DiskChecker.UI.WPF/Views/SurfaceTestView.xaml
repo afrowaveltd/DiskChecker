@@ -4,6 +4,7 @@
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006" 
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008" 
              xmlns:oxy="http://oxyplot.org/wpf"
+             xmlns:local="clr-namespace:DiskChecker.UI.WPF.Behaviors"
              xmlns:primitives="clr-namespace:System.Windows.Controls.Primitives;assembly=PresentationFramework"
              mc:Ignorable="d" 
              d:DesignHeight="800" d:DesignWidth="1000"
@@ -19,14 +20,55 @@
 
         <!-- ============ HEADER ============ -->
         <Border Grid.Row="0" Background="{DynamicResource ThemePanelBrush}" BorderBrush="{DynamicResource ThemeBorderBrush}" BorderThickness="0,0,0,1" Padding="20">
-            <StackPanel Margin="0,0,0,10">
-                <TextBlock Text="🖴 Test Povrchu Disku" 
-                           FontSize="24" FontWeight="Bold" Foreground="#1a1a1a" Margin="0,0,0,10"/>
-                <TextBlock Text="{Binding SelectedDriveInfo}" 
-                           FontSize="14" Foreground="#666666" Margin="0,0,0,5"/>
-                <TextBlock Text="{Binding CurrentPhase}" 
-                           FontSize="12" Foreground="#007ACC" FontWeight="SemiBold"/>
-            </StackPanel>
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+
+                <StackPanel Grid.Column="0" Margin="0,0,0,0">
+                    <TextBlock Text="🖴 Test Povrchu Disku" 
+                               FontSize="24" FontWeight="Bold" Foreground="#1a1a1a" Margin="0,0,0,10"/>
+                    <TextBlock Text="{Binding SelectedDriveInfo}" 
+                               FontSize="14" Foreground="#666666" Margin="0,0,0,5"/>
+                    <TextBlock Text="{Binding CurrentPhase}" 
+                               FontSize="12" Foreground="#007ACC" FontWeight="SemiBold"/>
+                </StackPanel>
+
+                <!-- Mini Speed Gauge -->
+                <Grid Grid.Column="1" VerticalAlignment="Center" Margin="20,0,0,0">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                    </Grid.RowDefinitions>
+
+                    <Canvas Grid.Row="0" Width="140" Height="80">
+                        <Path Stroke="#B0B0B0" StrokeThickness="5" Data="M 15,70 A 60,60 0 0 1 125,70"/>
+                        <Line X1="70" Y1="70" X2="70" Y2="25" Stroke="#DC3545" StrokeThickness="2" StrokeStartLineCap="Round" StrokeEndLineCap="Round">
+                            <Line.RenderTransform>
+                                <RotateTransform Angle="{Binding WriteNeedleAngle}" CenterX="70" CenterY="70"/>
+                            </Line.RenderTransform>
+                        </Line>
+                        <Line X1="70" Y1="70" X2="70" Y2="32" Stroke="#28A745" StrokeThickness="2" StrokeStartLineCap="Round" StrokeEndLineCap="Round">
+                            <Line.RenderTransform>
+                                <RotateTransform Angle="{Binding ReadNeedleAngle}" CenterX="70" CenterY="70"/>
+                            </Line.RenderTransform>
+                        </Line>
+                        <Ellipse Width="8" Height="8" Fill="#333333" Canvas.Left="66" Canvas.Top="66"/>
+                        <TextBlock Text="0" FontSize="9" Foreground="#999999" Canvas.Left="10" Canvas.Top="67"/>
+                        <TextBlock Text="{Binding GaugeMaxMbps}" FontSize="9" Foreground="#999999" Canvas.Left="110" Canvas.Top="67"/>
+                    </Canvas>
+
+                    <StackPanel Grid.Row="1" Orientation="Horizontal" HorizontalAlignment="Center" Margin="0,4,0,0">
+                        <TextBlock Text="🔴" Foreground="#DC3545" Margin="0,0,4,0" VerticalAlignment="Center"/>
+                        <TextBlock Text="{Binding CurrentWriteThroughputMbps, Converter={StaticResource MbpsConverter}}" 
+                                   FontSize="10" FontWeight="SemiBold" Foreground="#DC3545" Margin="0,0,12,0"/>
+                        <TextBlock Text="🟢" Foreground="#28A745" Margin="0,0,4,0" VerticalAlignment="Center"/>
+                        <TextBlock Text="{Binding CurrentReadThroughputMbps, Converter={StaticResource MbpsConverter}}" 
+                                   FontSize="10" FontWeight="SemiBold" Foreground="#28A745"/>
+                    </StackPanel>
+                </Grid>
+            </Grid>
         </Border>
 
         <!-- ============ DISK SELECTION ============ -->
@@ -82,14 +124,23 @@
                             FontSize="11"/>
 
                     <Button Content="🖨️ CERTIFIKÁT A4"
-                            Command="{Binding PrintCertificateCommand}"
-                            IsEnabled="{Binding CanPrintCertificate}"
-                            Style="{StaticResource ActionButtonStyle}"
-                            Background="#6C63FF" Foreground="White"
-                            Padding="12,8"
-                            FontSize="11"
-                            ToolTip="Vytisknout barevný A4 certifikát po kompletním testu"/>
-                </StackPanel>
+                             Command="{Binding PrintCertificateCommand}"
+                             IsEnabled="{Binding CanPrintCertificate}"
+                             Style="{StaticResource ActionButtonStyle}"
+                             Background="#6C63FF" Foreground="White"
+                             Padding="12,8"
+                             FontSize="11"
+                             ToolTip="Vytisknout barevný A4 certifikát po kompletním testu"/>
+                     
+                     <Button Content="🏷️ ŠTÍTEK"
+                             Command="{Binding PrintLabelCommand}"
+                             IsEnabled="{Binding CanPrintLabel}"
+                             Style="{StaticResource ActionButtonStyle}"
+                             Background="#FF6B35" Foreground="White"
+                             Padding="12,8" Margin="8,0,0,0"
+                             FontSize="11"
+                             ToolTip="Vytisknout štítek pro disk (různé velikosti)"/>
+                 </StackPanel>
             </Grid>
         </Border>
 
@@ -120,48 +171,31 @@
                             <TextBlock Text="Netestováno" FontSize="11" Foreground="#666666" VerticalAlignment="Center"/>
                         </StackPanel>
 
-                        <!-- Blocks Grid -->
-                        <ItemsControl ItemsSource="{Binding Blocks}" 
-                                      HorizontalAlignment="Left" 
-                                      Margin="0,0,0,10">
-                            <ItemsControl.ItemsPanel>
-                                <ItemsPanelTemplate>
-                                    <primitives:UniformGrid Rows="{Binding VisualGridRows}" Columns="{Binding VisualGridColumns}"/>
-                                </ItemsPanelTemplate>
-                            </ItemsControl.ItemsPanel>
-                            
-                            <ItemsControl.ItemTemplate>
-                                <DataTemplate>
-                                    <Border Width="6" Height="10"
-                                            Margin="0"
-                                            BorderThickness="0"
-                                            ToolTip="{Binding Index, Converter={StaticResource BlockLabelConverter}}">
-                                        <Border.Style>
-                                            <Style TargetType="{x:Type Border}">
-                                                <Setter Property="Background" Value="#E0E0E0"/>
-                                                <Style.Triggers>
-                                                    <DataTrigger Binding="{Binding IsAllocated}" Value="False">
-                                                        <Setter Property="Background" Value="Transparent"/>
-                                                    </DataTrigger>
-                                                    <DataTrigger Binding="{Binding Status}" Value="1">
-                                                        <Setter Property="Background" Value="#FFC107"/>
-                                                    </DataTrigger>
-                                                    <DataTrigger Binding="{Binding Status}" Value="2">
-                                                        <Setter Property="Background" Value="#4A90E2"/>
-                                                    </DataTrigger>
-                                                    <DataTrigger Binding="{Binding Status}" Value="3">
-                                                        <Setter Property="Background" Value="#28A745"/>
-                                                    </DataTrigger>
-                                                    <DataTrigger Binding="{Binding Status}" Value="4">
-                                                        <Setter Property="Background" Value="#DC3545"/>
-                                                    </DataTrigger>
-                                                </Style.Triggers>
-                                            </Style>
-                                        </Border.Style>
-                                    </Border>
-                                </DataTemplate>
-                            </ItemsControl.ItemTemplate>
-                        </ItemsControl>
+                        <!-- Blocks Grid - New approach with custom DefragGridPanel -->
+                        <Border Background="White" BorderBrush="#E0E0E0" BorderThickness="1" Padding="0" Margin="0,0,0,10" MinHeight="150">
+                            <!-- ItemsControl with custom DefragGridPanel for dynamic layout -->
+                            <ItemsControl ItemsSource="{Binding Blocks}">
+                                <ItemsControl.ItemsPanel>
+                                    <ItemsPanelTemplate>
+                                        <local:DefragGridPanel/>
+                                    </ItemsPanelTemplate>
+                                </ItemsControl.ItemsPanel>
+                                
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate>
+                                        <Border BorderBrush="#D0D0D0" BorderThickness="0.5" Margin="0">
+                                            <Border.Background>
+                                                <MultiBinding Converter="{StaticResource StatusToColorConverter}">
+                                                    <Binding Path="Status"/>
+                                                    <Binding Path="IsAllocated"/>
+                                                </MultiBinding>
+                                            </Border.Background>
+                                            <ToolTip Content="{Binding Index, Converter={StaticResource BlockLabelConverter}}"/>
+                                        </Border>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                        </Border>
 
                         <TextBlock FontSize="10" Foreground="#999999" Margin="0,5,0,0">
                             <Run Text="Aktivní pole: "/>
@@ -287,42 +321,6 @@
                                     Foreground="White"
                                     HorizontalAlignment="Left"/>
                         </Grid>
-
-                        <Border Background="#F8F8F8" BorderBrush="#E0E0E0" BorderThickness="1" Padding="10" Margin="0,0,0,10">
-                            <StackPanel>
-                                <TextBlock Text="🎛️ Budík aktuální rychlosti" FontSize="12" FontWeight="SemiBold" Foreground="#333333" Margin="0,0,0,6"/>
-                                <Grid HorizontalAlignment="Left">
-                                    <Canvas Width="220" Height="130">
-                                        <Path Stroke="#B0B0B0" StrokeThickness="8" Data="M 20,110 A 90,90 0 0 1 200,110"/>
-                                        <Line X1="110" Y1="110" X2="110" Y2="35" Stroke="#DC3545" StrokeThickness="3" StrokeStartLineCap="Round" StrokeEndLineCap="Round">
-                                            <Line.RenderTransform>
-                                                <RotateTransform Angle="{Binding WriteNeedleAngle}" CenterX="110" CenterY="110"/>
-                                            </Line.RenderTransform>
-                                        </Line>
-                                        <Line X1="110" Y1="110" X2="110" Y2="45" Stroke="#28A745" StrokeThickness="3" StrokeStartLineCap="Round" StrokeEndLineCap="Round">
-                                            <Line.RenderTransform>
-                                                <RotateTransform Angle="{Binding ReadNeedleAngle}" CenterX="110" CenterY="110"/>
-                                            </Line.RenderTransform>
-                                        </Line>
-                                        <Ellipse Width="10" Height="10" Fill="#333333" Canvas.Left="105" Canvas.Top="105"/>
-                                        <TextBlock Text="0" FontSize="10" Foreground="#666666" Canvas.Left="10" Canvas.Top="108"/>
-                                        <TextBlock Text="{Binding GaugeMaxMbps}" FontSize="10" Foreground="#666666" Canvas.Left="176" Canvas.Top="108"/>
-                                    </Canvas>
-                                </Grid>
-                                <StackPanel Orientation="Horizontal">
-                                    <TextBlock Text="🔴 Zápis: " FontSize="11" Foreground="#666666"/>
-                                    <TextBlock Text="{Binding CurrentWriteThroughputMbps, Converter={StaticResource MbpsConverter}}" FontSize="11" FontWeight="SemiBold" Foreground="#DC3545" Margin="0,0,12,0"/>
-                                    <Border Background="{Binding WriteBandBrush}" Padding="6,1" CornerRadius="3" Margin="0,0,8,0">
-                                        <TextBlock Text="{Binding WriteBandText}" FontSize="10" Foreground="White"/>
-                                    </Border>
-                                    <TextBlock Text="🟢 Čtení: " FontSize="11" Foreground="#666666"/>
-                                    <TextBlock Text="{Binding CurrentReadThroughputMbps, Converter={StaticResource MbpsConverter}}" FontSize="11" FontWeight="SemiBold" Foreground="#28A745" Margin="0,0,12,0"/>
-                                    <Border Background="{Binding ReadBandBrush}" Padding="6,1" CornerRadius="3">
-                                        <TextBlock Text="{Binding ReadBandText}" FontSize="10" Foreground="White"/>
-                                    </Border>
-                                </StackPanel>
-                            </StackPanel>
-                        </Border>
 
                         <Border Background="#F9F9F9" Height="260" BorderBrush="#E0E0E0" BorderThickness="1">
                             <oxy:PlotView Model="{Binding SpeedPlotModel}"/>

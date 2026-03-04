@@ -103,9 +103,7 @@ public partial class MainWindowViewModel : ViewModelBase
     [RelayCommand]
     public void NavigateToReport()
     {
-        // TODO: Implementovat ReportViewModel
-        StatusMessage = "⚠️ Report view zatím není implementován";
-        // _navigationService.NavigateTo<ReportViewModel>();
+        _navigationService.NavigateTo<ReportViewModel>();
     }
 
     /// <summary>
@@ -114,9 +112,7 @@ public partial class MainWindowViewModel : ViewModelBase
     [RelayCommand]
     public void NavigateToHistory()
     {
-        // TODO: Implementovat HistoryViewModel
-        StatusMessage = "⚠️ Historie view zatím není implementována";
-        // _navigationService.NavigateTo<HistoryViewModel>();
+        _navigationService.NavigateTo<HistoryViewModel>();
     }
 
     /// <summary>
@@ -125,9 +121,7 @@ public partial class MainWindowViewModel : ViewModelBase
     [RelayCommand]
     public void NavigateToSettings()
     {
-        // TODO: Implementovat SettingsViewModel
-        StatusMessage = "⚠️ Nastavení view zatím není implementováno";
-        // _navigationService.NavigateTo<SettingsViewModel>();
+        _navigationService.NavigateTo<SettingsViewModel>();
     }
 
     /// <summary>
@@ -151,10 +145,9 @@ public partial class MainWindowViewModel : ViewModelBase
         IsSurfaceTestActive = e.ViewModel is SurfaceTestViewModel;
         IsSmartCheckActive = e.ViewModel is SmartCheckViewModel;
         IsAnalysisActive = e.ViewModel is AnalysisViewModel;
-        // TODO: Až budou implementované, odkomentovat
-        IsReportActive = false; // e.ViewModel is ReportViewModel;
-        IsHistoryActive = false; // e.ViewModel is HistoryViewModel;
-        IsSettingsActive = false; // e.ViewModel is SettingsViewModel;
+        IsReportActive = e.ViewModel is ReportViewModel;
+        IsHistoryActive = e.ViewModel is HistoryViewModel;
+        IsSettingsActive = e.ViewModel is SettingsViewModel;
     }
 
     /// <summary>
