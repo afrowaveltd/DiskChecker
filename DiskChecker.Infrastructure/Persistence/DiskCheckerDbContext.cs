@@ -22,6 +22,25 @@ namespace DiskChecker.Infrastructure.Persistence
       protected override void OnModelCreating(ModelBuilder modelBuilder)
       {
          base.OnModelCreating(modelBuilder);
+         // Ignore transient DTOs used by services/UI so EF Core does not try to map them as entities.
+         modelBuilder.Ignore<CoreDriveInfo>();
+         modelBuilder.Ignore<SmartaData>();
+         modelBuilder.Ignore<QualityRating>();
+         modelBuilder.Ignore<SmartCheckResult>();
+        modelBuilder.Ignore<SurfaceTestRequest>();
+        modelBuilder.Ignore<SurfaceTestSample>();
+        modelBuilder.Ignore<SurfaceTestProgress>();
+        modelBuilder.Ignore<SurfaceTestResult>();
+         modelBuilder.Ignore<SmartaAttributeItem>();
+         modelBuilder.Ignore<SmartaSelfTestStatus>();
+         modelBuilder.Ignore<SmartaSelfTestEntry>();
+         modelBuilder.Ignore<SmartaSelfTestReport>();
+         modelBuilder.Ignore<TemperatureHistoryPoint>();
+         modelBuilder.Ignore<SpeedSample>();
+         modelBuilder.Ignore<TestHistoryItem>();
+         modelBuilder.Ignore<CompareItem>();
+         modelBuilder.Ignore<DriveCompareItem>();
+
 
          // DiskCard indexes
          modelBuilder.Entity<DiskCard>()
@@ -36,6 +55,8 @@ namespace DiskChecker.Infrastructure.Persistence
              .HasIndex(d => d.Status);
 
          // TestReport indexes
+        // Ensure TestReport has an explicitly configured primary key (property is named ReportId)
+        modelBuilder.Entity<TestReport>().HasKey(r => r.ReportId);
          modelBuilder.Entity<TestReport>()
              .HasIndex(r => r.DiskCardId);
 

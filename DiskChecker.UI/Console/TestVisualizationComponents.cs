@@ -93,14 +93,15 @@ public static class TestVisualizationComponents
         
         var panel = new Panel(grid)
         {
-            Width = panelWidth
+            Width = ResolvePanelWidth(panelWidth)
         };
 
         panel.Border(BoxBorder.Rounded);
         panel.BorderColor(healthColor == "green" ? Color.Green : healthColor == "yellow" ? Color.Yellow : Color.Red);
-        panel.Header($"STAV TEPLOTY - {healthText}");
+        // Use plain text header (no Spectre markup) to avoid header-width/markup rendering issues
+        panel.Header($"Stav teploty - {healthText}");
         panel.HeaderAlignment(Justify.Center);
-        panel.Padding(1, 0);
+        panel.Padding(1, 1);
 
         return panel;
     }
@@ -166,14 +167,14 @@ public static class TestVisualizationComponents
         
         var panel = new Panel(grid)
         {
-            Width = panelWidth
+            Width = ResolvePanelWidth(panelWidth)
         };
 
         panel.Border(BoxBorder.Rounded);
         panel.BorderColor(Color.Cyan);
-        panel.Header("CELKOVÝ PRŮBĚH TESTU");
+        panel.Header("Celkový průběh testu");
         panel.HeaderAlignment(Justify.Center);
-        panel.Padding(1, 0);
+        panel.Padding(1, 1);
 
         return panel;
     }
@@ -247,7 +248,7 @@ public static class TestVisualizationComponents
         var panel = new Panel(grid)
             .Border(BoxBorder.Rounded)
             .BorderColor(color == "green" ? Color.Green : color == "yellow" ? Color.Yellow : Color.Red)
-            .Header($"[bold {color}] ZDRAVÍ DISKU - {healthScore}% [/]")
+            .Header($"ZDRAVÍ DISKU - {healthScore}% ")
             .Padding(1, 0);
         
         return panel;
@@ -331,9 +332,9 @@ public static class TestVisualizationComponents
         panel.BorderColor(borderColor == "green" ? Color.Green : 
                          borderColor == "yellow" ? Color.Yellow : 
                          Color.Red);
-        panel.Header("📊 MONITOR RYCHLOSTI");
+        panel.Header("Trend rychlosti");
         panel.HeaderAlignment(Justify.Center);
-        panel.Padding(1, 0);
+        panel.Padding(1, 1);
 
         return panel;
     }
@@ -342,6 +343,23 @@ public static class TestVisualizationComponents
     {
         var totalHours = (int)elapsed.TotalHours;
         return $"{totalHours:00}:{elapsed.Minutes:00}:{elapsed.Seconds:00}";
+    }
+
+    /// <summary>
+    /// Ensure panel width does not exceed current console width to avoid clipped borders.
+    /// </summary>
+    private static int ResolvePanelWidth(int requestedWidth)
+    {
+        try
+        {
+            var consoleWidth = global::System.Console.WindowWidth;
+            var max = Math.Max(20, consoleWidth - 4); // leave space for borders/margins
+            return Math.Min(requestedWidth, max);
+        }
+        catch
+        {
+            return requestedWidth;
+        }
     }
 
     public enum BlockStatus
@@ -386,10 +404,12 @@ public static class TestVisualizationComponents
             {
                 if (i == blockIndex)
                 {
+                    // currently processing this block
                     Blocks[i] = hasError ? BlockStatus.Error : BlockStatus.InProgress;
                 }
                 else if (i < blockIndex)
                 {
+                    // completed blocks: if previously in progress mark according to phase/result
                     if (Blocks[i] == BlockStatus.InProgress)
                     {
                         Blocks[i] = hasError ? BlockStatus.Error : (isWritePhase ? BlockStatus.WriteOk : BlockStatus.ReadOk);
@@ -397,6 +417,12 @@ public static class TestVisualizationComponents
                     else if (Blocks[i] == BlockStatus.NotTested)
                     {
                         Blocks[i] = isWritePhase ? BlockStatus.WriteOk : BlockStatus.ReadOk;
+                    }
+
+                    // If we switched to verify phase, convert any WriteOk blocks to ReadOk so they turn green
+                    if (!isWritePhase && Blocks[i] == BlockStatus.WriteOk)
+                    {
+                        Blocks[i] = BlockStatus.ReadOk;
                     }
                 }
             }
@@ -493,9 +519,9 @@ public static class TestVisualizationComponents
 
         panel.Border(BoxBorder.Rounded);
         panel.BorderColor(Color.Blue);
-        panel.Header("[bold white]📊 POVCH TESTU DISKU - VIZUALIZACE[/]");
+        panel.Header("📊 Povrchový test disku - vizualizace");
         panel.HeaderAlignment(Justify.Center);
-        panel.Padding(1, 0);
+        panel.Padding(1, 1);
 
         return panel;
     }
@@ -535,13 +561,13 @@ public static class TestVisualizationComponents
 
         var panel = new Panel(new Markup(sb.ToString()))
         {
-            Width = panelWidth
+            Width = ResolvePanelWidth(panelWidth)
         };
 
         panel.Border(BoxBorder.Rounded);
         var borderColor = state.BlocksWithErrors > 0 ? Color.Red : testedPercent >= 100 ? Color.Green : Color.Blue;
         panel.BorderColor(borderColor);
-        panel.Header("[bold white]📊 POVCH TESTU[/]");
+        panel.Header("[bold white]📊 Povrchový test[/]");
         panel.HeaderAlignment(Justify.Center);
         panel.Padding(1, 0);
 

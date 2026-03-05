@@ -6,6 +6,7 @@ using DiskChecker.Core.Models;
 using DiskChecker.Application.Services;
 using DiskChecker.Infrastructure.Persistence;
 using DiskChecker.Infrastructure.Hardware;
+using System.Runtime.InteropServices;
 using DiskChecker.Core;
 using DiskChecker.UI.Console;
 using DiskChecker.UI.Console.Pages;
@@ -50,6 +51,21 @@ services.AddScoped<MainConsoleMenu>();
 services.AddScoped<DiagnosticsApp>();
 services.AddScoped<DiskCheckerApp>();
 
+// Register platform-specific SMART provider to avoid missing service resolution
+if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+{
+    services.AddScoped<ISmartaProvider, WindowsSmartaProvider>();
+}
+else if (RuntimeInformation.IsOSPlatform(OSPlatform.Linux) || RuntimeInformation.IsOSPlatform(OSPlatform.OSX))
+{
+    services.AddScoped<ISmartaProvider, LinuxSmartaProvider>();
+}
+else
+{
+    // Fallback for unknown platforms or during development
+    services.AddScoped<ISmartaProvider, TestDiskProvider>();
+}
+
 var serviceProvider = services.BuildServiceProvider();
 
 using (var scope = serviceProvider.CreateScope())
@@ -58,5 +74,8 @@ using (var scope = serviceProvider.CreateScope())
     context.Database.EnsureCreated();
 }
 
-var app = serviceProvider.GetRequiredService<DiskCheckerApp>();
-await app.RunAsync(args);
+using (var runScope = serviceProvider.CreateScope())
+{
+    var app = runScope.ServiceProvider.GetRequiredService<DiskCheckerApp>();
+    await app.RunAsync(args);
+}
