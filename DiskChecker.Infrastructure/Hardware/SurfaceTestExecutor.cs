@@ -103,13 +103,13 @@ public class SurfaceTestExecutor : ISurfaceTestExecutor
                         
                         long written = 0;
                         
-                        while (written < maxTestSize && !cancellationToken.IsCancellationRequested)
-                        {
-                            var toWrite = (int)Math.Min(buffer.Length, maxTestSize - written);
-                            testFile.Write(buffer, 0, toWrite);
-                            written += toWrite;
-                        }
-                        await testFile.FlushAsync(cancellationToken);
+                    while (written < maxTestSize && !cancellationToken.IsCancellationRequested)
+                    {
+                        var toWrite = (int)Math.Min(buffer.Length, maxTestSize - written);
+                        await testFile.WriteAsync(buffer.AsMemory(0, toWrite), cancellationToken);
+                        written += toWrite;
+                    }
+                    await testFile.FlushAsync(cancellationToken);
                     }
                     
                     result.Notes = $"Testovací soubor vytvořen. Spouštění testu na {FormatBytes(maxTestSize)}...";
@@ -145,12 +145,12 @@ public class SurfaceTestExecutor : ISurfaceTestExecutor
                     {
                         var buffer = new byte[1024 * 1024]; // 1 MB chunks
                         Array.Fill(buffer, PatternByte);
-                        
+
                         long written = 0;
                         while (written < testSize && !cancellationToken.IsCancellationRequested)
                         {
                             var toWrite = (int)Math.Min(buffer.Length, testSize - written);
-                            testFile.Write(buffer, 0, toWrite);
+                            await testFile.WriteAsync(buffer.AsMemory(0, toWrite), cancellationToken);
                             written += toWrite;
                         }
                         await testFile.FlushAsync(cancellationToken);

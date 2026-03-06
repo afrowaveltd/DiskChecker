@@ -38,7 +38,12 @@ public class SurfaceTestService : ISurfaceTestService
         // Use factory to get appropriate executor
         var executor = _executorFactory.Create(normalizedRequest);
 
-        var result = await executor.ExecuteAsync(normalizedRequest, progress, cancellationToken);
+        // Run the executor on a background thread to avoid blocking UI synchronization context.
+        // Progress<T> reports are captured and will be marshalled back to the caller's context
+        // because the Progress implementation captures the synchronization context when created
+        // (the ViewModel creates Progress on the UI thread). Therefore we can safely execute
+        // the long-running I/O-bound work on a thread-pool thread via Task.Run.
+        var result = await Task.Run(() => executor.ExecuteAsync(normalizedRequest, progress, cancellationToken), cancellationToken);
 
         var testId = await _persistenceService.SaveAsync(result, normalizedRequest.Drive, cancellationToken);
         result.TestId = testId.ToString();

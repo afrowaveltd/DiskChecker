@@ -13,15 +13,36 @@ public class DefragGridPanel : Panel
 
     protected override Size MeasureOverride(Size availableSize)
     {
-        double cellWidth = availableSize.Width / ColumnCount;
-        double cellHeight = availableSize.Height / RowCount;
+        // If the available size is infinite in any dimension we must return a finite DesiredSize.
+        // Measure children using per-cell constraints when possible and compute a sensible
+        // desired size based on the largest child measured size.
+
+        double perCellWidth = double.IsInfinity(availableSize.Width) ? double.PositiveInfinity : availableSize.Width / ColumnCount;
+        double perCellHeight = double.IsInfinity(availableSize.Height) ? double.PositiveInfinity : availableSize.Height / RowCount;
+
+        double maxChildWidth = 0.0;
+        double maxChildHeight = 0.0;
 
         foreach (UIElement child in InternalChildren)
         {
-            child.Measure(new Size(cellWidth, cellHeight));
+            child.Measure(new Size(perCellWidth, perCellHeight));
+            Size d = child.DesiredSize;
+            if (!double.IsNaN(d.Width) && !double.IsInfinity(d.Width))
+                maxChildWidth = Math.Max(maxChildWidth, d.Width);
+            if (!double.IsNaN(d.Height) && !double.IsInfinity(d.Height))
+                maxChildHeight = Math.Max(maxChildHeight, d.Height);
         }
 
-        return availableSize;
+        double desiredWidth = double.IsInfinity(availableSize.Width) ? (ColumnCount * maxChildWidth) : availableSize.Width;
+        double desiredHeight = double.IsInfinity(availableSize.Height) ? (RowCount * maxChildHeight) : availableSize.Height;
+
+        // Ensure finite, non-negative results
+        if (double.IsNaN(desiredWidth) || double.IsInfinity(desiredWidth) || desiredWidth < 0)
+            desiredWidth = ColumnCount * (double.IsNaN(maxChildWidth) || double.IsInfinity(maxChildWidth) ? 0.0 : maxChildWidth);
+        if (double.IsNaN(desiredHeight) || double.IsInfinity(desiredHeight) || desiredHeight < 0)
+            desiredHeight = RowCount * (double.IsNaN(maxChildHeight) || double.IsInfinity(maxChildHeight) ? 0.0 : maxChildHeight);
+
+        return new Size(desiredWidth, desiredHeight);
     }
 
     protected override Size ArrangeOverride(Size finalSize)

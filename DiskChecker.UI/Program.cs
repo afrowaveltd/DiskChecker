@@ -72,6 +72,8 @@ using (var scope = serviceProvider.CreateScope())
 {
     var context = scope.ServiceProvider.GetRequiredService<DiskCheckerDbContext>();
     context.Database.EnsureCreated();
+    // Ensure older SQLite schemas are patched for compatibility (adds missing columns)
+    SchemaCompatibilityPatcher.Apply(context);
 }
 
 using (var runScope = serviceProvider.CreateScope())

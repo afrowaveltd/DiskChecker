@@ -181,19 +181,19 @@
                                     </ItemsPanelTemplate>
                                 </ItemsControl.ItemsPanel>
                                 
-                                <ItemsControl.ItemTemplate>
-                                    <DataTemplate>
-                                        <Border BorderBrush="#D0D0D0" BorderThickness="0.5" Margin="0">
+                    <ItemsControl.ItemTemplate>
+                            <DataTemplate>
+                                        <Border BorderBrush="#D0D0D0" BorderThickness="0.5" Margin="0"
+                                                ToolTip="{Binding Index, Converter={StaticResource BlockLabelConverter}}">
                                             <Border.Background>
                                                 <MultiBinding Converter="{StaticResource StatusToColorConverter}">
                                                     <Binding Path="Status"/>
                                                     <Binding Path="IsAllocated"/>
                                                 </MultiBinding>
                                             </Border.Background>
-                                            <ToolTip Content="{Binding Index, Converter={StaticResource BlockLabelConverter}}"/>
                                         </Border>
-                                    </DataTemplate>
-                                </ItemsControl.ItemTemplate>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
                             </ItemsControl>
                         </Border>
 
