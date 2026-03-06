@@ -38,6 +38,34 @@ public class SurfaceTestExecutor : ISurfaceTestExecutor
             SecureErasePerformed = false
         };
 
+        // Try to capture basic SMART/drive metadata for reporting purposes.
+        try
+        {
+            var meta = await _smartaProvider.GetSmartaDataAsync(request.Drive.Path, CancellationToken.None);
+            if (meta != null)
+            {
+                result.DriveModel = string.IsNullOrWhiteSpace(meta.DeviceModel) ? request.Drive.Name : meta.DeviceModel;
+                result.DriveSerialNumber = string.IsNullOrWhiteSpace(meta.SerialNumber) ? null : meta.SerialNumber;
+                result.DriveManufacturer = string.IsNullOrWhiteSpace(meta.ModelFamily) ? null : meta.ModelFamily;
+                if (meta.PowerOnHours > 0)
+                {
+                    result.PowerOnHours = meta.PowerOnHours;
+                }
+                if (meta.Temperature > 0)
+                {
+                    result.CurrentTemperatureCelsius = (int)Math.Round(meta.Temperature, MidpointRounding.AwayFromZero);
+                }
+                if (meta.ReallocatedSectorCount > 0)
+                {
+                    result.ReallocatedSectors = meta.ReallocatedSectorCount;
+                }
+            }
+        }
+        catch
+        {
+            // Ignore SMART metadata failures - test can continue without it
+        }
+
         if (request.SecureErase && request.Operation == SurfaceTestOperation.ReadOnly)
         {
             result.ErrorCount = 1;
