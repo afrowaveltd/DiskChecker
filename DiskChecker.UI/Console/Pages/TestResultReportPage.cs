@@ -139,7 +139,8 @@ public static class TestResultReportPage
             .BorderColor(reliabilityColor)
             .Title("[bold]🔍 SPOLEHLIVOST[/]", new Style(reliabilityColor))
             .AddColumn(new TableColumn("[bold]Kontrola[/]").Width(20))
-            .AddColumn(new TableColumn("[bold]Výsledek[/]").Width(40));
+            // Widen second column slightly to avoid right border being drawn inside content on narrow consoles
+            .AddColumn(new TableColumn("[bold]Výsledek[/]").Width(44));
 
         reliability.AddRow("Chyby:", result.ErrorCount == 0 ? "0 ✅ Žádné chyby" : $"{result.ErrorCount} ❌ Chyby nalezeny!");
         

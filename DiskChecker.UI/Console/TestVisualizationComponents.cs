@@ -332,7 +332,7 @@ public static class TestVisualizationComponents
         panel.BorderColor(borderColor == "green" ? Color.Green : 
                          borderColor == "yellow" ? Color.Yellow : 
                          Color.Red);
-        panel.Header("Trend rychlosti");
+        panel.Header(" Trend rychlosti ");
         panel.HeaderAlignment(Justify.Center);
         panel.Padding(1, 1);
 
@@ -396,39 +396,68 @@ public static class TestVisualizationComponents
 
             var progress = (double)bytesProcessed / totalBytes;
             var blockIndex = (int)(progress * TotalBlocks);
-            blockIndex = Math.Min(blockIndex, TotalBlocks - 1);
+            blockIndex = Math.Min(Math.Max(blockIndex, 0), TotalBlocks - 1);
 
-            if (blockIndex < 0 || blockIndex >= TotalBlocks) return;
+            // Remember previous status for error counting
+            var prevStatus = Blocks[blockIndex];
 
-            for (int i = BlocksCompleted; i <= blockIndex; i++)
+            if (isWritePhase)
             {
-                if (i == blockIndex)
+                // Normal write progression: update newly completed blocks from previous completed index up to current
+                for (int i = BlocksCompleted; i <= blockIndex; i++)
                 {
-                    // currently processing this block
-                    Blocks[i] = hasError ? BlockStatus.Error : BlockStatus.InProgress;
+                    if (i == blockIndex)
+                    {
+                        // currently processing this block
+                        Blocks[i] = hasError ? BlockStatus.Error : BlockStatus.InProgress;
+                    }
+                    else
+                    {
+                        // completed blocks
+                        if (Blocks[i] == BlockStatus.InProgress)
+                        {
+                            Blocks[i] = hasError ? BlockStatus.Error : BlockStatus.WriteOk;
+                        }
+                        else if (Blocks[i] == BlockStatus.NotTested)
+                        {
+                            Blocks[i] = BlockStatus.WriteOk;
+                        }
+                    }
                 }
-                else if (i < blockIndex)
+                BlocksCompleted = Math.Max(BlocksCompleted, blockIndex);
+            }
+            else
+            {
+                // Verify phase: verification starts from the beginning. Ensure previously written blocks are converted
+                // to ReadOk as they get verified. Iterate from 0..blockIndex so early blocks are converted even if
+                // BlocksCompleted was advanced during write phase.
+                for (int i = 0; i <= blockIndex; i++)
                 {
-                    // completed blocks: if previously in progress mark according to phase/result
-                    if (Blocks[i] == BlockStatus.InProgress)
+                    if (i == blockIndex)
                     {
-                        Blocks[i] = hasError ? BlockStatus.Error : (isWritePhase ? BlockStatus.WriteOk : BlockStatus.ReadOk);
+                        // currently processing this block during verify
+                        Blocks[i] = hasError ? BlockStatus.Error : BlockStatus.InProgress;
                     }
-                    else if (Blocks[i] == BlockStatus.NotTested)
+                    else
                     {
-                        Blocks[i] = isWritePhase ? BlockStatus.WriteOk : BlockStatus.ReadOk;
-                    }
+                        // mark verified blocks as ReadOk unless they already have an Error
+                        if (Blocks[i] == BlockStatus.Error)
+                            continue;
 
-                    // If we switched to verify phase, convert any WriteOk blocks to ReadOk so they turn green
-                    if (!isWritePhase && Blocks[i] == BlockStatus.WriteOk)
-                    {
                         Blocks[i] = BlockStatus.ReadOk;
                     }
                 }
+
+                // After converting verified blocks, ensure BlocksCompleted reflects at least the blockIndex
+                BlocksCompleted = Math.Max(BlocksCompleted, blockIndex);
             }
 
-            BlocksCompleted = Math.Max(BlocksCompleted, blockIndex);
-            if (hasError) BlocksWithErrors++;
+            // Only increment error count when we transitioned a block to Error now
+            if ((Blocks[blockIndex] == BlockStatus.Error) && prevStatus != BlockStatus.Error)
+            {
+                BlocksWithErrors++;
+            }
+
             CurrentBlockIndex = blockIndex;
         }
 
