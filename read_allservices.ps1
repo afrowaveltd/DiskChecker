@@ -1,0 +1,1 @@
+Get-Content 'E:\C#\DiskChecker\DiskChecker.UI.Avalonia\Services\Interfaces\IAllServices.cs' | Out-String

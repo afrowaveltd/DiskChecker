@@ -1,0 +1,16 @@
+Package: diskchecker
+Version: 1.0.0
+Section: utils
+Priority: optional
+Architecture: amd64
+Depends: libicu72 (>= 72.0), libssl3 (>= 3.0.0), libglib2.0-0 (>= 2.68.0)
+Maintainer: DiskChecker <info@diskchecker.org>
+Description: Cross-platform disk diagnostics and SMART analysis tool
+ DiskChecker is a comprehensive disk diagnostics tool that provides:
+  - SMART data analysis and health monitoring
+  - Surface testing with performance benchmarking
+  - Detailed disk information and quality ratings
+  - Export reports in multiple formats (PDF, CSV, JSON)
+  - Beautiful cross-platform UI (Windows, Linux)
+ .
+ This package contains the Avalonia-based Linux application.

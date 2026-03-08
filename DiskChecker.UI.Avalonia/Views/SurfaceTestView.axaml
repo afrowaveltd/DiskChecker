@@ -1,0 +1,223 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:DiskChecker.UI.Avalonia.ViewModels"
+             x:Class="DiskChecker.UI.Avalonia.Views.SurfaceTestView"
+             x:DataType="vm:SurfaceTestViewModel"
+             Background="{DynamicResource ThemeBackgroundBrush}">
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+
+        <!-- ========== HEADER ========== -->
+        <Border Grid.Row="0" Background="{DynamicResource ThemePanelBrush}" BorderBrush="{DynamicResource ThemeBorderBrush}" BorderThickness="0,0,0,1" Padding="20">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+
+                <StackPanel Grid.Column="0">
+                    <TextBlock Text="🧪 Test Povrchu Disku" 
+                               FontSize="28" FontWeight="Bold" Foreground="#1a1a1a" Margin="0,0,0,5"/>
+                    <TextBlock Text="Kompletní zápis a ověření celého povrchu disku" 
+                               FontSize="13" Foreground="#444444"/>
+                    <TextBlock Text="{Binding StatusMessage}" FontSize="11" Foreground="#333333" Margin="0,4,0,0"/>
+                </StackPanel>
+
+                <Button Grid.Column="1"
+                        Content="🏠 Zpět"
+                        Command="{Binding $parent[UserControl].DataContext.NavigationService.NavigateToDiskSelectionCommand}"
+                        Background="#666666"
+                        Foreground="White"
+                        VerticalAlignment="Center"/>
+            </Grid>
+        </Border>
+
+        <!-- ========== DISK INFO ========== -->
+        <Border Grid.Row="1" Background="{DynamicResource ThemePanelBrush}" BorderBrush="{DynamicResource ThemeBorderBrush}" BorderThickness="1" Margin="20,12,20,0" Padding="15">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="2*"/>
+                    <ColumnDefinition Width="1*"/>
+                </Grid.ColumnDefinitions>
+
+                <StackPanel Grid.Column="0">
+                    <TextBlock Text="{Binding SelectedDrive.Name}" 
+                               FontSize="16" FontWeight="Bold" Foreground="#1A1A1A" Margin="0,0,0,4"/>
+                    <TextBlock Text="{Binding SelectedDrive.Path}" 
+                               FontSize="12" Foreground="#555555" Margin="0,0,0,4"/>
+                    <TextBlock Text="{Binding SelectedDrive.TotalSize, StringFormat='Kapacita: {0:N0} GB'}" 
+                               FontSize="12" Foreground="#333333"/>
+                </StackPanel>
+
+                <StackPanel Grid.Column="1" HorizontalAlignment="Right">
+                    <TextBlock Text="{Binding CurrentTemperature, StringFormat='Teplota: {0}°C'}" 
+                               FontSize="14" FontWeight="Bold" Foreground="#D32F2F" Margin="0,0,0,4"/>
+                    <TextBlock Text="{Binding ErrorCount, StringFormat='Chyby: {0}'}" 
+                               FontSize="14" FontWeight="Bold" Foreground="#E74C3C"/>
+                </StackPanel>
+            </Grid>
+        </Border>
+
+        <!-- ========== PROGRESS SECTION ========== -->
+        <Grid Grid.Row="2" Margin="20,12,20,12">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="2*"/>
+                <ColumnDefinition Width="1*"/>
+            </Grid.ColumnDefinitions>
+
+            <!-- Progress & Graphs -->
+            <Grid Grid.Column="0" Margin="0,0,10,0">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="*"/>
+                </Grid.RowDefinitions>
+
+                <!-- WRITE Progress -->
+                <StackPanel Grid.Row="0" Margin="0,0,0,10">
+                    <TextBlock Text="💾 ZÁPIS DAT (0-50%)" FontSize="12" FontWeight="Bold" Foreground="#333333" Margin="0,0,0,4"/>
+                    <ProgressBar Value="{Binding WriteProgress}" Maximum="50" 
+                                 Height="20" Background="#E6EAF0" Foreground="#27AE60"/>
+                    <TextBlock Text="{Binding WriteProgress, StringFormat='{}{0:F1}%'}" 
+                               HorizontalAlignment="Right" FontSize="10" Foreground="#27AE60"/>
+                </StackPanel>
+
+                <!-- VERIFY Progress -->
+                <StackPanel Grid.Row="1" Margin="0,0,0,10">
+                    <TextBlock Text="🔍 OVĚŘENÍ DAT (50-100%)" FontSize="12" FontWeight="Bold" Foreground="#333333" Margin="0,0,0,4"/>
+                    <ProgressBar Value="{Binding VerifyProgress}" Maximum="50" 
+                                 Height="20" Background="#E6EAF0" Foreground="#F39C12"/>
+                    <TextBlock Text="{Binding VerifyProgress, StringFormat='{}{0:F1}%'}" 
+                               HorizontalAlignment="Right" FontSize="10" Foreground="#F39C12"/>
+                </StackPanel>
+
+                <!-- Speed Graph -->
+                <Border Grid.Row="2" Background="{DynamicResource ThemePanelBrush}" BorderBrush="{DynamicResource ThemeBorderBrush}" BorderThickness="1" Padding="10">
+                    <Grid>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="*"/>
+                        </Grid.RowDefinitions>
+                        
+                        <TextBlock Grid.Row="0" Text="📈 Průběh rychlosti v čase" FontSize="12" FontWeight="Bold" Foreground="#333333" Margin="0,0,0,8"/>
+                        
+                        <!-- Placeholder for chart -->
+                        <Border Grid.Row="1" Background="#F8F9FA" BorderBrush="#DDDDDD" BorderThickness="1" CornerRadius="4">
+                            <TextBlock Text="Graf rychlosti (v reálné aplikaci by zde byl OxyPlot nebo jiný grafický komponent)" 
+                                       VerticalAlignment="Center" HorizontalAlignment="Center" 
+                                       TextAlignment="Center" TextWrapping="Wrap" 
+                                       FontSize="11" Foreground="#666666"/>
+                        </Border>
+                    </Grid>
+                </Border>
+            </Grid>
+
+            <!-- Test Profiles & Controls -->
+            <Grid Grid.Column="1" Margin="10,0,0,0">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="*"/>
+                    <RowDefinition Height="Auto"/>
+                </Grid.RowDefinitions>
+
+                <!-- Test Profiles -->
+                <Border Grid.Row="0" Background="{DynamicResource ThemePanelBrush}" BorderBrush="{DynamicResource ThemeBorderBrush}" BorderThickness="1" Padding="10" Margin="0,0,0,10">
+                    <StackPanel>
+                        <TextBlock Text="🎚️ Profily testů" FontSize="12" FontWeight="Bold" Foreground="#333333" Margin="0,0,0,8"/>
+                        <ItemsControl ItemsSource="{Binding TestProfiles}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <Border Background="{Binding IsSelected, Converter={StaticResource BooleanToBrushConverter}, ConverterParameter=Selected:#E3F2FD;Normal:#FFFFFF}" 
+                                            BorderBrush="{Binding IsSelected, Converter={StaticResource BooleanToBrushConverter}, ConverterParameter=Selected:#004B93;Normal:#CCCCCC}" 
+                                            BorderThickness="1" 
+                                            CornerRadius="4" 
+                                            Padding="10" 
+                                            Margin="0,0,0,5" 
+                                            Cursor="Hand">
+                                        <StackPanel>
+                                            <TextBlock Text="{Binding Name}" FontWeight="Bold" FontSize="11" Foreground="#1A1A1A"/>
+                                            <TextBlock Text="{Binding Description}" FontSize="10" Foreground="#666666"/>
+                                        </StackPanel>
+                                    </Border>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </StackPanel>
+                </Border>
+
+                <!-- Statistics -->
+                <Border Grid.Row="1" Background="{DynamicResource ThemePanelBrush}" BorderBrush="{DynamicResource ThemeBorderBrush}" BorderThickness="1" Padding="10" Margin="0,0,0,10">
+                    <StackPanel>
+                        <TextBlock Text="📊 Statistiky" FontSize="12" FontWeight="Bold" Foreground="#333333" Margin="0,0,0,8"/>
+                        <Grid Margin="0,0,0,4">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto"/>
+                                <ColumnDefinition Width="*"/>
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Grid.Column="0" Text="Aktuální rychlost:" FontSize="11" Foreground="#444444"/>
+                            <TextBlock Grid.Column="1" Text="{Binding CurrentSpeed, StringFormat='{}{0:F1} MB/s'}" FontSize="11" FontWeight="Bold" HorizontalAlignment="Right"/>
+                        </Grid>
+                        <Grid Margin="0,0,0,4">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto"/>
+                                <ColumnDefinition Width="*"/>
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Grid.Column="0" Text="Zbývající čas:" FontSize="11" Foreground="#444444"/>
+                            <TextBlock Grid.Column="1" Text="{Binding TimeRemaining}" FontSize="11" FontWeight="Bold" HorizontalAlignment="Right"/>
+                        </Grid>
+                        <Grid Margin="0,0,0,4">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto"/>
+                                <ColumnDefinition Width="*"/>
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Grid.Column="0" Text="Chyby:" FontSize="11" Foreground="#444444"/>
+                            <TextBlock Grid.Column="1" Text="{Binding ErrorCount}" FontSize="11" FontWeight="Bold" HorizontalAlignment="Right"/>
+                        </Grid>
+                    </StackPanel>
+                </Border>
+
+                <!-- Test Controls -->
+                <StackPanel Grid.Row="2" Orientation="Vertical">
+                    <Button Content="▶️ Spustit Test" 
+                            Command="{Binding StartTestCommand}"
+                            IsEnabled="{Binding !IsTesting}"
+                            Background="#27AE60" Foreground="White" 
+                            Padding="15,12" Margin="0,0,0,5">
+                        <Button.Styles>
+                            <Style Selector="Button">
+                                <Setter Property="BorderThickness" Value="0"/>
+                                <Setter Property="FontWeight" Value="Bold"/>
+                                <Setter Property="Cursor" Value="Hand"/>
+                            </Style>
+                        </Button.Styles>
+                    </Button>
+                    
+                    <Button Content="⏹️ Zrušit Test" 
+                            Command="{Binding CancelTestCommand}"
+                            IsEnabled="{Binding IsTesting}"
+                            Background="#E74C3C" Foreground="White" 
+                            Padding="15,12">
+                        <Button.Styles>
+                            <Style Selector="Button">
+                                <Setter Property="BorderThickness" Value="0"/>
+                                <Setter Property="FontWeight" Value="Bold"/>
+                                <Setter Property="Cursor" Value="Hand"/>
+                            </Style>
+                        </Button.Styles>
+                    </Button>
+                </StackPanel>
+            </Grid>
+        </Grid>
+
+        <!-- ========== STATUS BAR ========== -->
+        <TextBlock Grid.Row="3" Text="{Binding StatusMessage}" 
+                   Background="#F0F0F0" Padding="20,8" 
+                   FontSize="11" Foreground="#333333"
+                   TextTrimming="CharacterEllipsis"/>
+    </Grid>
+</UserControl>

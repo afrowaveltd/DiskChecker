@@ -102,17 +102,36 @@ public static class CertificateGeneratorExtensions
         sb.AppendLine(GetLine('-'));
         sb.AppendLine(GetCentered(t["test_result"]));
         sb.AppendLine(GetLine('-'));
-        sb.AppendLine($"Grade:         {rating.Grade}");
-        sb.AppendLine($"Score:         {rating.Score:F2}/100");
-        sb.AppendLine($"Summary:       {GetSummary(rating.Grade, t)}");
+        
+        // Use extension methods
+        var grade = QualityRatingExtensions.GetGrade(rating);
+        var score = QualityRatingExtensions.GetScore(rating);
+        var warningCount = QualityRatingExtensions.GetWarnings(rating);
+        
+        sb.AppendLine($"Grade:         {grade}");
+        sb.AppendLine($"Score:         {score:F2}/100");
+        sb.AppendLine($"Summary:       {GetSummary(grade, t)}");
         sb.AppendLine();
         
-        if (rating.Warnings.Count > 0)
+        // Show warnings based on SMART data issues
+        var warnings = new List<string>();
+        if (smartaData.ReallocatedSectorCount > 0)
+            warnings.Add($"Reallocated sectors: {smartaData.ReallocatedSectorCount}");
+        if (smartaData.PendingSectorCount > 0)
+            warnings.Add($"Pending sectors: {smartaData.PendingSectorCount}");
+        if (smartaData.UncorrectableErrorCount > 0)
+            warnings.Add($"Uncorrectable errors: {smartaData.UncorrectableErrorCount}");
+        if (smartaData.PowerOnHours > 20000)
+            warnings.Add($"High power on hours: {smartaData.PowerOnHours} h");
+        if (smartaData.Temperature > 50)
+            warnings.Add($"High temperature: {smartaData.Temperature}°C");
+        
+        if (warnings.Count > 0)
         {
             sb.AppendLine(GetLine('-'));
             sb.AppendLine(GetCentered(t["warnings"]));
             sb.AppendLine(GetLine('-'));
-            foreach (var warning in rating.Warnings)
+            foreach (var warning in warnings)
             {
                 sb.AppendLine($"* {warning}");
             }

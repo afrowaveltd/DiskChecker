@@ -8,7 +8,7 @@ public class TestReportData
     /// <summary>
     /// Gets or sets the SMART check result.
     /// </summary>
-    public SmartCheckResult SmartCheck { get; set; } = new();
+    public SmartCheckResult? SmartCheck { get; set; }
 
     /// <summary>
     /// Gets or sets the surface test result, if available.

@@ -100,26 +100,36 @@ public class SurfaceTestPersistenceService
          IsCompleted = result.CompletedAtUtc != default && result.ErrorCount >= 0
       };
 
-      foreach(var sample in result.Samples)
+   foreach(var sample in result.Samples)
+   {
+      testRecord.SurfaceSamples.Add(new SurfaceTestSampleRecord
       {
-         testRecord.SurfaceSamples.Add(new SurfaceTestSampleRecord
-         {
-            Id = Guid.NewGuid(),
-            TestId = testRecord.Id,
-            OffsetBytes = sample.OffsetBytes,
-            BlockSizeBytes = sample.BlockSizeBytes,
-            ThroughputMbps = sample.ThroughputMbps,
-            TimestampUtc = sample.TimestampUtc,
-            ErrorCount = sample.ErrorCount,
-            Test = testRecord
-         });
-      }
-
-      _dbContext.Tests.Add(testRecord);
-      await _dbContext.SaveChangesAsync(cancellationToken);
-
-      return testRecord.Id;
+         Id = Guid.NewGuid(),
+         TestId = testRecord.Id,
+         OffsetBytes = sample.OffsetBytes,
+         BlockSizeBytes = sample.BlockSizeBytes,
+         ThroughputMbps = sample.ThroughputMbps,
+         TimestampUtc = sample.TimestampUtc == default ? null : sample.TimestampUtc,
+         ErrorCount = sample.ErrorCount,
+         BytesProcessed = sample.OffsetBytes, // Use OffsetBytes as fallback
+         Test = testRecord
+      });
    }
+
+   _dbContext.Tests.Add(testRecord);
+   
+   try
+   {
+      await _dbContext.SaveChangesAsync(cancellationToken);
+   }
+   catch(Exception ex)
+   {
+      System.Diagnostics.Debug.WriteLine($"Failed to save surface test {testRecord.Id}: {ex.Message}");
+      throw;
+   }
+
+   return testRecord.Id;
+}
 
    /// <summary>
    /// Calculates quality grade for surface test based on error count and completion.

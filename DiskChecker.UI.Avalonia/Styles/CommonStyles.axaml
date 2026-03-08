@@ -1,0 +1,62 @@
+<Styles xmlns="https://github.com/avaloniaui"
+         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+         xmlns:dg="clr-namespace:Avalonia.Controls;assembly=Avalonia.Controls.DataGrid">
+
+  <!-- Common button style -->
+  <Style Selector="Button">
+    <Setter Property="Padding" Value="10,5" />
+    <Setter Property="Margin" Value="2" />
+    <Setter Property="CornerRadius" Value="3" />
+  </Style>
+
+  <!-- Primary button style -->
+  <Style Selector="Button.Primary">
+    <Setter Property="Background" Value="{DynamicResource ThemePrimaryBrush}" />
+    <Setter Property="Foreground" Value="White" />
+    <Setter Property="FontWeight" Value="Bold" />
+  </Style>
+
+  <!-- Danger button style -->
+  <Style Selector="Button.Danger">
+    <Setter Property="Background" Value="#E74C3C" />
+    <Setter Property="Foreground" Value="White" />
+    <Setter Property="FontWeight" Value="Bold" />
+  </Style>
+
+  <!-- Success button style -->
+  <Style Selector="Button.Success">
+    <Setter Property="Background" Value="#27AE60" />
+    <Setter Property="Foreground" Value="White" />
+    <Setter Property="FontWeight" Value="Bold" />
+  </Style>
+
+  <!-- Common textblock style -->
+  <Style Selector="TextBlock.Header">
+    <Setter Property="FontSize" Value="16" />
+    <Setter Property="FontWeight" Value="Bold" />
+    <Setter Property="Foreground" Value="#1a1a1a" />
+  </Style>
+
+  <!-- Common border style -->
+  <Style Selector="Border.Card">
+    <Setter Property="Background" Value="{DynamicResource ThemeCardBrush}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource ThemeBorderBrush}" />
+    <Setter Property="BorderThickness" Value="1" />
+    <Setter Property="Padding" Value="15" />
+    <Setter Property="Margin" Value="0,0,0,10" />
+  </Style>
+
+  <!-- Common progress bar style -->
+  <Style Selector="ProgressBar">
+    <Setter Property="Height" Value="20" />
+    <Setter Property="Margin" Value="0,5" />
+  </Style>
+
+  <!-- Common data grid style -->
+  <Style Selector="dg|DataGrid">
+    <Setter Property="HeadersVisibility" Value="Column" />
+    <Setter Property="IsReadOnly" Value="True" />
+    <Setter Property="AutoGenerateColumns" Value="False" />
+  </Style>
+
+</Styles>

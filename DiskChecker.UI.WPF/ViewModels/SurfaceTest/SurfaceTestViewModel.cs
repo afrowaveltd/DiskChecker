@@ -155,10 +155,10 @@ public partial class SurfaceTestViewModel : ViewModelBase, IDisposable
    private double gaugeMaxMbps = 500;
 
    [ObservableProperty]
-   private double writeNeedleAngle = -120;
+   private double writeNeedleAngle = -95;
 
    [ObservableProperty]
-   private double readNeedleAngle = -120;
+   private double readNeedleAngle = -95;
 
    [ObservableProperty]
    private int activeBlockCount;
@@ -435,11 +435,12 @@ public partial class SurfaceTestViewModel : ViewModelBase, IDisposable
    {
       if(maxMbps <= 0)
       {
-         return -120;
+         return -95;
       }
 
       double normalized = Math.Clamp(throughputMbps / maxMbps, 0, 1);
-      return -120 + (normalized * 240);
+      // Range from -95° (zero, left) to +85° (max, right) = 180° total sweep
+      return -95 + (normalized * 180);
    }
 
    /// <summary>
@@ -474,9 +475,9 @@ public partial class SurfaceTestViewModel : ViewModelBase, IDisposable
       ReadBytesProcessed = 0;
       CurrentWriteThroughputMbps = 0;
       CurrentReadThroughputMbps = 0;
-      GaugeMaxMbps = 500;
-      WriteNeedleAngle = -120;
-      ReadNeedleAngle = -120;
+      GaugeMaxMbps = 100; // Start with reasonable minimum
+      WriteNeedleAngle = -95; // Zero position (left)
+      ReadNeedleAngle = -95; // Zero position (left)
       _maxWriteSpeedMeasured = 0;
       _maxReadSpeedMeasured = 0;
       WriteSpeedStats = "Zápis: min/max/průměr -";

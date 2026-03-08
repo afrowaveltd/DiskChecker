@@ -173,7 +173,8 @@ public class LinuxSmartaProvider : ISmartaProvider, IAdvancedSmartaProvider
                 return null;
             }
 
-            return SmartctlJsonParser.Parse(output);
+            var result = SmartctlJsonParser.Parse(output);
+            return result != null ? SmartctlJsonParser.ToSmartaData(result) : null;
         }
         catch
         {

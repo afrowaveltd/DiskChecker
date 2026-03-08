@@ -1,0 +1,172 @@
+using System;
+using System.Collections.ObjectModel;
+using System.Threading.Tasks;
+using CommunityToolkit.Mvvm.ComponentModel;
+using CommunityToolkit.Mvvm.Input;
+using DiskChecker.Core.Models;
+using DiskChecker.UI.Avalonia.Services;
+
+namespace DiskChecker.UI.Avalonia.ViewModels;
+
+public partial class DiskSelectionViewModel : ViewModelBase, INavigableViewModel
+{
+    private readonly INavigationService _navigationService;
+    private string _loadingState = "Načítám disky...";
+    private bool _isBusy = true;
+    private string _statusMessage = "Připraven";
+    private CoreDriveInfo? _selectedDrive;
+
+    public DiskSelectionViewModel(INavigationService navigationService)
+    {
+        _navigationService = navigationService;
+        DiskCards = new ObservableCollection<DiskStatusCardItem>();
+        RecentTests = new ObservableCollection<TestHistoryItem>();
+    }
+
+    public ObservableCollection<DiskStatusCardItem> DiskCards { get; }
+    public ObservableCollection<TestHistoryItem> RecentTests { get; }
+
+    public string LoadingState
+    {
+        get => _loadingState;
+        set => SetProperty(ref _loadingState, value);
+    }
+
+    public bool IsBusy
+    {
+        get => _isBusy;
+        set => SetProperty(ref _isBusy, value);
+    }
+
+    public string StatusMessage
+    {
+        get => _statusMessage;
+        set => SetProperty(ref _statusMessage, value);
+    }
+
+    public CoreDriveInfo? SelectedDrive
+    {
+        get => _selectedDrive;
+        set => SetProperty(ref _selectedDrive, value);
+    }
+
+    public void OnNavigatedTo()
+    {
+        // Load data when navigated to
+        Task.Run(LoadDataAsync);
+    }
+
+    private async Task LoadDataAsync()
+    {
+        try
+        {
+            IsBusy = true;
+            LoadingState = "Načítám disky...";
+
+            // Simulate loading data
+            await Task.Delay(1000);
+
+            // In real implementation, this would load actual disk data
+            /*
+            var drives = await _diskCheckerService.ListDrivesAsync();
+            foreach (var drive in drives)
+            {
+                var smartData = await _diskCheckerService.GetDiskInfoAsync(drive.Path);
+                var quality = await _diskCheckerService.CalculateQualityAsync(drive.Path);
+                
+                var card = new DiskStatusCardItem
+                {
+                    Drive = drive,
+                    SmartData = smartData,
+                    Quality = quality,
+                    IsSelected = false
+                };
+                
+                DiskCards.Add(card);
+            }
+            */
+
+            // Add sample data for demonstration
+            DiskCards.Add(new DiskStatusCardItem
+            {
+                DisplayName = "Samsung SSD 860 EVO",
+                DisplayPath = "/dev/sda",
+                CapacityText = "500 GB",
+                GradeText = "A",
+                TemperatureText = "35°C",
+                IsSystemDisk = true,
+                IsSystemDiskLabel = "Systémový disk"
+            });
+
+            DiskCards.Add(new DiskStatusCardItem
+            {
+                DisplayName = "Western Digital Black",
+                DisplayPath = "/dev/sdb",
+                CapacityText = "1 TB",
+                GradeText = "B",
+                TemperatureText = "42°C",
+                IsSystemDisk = false
+            });
+
+            LoadingState = "Disky načteny";
+            StatusMessage = $"Načteno {DiskCards.Count} disků";
+        }
+        catch (Exception ex)
+        {
+            LoadingState = $"Chyba: {ex.Message}";
+            StatusMessage = "Nepodařilo se načíst disky";
+        }
+        finally
+        {
+            IsBusy = false;
+        }
+    }
+
+    [RelayCommand]
+    private async Task ReloadDisks()
+    {
+        DiskCards.Clear();
+        await LoadDataAsync();
+    }
+
+    [RelayCommand]
+    private void SelectDisk(DiskStatusCardItem card)
+    {
+        // Deselect all cards
+        foreach (var c in DiskCards)
+        {
+            c.IsSelected = false;
+        }
+
+        // Select clicked card
+        card.IsSelected = true;
+        SelectedDrive = card.Drive;
+        StatusMessage = $"Vybrán disk: {card.DisplayName}";
+    }
+}
+
+public class DiskStatusCardItem : ObservableObject
+{
+    private bool _isSelected;
+    private CoreDriveInfo? _drive;
+
+    public string DisplayName { get; set; } = string.Empty;
+    public string DisplayPath { get; set; } = string.Empty;
+    public string CapacityText { get; set; } = string.Empty;
+    public string GradeText { get; set; } = string.Empty;
+    public string TemperatureText { get; set; } = string.Empty;
+    public bool IsSystemDisk { get; set; }
+    public string IsSystemDiskLabel { get; set; } = string.Empty;
+
+    public bool IsSelected
+    {
+        get => _isSelected;
+        set => SetProperty(ref _isSelected, value);
+    }
+
+    public CoreDriveInfo? Drive
+    {
+        get => _drive;
+        set => SetProperty(ref _drive, value);
+    }
+}

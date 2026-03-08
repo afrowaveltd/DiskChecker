@@ -1,0 +1,30 @@
+#!/bin/bash
+# Post-installation script for DiskChecker
+
+set -e
+
+echo "Installing DiskChecker 1.0.0..."
+
+# Create application directory
+mkdir -p /opt/diskchecker
+mkdir -p /var/lib/diskchecker
+
+# Copy application files
+if [ -d "/usr/share/diskchecker" ]; then
+    cp -r /usr/share/diskchecker/* /opt/diskchecker/
+fi
+
+# Create symlink
+ln -sf /opt/diskchecker/DiskChecker.UI.Avalonia /usr/local/bin/diskchecker
+
+# Set permissions
+chmod +x /opt/diskchecker/DiskChecker.UI.Avalonia
+chmod 755 /var/lib/diskchecker
+
+# Copy desktop file
+if [ -f "/usr/share/applications/diskchecker.desktop" ]; then
+    cp /usr/share/applications/diskchecker.desktop ~/.local/share/applications/ 2>/dev/null || true
+fi
+
+echo "DiskChecker installed successfully!"
+echo "Run with: diskchecker"

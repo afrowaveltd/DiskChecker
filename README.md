@@ -1,90 +1,123 @@
 # DiskChecker
 
-Profesionální nástroj pro kontrolu a testování úložných zařízení s konzolovým i webovým rozhraním.
+Cross-platform disk diagnostics and SMART analysis tool with beautiful UI.
 
-## 🚀 Vlastnosti
+## Features
 
-- **SMART Data** - čtení technických parametrů disků (Windows i Linux)
-- **Kvalita disku** - automatické vyhodnocení A-F podle SMART atributů
-- **Certifikáty** - generování textových dokumentů s detailními výsledky
-- **Historie** - ukládání výsledků do SQLite databáze  
-- **Porovnávání** - srovnání více disků nebo opakovaných testů
-- **Bilingual** - čeština a angličtin s možností přepínání
+- **SMART Data Analysis** - Read and analyze SMART data from HDD/SSD
+- **Surface Testing** - Comprehensive disk performance and reliability testing
+- **Quality Ratings** - A-F grading system based on SMART attributes
+- **Multi-Platform UI** - Windows (WPF, Avalonia), Linux (Avalonia), Terminal
+- **Export Options** - PDF, CSV, JSON reports
+- **Email Notifications** - Send test reports via email
 
-## 📋 Podporovaná rozhraní
+## Supported Platforms
 
-- **Console UI** - pro TUI prostředí (Windows/Linux)
-- **Web UI** - Blazor Server + Kestrel pro přístup přes prohlížeč
-- **Avalonia UI** - WPF-like desktopová aplikace (připraveno)
+| Platform | UI Framework | Status |
+|----------|--------------|--------|
+| Windows 10/11 | WPF | ✅ Stable |
+| Windows 10/11 | Avalonia | ✅ Stable |
+| Linux (x64) | Avalonia | ✅ Stable |
+| Terminal | Spectre.Console | ✅ Stable |
 
-## 📋 Požadavky
+## Requirements
 
-- .NET 10 Runtime (nebo SDK pro vývoj)
-- Windows 10+ nebo Linux (Debian/Ubuntu s `smartctl`)
-- Práva pro čtení SMART dat (v Linuxu potřeba `smartmontools`)
+- .NET 10.0 Runtime (or self-contained builds)
+- Administrator/root privileges for SMART access
+- Linux: smartctl (smartmontools package)
 
-```bash
-# Linux installs
-sudo apt-get install smartmontools
+## Quick Start
+
+### Build from Source
+
+```powershell
+# Windows - Build all applications
+.\build.ps1 -Configuration Release -Platform All
+
+# Linux / macOS
+./build.sh
 ```
 
-## 🛠 Instalace a použití
+### Running the Application
 
-```bash
-git clone https://github.com/yourusername/DiskChecker.git
-cd DiskChecker
-dotnet build -c Release
+```powershell
+# Console Application
+.\publish\console\DiskChecker.UI.exe
+
+# WPF (Windows)
+.\publish\wpf\DiskChecker.UI.WPF.exe
+
+# Avalonia (Windows)
+.\publish\avalonia-win\DiskChecker.UI.Avalonia.exe
+
+# Avalonia (Linux)
+./publish/avalonia-linux-x64/DiskChecker.UI.Avalonia
 ```
 
-### Console UI (TUI)
-```bash
-dotnet run --project DiskChecker.UI
-```
-
-### Web UI (Blazor Server)
-```bash
-dotnet run --project DiskChecker.Web
-```
-
-Přejděte na `https://localhost:5001` nebo `http://localhost:5000`
-
-## 🏗 Architektura
+## Project Structure
 
 ```
 DiskChecker/
-├── Core/           # Modely, rozhraní, business logika
-├── Application/    # DTO, služby
-├── Infrastructure/ # EF Core, SMART čtečky, databáze
-├── UI/             # Konzolové rozhraní (Spectre.Console)
-├── Web/            # Blazor Server + Kestrel web UI
-└── Tests/          # Unit testy (xUnit + NSubstitute)
+├── DiskChecker.Core/          # Core models and interfaces
+├── DiskChecker.Application/   # Business logic services
+├── DiskChecker.Infrastructure/# Platform-specific implementations
+│   └── Hardware/             # SMART providers (Windows, Linux)
+├── DiskChecker.UI/            # Console application
+├── DiskChecker.UI.WPF/       # WPF desktop application
+├── DiskChecker.UI.Avalonia/  # Cross-platform Avalonia app
+└── installer/                # Installation packages
 ```
 
-## 🌐 Lokalizace
+## Database
 
-Podporuje češtinu a angličtinu. Všechny uživatelské texty jsou lokalizovatelné.
+All applications share the same SQLite database (`DiskChecker.db`) located in:
+- Windows: Application directory or `%APPDATA%\DiskChecker\`
+- Linux: Application directory or `~/.config/DiskChecker/`
 
-## 📄 Certifikáty
+## Building Installers
 
-Certifikáty jsou generovány v textové formě pro tisk a archivaci. Obsahují:
-- Identifikační údaje disku
-- SMART parametry
-- Kvalitní hodnocení (A-F)
-- Upozornění a doporučení
-- Časový stempel
+```powershell
+# Build all installers (requires build.ps1 to run first)
+.\build-installer.ps1 -Platform All
 
-## 📝 Licence
+# Windows only (requires Inno Setup)
+.\build-installer.ps1 -Platform Windows
 
-MIT - svobodný open-source software
+# Linux only
+.\build-installer.ps1 -Platform Linux
+```
 
-## 👨‍💻 Vývojáři
+### Installer Requirements
 
-- Vývoj v češtině pro české i mezinárodní komunitu
+- **Windows**: [Inno Setup](https://jrsoftware.org/isinfo.php) 6.x
+- **Linux DEB**: dpkg-deb
+- **Linux RPM**: rpmbuild
 
-## 🤝 Přispívání
+## Development
 
-Příspěvky Jsou VÍTANÉ! Prosím otevřete issue nebo pull request.
+```powershell
+# Build and run in development mode
+dotnet run --project DiskChecker.UI.Avalonia
 
----
+# Run tests
+dotnet test
 
-**DiskChecker** - vaše disková bezpečnost v terminálu i přes síť.
+# Clean build artifacts
+dotnet clean
+.\build.ps1 -Clean
+```
+
+## Configuration
+
+Edit `DiskChecker.UI/appsettings.json` to configure:
+- Email settings for report delivery
+- Logging levels
+- Database path
+
+## License
+
+MIT License - see LICENSE.txt for details.
+
+## Contributing
+
+Contributions are welcome! Please read our contributing guidelines before submitting pull requests.

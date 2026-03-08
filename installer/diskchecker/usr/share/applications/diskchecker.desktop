@@ -1,0 +1,10 @@
+[Desktop Entry]
+Name=DiskChecker
+Comment=Cross-platform disk diagnostics and SMART analysis tool
+Exec=/opt/diskchecker/DiskChecker.UI.Avalonia
+Icon=diskchecker
+Terminal=false
+Type=Application
+Categories=Utility;System;DiskManagement;
+Keywords=disk;smart;diagnostics;hdd;ssd;test;
+StartupWMClass=DiskChecker.UI.Avalonia

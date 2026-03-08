@@ -1,0 +1,202 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:DiskChecker.UI.Avalonia.ViewModels"
+             x:Class="DiskChecker.UI.Avalonia.Views.HistoryView"
+             Background="{DynamicResource ThemeBackgroundBrush}">
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+
+        <!-- ========== HEADER ========== -->
+        <Border Grid.Row="0" Background="{DynamicResource ThemePanelBrush}" BorderBrush="{DynamicResource ThemeBorderBrush}" BorderThickness="0,0,0,1" Padding="20">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+
+                <StackPanel Grid.Column="0">
+                    <TextBlock Text="📚 Historie testů" 
+                               FontSize="28" FontWeight="Bold" Foreground="#1a1a1a" Margin="0,0,0,5"/>
+                    <TextBlock Text="Archiv provedených diagnostik" 
+                               FontSize="13" Foreground="#444444"/>
+                    <TextBlock Text="{Binding StatusMessage}" FontSize="11" Foreground="#333333" Margin="0,4,0,0"/>
+                </StackPanel>
+
+                <Button Grid.Column="1"
+                        Content="🏠 Zpět"
+                        Command="{Binding $parent[UserControl].DataContext.NavigationService.NavigateToDiskSelectionCommand}"
+                        Background="#666666"
+                        Foreground="White"
+                        VerticalAlignment="Center"/>
+            </Grid>
+        </Border>
+
+        <!-- ========== MAIN CONTENT ========== -->
+        <Grid Grid.Row="1" Margin="20">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="1*"/>
+                <ColumnDefinition Width="2*"/>
+            </Grid.ColumnDefinitions>
+
+            <!-- ========== TEST LIST ========== -->
+            <Border Grid.Column="0" Background="{DynamicResource ThemePanelBrush}" BorderBrush="{DynamicResource ThemeBorderBrush}" BorderThickness="1" Margin="0,0,10,0" Padding="15">
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="*"/>
+                        <RowDefinition Height="Auto"/>
+                    </Grid.RowDefinitions>
+
+                    <TextBlock Grid.Row="0" Text="📋 Seznam testů" FontSize="16" FontWeight="Bold" Foreground="#1a1a1a" Margin="0,0,0,15"/>
+
+                    <ListBox Grid.Row="1" ItemsSource="{Binding Tests}" SelectedItem="{Binding SelectedTest}" Margin="0,0,0,15">
+                        <ListBox.ItemTemplate>
+                            <DataTemplate>
+                                <Grid Margin="0,5">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="Auto"/>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="Auto"/>
+                                    </Grid.ColumnDefinitions>
+                                    
+                                    <TextBlock Grid.Column="0" 
+                                               Text="{Binding TestType}" 
+                                               FontWeight="Bold" 
+                                               VerticalAlignment="Center"
+                                               Margin="0,0,10,0"/>
+                                    
+                                    <TextBlock Grid.Column="1" 
+                                               Text="{Binding DeviceName}" 
+                                               FontSize="12" 
+                                               Foreground="#444444"
+                                               VerticalAlignment="Center"/>
+                                    
+                                    <TextBlock Grid.Column="2" 
+                                               Text="{Binding TestDate, StringFormat='{}{0:dd.MM.yy}'}" 
+                                               FontSize="11" 
+                                               Foreground="#666666"
+                                               VerticalAlignment="Center"/>
+                                </Grid>
+                            </DataTemplate>
+                        </ListBox.ItemTemplate>
+                    </ListBox>
+
+                    <Button Grid.Row="2" Content="⟳ Obnovit" 
+                            Command="{Binding LoadTestsCommand}"
+                            IsEnabled="{Binding !IsLoading}"
+                            Background="#004B93" Foreground="White" 
+                            Padding="15,10">
+                        <Button.Styles>
+                            <Style Selector="Button">
+                                <Setter Property="BorderThickness" Value="0"/>
+                                <Setter Property="FontWeight" Value="Bold"/>
+                                <Setter Property="Cursor" Value="Hand"/>
+                            </Style>
+                        </Button.Styles>
+                    </Button>
+                </Grid>
+            </Border>
+
+            <!-- ========== TEST DETAILS ========== -->
+            <Grid Grid.Column="1" Margin="10,0,0,0">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="*"/>
+                    <RowDefinition Height="Auto"/>
+                </Grid.RowDefinitions>
+
+                <Border Grid.Row="0" Background="{DynamicResource ThemePanelBrush}" BorderBrush="{DynamicResource ThemeBorderBrush}" BorderThickness="1" Margin="0,0,0,10" Padding="15">
+                    <StackPanel>
+                        <TextBlock Text="{Binding SelectedTest.TestType}" FontSize="18" FontWeight="Bold" Foreground="#1a1a1a" Margin="0,0,0,10"/>
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto"/>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                                <ColumnDefinition Width="*"/>
+                            </Grid.ColumnDefinitions>
+                            
+                            <TextBlock Grid.Column="0" Text="_disk:" FontWeight="Bold" Margin="0,0,5,0"/>
+                            <TextBlock Grid.Column="1" Text="{Binding SelectedTest.DeviceName}" Margin="0,0,20,0"/>
+                            
+                            <TextBlock Grid.Column="2" Text="Datum:" FontWeight="Bold" Margin="0,0,5,0"/>
+                            <TextBlock Grid.Column="3" Text="{Binding SelectedTest.TestDate, StringFormat='{}{0:dd.MM.yyyy HH:mm}'}"/>
+                        </Grid>
+                        
+                        <Grid Margin="0,10,0,0">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto"/>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                                <ColumnDefinition Width="*"/>
+                            </Grid.ColumnDefinitions>
+                            
+                            <TextBlock Grid.Column="0" Text="Stav:" FontWeight="Bold" Margin="0,0,5,0"/>
+                            <TextBlock Grid.Column="1" Text="{Binding SelectedTest.Status}" Margin="0,0,20,0"/>
+                            
+                            <TextBlock Grid.Column="2" Text="Trvání:" FontWeight="Bold" Margin="0,0,5,0"/>
+                            <TextBlock Grid.Column="3" Text="{Binding SelectedTest.Duration}"/>
+                        </Grid>
+                    </StackPanel>
+                </Border>
+
+                <Border Grid.Row="1" Background="{DynamicResource ThemePanelBrush}" BorderBrush="{DynamicResource ThemeBorderBrush}" BorderThickness="1" Margin="0,0,0,10" Padding="15">
+                    <Grid>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="*"/>
+                        </Grid.RowDefinitions>
+
+                        <TextBlock Grid.Row="0" Text="📈 Výsledek" FontSize="16" FontWeight="Bold" Foreground="#1a1a1a" Margin="0,0,0,10"/>
+
+                        <ScrollViewer Grid.Row="1">
+                            <TextBlock Text="{Binding SelectedTest.ResultSummary}" 
+                                       TextWrapping="Wrap" 
+                                       FontSize="12"/>
+                        </ScrollViewer>
+                    </Grid>
+                </Border>
+
+                <StackPanel Grid.Row="2" Orientation="Horizontal">
+                    <Button Content="👁️ Zobrazit detaily" 
+                            Command="{Binding ViewDetailsCommand}"
+                            IsEnabled="{Binding SelectedTest}"
+                            Background="#27AE60" Foreground="White" 
+                            Padding="15,10" Margin="0,0,10,0">
+                        <Button.Styles>
+                            <Style Selector="Button">
+                                <Setter Property="BorderThickness" Value="0"/>
+                                <Setter Property="FontWeight" Value="Bold"/>
+                                <Setter Property="Cursor" Value="Hand"/>
+                            </Style>
+                        </Button.Styles>
+                    </Button>
+                    
+                    <Button Content="🗑️ Smazat" 
+                            Command="{Binding DeleteTestCommand}"
+                            IsEnabled="{Binding SelectedTest}"
+                            Background="#E74C3C" Foreground="White" 
+                            Padding="15,10">
+                        <Button.Styles>
+                            <Style Selector="Button">
+                                <Setter Property="BorderThickness" Value="0"/>
+                                <Setter Property="FontWeight" Value="Bold"/>
+                                <Setter Property="Cursor" Value="Hand"/>
+                            </Style>
+                        </Button.Styles>
+                    </Button>
+                </StackPanel>
+            </Grid>
+        </Grid>
+
+        <!-- ========== STATUS BAR ========== -->
+        <TextBlock Grid.Row="2" Text="{Binding StatusMessage}" 
+                   Background="#F0F0F0" Padding="20,8" 
+                   FontSize="11" Foreground="#333333"
+                   TextTrimming="CharacterEllipsis"/>
+    </Grid>
+</UserControl>

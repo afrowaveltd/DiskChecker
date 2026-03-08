@@ -1,0 +1,304 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:DiskChecker.UI.Avalonia.ViewModels"
+             x:Class="DiskChecker.UI.Avalonia.Views.SettingsView"
+             x:DataType="vm:SettingsViewModel"
+             Background="{DynamicResource ThemeBackgroundBrush}">
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+
+        <!-- ========== HEADER ========== -->
+        <Border Grid.Row="0" Background="{DynamicResource ThemePanelBrush}" BorderBrush="{DynamicResource ThemeBorderBrush}" BorderThickness="0,0,0,1" Padding="20">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+
+                <StackPanel Grid.Column="0">
+                    <TextBlock Text="⚙️ Nastavení" 
+                               FontSize="28" FontWeight="Bold" Foreground="#1a1a1a" Margin="0,0,0,5"/>
+                    <TextBlock Text="Konfigurace aplikace a systémová nastavení" 
+                               FontSize="13" Foreground="#444444"/>
+                    <TextBlock Text="{Binding StatusMessage}" FontSize="11" Foreground="#333333" Margin="0,4,0,0"/>
+                </StackPanel>
+
+                <Button Grid.Column="1"
+                        Content="🏠 Zpět"
+                        Command="{Binding $parent[UserControl].DataContext.NavigationService.NavigateToDiskSelectionCommand}"
+                        Background="#666666"
+                        Foreground="White"
+                        VerticalAlignment="Center"/>
+            </Grid>
+        </Border>
+
+        <!-- ========== MAIN CONTENT ========== -->
+        <ScrollViewer Grid.Row="1" Margin="20">
+            <StackPanel Spacing="15">
+                <!-- ========== GENERAL SETTINGS ========== -->
+                <Border Background="{DynamicResource ThemePanelBrush}" BorderBrush="{DynamicResource ThemeBorderBrush}" BorderThickness="1" Padding="15">
+                    <StackPanel>
+                        <TextBlock Text="🌐 Obecné nastavení" FontSize="16" FontWeight="Bold" Foreground="#1a1a1a" Margin="0,0,0,15"/>
+
+                        <CheckBox Content="Automaticky kontrolovat aktualizace" 
+                                  IsChecked="{Binding AutoCheckForUpdates}" 
+                                  Margin="0,0,0,10"/>
+
+                        <CheckBox Content="Spouštět při startu systému" 
+                                  IsChecked="{Binding RunAtStartup}" 
+                                  Margin="0,0,0,10"/>
+
+                        <CheckBox Content="Minimalizovat do lišty" 
+                                  IsChecked="{Binding MinimizeToTray}" 
+                                  Margin="0,0,0,15"/>
+
+                        <TextBlock Text=".interval automatického ukládání (minuty):" 
+                                   FontWeight="Bold" 
+                                   Margin="0,0,0,5"/>
+                        <NumericUpDown Value="{Binding AutoSaveInterval}" 
+                                       Minimum="1" 
+                                       Maximum="60" 
+                                       Width="100" 
+                                       HorizontalAlignment="Left"/>
+                    </StackPanel>
+                </Border>
+
+                <!-- ========== EXPORT SETTINGS ========== -->
+                <Border Background="{DynamicResource ThemePanelBrush}" BorderBrush="{DynamicResource ThemeBorderBrush}" BorderThickness="1" Padding="15">
+                    <StackPanel>
+                        <TextBlock Text="💾 Nastavení exportu" FontSize="16" FontWeight="Bold" Foreground="#1a1a1a" Margin="0,0,0,15"/>
+
+                        <TextBlock Text="Výchozí složka pro export:" 
+                                   FontWeight="Bold" 
+                                   Margin="0,0,0,5"/>
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+                            <TextBox Grid.Column="0" 
+                                     Text="{Binding DefaultExportPath}" 
+                                     Margin="0,0,10,0"/>
+                            <Button Grid.Column="1" 
+                                    Content="..."
+                                    Command="{Binding BrowseExportPathCommand}"
+                                    Padding="10,5"/>
+                        </Grid>
+                    </StackPanel>
+                </Border>
+
+                <!-- ========== LANGUAGE SETTINGS ========== -->
+                <Border Background="{DynamicResource ThemePanelBrush}" BorderBrush="{DynamicResource ThemeBorderBrush}" BorderThickness="1" Padding="15">
+                    <StackPanel>
+                        <TextBlock Text="🗣 Jazyk aplikace" FontSize="16" FontWeight="Bold" Foreground="#1a1a1a" Margin="0,0,0,15"/>
+
+                        <TextBlock Text="Jazyk:" 
+                                   FontWeight="Bold" 
+                                   Margin="0,0,0,5"/>
+                        <ComboBox SelectedItem="{Binding Language}" Width="200" HorizontalAlignment="Left">
+                            <ComboBoxItem Content="Čeština"/>
+                            <ComboBoxItem Content="English"/>
+                            <ComboBoxItem Content="Deutsch"/>
+                        </ComboBox>
+                    </StackPanel>
+                </Border>
+
+                <!-- ========== LOGGING SETTINGS ========== -->
+                <Border Background="{DynamicResource ThemePanelBrush}" BorderBrush="{DynamicResource ThemeBorderBrush}" BorderThickness="1" Padding="15">
+                    <StackPanel>
+                        <TextBlock Text="📝 Protokolování" FontSize="16" FontWeight="Bold" Foreground="#1a1a1a" Margin="0,0,0,15"/>
+
+                        <CheckBox Content="Povolit protokolování" 
+                                  IsChecked="{Binding EnableLogging}" 
+                                  Margin="0,0,0,10"/>
+
+                        <TextBlock Text="Úroveň protokolování:" 
+                                   FontWeight="Bold" 
+                                   Margin="0,0,0,5"/>
+                        <ComboBox SelectedItem="{Binding LogLevel}" Width="200" HorizontalAlignment="Left">
+                            <ComboBoxItem Content="Verbose"/>
+                            <ComboBoxItem Content="Information"/>
+                            <ComboBoxItem Content="Warning"/>
+                            <ComboBoxItem Content="Error"/>
+                        </ComboBox>
+                    </StackPanel>
+                </Border>
+
+                <!-- ========== BACKUP & RESTORE ========== -->
+                <Border Background="{DynamicResource ThemePanelBrush}" BorderBrush="{DynamicResource ThemeBorderBrush}" BorderThickness="1" Padding="15">
+                    <StackPanel>
+                        <TextBlock Text="💿 Záloha a obnova dat" FontSize="16" FontWeight="Bold" Foreground="#1a1a1a" Margin="0,0,0,15"/>
+                        
+                        <TextBlock Text="Vytvořte zálohu databáze a nastavení pro případ obnovy nebo přenosu na jiný počítač." 
+                                   TextWrapping="Wrap" Foreground="#555555" Margin="0,0,0,15"/>
+
+                        <!-- Backup Actions -->
+                        <Grid Margin="0,0,0,15">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+                            
+                            <StackPanel Grid.Column="0">
+                                <TextBlock Text="📦 Vytvořit zálohu" FontWeight="Bold"/>
+                                <TextBlock Text="Uloží aktuální databázi a nastavení do ZIP souboru" 
+                                           Foreground="#666666" FontSize="11"/>
+                            </StackPanel>
+                            
+                            <Button Grid.Column="1"
+                                    Content="➕ Vytvořit zálohu"
+                                    Command="{Binding CreateBackupCommand}"
+                                    IsEnabled="{Binding !IsSaving}"
+                                    Background="#3498DB" Foreground="White"
+                                    Padding="15,8">
+                                <Button.Styles>
+                                    <Style Selector="Button">
+                                        <Setter Property="BorderThickness" Value="0"/>
+                                        <Setter Property="FontWeight" Value="Bold"/>
+                                        <Setter Property="Cursor" Value="Hand"/>
+                                    </Style>
+                                </Button.Styles>
+                            </Button>
+                        </Grid>
+
+                        <Separator Margin="0,5"/>
+
+                        <!-- Restore Section -->
+                        <Grid Margin="0,15,0,0">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+                            
+                            <StackPanel Grid.Column="0">
+                                <TextBlock Text="📥 Obnovit ze zálohy" FontWeight="Bold"/>
+                                <TextBlock Text="Obnoví databázi a nastavení ze souboru zálohy" 
+                                           Foreground="#666666" FontSize="11"/>
+                            </StackPanel>
+                            
+                            <Button Grid.Column="1"
+                                    Content="🔁 Obnovit"
+                                    Command="{Binding RestoreBackupCommand}"
+                                    IsEnabled="{Binding !IsSaving}"
+                                    Background="#E67E22" Foreground="White"
+                                    Padding="15,8">
+                                <Button.Styles>
+                                    <Style Selector="Button">
+                                        <Setter Property="BorderThickness" Value="0"/>
+                                        <Setter Property="FontWeight" Value="Bold"/>
+                                        <Setter Property="Cursor" Value="Hand"/>
+                                    </Style>
+                                </Button.Styles>
+                            </Button>
+                        </Grid>
+
+                        <!-- Available Backups List -->
+                        <Border Background="#F8F9FA" BorderBrush="#DEE2E6" BorderThickness="1" 
+                                Padding="10" Margin="0,15,0,0">
+                            <StackPanel>
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="Auto"/>
+                                    </Grid.ColumnDefinitions>
+                                    
+                                    <TextBlock Grid.Column="0" Text="📁 Dostupné zálohy" FontWeight="Bold"/>
+                                    <Button Grid.Column="1"
+                                            Content="🔄"
+                                            Command="{Binding RefreshBackupsCommand}"
+                                            ToolTip.Tip="Obnovit seznam"
+                                            Background="Transparent"
+                                            Padding="5"/>
+                                </Grid>
+                                
+                                <TextBlock Text="{Binding DefaultBackupDirectory}" 
+                                           FontSize="10" Foreground="#888888" Margin="0,5,0,10"/>
+
+                                <!-- Backup List -->
+                                <ItemsControl ItemsSource="{Binding AvailableBackups}" MaxHeight="150">
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate>
+                                            <Border Background="White" BorderBrush="#DEE2E6" 
+                                                    BorderThickness="1" Padding="8" Margin="0,3">
+                                                <Grid>
+                                                    <Grid.ColumnDefinitions>
+                                                        <ColumnDefinition Width="Auto"/>
+                                                        <ColumnDefinition Width="*"/>
+                                                        <ColumnDefinition Width="Auto"/>
+                                                    </Grid.ColumnDefinitions>
+                                                    
+                                                    <RadioButton Grid.Column="0" 
+                                                                 GroupName="Backups"
+                                                                 IsChecked="{Binding $parent[ItemsControl].((vm:SettingsViewModel)DataContext).SelectedBackup, 
+                                                                            Converter={x:Static ObjectConverters.IsNotNull},
+                                                                            ConverterParameter={Binding}}"
+                                                                 Margin="0,0,8,0"/>
+                                                    
+                                                    <StackPanel Grid.Column="1">
+                                                        <TextBlock Text="{Binding FileName}" FontWeight="SemiBold"/>
+                                                        <TextBlock FontSize="10" Foreground="#666666">
+                                                            <TextBlock.Text>
+                                                                <MultiBinding StringFormat="{}{0:dd.MM.yyyy HH:mm} | {1:N0} B">
+                                                                    <Binding Path="CreatedAt"/>
+                                                                    <Binding Path="SizeBytes"/>
+                                                                </MultiBinding>
+                                                            </TextBlock.Text>
+                                                        </TextBlock>
+                                                    </StackPanel>
+                                                    
+                                                    <TextBlock Grid.Column="2" Text="{Binding Version}" 
+                                                               Foreground="#888888" FontSize="10" 
+                                                               VerticalAlignment="Center"/>
+                                                </Grid>
+                                            </Border>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+
+                                <TextBlock Text="Nevytvořen žádný backup" 
+                                           Foreground="#888888" FontStyle="Italic"
+                                           IsVisible="{Binding !AvailableBackups.Count}"/>
+                            </StackPanel>
+                        </Border>
+                    </StackPanel>
+                </Border>
+            </StackPanel>
+        </ScrollViewer>
+
+        <!-- ========== ACTION BUTTONS ========== -->
+        <Border Grid.Row="2" Background="{DynamicResource ThemePanelBrush}" BorderBrush="{DynamicResource ThemeBorderBrush}" BorderThickness="0,1,0,0" Padding="20">
+            <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                <Button Content="🔄 Resetovat" 
+                        Command="{Binding ResetSettingsCommand}"
+                        Background="#E74C3C" Foreground="White" 
+                        Padding="15,10" Margin="0,0,10,0">
+                    <Button.Styles>
+                        <Style Selector="Button">
+                            <Setter Property="BorderThickness" Value="0"/>
+                            <Setter Property="FontWeight" Value="Bold"/>
+                            <Setter Property="Cursor" Value="Hand"/>
+                        </Style>
+                    </Button.Styles>
+                </Button>
+                
+                <Button Content="💾 Uložit" 
+                        Command="{Binding SaveSettingsCommand}"
+                        IsEnabled="{Binding !IsSaving}"
+                        Background="#27AE60" Foreground="White" 
+                        Padding="15,10">
+                    <Button.Styles>
+                        <Style Selector="Button">
+                            <Setter Property="BorderThickness" Value="0"/>
+                            <Setter Property="FontWeight" Value="Bold"/>
+                            <Setter Property="Cursor" Value="Hand"/>
+                        </Style>
+                    </Button.Styles>
+                </Button>
+            </StackPanel>
+        </Border>
+    </Grid>
+</UserControl>

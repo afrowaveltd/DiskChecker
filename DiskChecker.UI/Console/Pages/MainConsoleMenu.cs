@@ -757,35 +757,49 @@ public class MainConsoleMenu
 
              result = await _surfaceTestService.RunAsync(request, progress, CancellationToken.None);
 
-             // Final update with actual error counts and final SMART data
-             if(result != null)
-             {
-                verifyErrors = result.ErrorCount;
-                try
-                {
-                   await smartDisplay.RefreshDataWithRetryAsync(drive);
-                   var refreshedSmartData = smartDisplay.CurrentSmartData;
-                   if(refreshedSmartData != null)
-                   {
-                      smartData = refreshedSmartData;
-                   }
-                }
-                catch { }
+              // Final update with actual error counts and final SMART data
+              if(result != null)
+              {
+                 verifyErrors = result.ErrorCount;
+                 try
+                 {
+                    await smartDisplay.RefreshDataWithRetryAsync(drive);
+                    var refreshedSmartData = smartDisplay.CurrentSmartData;
+                    if(refreshedSmartData != null)
+                    {
+                       smartData = refreshedSmartData;
+                       
+                       // Update SMART data in the result object for the report
+                       if(!string.IsNullOrWhiteSpace(smartData.DeviceModel))
+                          result.DriveModel = smartData.DeviceModel;
+                       if(!string.IsNullOrWhiteSpace(smartData.SerialNumber))
+                          result.DriveSerialNumber = smartData.SerialNumber;
+                       if(!string.IsNullOrWhiteSpace(smartData.ModelFamily))
+                          result.DriveManufacturer = smartData.ModelFamily;
+                       if(smartData.Temperature > 0)
+                          result.CurrentTemperatureCelsius = (int)Math.Round(smartData.Temperature, MidpointRounding.AwayFromZero);
+                       if(smartData.PowerOnHours > 0)
+                          result.PowerOnHours = smartData.PowerOnHours;
+                       if(smartData.ReallocatedSectorCount > 0)
+                          result.ReallocatedSectors = smartData.ReallocatedSectorCount;
+                    }
+                 }
+                 catch { }
 
-                if(smartData?.Temperature > 0)
-                {
-                   currentTemp = (int)Math.Round(smartData.Temperature, MidpointRounding.AwayFromZero);
-                   minTemp = Math.Min(minTemp, currentTemp);
-                   maxTemp = Math.Max(maxTemp, currentTemp);
-                }
+                 if(smartData?.Temperature > 0)
+                 {
+                    currentTemp = (int)Math.Round(smartData.Temperature, MidpointRounding.AwayFromZero);
+                    minTemp = Math.Min(minTemp, currentTemp);
+                    maxTemp = Math.Max(maxTemp, currentTemp);
+                 }
 
-                if(smartData?.PowerOnHours > 0)
-                {
-                   currentPowerOnHours = smartData.PowerOnHours;
-                }
+                 if(smartData?.PowerOnHours > 0)
+                 {
+                    currentPowerOnHours = smartData.PowerOnHours;
+                 }
 
-                writeBytes = maxBytesToTest;
-                verifyBytes = maxBytesToTest;
+                 writeBytes = maxBytesToTest;
+                 verifyBytes = maxBytesToTest;
                  writeProgress = 100;
                  verifyProgress = 100;
                  overallTestedBytes = maxBytesToTest;

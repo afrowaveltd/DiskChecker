@@ -1,0 +1,149 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:DiskChecker.UI.Avalonia.ViewModels"
+             x:Class="DiskChecker.UI.Avalonia.Views.AnalysisView"
+             x:DataType="vm:AnalysisViewModel"
+             Background="{DynamicResource ThemeBackgroundBrush}">
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+
+        <!-- ========== HEADER ========== -->
+        <Border Grid.Row="0" Background="{DynamicResource ThemePanelBrush}" BorderBrush="{DynamicResource ThemeBorderBrush}" BorderThickness="0,0,0,1" Padding="20">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+
+                <StackPanel Grid.Column="0">
+                    <TextBlock Text="🔬 Analýza povrchu" 
+                               FontSize="28" FontWeight="Bold" Foreground="#1a1a1a" Margin="0,0,0,5"/>
+                    <TextBlock Text="Komplexní kontrola fyzického stavu disku" 
+                               FontSize="13" Foreground="#444444"/>
+                    <TextBlock Text="{Binding StatusMessage}" FontSize="11" Foreground="#333333" Margin="0,4,0,0"/>
+                </StackPanel>
+
+                <Button Grid.Column="1"
+                        Content="🏠 Zpět"
+                        Command="{Binding $parent[UserControl].DataContext.NavigationService.NavigateToDiskSelectionCommand}"
+                        Background="#666666"
+                        Foreground="White"
+                        VerticalAlignment="Center"/>
+            </Grid>
+        </Border>
+
+        <!-- ========== MAIN CONTENT ========== -->
+        <Grid Grid.Row="1" Margin="20">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="1*"/>
+                <ColumnDefinition Width="2*"/>
+            </Grid.ColumnDefinitions>
+
+            <!-- ========== CONTROLS ========== -->
+            <Border Grid.Column="0" Background="{DynamicResource ThemePanelBrush}" BorderBrush="{DynamicResource ThemeBorderBrush}" BorderThickness="1" Margin="0,0,10,0" Padding="15">
+                <StackPanel>
+                    <TextBlock Text="⚙️ Nastavení testu" FontSize="16" FontWeight="Bold" Foreground="#1a1a1a" Margin="0,0,0,15"/>
+
+                    <CheckBox Content="Rychlý test (pouze důležité sektory)" IsChecked="True" Margin="0,0,0,10"/>
+                    <CheckBox Content="Detailní analýza (všechny sektory)" IsChecked="False" Margin="0,0,0,10"/>
+                    <CheckBox Content="Automatické opravy chyb" IsChecked="False" Margin="0,0,0,20"/>
+
+                    <TextBlock Text="📊 Priorita testu" FontSize="14" FontWeight="Bold" Foreground="#1a1a1a" Margin="0,0,0,10"/>
+                    <ComboBox SelectedIndex="1" Margin="0,0,0,20">
+                        <ComboBoxItem Content="Nízká (běží na pozadí)"/>
+                        <ComboBoxItem Content="Normální"/>
+                        <ComboBoxItem Content="Vysoká (může zpomalit systém)"/>
+                    </ComboBox>
+
+                    <Button Content="{Binding IsAnalyzing, StringFormat='{}{0:#,#} Analyzovat disk'}"
+                            Command="{Binding StartAnalysisCommand}"
+                            IsEnabled="{Binding IsAnalyzing, Converter={StaticResource InverseBooleanConverter}}"
+                            Background="#27AE60" Foreground="White" 
+                            Padding="15,10" Margin="0,0,0,10">
+                        <Button.Styles>
+                            <Style Selector="Button">
+                                <Setter Property="BorderThickness" Value="0"/>
+                                <Setter Property="FontWeight" Value="Bold"/>
+                                <Setter Property="Cursor" Value="Hand"/>
+                            </Style>
+                        </Button.Styles>
+                    </Button>
+
+                    <Button Content="⏹️ Zastavit analýzu"
+                            Command="{Binding CancelAnalysisCommand}"
+                            IsEnabled="{Binding IsAnalyzing}"
+                            Background="#E74C3C" Foreground="White" 
+                            Padding="15,10">
+                        <Button.Styles>
+                            <Style Selector="Button">
+                                <Setter Property="BorderThickness" Value="0"/>
+                                <Setter Property="FontWeight" Value="Bold"/>
+                                <Setter Property="Cursor" Value="Hand"/>
+                            </Style>
+                        </Button.Styles>
+                    </Button>
+                </StackPanel>
+            </Border>
+
+            <!-- ========== PROGRESS AND RESULTS ========== -->
+            <Grid Grid.Column="1" Margin="10,0,0,0">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="*"/>
+                </Grid.RowDefinitions>
+
+                <!-- ========== PROGRESS ========== -->
+                <Border Grid.Row="0" Background="{DynamicResource ThemePanelBrush}" BorderBrush="{DynamicResource ThemeBorderBrush}" BorderThickness="1" Margin="0,0,0,10" Padding="15">
+                    <StackPanel>
+                        <TextBlock Text="📈 Průběh analýzy" FontSize="16" FontWeight="Bold" Foreground="#1a1a1a" Margin="0,0,0,10"/>
+                        <ProgressBar Value="{Binding ProgressPercentage}" Minimum="0" Maximum="100" Height="20" Margin="0,0,0,10"/>
+                        <TextBlock Text="{Binding ProgressPercentage, StringFormat='{}{0}% dokončeno'}" 
+                                   HorizontalAlignment="Center" FontSize="12" FontWeight="Bold"/>
+                    </StackPanel>
+                </Border>
+
+                <!-- ========== RESULTS ========== -->
+                <Border Grid.Row="1" Background="{DynamicResource ThemePanelBrush}" BorderBrush="{DynamicResource ThemeBorderBrush}" BorderThickness="1" Padding="15">
+                    <Grid>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="*"/>
+                        </Grid.RowDefinitions>
+
+                        <TextBlock Grid.Row="0" Text="📋 Výsledky testu" FontSize="16" FontWeight="Bold" Foreground="#1a1a1a" Margin="0,0,0,10"/>
+
+                        <ScrollViewer Grid.Row="1">
+                            <ItemsControl ItemsSource="{Binding TestResults}">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate>
+                                        <Border BorderBrush="#d9cba6" BorderThickness="0,0,0,1" Padding="0,10">
+                                        <Grid>
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*"/>
+                                                <ColumnDefinition Width="Auto"/>
+                                            </Grid.ColumnDefinitions>
+                                            <TextBlock Grid.Column="0" Text="{Binding TestId}" FontWeight="Bold" VerticalAlignment="Center" Margin="0,0,10,0"/>
+                                            <TextBlock Grid.Column="1" Text="{Binding ErrorCount, StringFormat='Chyby: {0}'}" Foreground="#666666" FontSize="11" VerticalAlignment="Center"/>
+                                            <TextBlock Grid.Row="0" Grid.ColumnSpan="2" Text="{Binding Notes}" FontSize="11" Foreground="#333333" TextWrapping="Wrap" Margin="0,4,0,0"/>
+                                        </Grid>
+                                        </Border>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                        </ScrollViewer>
+                    </Grid>
+                </Border>
+            </Grid>
+        </Grid>
+
+        <!-- ========== STATUS BAR ========== -->
+        <TextBlock Grid.Row="2" Text="{Binding StatusMessage}" 
+                   Background="#F0F0F0" Padding="20,8" 
+                   FontSize="11" Foreground="#333333"
+                   TextTrimming="CharacterEllipsis"/>
+    </Grid>
+</UserControl>

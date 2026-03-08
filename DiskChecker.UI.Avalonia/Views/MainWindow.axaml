@@ -1,0 +1,117 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="using:DiskChecker.UI.Avalonia.ViewModels"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        mc:Ignorable="d" d:DesignWidth="1300" d:DesignHeight="700"
+        x:Class="DiskChecker.UI.Avalonia.Views.MainWindow"
+        x:DataType="vm:MainWindowViewModel"
+        Title="DiskChecker - Diagnóza Disků 🖴" 
+        Height="700" 
+        Width="1300"
+        WindowStartupLocation="CenterScreen"
+        Background="{DynamicResource ThemeBackgroundBrush}">
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="64"/>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="35"/>
+        </Grid.RowDefinitions>
+
+        <!-- ========== HEADER/TOOLBAR ========== -->
+        <Border Grid.Row="0" Background="{DynamicResource ThemePanelBrush}" BorderBrush="{DynamicResource ThemeBorderBrush}" BorderThickness="0,0,0,1">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+
+                <!-- Logo Area -->
+                <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center" Margin="20,0">
+                    <TextBlock Text="🖴" FontSize="30" Margin="0,0,10,0" VerticalAlignment="Center"/>
+                    <StackPanel VerticalAlignment="Center">
+                        <TextBlock Text="DiskChecker" FontSize="19" FontWeight="Bold" Foreground="{DynamicResource ThemePrimaryBrush}"/>
+                        <TextBlock Text="Profesionální Diagnóza Disků" FontSize="10" Foreground="#999999" Margin="0,-3,0,0"/>
+                    </StackPanel>
+                </StackPanel>
+
+                <!-- Navigation Menu -->
+                <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center" Margin="0,0,20,0">
+                    <Button Content="🏠 Přehled" 
+                            Command="{Binding NavigateToDiskSelectionCommand}"
+                            Background="Transparent" Foreground="#333333"
+                            Padding="15,20" BorderThickness="0"
+                            FontSize="12" FontWeight="SemiBold" Cursor="Hand"
+                            ToolTip.Tip="Vrátit se na přehled disků" />
+                    
+                    <Button Content="🧪 Test povrchu" 
+                            Command="{Binding NavigateToSurfaceTestCommand}"
+                            Background="Transparent" Foreground="#333333"
+                            Padding="15,20" BorderThickness="0"
+                            FontSize="12" FontWeight="SemiBold" Cursor="Hand"
+                            ToolTip.Tip="Spustit test povrchu disku" />
+                    
+                    <Button Content="🔧 SMART kontrola" 
+                            Command="{Binding NavigateToSmartCheckCommand}"
+                            Background="Transparent" Foreground="#333333"
+                            Padding="15,20" BorderThickness="0"
+                            FontSize="12" FontWeight="SemiBold" Cursor="Hand"
+                            ToolTip.Tip="Zobrazit SMART data" />
+
+                    <Button Content="📈 Analýza" 
+                            Command="{Binding NavigateToAnalysisCommand}"
+                            Background="Transparent" Foreground="#333333"
+                            Padding="15,20" BorderThickness="0"
+                            FontSize="12" FontWeight="SemiBold" Cursor="Hand"
+                            ToolTip.Tip="Trend disku v čase" />
+                    
+                    <Button Content="📄 Reporty" 
+                            Command="{Binding NavigateToReportCommand}"
+                            Background="Transparent" Foreground="#333333"
+                            Padding="15,20" BorderThickness="0"
+                            FontSize="12" FontWeight="SemiBold" Cursor="Hand"
+                            ToolTip.Tip="Zobrazit reporty" />
+                    
+                    <Button Content="📚 Historie" 
+                            Command="{Binding NavigateToHistoryCommand}"
+                            Background="Transparent" Foreground="#333333"
+                            Padding="15,20" BorderThickness="0"
+                            FontSize="12" FontWeight="SemiBold" Cursor="Hand"
+                            ToolTip.Tip="Historie testů" />
+                    
+                    <Separator Background="#E0E0E0" Width="1" Margin="5,10"/>
+                    
+                    <Button Content="⚙️ Nastavení" 
+                            Command="{Binding NavigateToSettingsCommand}"
+                            Background="Transparent" Foreground="#666666"
+                            Padding="15,20" BorderThickness="0"
+                            FontSize="12" FontWeight="SemiBold" Cursor="Hand"
+                            ToolTip.Tip="Nastavení aplikace" />
+                </StackPanel>
+            </Grid>
+        </Border>
+
+        <!-- ========== CONTENT AREA ========== -->
+        <Border Grid.Row="1" Background="{DynamicResource ThemeBackgroundBrush}" Margin="0">
+            <ContentControl Content="{Binding CurrentContent}"/>
+        </Border>
+
+        <!-- ========== STATUS BAR ========== -->
+        <Border Grid.Row="2" Background="#FAFBFD" BorderBrush="#D7E0EA" BorderThickness="0,1,0,0">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+
+                <TextBlock Grid.Column="0" Text="{Binding StatusMessage}" 
+                          Foreground="#4F5B66" VerticalAlignment="Center" Margin="10,0"
+                          FontSize="11" FontWeight="SemiBold"/>
+                
+                <TextBlock Grid.Column="1" Text="v1.0.0" 
+                          Foreground="#7A8794" VerticalAlignment="Center" Margin="10,0"
+                          FontSize="10" FontWeight="SemiBold"/>
+            </Grid>
+        </Border>
+    </Grid>
+</Window>

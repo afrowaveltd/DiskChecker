@@ -1,105 +1,70 @@
+using System;
+using System.Collections.Generic;
+
 namespace DiskChecker.Core.Models;
 
-public class SmartaData
+// Alias for backward compatibility
+public class SmartData : SmartCheckResult { }
+
+public enum QualityGrade { Unknown, A, B, C, D, E, F }
+
+public enum QualityRating
 {
-    public string? ModelFamily { get; set; }
-    public string? DeviceModel { get; set; }
-    public string? SerialNumber { get; set; }
-    public string? FirmwareVersion { get; set; }
-    public int PowerOnHours { get; set; }
-    public long ReallocatedSectorCount { get; set; }
-    public long PendingSectorCount { get; set; }
-    public long UncorrectableErrorCount { get; set; }
-    public double Temperature { get; set; }
-    public int? WearLevelingCount { get; set; }
-    public DateTime? LastChecked { get; set; }
+    APlus, A, B, C, D, E, F
 }
 
-public enum SmartaMaintenanceAction
+public static class QualityRatingExtensions
 {
-    EnableSmart,
-    DisableSmart,
-    EnableAutoSave,
-    DisableAutoSave,
-    RunOfflineDataCollection,
-    AbortSelfTest
-}
-
-public class CoreDriveInfo
-{
-    public string Path { get; set; } = string.Empty;
-    public string Name { get; set; } = string.Empty;
-    public long TotalSize { get; set; }
-    public long FreeSpace { get; set; }
-    public string FileSystem { get; set; } = string.Empty;
-}
-
-public enum QualityGrade
-{
-    A,
-    B,
-    C,
-    D,
-    E,
-    F
-}
-
-public class QualityRating
-{
-    public QualityGrade Grade { get; set; } = QualityGrade.C;
-    public double Score { get; set; }
-    public List<string> Warnings { get; set; } = new();
-}
-
-// <summary>
-// Represents the result of a SMART check for a single drive.
-// </summary>
-public class SmartCheckResult
-{
-    // <summary>
-    // Gets or sets the drive information used for the SMART check.
-    // </summary>
-    public CoreDriveInfo Drive { get; set; } = new();
-
-    // <summary>
-    // Gets or sets the captured SMART data snapshot.
-    // </summary>
-    public SmartaData SmartaData { get; set; } = new();
-
-    // <summary>
-    // Gets or sets the calculated quality rating.
-    // </summary>
-    public QualityRating Rating { get; set; } = new();
-
-    // <summary>
-    // Gets or sets the time when the SMART check was executed.
-    // </summary>
-    public DateTime TestDate { get; set; }
-
-    // <summary>
-    // Gets or sets the persisted test identifier.
-    // </summary>
-    public Guid TestId { get; set; }
-
-    /// <summary>
-    /// Gets or sets parsed SMART attributes when available.
-    /// </summary>
-    public IReadOnlyList<SmartaAttributeItem> Attributes { get; set; } = Array.Empty<SmartaAttributeItem>();
-
-    /// <summary>
-    /// Gets or sets current SMART self-test status.
-    /// </summary>
-    public SmartaSelfTestStatus? SelfTestStatus { get; set; }
-
-    /// <summary>
-    /// Gets or sets recent SMART self-test log entries.
-    /// </summary>
-    public IReadOnlyList<SmartaSelfTestEntry> SelfTestLog { get; set; } = Array.Empty<SmartaSelfTestEntry>();
+    public static QualityGrade GetGrade(QualityRating rating)
+    {
+        return rating switch
+        {
+            QualityRating.APlus => QualityGrade.A,
+            QualityRating.A => QualityGrade.B,
+            QualityRating.B => QualityGrade.C,
+            QualityRating.C => QualityGrade.D,
+            QualityRating.D => QualityGrade.E,
+            QualityRating.E => QualityGrade.F,
+            QualityRating.F => QualityGrade.F,
+            _ => QualityGrade.Unknown
+        };
+    }
+    
+    public static double GetScore(QualityRating rating)
+    {
+        return rating switch
+        {
+            QualityRating.APlus => 98,
+            QualityRating.A => 90,
+            QualityRating.B => 80,
+            QualityRating.C => 70,
+            QualityRating.D => 60,
+            QualityRating.E => 50,
+            QualityRating.F => 30,
+            _ => 0
+        };
+    }
+    
+    public static int GetWarnings(QualityRating rating)
+    {
+        return rating switch
+        {
+            QualityRating.APlus => 0,
+            QualityRating.A => 0,
+            QualityRating.B => 1,
+            QualityRating.C => 2,
+            QualityRating.D => 3,
+            QualityRating.E => 4,
+            QualityRating.F => 5,
+            _ => 0
+        };
+    }
 }
 
 public enum SmartaSelfTestType
 {
     Quick,
+    ShortTest,
     Extended,
     Conveyance,
     Selective,
@@ -107,125 +72,216 @@ public enum SmartaSelfTestType
     Abort
 }
 
+public enum SmartaMaintenanceAction
+{
+    EnableSmart,
+    DisableSmart,
+    RunSelfTest,
+    ClearPendingSectors,
+    Rescan,
+    EnableAutoSave,
+    DisableAutoSave,
+    RunOfflineDataCollection,
+    AbortSelfTest
+}
+
 public class SmartaAttributeItem
 {
     public int Id { get; set; }
-    public string Name { get; set; } = string.Empty;
-    public int? Current { get; set; }
-    public int? Worst { get; set; }
-    public int? Threshold { get; set; }
-    public long RawValue { get; set; }
+    public string? Name { get; set; }
+    public byte Value { get; set; }
+    public byte Worst { get; set; }
+    public uint RawValue { get; set; }
+    public int Threshold { get; set; }
+    public bool IsOk { get; set; }
+    public byte Current { get; set; }
     public string? WhenFailed { get; set; }
-
-    /// <summary>
-    /// Indicates whether this SMART attribute should be treated as critical in UI.
-    /// </summary>
-    public bool IsCritical
-    {
-        get
-        {
-            if (Current.HasValue && Threshold.HasValue && Current.Value <= Threshold.Value)
-            {
-                return true;
-            }
-
-            if (RawValue <= 0)
-            {
-                return false;
-            }
-
-            return Id is 5 or 197 or 198;
-        }
-    }
 }
 
-public class SmartaSelfTestStatus
+public enum SmartaSelfTestStatus
+{
+    None,
+    Passed,
+    Aborted,
+    Interrupted,
+    Fatal,
+    CompletedUnknownFailure,
+    ElectricalFailure,
+    ServoFailure,
+    ReadFailure,
+    HandlingDamage,
+    Unknown,
+    Running
+}
+
+public class SmartctlSelfTestStatus
 {
     public bool IsRunning { get; set; }
     public string StatusText { get; set; } = string.Empty;
-    public int? RemainingPercent { get; set; }
-    public DateTime CheckedAtUtc { get; set; } = DateTime.UtcNow;
+    public int RemainingPercent { get; set; }
+    public DateTime? CheckedAtUtc { get; set; }
 }
 
 public class SmartaSelfTestEntry
 {
-    public int? Number { get; set; }
-    public string TestType { get; set; } = string.Empty;
-    public string Status { get; set; } = string.Empty;
-    public int? RemainingPercent { get; set; }
-    public int? LifeTimeHours { get; set; }
-    public long? LbaOfFirstError { get; set; }
+    public int Number { get; set; }
+    public SmartaSelfTestType Type { get; set; }
+    public SmartaSelfTestStatus Status { get; set; }
+    public int RemainingPercent { get; set; }
+    public DateTime? Timestamp { get; set; }
+    public string? Note { get; set; }
+    public int LifeTimeHours { get; set; }
+    public ulong LbaOfFirstError { get; set; }
 }
 
-public class SmartaSelfTestReport
+public class SmartCheckResult
 {
-    public SmartaSelfTestType RequestedTestType { get; set; }
-    public bool Completed { get; set; }
-    public bool Passed { get; set; }
-    public string Summary { get; set; } = string.Empty;
-    public DateTime StartedAtUtc { get; set; } = DateTime.UtcNow;
-    public DateTime FinishedAtUtc { get; set; } = DateTime.UtcNow;
-    public IReadOnlyList<SmartaSelfTestEntry> RecentEntries { get; set; } = Array.Empty<SmartaSelfTestEntry>();
+    public bool IsEnabled { get; set; }
+    public bool IsHealthy { get; set; }
+    public bool TestPassed { get; set; }
+    public int PowerOnHours { get; set; }
+    public long ReallocatedSectorCount { get; set; }
+    public long PendingSectorCount { get; set; }
+    public long UncorrectableErrorCount { get; set; }
+    public double Temperature { get; set; }
+    public int? WearLevelingCount { get; set; }
+    public List<SmartaAttributeItem> Attributes { get; set; } = new();
+    public List<SmartaSelfTestEntry> SelfTests { get; set; } = new();
+    public SmartctlSelfTestStatus? CurrentSelfTest { get; set; }
 }
 
-public class TemperatureHistoryPoint
+public class SmartaData
 {
-    public DateTime TimestampUtc { get; set; }
-    public double TemperatureCelsius { get; set; }
+    public string? DeviceModel { get; set; }
+    public string? ModelFamily { get; set; }
+    public string? SerialNumber { get; set; }
+    public string? FirmwareVersion { get; set; }
+    public string? Capacity { get; set; }
+    public bool IsRotational { get; set; }
+    public bool SmartEnabled { get; set; }
+    public bool SmartHealthy { get; set; }
+    public int PowerOnHours { get; set; }
+    public long ReallocatedSectorCount { get; set; }
+    public long PendingSectorCount { get; set; }
+    public long UncorrectableErrorCount { get; set; }
+    public double Temperature { get; set; }
+    public int? WearLevelingCount { get; set; }
+    public List<SmartaAttributeItem> Attributes { get; set; } = new();
+    public List<SmartaSelfTestEntry> SelfTests { get; set; } = new();
+    public string? Vendor { get; set; }
+    public string? Product { get; set; }
+    public string? Revision { get; set; }
+    public string? Compliance { get; set; }
+    public string? UserCapacity { get; set; }
+    public string? SectorSizes { get; set; }
+    public string? FormFactor { get; set; }
+    public string? RotationRate { get; set; }
+    public string? LogicalModelId { get; set; }
+    public string? PhysicalModelId { get; set; }
+    public string? TestDate { get; set; }
 }
 
-public class SpeedSample
+public class CoreDriveInfo
 {
-    public long OffsetBytes { get; set; }
-    public int BlockSizeBytes { get; set; }
-    public double ThroughputMbps { get; set; }
-    public DateTime TimestampUtc { get; set; }
-    public int ErrorCount { get; set; }
-}
+    public string Path { get; set; } = string.Empty;
+    public string Name { get; set; } = string.Empty;
+    public long TotalSize { get; set; }
+    public string? VolumeInfo { get; set; }
+    public string? FileSystem { get; set; }
+    public bool IsSystemDisk { get; set; }
 
-public class TestHistoryItem
+
+// Email settings record
+public class EmailSettingsRecord
 {
-    public Guid TestId { get; set; }
-    public Guid DriveId { get; set; }
-    public string DriveName { get; set; } = string.Empty;
-    public string DrivePath { get; set; } = string.Empty;
-    public string SerialNumber { get; set; } = string.Empty;
-    public DateTime TestDate { get; set; }
-    public string TestType { get; set; } = string.Empty;
-    public QualityGrade Grade { get; set; }
-    public double Score { get; set; }
-    public double AverageSpeed { get; set; }
-    public double PeakSpeed { get; set; }
-    public double MinSpeed { get; set; }
-    public long TotalBytesTested { get; set; }
-    public int ErrorCount { get; set; }
-    public SmartaData? SmartaData { get; set; }
-    public IReadOnlyList<SpeedSample>? SurfaceSamples { get; set; }
+    public Guid Id { get; set; }
+    public string? SmtpServer { get; set; }
+    public int SmtpPort { get; set; } = 587;
+    public string? SmtpUsername { get; set; }
+    public string? SmtpPassword { get; set; }
+    public string? SenderEmail { get; set; }
+    public string? SenderName { get; set; }
+    public string? RecipientEmail { get; set; }
+    public bool IsEnabled { get; set; } = true;
 }
 
+// Paged result
 public class PagedResult<T>
 {
-    public IReadOnlyList<T> Items { get; set; } = Array.Empty<T>();
-    public int TotalItems { get; set; }
+    public List<T> Items { get; set; } = new();
+    public int TotalCount { get; set; }
+    public int PageNumber { get; set; }
     public int PageSize { get; set; }
-    public int PageIndex { get; set; }
-    public int TotalPages => (int)Math.Ceiling((double)TotalItems / PageSize);
+    public int TotalPages => (int)Math.Ceiling((double)TotalCount / PageSize);
+    public bool HasPreviousPage => PageNumber > 1;
+    public bool HasNextPage => PageNumber < TotalPages;
 }
 
+// Test record
+public class TestRecord
+{
+    public Guid Id { get; set; }
+    public string? SerialNumber { get; set; }
+    public string? Model { get; set; }
+    public DateTime TestDate { get; set; }
+    public string TestType { get; set; } = string.Empty;
+    public string Grade { get; set; } = string.Empty;
+    public int Score { get; set; }
+    public bool Passed { get; set; }
+    public string? Details { get; set; }
+}
+
+// SmartaSelfTestReport
+public class SmartaSelfTestReport
+{
+    public DateTime? TestStartTime { get; set; }
+    public DateTime? TestEndTime { get; set; }
+    public SmartaSelfTestType TestType { get; set; }
+    public SmartaSelfTestStatus Status { get; set; }
+    public int RemainingPercent { get; set; }
+    public string? Message { get; set; }
+}
+
+// Temperature history point
+public class TemperatureHistoryPoint
+{
+    public DateTime Timestamp { get; set; }
+    public double Temperature { get; set; }
+}
+
+// Speed sample
+public class SpeedSample
+{
+    public DateTime Timestamp { get; set; }
+    public double ReadSpeed { get; set; }
+    public double WriteSpeed { get; set; }
+}
+
+// Test history item
+public class TestHistoryItem
+{
+    public Guid Id { get; set; }
+    public DateTime TestDate { get; set; }
+    public string TestType { get; set; } = string.Empty;
+    public double Score { get; set; }
+    public string Grade { get; set; } = string.Empty;
+    public string? CertificatePath { get; set; }
+}
+
+// Compare item
 public class CompareItem
 {
     public string Label { get; set; } = string.Empty;
-    public string Value1 { get; set; } = string.Empty;
-    public string Value2 { get; set; } = string.Empty;
+    public string? Value { get; set; }
+    public string? PreviousValue { get; set; }
+    public string? Change { get; set; }
 }
 
+// Drive compare item
 public class DriveCompareItem
 {
-    public Guid DriveId { get; set; }
-    public string DriveName { get; set; } = string.Empty;
     public string SerialNumber { get; set; } = string.Empty;
     public string Model { get; set; } = string.Empty;
-    public int TotalTests { get; set; }
-    public DateTime? LastTestDate { get; set; }
-    public QualityGrade? LastGrade { get; set; }
+    public List<CompareItem> Items { get; set; } = new();
+}
 }

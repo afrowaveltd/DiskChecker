@@ -40,33 +40,40 @@ public partial class SurfaceTestViewModel
 
       _isUpdatingUi = true;
 
-      try
-      {
-         var progress = _latestProgress;
-         ProgressPercent = progress.PercentComplete;
-         CurrentThroughputMbps = progress.CurrentThroughputMbps;
+       try
+       {
+          var progress = _latestProgress;
+          ProgressPercent = progress.PercentComplete;
+          CurrentThroughputMbps = progress.CurrentThroughputMbps;
 
-         bool isWritePhase = progress.PercentComplete < 50;
-         if(isWritePhase)
-         {
-            WriteBytesProcessed = Math.Min(TotalBytes, Math.Max(0, progress.BytesProcessed));
-            ReadBytesProcessed = 0;
-            _maxWriteSpeedMeasured = Math.Max(_maxWriteSpeedMeasured, progress.CurrentThroughputMbps);
-         }
-         else
-         {
-            WriteBytesProcessed = TotalBytes;
-            ReadBytesProcessed = Math.Min(TotalBytes, Math.Max(0, progress.BytesProcessed));
-            _maxReadSpeedMeasured = Math.Max(_maxReadSpeedMeasured, progress.CurrentThroughputMbps);
-         }
+          bool isWritePhase = progress.PercentComplete < 50;
+          if(isWritePhase)
+          {
+             // Write phase (0-50%)
+             WriteBytesProcessed = Math.Min(TotalBytes, Math.Max(0, progress.BytesProcessed));
+             ReadBytesProcessed = 0;
+             _maxWriteSpeedMeasured = Math.Max(_maxWriteSpeedMeasured, progress.CurrentThroughputMbps);
+          }
+          else
+          {
+             // Verify phase (50-100%)
+             // In verify phase, we've already written all data, now reading it back
+             WriteBytesProcessed = TotalBytes;
+             // For display purposes, show how much we've read so far in the verify phase
+             double verifyProgress = (progress.PercentComplete - 50.0) * 2.0; // Scale 50-100% to 0-100%
+             ReadBytesProcessed = (long)(TotalBytes * verifyProgress / 100.0);
+             ReadBytesProcessed = Math.Min(TotalBytes, Math.Max(0, ReadBytesProcessed));
+             _maxReadSpeedMeasured = Math.Max(_maxReadSpeedMeasured, progress.CurrentThroughputMbps);
+          }
 
-         BytesProcessed = Math.Min(WriteBytesProcessed + ReadBytesProcessed, TotalBytes * 2);
+          // For overall progress display, show bytes processed in current phase
+          BytesProcessed = isWritePhase ? WriteBytesProcessed : ReadBytesProcessed;
 
          CurrentWriteThroughputMbps = isWritePhase ? progress.CurrentThroughputMbps : 0;
          CurrentReadThroughputMbps = isWritePhase ? 0 : progress.CurrentThroughputMbps;
 
-         double observedMax = Math.Max(_maxWriteSpeedMeasured, _maxReadSpeedMeasured);
-         GaugeMaxMbps = observedMax <= 0 ? 100 : Math.Ceiling(observedMax * 1.15);
+          double observedMax = Math.Max(_maxWriteSpeedMeasured, _maxReadSpeedMeasured);
+          GaugeMaxMbps = observedMax <= 0 ? 100 : Math.Ceiling(observedMax * 1.10); // Max + 10% reserve
 
          UpdateBandState(true, CurrentWriteThroughputMbps);
          UpdateBandState(false, CurrentReadThroughputMbps);
@@ -116,39 +123,78 @@ public partial class SurfaceTestViewModel
       }
    }
 
-   /// <summary>
-   /// Throttlovaná vizualizace bloků - update každých 5%.
-   /// </summary>
-   private void UpdateBlockVisualizationThrottled(SurfaceTestProgress progress)
-   {
-      int visualizableCount = Math.Max(_activeBlockCount, 1);
-      int percentRounded = (int)(progress.PercentComplete / 5) * 5;
-      int targetBlockIndex = (int)(percentRounded / 100.0 * visualizableCount);
+    /// <summary>
+    /// Throttlovaná vizualizace bloků - klasický scandisk styl.
+    /// 1000 bloků (10x100), write fáze barví modře, verify fáze přepisuje na zelenou.
+    /// </summary>
+    private void UpdateBlockVisualizationThrottled(SurfaceTestProgress progress)
+    {
+       if(_activeBlockCount <= 0)
+          return;
 
-      for(int i = 0; i < _activeBlockCount && i <= targetBlockIndex; i++)
-      {
-         int newStatus;
-         if(i < targetBlockIndex * 0.5)
-         {
-            newStatus = 2; // Write OK (blue)
-         }
-         else if(i < targetBlockIndex)
-         {
-            newStatus = 3; // Read OK (green)
-         }
-         else if(i == targetBlockIndex)
-         {
-            newStatus = 1; // Currently processing
-         }
-         else
-         {
-            continue;
-         }
+       // Vypočítat index aktálního bloku (0 až TotalVisualBlocks-1)
+       // PercentComplete: 0-50% = write, 50-100% = verify
+       // Každá fáze pokrývá všech 1000 bloků
+       double phasePercent;
+       bool isWritePhase = progress.PercentComplete < 50;
+       
+       if(isWritePhase)
+       {
+          // Write fáze: 0-50% → mapovat na 0-100% write průběh
+          phasePercent = progress.PercentComplete * 2.0; // 0-50% → 0-100%
+       }
+       else
+       {
+          // Verify fáze: 50-100% → mapovat na 0-100% verify průběh
+          phasePercent = (progress.PercentComplete - 50.0) * 2.0; // 50-100% → 0-100%
+       }
 
-         if(Blocks[i].Status != newStatus)
-         {
-            Blocks[i].Status = newStatus;
-         }
-      }
-   }
+       int currentBlockIndex = (int)(phasePercent / 100.0 * _activeBlockCount);
+       currentBlockIndex = Math.Min(Math.Max(currentBlockIndex, 0), _activeBlockCount - 1);
+
+       if(isWritePhase)
+       {
+          // WRITE FÁZE: barvím modře (Status = 2)
+          for(int i = 0; i < _activeBlockCount; i++)
+          {
+             if(i < currentBlockIndex)
+             {
+                // Už zapsáno - modrá
+                if(Blocks[i].Status != 4) // Nepřepisovat chyby
+                   Blocks[i].Status = 2; // WriteOk (modrá)
+             }
+             else if(i == currentBlockIndex)
+             {
+                // Právě zapisuji - oranžová
+                Blocks[i].Status = 1; // InProgress (oranžová)
+             }
+             // else: ještě nezapsáno - šedá (Status = 0)
+          }
+       }
+       else
+       {
+          // VERIFY FÁZE: přepisuji modrou na zelenou (Status = 3)
+          for(int i = 0; i < _activeBlockCount; i++)
+          {
+             if(i < currentBlockIndex)
+             {
+                // Už ověřeno - zelená
+                if(Blocks[i].Status != 4) // Nepřepisovat chyby
+                   Blocks[i].Status = 3; // ReadOk (zelená)
+             }
+             else if(i == currentBlockIndex)
+             {
+                // Právě ověřuji - oranžová
+                Blocks[i].Status = 1; // InProgress (oranžová)
+             }
+             else
+             {
+                // Ještě neověřeno - zůstává modrá (Status = 2)
+                // Pouze pokud ještě není zapsáno (pro jistotu)
+                if(Blocks[i].Status == 0) // Netestováno
+                   Blocks[i].Status = 0; // Zůstává netestované
+             }
+          }
+       }
+    }
 }

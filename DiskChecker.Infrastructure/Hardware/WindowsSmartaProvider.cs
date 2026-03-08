@@ -4,6 +4,7 @@ using System.ComponentModel;
 using DiskChecker.Core.Interfaces;
 using DiskChecker.Core.Models;
 using Microsoft.Extensions.Logging;
+using DiskChecker.Infrastructure.Hardware;
 
 namespace DiskChecker.Infrastructure.Hardware;
 
@@ -553,7 +554,9 @@ $res | ConvertTo-Json -Compress";
             var output = await process.StandardOutput.ReadToEndAsync(cancellationToken);
             await process.WaitForExitAsync(cancellationToken);
 
-            return string.IsNullOrWhiteSpace(output) ? null : SmartctlJsonParser.Parse(output);
+            if (string.IsNullOrWhiteSpace(output)) return null;
+            var result = SmartctlJsonParser.Parse(output);
+            return result != null ? SmartctlJsonParser.ToSmartaData(result) : null;
         }
         catch
         {
@@ -686,12 +689,19 @@ $result | ConvertTo-Json";
             var model = modelProp.GetString() ?? "Unknown";
             if (sizeProp.TryGetInt64(out var size))
             {
-                drives.Add(new CoreDriveInfo 
+                // CLEANUP_PATH_AND_VOLUME
+            // START_DISK_INFO
+            var cleanPath = deviceId.Replace("\\\\.\\", "").Replace("\\.\\", "");
+            drives.Add(new CoreDriveInfo 
                 { 
-                    Path = deviceId, 
+                    Path = cleanPath, 
                     Name = model,
-                    TotalSize = size
-                });
+                    TotalSize = size,
+                VolumeInfo = VolumeInfoHelper.GetVolumeInfo(cleanPath, null),
+                FileSystem = VolumeInfoHelper.GetFileSystem(cleanPath, null),
+                IsSystemDisk = VolumeInfoHelper.IsSystemDisk(cleanPath, null)
+            });
+
             }
         }
     }

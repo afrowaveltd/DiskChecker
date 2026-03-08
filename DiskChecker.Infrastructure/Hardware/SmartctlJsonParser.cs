@@ -1,541 +1,224 @@
+using System;
+using System.Collections.Generic;
+using System.Linq;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using DiskChecker.Core.Models;
 
 namespace DiskChecker.Infrastructure.Hardware;
 
-/// <summary>
-/// Parses SMART data from smartctl JSON output.
-/// </summary>
 public static class SmartctlJsonParser
 {
-    /// <summary>
-    /// Parses smartctl JSON output into <see cref="SmartaData"/>.
-    /// </summary>
-    public static SmartaData? Parse(string json)
+    public static SmartCheckResult? Parse(string json)
     {
-        if (string.IsNullOrWhiteSpace(json))
+        try
+        {
+            using var doc = JsonDocument.Parse(json);
+            return Parse(doc.RootElement);
+        }
+        catch
         {
             return null;
         }
-
+    }
+    
+    public static SmartCheckResult? Parse(JsonElement root)
+    {
         try
         {
-            using var document = JsonDocument.Parse(json);
-            var root = document.RootElement;
-
-            double? temperature = null;
-            if (root.TryGetProperty("temperature", out var tempElement))
+            if (!root.TryGetProperty("smartctl", out var smartctl) || 
+                !smartctl.TryGetProperty("smart_status", out var smartStatus))
             {
-                temperature = tempElement.TryGetProperty("current", out var currentTemp)
-                    ? GetDouble(currentTemp, null) ?? GetDouble(tempElement, "current")
-                    : GetDouble(tempElement, null);
+                return null;
             }
-
-            if (!temperature.HasValue && TryGetNestedProperty(root, out var ataTable, "ata_smart_attributes", "table") && ataTable.ValueKind == JsonValueKind.Array)
+            
+            var result = new SmartCheckResult
             {
-                foreach (var entry in ataTable.EnumerateArray())
-                {
-                    var id = GetInt(entry, "id");
-                    if ((id == 194 || id == 190) && entry.TryGetProperty("raw", out var raw) && raw.TryGetProperty("value", out var valueElement) && valueElement.TryGetInt32(out var tempValue))
-                    {
-                        temperature = tempValue;
-                        break;
-                    }
-                }
-            }
-
-            if (!temperature.HasValue && TryGetNestedProperty(root, out var nvmeTemperatureLog, "nvme_smart_health_information_log"))
-            {
-                temperature = GetDouble(nvmeTemperatureLog, "temperature");
-            }
-
-            int? powerOnHours = null;
-            if (TryGetNestedProperty(root, out var ataAttributes, "ata_smart_attributes", "table") && ataAttributes.ValueKind == JsonValueKind.Array)
-            {
-                foreach (var entry in ataAttributes.EnumerateArray())
-                {
-                    if (GetInt(entry, "id") == 9)
-                    {
-                        powerOnHours = (int?)(GetLong(entry, "raw", "value") ?? GetLong(entry, "raw", "string"));
-                        break;
-                    }
-                }
-            }
-
-            if (!powerOnHours.HasValue && TryGetNestedProperty(root, out var nvmeLog, "nvme_smart_health_information_log"))
-            {
-                powerOnHours = GetInt(nvmeLog, "power_on_hours");
-            }
-
-            var data = new SmartaData
-            {
-                ModelFamily = GetString(root, "model_family"),
-                DeviceModel = CleanModelName(GetString(root, "model_name") ?? GetString(root, "model_number") ?? GetString(root, "device_model")),
-                SerialNumber = GetString(root, "serial_number"),
-                FirmwareVersion = GetString(root, "firmware_version"),
-                Temperature = temperature ?? 0,
-                PowerOnHours = powerOnHours ?? 0
+                IsEnabled = smartctl.TryGetProperty("smart_enabled", out var enabled) && enabled.GetBoolean(),
+                IsHealthy = smartStatus.TryGetProperty("passed", out var passed) && passed.GetBoolean(),
+                TestPassed = passed.GetBoolean()
             };
-
-            if (TryGetNestedProperty(root, out var ataAttributesTable, "ata_smart_attributes"))
+            
+            // Parse power on hours
+            if (root.TryGetProperty("power_on_time", out var powerOn) && 
+                powerOn.TryGetProperty("hours", out var hours))
             {
-                PopulateAtaAttributes(ataAttributesTable, data);
+                result.PowerOnHours = hours.TryGetInt32(out var h) ? h : 0;
             }
-
-            if (TryGetNestedProperty(root, out var nvmeAttributesLog, "nvme_smart_health_information_log"))
+            
+            // Parse attributes - call with JsonElement
+            result.Attributes = ParseAttributes(root);
+            
+            // Extract key metrics from attributes
+            foreach (var attr in result.Attributes)
             {
-                PopulateNvmeAttributes(nvmeAttributesLog, data);
+                if (attr.Id == 5) result.ReallocatedSectorCount = attr.RawValue;
+                if (attr.Id == 197) result.PendingSectorCount = attr.RawValue;
+                if (attr.Id == 198) result.UncorrectableErrorCount = attr.RawValue;
+                if (attr.Id == 194) result.Temperature = (attr.RawValue & 0xFF);
+                if (attr.Id == 231) result.WearLevelingCount = (int)attr.RawValue;
             }
-
-            return data;
-        }
-        catch (JsonException)
-        {
-            return null;
-        }
-    }
-
-    /// <summary>
-    /// Parses detailed SMART attributes from smartctl JSON output.
-    /// </summary>
-    public static IReadOnlyList<SmartaAttributeItem> ParseAttributes(string json)
-    {
-        if (string.IsNullOrWhiteSpace(json))
-        {
-            return Array.Empty<SmartaAttributeItem>();
-        }
-
-        try
-        {
-            using var document = JsonDocument.Parse(json);
-            var root = document.RootElement;
-            var attributes = new List<SmartaAttributeItem>();
-
-            if (TryGetNestedProperty(root, out var ataTable, "ata_smart_attributes", "table") && ataTable.ValueKind == JsonValueKind.Array)
+            
+            // Parse self tests
+            result.SelfTests = ParseSelfTestLog(root);
+            
+            // Parse current self test status
+            if (root.TryGetProperty("ata_smart_self_test_log", out var selfTest2) &&
+                selfTest2.TryGetProperty("current_test", out var currentTest))
             {
-                foreach (var entry in ataTable.EnumerateArray())
+                result.CurrentSelfTest = new SmartctlSelfTestStatus
                 {
-                    var id = GetInt(entry, "id");
-                    if (!id.HasValue)
-                    {
-                        continue;
-                    }
-
-                    attributes.Add(new SmartaAttributeItem
-                    {
-                        Id = id.Value,
-                        Name = GetString(entry, "name") ?? $"Attribute {id.Value}",
-                        Current = GetInt(entry, "value"),
-                        Worst = GetInt(entry, "worst"),
-                        Threshold = GetInt(entry, "thresh"),
-                        RawValue = GetLong(entry, "raw", "value") ?? 0,
-                        WhenFailed = GetString(entry, "when_failed")
-                    });
-                }
-
-                return attributes;
-            }
-
-            if (TryGetNestedProperty(root, out var nvmeLog, "nvme_smart_health_information_log"))
-            {
-                AppendNvmeSyntheticAttributes(nvmeLog, attributes);
-            }
-
-            return attributes;
-        }
-        catch (JsonException)
-        {
-            return Array.Empty<SmartaAttributeItem>();
-        }
-    }
-
-    /// <summary>
-    /// Parses current SMART self-test execution status.
-    /// </summary>
-    public static SmartaSelfTestStatus? ParseSelfTestStatus(string json)
-    {
-        if (string.IsNullOrWhiteSpace(json))
-        {
-            return null;
-        }
-
-        try
-        {
-            using var document = JsonDocument.Parse(json);
-            var root = document.RootElement;
-
-            if (TryGetNestedProperty(root, out var ataStatus, "ata_smart_data", "self_test", "status"))
-            {
-                var statusText = GetString(ataStatus, "string") ?? "Neznámý stav";
-                var remaining = GetInt(ataStatus, "remaining_percent");
-
-                return new SmartaSelfTestStatus
-                {
-                    IsRunning = remaining.GetValueOrDefault() > 0 || statusText.Contains("progress", StringComparison.OrdinalIgnoreCase),
-                    StatusText = statusText,
-                    RemainingPercent = remaining,
+                    IsRunning = currentTest.TryGetProperty("status", out var status) && status.TryGetProperty("string", out var str) 
+                        && str.GetString()?.Contains("Self-test routine in progress") == true,
+                    StatusText = currentTest.TryGetProperty("status", out var st) && st.TryGetProperty("string", out var stStr) 
+                        ? stStr.GetString() ?? "" 
+                        : "",
+                    RemainingPercent = currentTest.TryGetProperty("percent", out var pct) && pct.TryGetInt32(out var p) ? p : 0,
                     CheckedAtUtc = DateTime.UtcNow
                 };
             }
-
-            if (TryGetNestedProperty(root, out var nvmeSelfTest, "nvme_self_test_log"))
-            {
-                var currentOperation = GetInt(nvmeSelfTest, "current_self_test_operation") ?? 0;
-                var completion = GetInt(nvmeSelfTest, "current_self_test_completion_percent") ?? 0;
-
-                return new SmartaSelfTestStatus
-                {
-                    IsRunning = currentOperation != 0,
-                    StatusText = currentOperation == 0 ? "Neběží žádný self-test" : "SMART self-test probíhá",
-                    RemainingPercent = currentOperation == 0 ? 0 : Math.Max(0, 100 - completion),
-                    CheckedAtUtc = DateTime.UtcNow
-                };
-            }
-
-            return null;
+            
+            return result;
         }
-        catch (JsonException)
+        catch
         {
             return null;
         }
     }
-
-    /// <summary>
-    /// Parses SMART self-test log entries.
-    /// </summary>
-    public static IReadOnlyList<SmartaSelfTestEntry> ParseSelfTestLog(string json)
+    
+    // String overloads for backward compatibility
+    public static List<SmartaAttributeItem> ParseAttributes(string json)
     {
-        if (string.IsNullOrWhiteSpace(json))
-        {
-            return Array.Empty<SmartaSelfTestEntry>();
-        }
-
         try
         {
-            using var document = JsonDocument.Parse(json);
-            var root = document.RootElement;
-            var entries = new List<SmartaSelfTestEntry>();
-
-            if (TryGetNestedProperty(root, out var ataLogTable, "ata_smart_self_test_log", "standard", "table") && ataLogTable.ValueKind == JsonValueKind.Array)
+            using var doc = JsonDocument.Parse(json);
+            return ParseAttributes(doc.RootElement);
+        }
+        catch
+        {
+            return new List<SmartaAttributeItem>();
+        }
+    }
+    
+    public static List<SmartaSelfTestEntry> ParseSelfTestLog(string json)
+    {
+        try
+        {
+            using var doc = JsonDocument.Parse(json);
+            return ParseSelfTestLog(doc.RootElement);
+        }
+        catch
+        {
+            return new List<SmartaSelfTestEntry>();
+        }
+    }
+    
+    public static List<SmartaAttributeItem> ParseAttributes(JsonElement root)
+    {
+        var attrs = new List<SmartaAttributeItem>();
+        
+        if (root.TryGetProperty("ata_smart_attributes", out var attrsElement) &&
+            attrsElement.TryGetProperty("table", out var table))
+        {
+            foreach (var item in table.EnumerateArray())
             {
-                foreach (var item in ataLogTable.EnumerateArray())
+                var attr = new SmartaAttributeItem
                 {
-                    entries.Add(new SmartaSelfTestEntry
-                    {
-                        Number = GetInt(item, "num"),
-                        TestType = GetNestedString(item, "type", "string") ?? GetString(item, "type") ?? "N/A",
-                        Status = GetNestedString(item, "status", "string") ?? GetString(item, "status") ?? "N/A",
-                        RemainingPercent = GetNestedInt(item, "status", "remaining_percent"),
-                        LifeTimeHours = GetInt(item, "lifetime_hours"),
-                        LbaOfFirstError = GetLong(item, "lba_of_first_error")
-                    });
-                }
-
-                return entries;
+                    Id = item.TryGetProperty("id", out var id) ? id.GetInt32() : 0,
+                    Name = item.TryGetProperty("name", out var name) ? name.GetString() : null,
+                    Value = (byte)(item.TryGetProperty("value", out var val) && val.TryGetInt32(out var v) ? v : 0),
+                    Worst = (byte)(item.TryGetProperty("worst", out var worst) && worst.TryGetInt32(out var w) ? w : 0),
+                    Threshold = item.TryGetProperty("thresh", out var thresh) && thresh.TryGetInt32(out var t) ? t : 0,
+                    RawValue = (uint)(item.TryGetProperty("raw", out var raw) && raw.TryGetInt64(out var r) ? r : 0),
+                    IsOk = item.TryGetProperty("when_failed", out var whenFailed) && whenFailed.ValueKind != JsonValueKind.Null 
+                        ? false 
+                        : true,
+                    Current = (byte)(item.TryGetProperty("value", out var curVal) && curVal.TryGetInt32(out var cv) ? cv : 0),
+                    WhenFailed = item.TryGetProperty("when_failed", out var wf) && wf.ValueKind != JsonValueKind.Null 
+                        ? wf.GetString() 
+                        : null
+                };
+                attrs.Add(attr);
             }
-
-            if (TryGetNestedProperty(root, out var nvmeLogTable, "nvme_self_test_log", "table") && nvmeLogTable.ValueKind == JsonValueKind.Array)
+        }
+        
+        return attrs;
+    }
+    
+    public static List<SmartaSelfTestEntry> ParseSelfTestLog(JsonElement root)
+    {
+        var tests = new List<SmartaSelfTestEntry>();
+        
+        if (root.TryGetProperty("ata_smart_self_test_log", out var selfTest) &&
+            selfTest.TryGetProperty("table", out var testTable))
+        {
+            foreach (var test in testTable.EnumerateArray())
             {
-                foreach (var item in nvmeLogTable.EnumerateArray())
+                var entry = new SmartaSelfTestEntry
                 {
-                    entries.Add(new SmartaSelfTestEntry
-                    {
-                        Number = GetInt(item, "self_test_code"),
-                        TestType = GetString(item, "self_test_code_description") ?? "NVMe self-test",
-                        Status = GetString(item, "self_test_result") ?? "N/A",
-                        LifeTimeHours = GetInt(item, "power_on_hours"),
-                        LbaOfFirstError = GetLong(item, "lba_of_first_error")
-                    });
-                }
+                    Number = test.TryGetProperty("num", out var num) && num.TryGetInt32(out var n) ? n : 0,
+                    Type = ParseSelfTestType(test.TryGetProperty("type", out var type) ? type.GetString() : ""),
+                    Status = ParseSelfTestStatus(test.TryGetProperty("status", out var status) ? status.GetString() : ""),
+                    RemainingPercent = test.TryGetProperty("remaining", out var rem) && rem.TryGetInt32(out var r) ? r : 0,
+                    LifeTimeHours = test.TryGetProperty("lifetime_hours", out var lifetime) && lifetime.TryGetInt32(out var l) ? l : 0,
+                    LbaOfFirstError = (ulong)(test.TryGetProperty("lba_of_first_error", out var lba) && lba.TryGetInt64(out var lb) ? lb : 0)
+                };
+                tests.Add(entry);
             }
-
-            return entries;
         }
-        catch (JsonException)
-        {
-            return Array.Empty<SmartaSelfTestEntry>();
-        }
+        
+        return tests;
     }
-
-    private static string? CleanModelName(string? value)
+    
+    public static SmartaSelfTestType ParseSelfTestType(string? type)
     {
-        if (string.IsNullOrWhiteSpace(value))
+        return type?.ToLowerInvariant() switch
         {
-            return value;
-        }
-
-        var cleaned = System.Text.RegularExpressions.Regex.Replace(value, @"\s+(USB\s+)?Device\s*$", string.Empty, System.Text.RegularExpressions.RegexOptions.IgnoreCase);
-        return System.Text.RegularExpressions.Regex.Replace(cleaned, @"\s+USB\s*$", string.Empty, System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+            "short" => SmartaSelfTestType.ShortTest,
+            "extended" => SmartaSelfTestType.Extended,
+            "conveyance" => SmartaSelfTestType.Conveyance,
+            "selective" => SmartaSelfTestType.Selective,
+            "offline" => SmartaSelfTestType.Offline,
+            "abort" => SmartaSelfTestType.Abort,
+            _ => SmartaSelfTestType.Quick
+        };
     }
-
-    private static bool TryGetNestedProperty(JsonElement root, out JsonElement result, params string[] propertyPath)
+    
+    public static SmartaSelfTestStatus ParseSelfTestStatus(string? status)
     {
-        result = root;
-        foreach (var part in propertyPath)
-        {
-            if (!result.TryGetProperty(part, out result))
-            {
-                return false;
-            }
-        }
-
-        return true;
+        if (string.IsNullOrEmpty(status)) return SmartaSelfTestStatus.None;
+        
+        var s = status.ToLowerInvariant();
+        if (s.Contains("completed without error") || s.Contains("passed")) return SmartaSelfTestStatus.Passed;
+        if (s.Contains("aborted")) return SmartaSelfTestStatus.Aborted;
+        if (s.Contains("interrupted")) return SmartaSelfTestStatus.Interrupted;
+        if (s.Contains("fatal")) return SmartaSelfTestStatus.Fatal;
+        if (s.Contains("electrical")) return SmartaSelfTestStatus.ElectricalFailure;
+        if (s.Contains("servo")) return SmartaSelfTestStatus.ServoFailure;
+        if (s.Contains("read")) return SmartaSelfTestStatus.ReadFailure;
+        if (s.Contains("handling")) return SmartaSelfTestStatus.HandlingDamage;
+        if (s.Contains("in progress") || s.Contains("running")) return SmartaSelfTestStatus.Running;
+        
+        return SmartaSelfTestStatus.Unknown;
     }
-
-    private static string? GetNestedString(JsonElement root, string property, string nestedProperty)
+    
+    // Helper method to convert SmartCheckResult to SmartaData
+    public static SmartaData ToSmartaData(SmartCheckResult result, string? deviceModel = null, string? serialNumber = null)
     {
-        if (!root.TryGetProperty(property, out var nested) || nested.ValueKind != JsonValueKind.Object)
+        return new SmartaData
         {
-            return null;
-        }
-
-        return GetString(nested, nestedProperty);
-    }
-
-    private static int? GetNestedInt(JsonElement root, string property, string nestedProperty)
-    {
-        if (!root.TryGetProperty(property, out var nested) || nested.ValueKind != JsonValueKind.Object)
-        {
-            return null;
-        }
-
-        return GetInt(nested, nestedProperty);
-    }
-
-    private static void PopulateAtaAttributes(JsonElement ataAttributes, SmartaData smartaData)
-    {
-        if (!ataAttributes.TryGetProperty("table", out var table) || table.ValueKind != JsonValueKind.Array)
-        {
-            return;
-        }
-
-        foreach (var entry in table.EnumerateArray())
-        {
-            var id = GetInt(entry, "id");
-            if (!id.HasValue)
-            {
-                continue;
-            }
-
-            var rawValue = GetLong(entry, "raw", "value") ?? GetLong(entry, "raw", "string") ?? 0;
-
-            switch (id.Value)
-            {
-                case 5:
-                    smartaData.ReallocatedSectorCount = rawValue;
-                    break;
-                case 9:
-                    smartaData.PowerOnHours = (int)rawValue;
-                    break;
-                case 197:
-                    smartaData.PendingSectorCount = rawValue;
-                    break;
-                case 198:
-                    smartaData.UncorrectableErrorCount = rawValue;
-                    break;
-                case 190:
-                case 194:
-                    if (smartaData.Temperature <= 0)
-                    {
-                        smartaData.Temperature = rawValue;
-                    }
-                    break;
-            }
-        }
-    }
-
-    private static void PopulateNvmeAttributes(JsonElement nvmeAttributes, SmartaData smartaData)
-    {
-        smartaData.PowerOnHours = GetInt(nvmeAttributes, "power_on_hours") ?? smartaData.PowerOnHours;
-        smartaData.UncorrectableErrorCount = GetLong(nvmeAttributes, "media_errors") ?? smartaData.UncorrectableErrorCount;
-
-        var temperature = GetDouble(nvmeAttributes, "temperature");
-        if (temperature.HasValue)
-        {
-            smartaData.Temperature = temperature.Value > 200
-                ? Math.Round(temperature.Value - 273.15, 1)
-                : temperature.Value;
-        }
-
-        var wear = GetInt(nvmeAttributes, "percentage_used");
-        if (wear.HasValue)
-        {
-            smartaData.WearLevelingCount = wear.Value;
-        }
-    }
-
-    private static void AppendNvmeSyntheticAttributes(JsonElement nvmeLog, ICollection<SmartaAttributeItem> attributes)
-    {
-        AddNvmeAttribute(attributes, 9001, "NVMe Temperature", GetLong(nvmeLog, "temperature") ?? 0);
-        AddNvmeAttribute(attributes, 9002, "NVMe Power-On Hours", GetLong(nvmeLog, "power_on_hours") ?? 0);
-        AddNvmeAttribute(attributes, 9003, "NVMe Media Errors", GetLong(nvmeLog, "media_errors") ?? 0);
-        AddNvmeAttribute(attributes, 9004, "NVMe Percentage Used", GetLong(nvmeLog, "percentage_used") ?? 0);
-        AddNvmeAttribute(attributes, 9005, "NVMe Data Units Read", GetLong(nvmeLog, "data_units_read") ?? 0);
-        AddNvmeAttribute(attributes, 9006, "NVMe Data Units Written", GetLong(nvmeLog, "data_units_written") ?? 0);
-    }
-
-    private static void AddNvmeAttribute(ICollection<SmartaAttributeItem> attributes, int id, string name, long raw)
-    {
-        attributes.Add(new SmartaAttributeItem
-        {
-            Id = id,
-            Name = name,
-            RawValue = raw
-        });
-    }
-
-    private static string? GetString(JsonElement root, string property)
-    {
-        if (root.TryGetProperty(property, out var value) && value.ValueKind == JsonValueKind.String)
-        {
-            return value.GetString();
-        }
-
-        foreach (var prop in root.EnumerateObject())
-        {
-            if (string.Equals(prop.Name, property, StringComparison.OrdinalIgnoreCase) && prop.Value.ValueKind == JsonValueKind.String)
-            {
-                return prop.Value.GetString();
-            }
-        }
-
-        return null;
-    }
-
-    private static long? GetLong(JsonElement root, string property)
-    {
-        if (root.TryGetProperty(property, out var value))
-        {
-            if (value.ValueKind == JsonValueKind.Number)
-            {
-                return value.GetInt64();
-            }
-
-            if (value.ValueKind == JsonValueKind.String && long.TryParse(value.GetString(), out var parsed))
-            {
-                return parsed;
-            }
-        }
-
-        foreach (var prop in root.EnumerateObject())
-        {
-            if (string.Equals(prop.Name, property, StringComparison.OrdinalIgnoreCase))
-            {
-                if (prop.Value.ValueKind == JsonValueKind.Number)
-                {
-                    return prop.Value.GetInt64();
-                }
-
-                if (prop.Value.ValueKind == JsonValueKind.String && long.TryParse(prop.Value.GetString(), out var parsed))
-                {
-                    return parsed;
-                }
-            }
-        }
-
-        return null;
-    }
-
-    private static long? GetLong(JsonElement root, string property, string nestedProperty)
-    {
-        if (!root.TryGetProperty(property, out var nested))
-        {
-            return null;
-        }
-
-        if (nested.ValueKind == JsonValueKind.Number)
-        {
-            return nested.GetInt64();
-        }
-
-        if (nested.ValueKind == JsonValueKind.String && long.TryParse(nested.GetString(), out var parsed))
-        {
-            return parsed;
-        }
-
-        return nested.ValueKind == JsonValueKind.Object ? GetLong(nested, nestedProperty) : null;
-    }
-
-    private static int? GetInt(JsonElement root, string property)
-    {
-        if (root.TryGetProperty(property, out var value))
-        {
-            if (value.ValueKind == JsonValueKind.Number)
-            {
-                return value.GetInt32();
-            }
-
-            if (value.ValueKind == JsonValueKind.String && int.TryParse(value.GetString(), out var parsed))
-            {
-                return parsed;
-            }
-        }
-
-        foreach (var prop in root.EnumerateObject())
-        {
-            if (string.Equals(prop.Name, property, StringComparison.OrdinalIgnoreCase))
-            {
-                if (prop.Value.ValueKind == JsonValueKind.Number)
-                {
-                    return prop.Value.GetInt32();
-                }
-
-                if (prop.Value.ValueKind == JsonValueKind.String && int.TryParse(prop.Value.GetString(), out var parsed))
-                {
-                    return parsed;
-                }
-            }
-        }
-
-        return null;
-    }
-
-    private static double? GetDouble(JsonElement root, string? property)
-    {
-        if (string.IsNullOrWhiteSpace(property))
-        {
-            if (root.ValueKind == JsonValueKind.Number)
-            {
-                return root.GetDouble();
-            }
-
-            if (root.ValueKind == JsonValueKind.String && double.TryParse(root.GetString(), out var parsedValue))
-            {
-                return parsedValue;
-            }
-
-            return null;
-        }
-
-        if (root.TryGetProperty(property, out var value))
-        {
-            if (value.ValueKind == JsonValueKind.Number)
-            {
-                return value.GetDouble();
-            }
-
-            if (value.ValueKind == JsonValueKind.String && double.TryParse(value.GetString(), out var parsedValue))
-            {
-                return parsedValue;
-            }
-        }
-
-        foreach (var prop in root.EnumerateObject())
-        {
-            if (string.Equals(prop.Name, property, StringComparison.OrdinalIgnoreCase))
-            {
-                if (prop.Value.ValueKind == JsonValueKind.Number)
-                {
-                    return prop.Value.GetDouble();
-                }
-
-                if (prop.Value.ValueKind == JsonValueKind.String && double.TryParse(prop.Value.GetString(), out var parsedValue))
-                {
-                    return parsedValue;
-                }
-            }
-        }
-
-        return null;
+            DeviceModel = deviceModel,
+            SerialNumber = serialNumber,
+            SmartEnabled = result.IsEnabled,
+            SmartHealthy = result.IsHealthy,
+            PowerOnHours = result.PowerOnHours,
+            ReallocatedSectorCount = result.ReallocatedSectorCount,
+            PendingSectorCount = result.PendingSectorCount,
+            UncorrectableErrorCount = result.UncorrectableErrorCount,
+            Temperature = result.Temperature,
+            WearLevelingCount = result.WearLevelingCount,
+            Attributes = result.Attributes,
+            SelfTests = result.SelfTests
+        };
     }
 }

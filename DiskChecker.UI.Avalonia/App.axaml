@@ -1,0 +1,34 @@
+<Application xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:converters="using:DiskChecker.UI.Avalonia.Converters"
+             x:Class="DiskChecker.UI.Avalonia.App"
+             xmlns:local="using:DiskChecker.UI.Avalonia"
+             RequestedThemeVariant="Default">
+             <!-- "Default" ThemeVariant follows system theme variant. "Dark" or "Light" are other available options. -->
+
+    <Application.DataTemplates>
+        <local:ViewLocator/>
+    </Application.DataTemplates>
+  
+    <Application.Styles>
+        <FluentTheme />
+        <StyleInclude Source="avares://DiskChecker.UI.Avalonia/Styles/CommonStyles.axaml"/>
+    </Application.Styles>
+    
+    <Application.Resources>
+        <!-- Theme palette (inspired by Česká pošta) -->
+        <SolidColorBrush x:Key="ThemeBackgroundBrush" Color="#F6F1E3"/>
+        <SolidColorBrush x:Key="ThemePanelBrush" Color="#FFFBF4"/>
+        <SolidColorBrush x:Key="ThemeCardBrush" Color="#FFF8EA"/>
+        <SolidColorBrush x:Key="ThemeBorderBrush" Color="#D9CBA6"/>
+        <SolidColorBrush x:Key="ThemePrimaryBrush" Color="#004B93"/>
+        <SolidColorBrush x:Key="ThemeAccentBrush" Color="#F7C600"/>
+        
+        <!-- Converters -->
+        <converters:BooleanToBrushConverter x:Key="BooleanToBrushConverter"/>
+        <converters:InverseBooleanConverter x:Key="InverseBooleanConverter"/>
+        <converters:EnumToBooleanConverter x:Key="EnumToBooleanConverter"/>
+        <!-- Simple NotNull converter used in views -->
+        <converters:NotNullConverter x:Key="NotNullConverter"/>
+    </Application.Resources>
+</Application>

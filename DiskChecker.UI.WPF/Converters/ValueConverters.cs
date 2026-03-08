@@ -1,5 +1,6 @@
 using System.Globalization;
 using System.Windows.Data;
+using System.Windows.Media;
 
 namespace DiskChecker.UI.WPF.Converters;
 
@@ -193,28 +194,31 @@ public class StatusToColorConverter : IMultiValueConverter
     /// <summary>
     /// Converts status and isAllocated to color.
     /// </summary>
-    public object Convert(object?[] values, Type targetType, object? parameter, CultureInfo culture)
+public object Convert(object?[] values, Type targetType, object? parameter, CultureInfo culture)
     {
+        string hexColor;
+
         if (values == null || values.Length < 2)
-            return "#E0E0E0";
-
-        if (values[0] is not int status || values[1] is not bool isAllocated)
-            return "#E0E0E0";
-
-        // If not allocated, return transparent
-        if (!isAllocated)
-            return "#FFFFFF";
-
-        // Return color based on status
-        return status switch
+            hexColor = "#E0E0E0";
+        else if (values[0] is not int status || values[1] is not bool isAllocated)
+            hexColor = "#E0E0E0";
+        else if (!isAllocated)
+            hexColor = "#FFFFFF";
+        else
         {
-            0 => "#E0E0E0",  // Untested - light gray
-            1 => "#FFC107",  // Processing - yellow
-            2 => "#4A90E2",  // Write OK - blue
-            3 => "#28A745",  // Read OK - green
-            4 => "#DC3545",  // Error - red
-            _ => "#E0E0E0"
-        };
+            hexColor = status switch
+            {
+                0 => "#E0E0E0",
+                1 => "#FFC107",
+                2 => "#4A90E2",
+                3 => "#28A745",
+                4 => "#DC3545",
+                _ => "#E0E0E0"
+            };
+        }
+
+        var color = (Color)ColorConverter.ConvertFromString(hexColor);
+        return new SolidColorBrush(color);
     }
 
     /// <summary>
