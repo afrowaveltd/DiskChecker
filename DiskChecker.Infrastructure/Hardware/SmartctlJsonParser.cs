@@ -1,4 +1,5 @@
-﻿using System;
+using DiskChecker.Core.Extensions;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text.Json;
@@ -36,27 +37,27 @@ public static class SmartctlJsonParser
             {
                 IsEnabled = smartctl.TryGetProperty("smart_enabled", out var enabled) && enabled.GetBoolean(),
                 IsHealthy = smartStatus.TryGetProperty("passed", out var passed) && passed.GetBoolean(),
-                TestPassed = passed.GetBoolean()
+                TestPassed = smartStatus.TryGetProperty("passed", out var passed2) && passed2.GetBoolean()
             };
             
             // Parse power on hours
             if (root.TryGetProperty("power_on_time", out var powerOn) && 
                 powerOn.TryGetProperty("hours", out var hours))
             {
-                result.PowerOnHours = hours.TryGetInt32(out var h) ? h : 0;
+                result.PowerOnHours = hours.ValueKind == JsonValueKind.Number ? hours.GetInt32() : (int?)null;
             }
             
-            // Parse attributes - call with JsonElement
+            // Parse attributes
             result.Attributes = ParseAttributes(root);
             
             // Extract key metrics from attributes
             foreach (var attr in result.Attributes)
             {
-                if (attr.Id == 5) result.ReallocatedSectorCount = attr.RawValue;
-                if (attr.Id == 197) result.PendingSectorCount = attr.RawValue;
-                if (attr.Id == 198) result.UncorrectableErrorCount = attr.RawValue;
-                if (attr.Id == 194) result.Temperature = (attr.RawValue & 0xFF);
-                if (attr.Id == 231) result.WearLevelingCount = (int)attr.RawValue;
+                if (attr.Id == 5) result.ReallocatedSectorCount = (int?)(attr.RawValue ?? 0);
+                if (attr.Id == 197) result.PendingSectorCount = (int?)(attr.RawValue ?? 0);
+                if (attr.Id == 198) result.UncorrectableErrorCount = (int?)(attr.RawValue ?? 0);
+                if (attr.Id == 194) result.Temperature = (int?)(attr.RawValue.HasValue ? attr.RawValue.Value & 0xFF : 0);
+                if (attr.Id == 231) result.WearLevelingCount = (int?)(attr.RawValue ?? 0);
             }
             
             // Parse self tests
@@ -72,12 +73,12 @@ public static class SmartctlJsonParser
                 if (currentTest.TryGetProperty("status", out var status) && 
                     status.TryGetProperty("string", out var str))
                 {
-                    statusValue = str.GetString() ?? "";
+                    statusValue = str.GetString().ToSafeString();
                 }
                 
-                if (currentTest.TryGetProperty("percent", out var pct))
+                if (currentTest.TryGetProperty("percent", out var pct) && pct.ValueKind == JsonValueKind.Number)
                 {
-                    remainingPercent = pct.TryGetInt32(out var p) ? p : 0;
+                    remainingPercent = pct.GetInt32();
                 }
                 
                 var isRunning = statusValue.Contains("Self-test routine in progress");
@@ -86,19 +87,19 @@ public static class SmartctlJsonParser
                     Status = isRunning ? SmartaSelfTestStatus.InProgress : 
                         ParseSelfTestStatus(statusValue),
                     RemainingPercent = remainingPercent,
-                    CompletedAt = DateTime.UtcNow
+                    CompletedAt = DateTime.UtcNow.ToString("o")
                 };
             }
             
             return result;
         }
-        catch
+        catch (Exception)
         {
+            // Handle exception properly
             return null;
         }
     }
     
-    // String overloads for backward compatibility
     public static List<SmartaAttributeItem> ParseAttributes(string json)
     {
         try
@@ -134,20 +135,21 @@ public static class SmartctlJsonParser
         {
             foreach (var item in table.EnumerateArray())
             {
+                var attribute = item; // For clarity
                 var attr = new SmartaAttributeItem
                 {
                     Id = item.TryGetProperty("id", out var id) ? id.GetInt32() : 0,
-                    Name = item.TryGetProperty("name", out var name) ? name.GetString() ?? string.Empty : string.Empty,
-                    Value = (byte)(item.TryGetProperty("value", out var val) && val.TryGetInt32(out var v) ? v : 0),
-                    Worst = (byte)(item.TryGetProperty("worst", out var worst) && worst.TryGetInt32(out var w) ? w : 0),
-                    Threshold = item.TryGetProperty("thresh", out var thresh) && thresh.TryGetInt32(out var t) ? t : 0,
+                    Name = item.TryGetProperty("name", out var name) ? name.GetString().ToSafeString() : string.Empty,
+                    Value = item.TryGetProperty("value", out var val) && val.ValueKind == JsonValueKind.Number ? val.GetInt32() : 0,
+                    Worst = item.TryGetProperty("worst", out var worst) && worst.ValueKind == JsonValueKind.Number ? worst.GetInt32() : 0,
+                    Threshold = item.TryGetProperty("thresh", out var thresh) && thresh.ValueKind == JsonValueKind.Number ? thresh.GetInt32() : 0,
                     RawValue = (uint)(item.TryGetProperty("raw", out var raw) && raw.TryGetInt64(out var r) ? r : 0),
                     IsOk = item.TryGetProperty("when_failed", out var whenFailed) && whenFailed.ValueKind != JsonValueKind.Null 
                         ? false 
                         : true,
                     Current = (byte)(item.TryGetProperty("value", out var curVal) && curVal.TryGetInt32(out var cv) ? cv : 0),
                     WhenFailed = item.TryGetProperty("when_failed", out var wf) && wf.ValueKind != JsonValueKind.Null 
-                        ? wf.GetString() ?? string.Empty 
+                        ? wf.GetString().ToSafeString() 
                         : string.Empty
                 };
                 attrs.Add(attr);
@@ -166,16 +168,17 @@ public static class SmartctlJsonParser
         {
             foreach (var test in testTable.EnumerateArray())
             {
-                var typeStr = test.TryGetProperty("type", out var type) ? type.GetString() : null;
-                var statusStr = test.TryGetProperty("status", out var status) ? status.GetString() : null;
+                var typeStr = test.TryGetProperty("type", out var type) ? type.GetString().ToSafeString() : null;
+                var statusStr = test.TryGetProperty("status", out var status) ? status.GetString().ToSafeString() : null;
                 var entry = new SmartaSelfTestEntry
                 {
-                    Number = test.TryGetProperty("num", out var num) && num.TryGetInt32(out var n) ? n : 0,
+                    Number = test.TryGetProperty("num", out var num) && num.ValueKind == JsonValueKind.Number ? num.GetInt32() : 0,
                     Type = ParseSelfTestType(typeStr),
                     Status = ParseSelfTestStatus(statusStr),
-                    RemainingPercent = test.TryGetProperty("remaining", out var rem) && rem.TryGetInt32(out var r) ? r : 0,
-                    LifeTimeHours = test.TryGetProperty("lifetime_hours", out var lifetime) && lifetime.TryGetInt32(out var l) ? l : 0,
-                    LbaOfFirstError = test.TryGetProperty("lba_of_first_error", out var lba) && lba.TryGetInt64(out var lb) ? (long)lb : 0
+                    RemainingPercent = test.TryGetProperty("remaining", out var rem) && rem.ValueKind == JsonValueKind.Number ? rem.GetInt32() : 0,
+                    LifeTimeHours = test.TryGetProperty("lifetime_hours", out var lifetime) && lifetime.ValueKind == JsonValueKind.Number ? lifetime.GetInt32() : 0,
+                    LbaOfFirstError = test.TryGetProperty("lba_of_first_error", out var lba) && lba.ValueKind == JsonValueKind.Number ? lba.GetInt64() : 0,
+                    CompletedAt = test.TryGetProperty("timestamp", out var timestamp) ? timestamp.GetString().ToSafeString() : string.Empty
                 };
                 tests.Add(entry);
             }
@@ -186,7 +189,9 @@ public static class SmartctlJsonParser
     
     public static SmartaSelfTestType ParseSelfTestType(string? type)
     {
-        return type?.ToLowerInvariant() switch
+        if (string.IsNullOrEmpty(type)) return SmartaSelfTestType.Offline;
+        
+        return type.ToLowerInvariant() switch
         {
             "short" => SmartaSelfTestType.ShortTest,
             "extended" => SmartaSelfTestType.Extended,
@@ -246,20 +251,17 @@ public static class SmartctlJsonParser
         return SmartaSelfTestStatus.ErrorUnknown;
     }
     
-    // Helper method to convert SmartCheckResult to SmartaData
     public static SmartaData ToSmartaData(SmartCheckResult result, string? deviceModel = null, string? serialNumber = null)
     {
         return new SmartaData
         {
-            DeviceModel = deviceModel?.ToIntOrNull() ?? 0,
-            SerialNumber = serialNumber ?? string.Empty,
-            SmartEnabled = result.IsEnabled,
-            SmartHealthy = result.IsHealthy,
-            PowerOnHours = result.PowerOnHours,
-            ReallocatedSectorCount = result.ReallocatedSectorCount,
-            PendingSectorCount = result.PendingSectorCount,
-            UncorrectableErrorCount = result.UncorrectableErrorCount,
-            Temperature = result.Temperature,
+            DeviceModel = deviceModel.ToSafeString(),
+            SerialNumber = serialNumber.ToSafeString(),
+            PowerOnHours = result.PowerOnHours ?? 0,
+            ReallocatedSectorCount = result.ReallocatedSectorCount ?? 0,
+            PendingSectorCount = result.PendingSectorCount ?? 0,
+            UncorrectableErrorCount = result.UncorrectableErrorCount ?? 0,
+            Temperature = result.Temperature ?? 0,
             WearLevelingCount = result.WearLevelingCount,
             Attributes = result.Attributes,
             SelfTests = result.SelfTests ?? new List<SmartaSelfTestEntry>()

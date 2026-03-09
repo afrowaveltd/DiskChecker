@@ -1,43 +1,39 @@
+
 using DiskChecker.Core.Interfaces;
 using DiskChecker.Core.Models;
 
-namespace DiskChecker.Application.Services;
-
-public class TestDiskProvider : ISmartaProvider
+namespace DiskChecker.Application.Services
 {
-    public Task<SmartaData?> GetSmartaDataAsync(string drivePath, CancellationToken cancellationToken = default)
+    public class TestDiskProvider : ISmartaProvider
     {
-        return Task.FromResult<SmartaData?>(null);
-    }
-
-    public Task<bool> IsDriveValidAsync(string drivePath, CancellationToken cancellationToken = default)
-    {
-        return Task.FromResult(true);
-    }
-
-    public Task<IReadOnlyList<CoreDriveInfo>> ListDrivesAsync(CancellationToken cancellationToken = default)
-    {
-        var drives = new List<CoreDriveInfo>
+        public Task<SmartaData?> GetSmartaDataAsync(string devicePath)
         {
-            new CoreDriveInfo { Path = @"\\.\PhysicalDrive0", Name = "Windows Disk", TotalSize = 512000000000L },
-            new CoreDriveInfo { Path = @"\\.\PhysicalDrive1", Name = "Data Disk", TotalSize = 1000000000000L }
-        };
-        return Task.FromResult<IReadOnlyList<CoreDriveInfo>>(drives);
-    }
+            throw new NotImplementedException();
+        }
 
-    public Task<string?> GetDependencyInstructionsAsync(CancellationToken cancellationToken = default)
-    {
-        return Task.FromResult<string?>(null);
-    }
+        public Task<bool> IsDriveValidAsync(string devicePath)
+        {
+            throw new NotImplementedException();
+        }
 
-    public Task<bool> TryInstallDependenciesAsync(CancellationToken cancellationToken = default)
-    {
-        return Task.FromResult(true);
-    }
+        public Task<List<string>> ListDrivesAsync()
+        {
+            throw new NotImplementedException();
+        }
 
-    public Task<int?> GetTemperatureOnlyAsync(string drivePath, CancellationToken cancellationToken = default)
-    {
-        // Return mock temperature for testing
-        return Task.FromResult<int?>(35);
+        public Task<string> GetDependencyInstructionsAsync()
+        {
+            throw new NotImplementedException();
+        }
+
+        public Task<bool> TryInstallDependenciesAsync()
+        {
+            throw new NotImplementedException();
+        }
+
+        public Task<int?> GetTemperatureOnlyAsync(string devicePath)
+        {
+            throw new NotImplementedException();
+        }
     }
 }

@@ -1,23 +1,15 @@
-using Microsoft.EntityFrameworkCore;
-using Microsoft.Extensions.DependencyInjection;
 using DiskChecker.Core.Interfaces;
-using DiskChecker.Infrastructure.Hardware;
+using DiskChecker.Infrastructure.Persistence;
+using Microsoft.Extensions.DependencyInjection;
 
-namespace DiskChecker.Infrastructure.Persistence;
+namespace Microsoft.Extensions.DependencyInjection;
 
 public static class ServiceCollectionExtensions
 {
-    public static IServiceCollection AddPersistence(this IServiceCollection services, string connectionString)
+    public static IServiceCollection AddInfrastructure(this IServiceCollection services)
     {
-        services.AddDbContext<DiskCheckerDbContext>(options =>
-            options.UseSqlite(connectionString));
-
-        services.AddScoped<DiskCheckerDbContext>();
-
         services.AddSingleton<SmartaProviderFactory>();
-        services.AddScoped<ISmartaProvider>(sp =>
-            sp.GetRequiredService<SmartaProviderFactory>().Create());
-
+        services.AddScoped<ISmartaProvider>(provider => provider.GetRequiredService<SmartaProviderFactory>().Create());
         return services;
     }
 }

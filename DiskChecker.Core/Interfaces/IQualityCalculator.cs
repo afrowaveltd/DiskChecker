@@ -1,8 +1,8 @@
-using DiskChecker.Core.Models;
 
-namespace DiskChecker.Core.Interfaces;
-
-public interface IQualityCalculator
+namespace DiskChecker.Core.Interfaces
 {
-    QualityRating CalculateQuality(SmartaData smartaData);
+    public interface IQualityCalculator
+    {
+        double CalculateQuality(double value);
+    }
 }
