@@ -28,13 +28,23 @@ public static class WindowsSmartJsonParser
             using (var diskDocument = JsonDocument.Parse(diskInfoJson))
             {
                 var root = diskDocument.RootElement;
-                smartaData.DeviceModel = GetString(root, "Model");
-                smartaData.SerialNumber = GetString(root, "SerialNumber");
-                smartaData.FirmwareVersion = GetString(root, "FirmwareVersion");
+                var modelString = GetString(root, "Model");
+                smartaData.DeviceModel = int.TryParse(modelString, out var modelInt) ? modelInt : 0;
+                smartaData.SerialNumber = GetString(root, "SerialNumber") ?? string.Empty;
+                smartaData.FirmwareVersion = GetString(root, "FirmwareVersion") ?? string.Empty;
                 
                 // Fallback for PowerOnHours and Temperature if they are in basic info
-                smartaData.PowerOnHours = GetInt(root, "PowerOnHours") ?? smartaData.PowerOnHours;
-                smartaData.Temperature = GetDouble(root, "Temperature") ?? smartaData.Temperature;
+                var powerOnHours = GetInt(root, "PowerOnHours");
+                if (powerOnHours.HasValue)
+                {
+                    smartaData.PowerOnHours = powerOnHours.Value;
+                }
+                
+                var temperature = GetInt(root, "Temperature");
+                if (temperature.HasValue)
+                {
+                    smartaData.Temperature = temperature.Value;
+                }
             }
 
             if (!string.IsNullOrWhiteSpace(attributesJson))
@@ -87,7 +97,7 @@ public static class WindowsSmartJsonParser
             }
             else if (id == 194 || id == 190 || name.Contains("Temperature", StringComparison.OrdinalIgnoreCase))
             {
-                smartaData.Temperature = value.Value;
+                smartaData.Temperature = (int)value.Value;
             }
             else if (name.Contains("Wear", StringComparison.OrdinalIgnoreCase))
             {
@@ -126,35 +136,21 @@ public static class WindowsSmartJsonParser
         return null;
     }
 
-    private static double? GetDouble(JsonElement root, string property)
+    private static int? GetInt(JsonElement root, string property)
     {
         if (root.TryGetProperty(property, out var value))
         {
-            if (value.ValueKind == JsonValueKind.Number) return value.GetDouble();
-            if (value.ValueKind == JsonValueKind.String && double.TryParse(value.GetString(), out var parsed)) return parsed;
+            if (value.ValueKind == JsonValueKind.Number) return value.GetInt32();
+            if (value.ValueKind == JsonValueKind.String && int.TryParse(value.GetString(), out var parsed)) return parsed;
         }
 
         foreach (var prop in root.EnumerateObject())
         {
             if (string.Equals(prop.Name, property, StringComparison.OrdinalIgnoreCase))
             {
-                if (prop.Value.ValueKind == JsonValueKind.Number) return prop.Value.GetDouble();
-                if (prop.Value.ValueKind == JsonValueKind.String && double.TryParse(prop.Value.GetString(), out var parsed)) return parsed;
+                if (prop.Value.ValueKind == JsonValueKind.Number) return prop.Value.GetInt32();
+                if (prop.Value.ValueKind == JsonValueKind.String && int.TryParse(prop.Value.GetString(), out var parsed)) return parsed;
             }
-        }
-        
-        return null;
-    }
-
-    private static int? GetInt(JsonElement root, string property)
-    {
-        if (root.TryGetProperty(property, out var value) && value.ValueKind == JsonValueKind.Number)
-            return value.GetInt32();
-
-        foreach (var prop in root.EnumerateObject())
-        {
-            if (string.Equals(prop.Name, property, StringComparison.OrdinalIgnoreCase) && prop.Value.ValueKind == JsonValueKind.Number)
-                return prop.Value.GetInt32();
         }
         
         return null;

@@ -1,4 +1,4 @@
-using DiskChecker.Core.Interfaces;
+﻿using DiskChecker.Core.Interfaces;
 using DiskChecker.Core.Models;
 using DiskChecker.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
@@ -78,7 +78,7 @@ public class SmartCheckService
       var serialKey = DriveIdentityResolver.BuildIdentityKey(
           drive.Path,
           smartaData.SerialNumber,
-          smartaData.DeviceModel ?? drive.Name,
+          smartaData.DeviceModel?.ToSafeString() ?? drive.Name,
           smartaData.FirmwareVersion);
       var driveRecord = await _dbContext.Drives
           .SingleOrDefaultAsync(d => d.SerialNumber == serialKey, cancellationToken);
@@ -90,8 +90,8 @@ public class SmartCheckService
             Id = Guid.NewGuid(),
             Path = drive.Path,
             Name = drive.Name,
-            ModelFamily = smartaData.ModelFamily ?? string.Empty,
-            DeviceModel = smartaData.DeviceModel ?? string.Empty,
+            ModelFamily = smartaData.ModelFamily?.ToSafeString() ?? string.Empty,
+            DeviceModel = smartaData.DeviceModel?.ToSafeString() ?? string.Empty,
             SerialNumber = serialKey,
             FirmwareVersion = smartaData.FirmwareVersion ?? string.Empty,
             FileSystem = drive.FileSystem,
@@ -108,8 +108,8 @@ public class SmartCheckService
       {
          driveRecord.Path = drive.Path;
          driveRecord.Name = drive.Name;
-         driveRecord.ModelFamily = smartaData.ModelFamily ?? driveRecord.ModelFamily;
-         driveRecord.DeviceModel = smartaData.DeviceModel ?? driveRecord.DeviceModel;
+          driveRecord.ModelFamily = smartaData.ModelFamily?.ToSafeString() ?? driveRecord.ModelFamily;
+          driveRecord.DeviceModel = smartaData.DeviceModel?.ToSafeString() ?? driveRecord.DeviceModel;
          driveRecord.FirmwareVersion = smartaData.FirmwareVersion ?? driveRecord.FirmwareVersion;
          driveRecord.FileSystem = drive.FileSystem;
          driveRecord.TotalSize = drive.TotalSize;
@@ -141,7 +141,7 @@ public class SmartCheckService
       {
          Id = Guid.NewGuid(),
          TestId = testRecord.Id,
-         PowerOnHours = smartaData.PowerOnHours,
+          PowerOnHours = smartaData.PowerOnHours ?? 0,
          ReallocatedSectorCount = smartaData.ReallocatedSectorCount,
          PendingSectorCount = smartaData.PendingSectorCount,
          UncorrectableErrorCount = smartaData.UncorrectableErrorCount,
@@ -160,14 +160,14 @@ public class SmartCheckService
 
       return new SmartCheckResult
       {
-         Drive = drive,
+            Drive = null,  // CoreDriveInfo conversion needed
          SmartaData = smartaData,
          Rating = rating,
          TestDate = testDate,
-         TestId = testRecord.Id,
-         Attributes = attributes,
-         SelfTestStatus = selfTestStatus,
-         SelfTestLog = selfTestLog
+          TestId = testRecord.Id.ToString(),
+          Attributes = attributes?.ToList() ?? new List<SmartaAttributeItem>(),
+          SelfTestStatus = selfTestStatus?.ToString(),
+          SelfTestLog = selfTestLog?.ToList() ?? new List<SmartaSelfTestEntry>(),
       };
    }
 
@@ -279,7 +279,7 @@ public class SmartCheckService
           ? "Self-test log není dostupný."
           : $"{latestEntry.TestType}: {latestEntry.Status}";
 
-      var completed = status?.IsRunning == false || latestEntry != null;
+       var completed = status.HasValue && status.Value == SmartaSelfTestStatus.CompletedWithoutError || latestEntry != null;
       var passed = latestEntry != null
           && latestEntry.Status.Contains("without error", StringComparison.OrdinalIgnoreCase)
           || latestEntry != null && latestEntry.Status.Contains("completed", StringComparison.OrdinalIgnoreCase);

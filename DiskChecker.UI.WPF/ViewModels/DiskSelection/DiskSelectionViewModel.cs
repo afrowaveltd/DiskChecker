@@ -382,7 +382,7 @@ public partial class DiskSelectionViewModel : ViewModelBase
             catch(Exception ex)
             {
                System.Diagnostics.Debug.WriteLine($"LoadDiskCardsAsync: SMART load error for {drive.Name}: {ex.Message}");
-               return (drive, smartData: null as SmartaData, quality: null as QualityRating, success: false);
+               return (drive, smartData: null as SmartaData, quality: null as QualityRating?, success: false);
             }
          }).ToList();
 
@@ -714,7 +714,7 @@ public partial class DiskSelectionViewModel : ViewModelBase
          SystemDiskName = $"Systémový disk: {systemDisk.Name}";
          SystemDiskGrade = quality.Grade.ToString();
          SystemDiskTemperature = smartData.Temperature > 0 ? $"{smartData.Temperature:F1} °C" : "N/A";
-         SystemDiskSummary = quality.Warnings.Count == 0
+         SystemDiskSummary = quality.Warnings == 0
             ? "Bez kritických varování"
             : string.Join(" | ", quality.Warnings.Take(2));
       }

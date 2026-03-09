@@ -1,4 +1,4 @@
-using System.Diagnostics;
+﻿using System.Diagnostics;
 using DiskChecker.Core.Interfaces;
 using DiskChecker.Core.Models;
 
@@ -44,9 +44,9 @@ public class SurfaceTestExecutor : ISurfaceTestExecutor
             var meta = await _smartaProvider.GetSmartaDataAsync(request.Drive.Path, CancellationToken.None);
             if (meta != null)
             {
-                result.DriveModel = string.IsNullOrWhiteSpace(meta.DeviceModel) ? request.Drive.Name : meta.DeviceModel;
+                result.DriveModel = string.IsNullOrWhiteSpace(meta.DeviceModel?.ToSafeString()) ? request.Drive.Name : meta.DeviceModel?.ToSafeString();
                 result.DriveSerialNumber = string.IsNullOrWhiteSpace(meta.SerialNumber) ? null : meta.SerialNumber;
-                result.DriveManufacturer = string.IsNullOrWhiteSpace(meta.ModelFamily) ? null : meta.ModelFamily;
+                result.DriveManufacturer = string.IsNullOrWhiteSpace(meta.ModelFamily?.ToSafeString()) ? null : meta.ModelFamily?.ToSafeString();
                 if (meta.PowerOnHours > 0)
                 {
                     result.PowerOnHours = meta.PowerOnHours;

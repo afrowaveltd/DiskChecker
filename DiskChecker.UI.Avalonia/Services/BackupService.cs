@@ -131,7 +131,7 @@ public class BackupService : IBackupService
         return fullPath;
     }
 
-    public async Task<bool> RestoreBackupAsync(string backupPath)
+    public async Task RestoreBackupAsync(string backupPath)
     {
         if (!File.Exists(backupPath))
         {
@@ -219,7 +219,7 @@ public class BackupService : IBackupService
         return _defaultBackupDir;
     }
 
-    public async Task<IEnumerable<BackupInfo>> GetAvailableBackupsAsync()
+    public async Task<IEnumerable<IBackupService.BackupInfo>> GetAvailableBackupsAsync()
     {
         var backups = new List<BackupInfo>();
         
@@ -239,7 +239,7 @@ public class BackupService : IBackupService
                     using var zip = ZipFile.OpenRead(file);
                     var metadataEntry = zip.GetEntry("backup_metadata.json");
                     
-                    var info = new BackupInfo
+                    var info = new IBackupService.BackupInfo
                     {
                         FileName = Path.GetFileName(file),
                         FilePath = file,
@@ -270,15 +270,15 @@ public class BackupService : IBackupService
 
         return backups.OrderByDescending(b => b.CreatedAt);
     }
-}
-
-/// <summary>
-/// Metadata stored in backup ZIP file.
-/// </summary>
-internal class BackupMetadata
-{
-    public string Version { get; set; } = "1.0.0";
-    public DateTime CreatedAt { get; set; }
-    public string DatabasePath { get; set; } = string.Empty;
-    public string SettingsPath { get; set; } = string.Empty;
+    
+    public async Task DeleteBackupAsync(string backupPath)
+    {
+        await Task.Run(() =>
+        {
+            if (File.Exists(backupPath))
+            {
+                File.Delete(backupPath);
+            }
+        });
+    }
 }

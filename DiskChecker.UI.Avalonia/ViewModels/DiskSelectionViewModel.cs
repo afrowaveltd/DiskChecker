@@ -7,6 +7,8 @@ using DiskChecker.Core.Interfaces;
 using DiskChecker.Core.Models;
 using DiskChecker.UI.Avalonia.Services;
 
+using DiskChecker.Application.Models;
+
 namespace DiskChecker.UI.Avalonia.ViewModels;
 
 public partial class DiskSelectionViewModel : ViewModelBase, INavigableViewModel

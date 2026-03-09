@@ -196,7 +196,7 @@ internal static class SurfaceTestCertificateDocumentBuilder
         AddCell(grid, 1, 3, $"{data.Temperature:F1} °C", false);
 
         AddCell(grid, 2, 0, "Provozní hodiny", true);
-        AddCell(grid, 2, 1, data.PowerOnHours.ToString(), false);
+        AddCell(grid, 2, 1, data.PowerOnHours?.ToString() ?? "N/A", false);
         AddCell(grid, 2, 2, "Přemapované sektory", true);
         AddCell(grid, 2, 3, data.ReallocatedSectorCount.ToString(), false);
 

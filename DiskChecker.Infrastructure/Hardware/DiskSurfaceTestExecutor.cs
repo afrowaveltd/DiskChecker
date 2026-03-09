@@ -1,4 +1,4 @@
-using DiskChecker.Core.Interfaces;
+﻿using DiskChecker.Core.Interfaces;
 using DiskChecker.Core.Models;
 using System.Diagnostics;
 using System.Runtime.InteropServices;
@@ -134,9 +134,9 @@ public class DiskSurfaceTestExecutor : ISurfaceTestExecutor
             var smartData = await _smartaProvider.GetSmartaDataAsync(request.Drive.Path, cancellationToken);
             if (smartData != null)
             {
-                result.DriveModel = smartData.DeviceModel ?? request.Drive.Name;
-                result.DriveSerialNumber = smartData.SerialNumber;
-                result.DriveManufacturer = ExtractManufacturer(smartData.DeviceModel);
+                result.DriveModel = smartData.DeviceModel?.ToSafeString() ?? request.Drive.Name;
+                result.DriveSerialNumber = smartData.SerialNumber ?? string.Empty;
+                result.DriveManufacturer = ExtractManufacturer(smartData.DeviceModel?.ToSafeString());
                 result.DriveTotalBytes = diskCapacity;
                 result.PowerOnHours = smartData.PowerOnHours > 0 ? smartData.PowerOnHours : null;
                 result.CurrentTemperatureCelsius = smartData.Temperature > 0 ? (int)smartData.Temperature : null;

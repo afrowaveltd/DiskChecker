@@ -1,0 +1,107 @@
+﻿
+D:\DiskChecker\DiskChecker.Infrastructure\Hardware\WindowsSmartJsonParser.cs(32,42): error CS0029: Typ int nejde implic
+itn─Ť p┼Öev├ęst na typ string. [D:\DiskChecker\DiskChecker.Infrastructure\DiskChecker.Infrastructure.csproj]
+D:\DiskChecker\DiskChecker.Infrastructure\Hardware\DiskSurfaceTestExecutor.cs(137,37): error CS1929: string neobsahuje 
+definici pro ToSafeString a p┼Öet├ş┼żen├ş optim├íln├ş metody roz┼í├ş┼Öen├ş TypeConversionExtensions.ToSafeString(int?) 
+vy┼żaduje p┼Öij├şma─Ź typu int?. [D:\DiskChecker\DiskChecker.Infrastructure\DiskChecker.Infrastructure.csproj]
+D:\DiskChecker\DiskChecker.Infrastructure\Hardware\DiskSurfaceTestExecutor.cs(139,64): error CS1929: string neobsahuje 
+definici pro ToSafeString a p┼Öet├ş┼żen├ş optim├íln├ş metody roz┼í├ş┼Öen├ş TypeConversionExtensions.ToSafeString(int?) 
+vy┼żaduje p┼Öij├şma─Ź typu int?. [D:\DiskChecker\DiskChecker.Infrastructure\DiskChecker.Infrastructure.csproj]
+D:\DiskChecker\DiskChecker.Infrastructure\Hardware\WindowsSmartaProvider.cs(59,39): error CS1929: string neobsahuje def
+inici pro ToSafeString a p┼Öet├ş┼żen├ş optim├íln├ş metody roz┼í├ş┼Öen├ş TypeConversionExtensions.ToSafeString(int?) vy┼
+żaduje p┼Öij├şma─Ź typu int?. [D:\DiskChecker\DiskChecker.Infrastructure\DiskChecker.Infrastructure.csproj]
+D:\DiskChecker\DiskChecker.Infrastructure\Hardware\WindowsSmartaProvider.cs(59,80): error CS1929: string neobsahuje def
+inici pro ToSafeString a p┼Öet├ş┼żen├ş optim├íln├ş metody roz┼í├ş┼Öen├ş TypeConversionExtensions.ToSafeString(int?) vy┼
+żaduje p┼Öij├şma─Ź typu int?. [D:\DiskChecker\DiskChecker.Infrastructure\DiskChecker.Infrastructure.csproj]
+D:\DiskChecker\DiskChecker.Infrastructure\Hardware\WindowsSmartaProvider.cs(60,42): error CS1929: string neobsahuje def
+inici pro ToSafeString a p┼Öet├ş┼żen├ş optim├íln├ş metody roz┼í├ş┼Öen├ş TypeConversionExtensions.ToSafeString(int?) vy┼
+żaduje p┼Öij├şma─Ź typu int?. [D:\DiskChecker\DiskChecker.Infrastructure\DiskChecker.Infrastructure.csproj]
+D:\DiskChecker\DiskChecker.Infrastructure\Hardware\WindowsSmartaProvider.cs(77,38): error CS1929: string neobsahuje def
+inici pro ToSafeString a p┼Öet├ş┼żen├ş optim├íln├ş metody roz┼í├ş┼Öen├ş TypeConversionExtensions.ToSafeString(int?) vy┼
+żaduje p┼Öij├şma─Ź typu int?. [D:\DiskChecker\DiskChecker.Infrastructure\DiskChecker.Infrastructure.csproj]
+D:\DiskChecker\DiskChecker.Infrastructure\Hardware\WindowsSmartaProvider.cs(85,38): error CS1929: string neobsahuje def
+inici pro ToSafeString a p┼Öet├ş┼żen├ş optim├íln├ş metody roz┼í├ş┼Öen├ş TypeConversionExtensions.ToSafeString(int?) vy┼
+żaduje p┼Öij├şma─Ź typu int?. [D:\DiskChecker\DiskChecker.Infrastructure\DiskChecker.Infrastructure.csproj]
+D:\DiskChecker\DiskChecker.Infrastructure\Hardware\SmartctlJsonParser.cs(254,27): error CS0029: Typ int nejde implicitn
+─Ť p┼Öev├ęst na typ string. [D:\DiskChecker\DiskChecker.Infrastructure\DiskChecker.Infrastructure.csproj]
+D:\DiskChecker\DiskChecker.Infrastructure\Hardware\WindowsSmartaProvider.cs(495,35): error CS1929: string neobsahuje de
+finici pro ToSafeString a p┼Öet├ş┼żen├ş optim├íln├ş metody roz┼í├ş┼Öen├ş TypeConversionExtensions.ToSafeString(int?) vy
+┼żaduje p┼Öij├şma─Ź typu int?. [D:\DiskChecker\DiskChecker.Infrastructure\DiskChecker.Infrastructure.csproj]
+D:\DiskChecker\DiskChecker.Infrastructure\Hardware\WindowsSmartaProvider.cs(507,35): error CS1929: string neobsahuje de
+finici pro ToSafeString a p┼Öet├ş┼żen├ş optim├íln├ş metody roz┼í├ş┼Öen├ş TypeConversionExtensions.ToSafeString(int?) vy
+┼żaduje p┼Öij├şma─Ź typu int?. [D:\DiskChecker\DiskChecker.Infrastructure\DiskChecker.Infrastructure.csproj]
+D:\DiskChecker\DiskChecker.Infrastructure\Hardware\WindowsSmartaProvider.cs(512,128): error CS1929: string neobsahuje d
+efinici pro ToSafeString a p┼Öet├ş┼żen├ş optim├íln├ş metody roz┼í├ş┼Öen├ş TypeConversionExtensions.ToSafeString(int?) v
+y┼żaduje p┼Öij├şma─Ź typu int?. [D:\DiskChecker\DiskChecker.Infrastructure\DiskChecker.Infrastructure.csproj]
+D:\DiskChecker\DiskChecker.Infrastructure\Hardware\SurfaceTestExecutor.cs(47,63): error CS1929: string neobsahuje defin
+ici pro ToSafeString a p┼Öet├ş┼żen├ş optim├íln├ş metody roz┼í├ş┼Öen├ş TypeConversionExtensions.ToSafeString(int?) vy┼ża
+duje p┼Öij├şma─Ź typu int?. [D:\DiskChecker\DiskChecker.Infrastructure\DiskChecker.Infrastructure.csproj]
+D:\DiskChecker\DiskChecker.Infrastructure\Hardware\SurfaceTestExecutor.cs(47,120): error CS1929: string neobsahuje defi
+nici pro ToSafeString a p┼Öet├ş┼żen├ş optim├íln├ş metody roz┼í├ş┼Öen├ş TypeConversionExtensions.ToSafeString(int?) vy┼ż
+aduje p┼Öij├şma─Ź typu int?. [D:\DiskChecker\DiskChecker.Infrastructure\DiskChecker.Infrastructure.csproj]
+D:\DiskChecker\DiskChecker.Infrastructure\Hardware\SurfaceTestExecutor.cs(49,70): error CS1929: string neobsahuje defin
+ici pro ToSafeString a p┼Öet├ş┼żen├ş optim├íln├ş metody roz┼í├ş┼Öen├ş TypeConversionExtensions.ToSafeString(int?) vy┼ża
+duje p┼Öij├şma─Ź typu int?. [D:\DiskChecker\DiskChecker.Infrastructure\DiskChecker.Infrastructure.csproj]
+D:\DiskChecker\DiskChecker.Infrastructure\Hardware\SurfaceTestExecutor.cs(49,113): error CS1929: string neobsahuje defi
+nici pro ToSafeString a p┼Öet├ş┼żen├ş optim├íln├ş metody roz┼í├ş┼Öen├ş TypeConversionExtensions.ToSafeString(int?) vy┼ż
+aduje p┼Öij├şma─Ź typu int?. [D:\DiskChecker\DiskChecker.Infrastructure\DiskChecker.Infrastructure.csproj]
+D:\DiskChecker\DiskChecker.Infrastructure\Hardware\SequentialFileTestExecutor.cs(100,36): error CS1929: string neobsahu
+je definici pro ToSafeString a p┼Öet├ş┼żen├ş optim├íln├ş metody roz┼í├ş┼Öen├ş TypeConversionExtensions.ToSafeString(int
+?) vy┼żaduje p┼Öij├şma─Ź typu int?. [D:\DiskChecker\DiskChecker.Infrastructure\DiskChecker.Infrastructure.csproj]
+D:\DiskChecker\DiskChecker.Infrastructure\Hardware\SequentialFileTestExecutor.cs(102,63): error CS1929: string neobsahu
+je definici pro ToSafeString a p┼Öet├ş┼żen├ş optim├íln├ş metody roz┼í├ş┼Öen├ş TypeConversionExtensions.ToSafeString(int
+?) vy┼żaduje p┼Öij├şma─Ź typu int?. [D:\DiskChecker\DiskChecker.Infrastructure\DiskChecker.Infrastructure.csproj]
+D:\DiskChecker\DiskChecker.Infrastructure\Hardware\WindowsSmartJsonParser.cs(32,42): error CS0029: Typ int nejde implic
+itn─Ť p┼Öev├ęst na typ string. [D:\DiskChecker\DiskChecker.Infrastructure\DiskChecker.Infrastructure.csproj]
+D:\DiskChecker\DiskChecker.Infrastructure\Hardware\DiskSurfaceTestExecutor.cs(137,37): error CS1929: string neobsahuje 
+definici pro ToSafeString a p┼Öet├ş┼żen├ş optim├íln├ş metody roz┼í├ş┼Öen├ş TypeConversionExtensions.ToSafeString(int?) 
+vy┼żaduje p┼Öij├şma─Ź typu int?. [D:\DiskChecker\DiskChecker.Infrastructure\DiskChecker.Infrastructure.csproj]
+D:\DiskChecker\DiskChecker.Infrastructure\Hardware\DiskSurfaceTestExecutor.cs(139,64): error CS1929: string neobsahuje 
+definici pro ToSafeString a p┼Öet├ş┼żen├ş optim├íln├ş metody roz┼í├ş┼Öen├ş TypeConversionExtensions.ToSafeString(int?) 
+vy┼żaduje p┼Öij├şma─Ź typu int?. [D:\DiskChecker\DiskChecker.Infrastructure\DiskChecker.Infrastructure.csproj]
+D:\DiskChecker\DiskChecker.Infrastructure\Hardware\WindowsSmartaProvider.cs(59,39): error CS1929: string neobsahuje def
+inici pro ToSafeString a p┼Öet├ş┼żen├ş optim├íln├ş metody roz┼í├ş┼Öen├ş TypeConversionExtensions.ToSafeString(int?) vy┼
+żaduje p┼Öij├şma─Ź typu int?. [D:\DiskChecker\DiskChecker.Infrastructure\DiskChecker.Infrastructure.csproj]
+D:\DiskChecker\DiskChecker.Infrastructure\Hardware\WindowsSmartaProvider.cs(59,80): error CS1929: string neobsahuje def
+inici pro ToSafeString a p┼Öet├ş┼żen├ş optim├íln├ş metody roz┼í├ş┼Öen├ş TypeConversionExtensions.ToSafeString(int?) vy┼
+żaduje p┼Öij├şma─Ź typu int?. [D:\DiskChecker\DiskChecker.Infrastructure\DiskChecker.Infrastructure.csproj]
+D:\DiskChecker\DiskChecker.Infrastructure\Hardware\WindowsSmartaProvider.cs(60,42): error CS1929: string neobsahuje def
+inici pro ToSafeString a p┼Öet├ş┼żen├ş optim├íln├ş metody roz┼í├ş┼Öen├ş TypeConversionExtensions.ToSafeString(int?) vy┼
+żaduje p┼Öij├şma─Ź typu int?. [D:\DiskChecker\DiskChecker.Infrastructure\DiskChecker.Infrastructure.csproj]
+D:\DiskChecker\DiskChecker.Infrastructure\Hardware\WindowsSmartaProvider.cs(77,38): error CS1929: string neobsahuje def
+inici pro ToSafeString a p┼Öet├ş┼żen├ş optim├íln├ş metody roz┼í├ş┼Öen├ş TypeConversionExtensions.ToSafeString(int?) vy┼
+żaduje p┼Öij├şma─Ź typu int?. [D:\DiskChecker\DiskChecker.Infrastructure\DiskChecker.Infrastructure.csproj]
+D:\DiskChecker\DiskChecker.Infrastructure\Hardware\WindowsSmartaProvider.cs(85,38): error CS1929: string neobsahuje def
+inici pro ToSafeString a p┼Öet├ş┼żen├ş optim├íln├ş metody roz┼í├ş┼Öen├ş TypeConversionExtensions.ToSafeString(int?) vy┼
+żaduje p┼Öij├şma─Ź typu int?. [D:\DiskChecker\DiskChecker.Infrastructure\DiskChecker.Infrastructure.csproj]
+D:\DiskChecker\DiskChecker.Infrastructure\Hardware\SmartctlJsonParser.cs(254,27): error CS0029: Typ int nejde implicitn
+─Ť p┼Öev├ęst na typ string. [D:\DiskChecker\DiskChecker.Infrastructure\DiskChecker.Infrastructure.csproj]
+D:\DiskChecker\DiskChecker.Infrastructure\Hardware\WindowsSmartaProvider.cs(495,35): error CS1929: string neobsahuje de
+finici pro ToSafeString a p┼Öet├ş┼żen├ş optim├íln├ş metody roz┼í├ş┼Öen├ş TypeConversionExtensions.ToSafeString(int?) vy
+┼żaduje p┼Öij├şma─Ź typu int?. [D:\DiskChecker\DiskChecker.Infrastructure\DiskChecker.Infrastructure.csproj]
+D:\DiskChecker\DiskChecker.Infrastructure\Hardware\WindowsSmartaProvider.cs(507,35): error CS1929: string neobsahuje de
+finici pro ToSafeString a p┼Öet├ş┼żen├ş optim├íln├ş metody roz┼í├ş┼Öen├ş TypeConversionExtensions.ToSafeString(int?) vy
+┼żaduje p┼Öij├şma─Ź typu int?. [D:\DiskChecker\DiskChecker.Infrastructure\DiskChecker.Infrastructure.csproj]
+D:\DiskChecker\DiskChecker.Infrastructure\Hardware\WindowsSmartaProvider.cs(512,128): error CS1929: string neobsahuje d
+efinici pro ToSafeString a p┼Öet├ş┼żen├ş optim├íln├ş metody roz┼í├ş┼Öen├ş TypeConversionExtensions.ToSafeString(int?) v
+y┼żaduje p┼Öij├şma─Ź typu int?. [D:\DiskChecker\DiskChecker.Infrastructure\DiskChecker.Infrastructure.csproj]
+D:\DiskChecker\DiskChecker.Infrastructure\Hardware\SurfaceTestExecutor.cs(47,63): error CS1929: string neobsahuje defin
+ici pro ToSafeString a p┼Öet├ş┼żen├ş optim├íln├ş metody roz┼í├ş┼Öen├ş TypeConversionExtensions.ToSafeString(int?) vy┼ża
+duje p┼Öij├şma─Ź typu int?. [D:\DiskChecker\DiskChecker.Infrastructure\DiskChecker.Infrastructure.csproj]
+D:\DiskChecker\DiskChecker.Infrastructure\Hardware\SurfaceTestExecutor.cs(47,120): error CS1929: string neobsahuje defi
+nici pro ToSafeString a p┼Öet├ş┼żen├ş optim├íln├ş metody roz┼í├ş┼Öen├ş TypeConversionExtensions.ToSafeString(int?) vy┼ż
+aduje p┼Öij├şma─Ź typu int?. [D:\DiskChecker\DiskChecker.Infrastructure\DiskChecker.Infrastructure.csproj]
+D:\DiskChecker\DiskChecker.Infrastructure\Hardware\SurfaceTestExecutor.cs(49,70): error CS1929: string neobsahuje defin
+ici pro ToSafeString a p┼Öet├ş┼żen├ş optim├íln├ş metody roz┼í├ş┼Öen├ş TypeConversionExtensions.ToSafeString(int?) vy┼ża
+duje p┼Öij├şma─Ź typu int?. [D:\DiskChecker\DiskChecker.Infrastructure\DiskChecker.Infrastructure.csproj]
+D:\DiskChecker\DiskChecker.Infrastructure\Hardware\SurfaceTestExecutor.cs(49,113): error CS1929: string neobsahuje defi
+nici pro ToSafeString a p┼Öet├ş┼żen├ş optim├íln├ş metody roz┼í├ş┼Öen├ş TypeConversionExtensions.ToSafeString(int?) vy┼ż
+aduje p┼Öij├şma─Ź typu int?. [D:\DiskChecker\DiskChecker.Infrastructure\DiskChecker.Infrastructure.csproj]
+D:\DiskChecker\DiskChecker.Infrastructure\Hardware\SequentialFileTestExecutor.cs(100,36): error CS1929: string neobsahu
+je definici pro ToSafeString a p┼Öet├ş┼żen├ş optim├íln├ş metody roz┼í├ş┼Öen├ş TypeConversionExtensions.ToSafeString(int
+?) vy┼żaduje p┼Öij├şma─Ź typu int?. [D:\DiskChecker\DiskChecker.Infrastructure\DiskChecker.Infrastructure.csproj]
+D:\DiskChecker\DiskChecker.Infrastructure\Hardware\SequentialFileTestExecutor.cs(102,63): error CS1929: string neobsahu
+je definici pro ToSafeString a p┼Öet├ş┼żen├ş optim├íln├ş metody roz┼í├ş┼Öen├ş TypeConversionExtensions.ToSafeString(int
+?) vy┼żaduje p┼Öij├şma─Ź typu int?. [D:\DiskChecker\DiskChecker.Infrastructure\DiskChecker.Infrastructure.csproj]
+
+

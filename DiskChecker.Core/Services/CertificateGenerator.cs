@@ -1,4 +1,4 @@
-using System.Globalization;
+﻿using System.Globalization;
 using DiskChecker.Core.Interfaces;
 using DiskChecker.Core.Models;
 using System.Text;
@@ -81,8 +81,8 @@ public static class CertificateGeneratorExtensions
         sb.AppendLine(GetLine('-'));
         sb.AppendLine(GetCentered(t["drive_info"]));
         sb.AppendLine(GetLine('-'));
-        sb.AppendLine($"Manufacturer: {smartaData.ModelFamily ?? "Unknown"}");
-        sb.AppendLine($"Model:        {smartaData.DeviceModel ?? "Unknown"}");
+        sb.AppendLine($"Manufacturer: {smartaData.ModelFamily?.ToString() ?? "Unknown"}");
+        sb.AppendLine($"Model:        {smartaData.DeviceModel?.ToString() ?? "Unknown"}");
         sb.AppendLine($"Serial#:      {smartaData.SerialNumber ?? "Unknown"}");
         sb.AppendLine($"Firmware:     {smartaData.FirmwareVersion ?? "Unknown"}");
         sb.AppendLine();
@@ -104,9 +104,9 @@ public static class CertificateGeneratorExtensions
         sb.AppendLine(GetLine('-'));
         
         // Use extension methods
-        var grade = QualityRatingExtensions.GetGrade(rating);
-        var score = QualityRatingExtensions.GetScore(rating);
-        var warningCount = QualityRatingExtensions.GetWarnings(rating);
+        var grade = rating.Grade;
+        var score = rating.Score;
+        var warningCount = rating.Warnings;
         
         sb.AppendLine($"Grade:         {grade}");
         sb.AppendLine($"Score:         {score:F2}/100");

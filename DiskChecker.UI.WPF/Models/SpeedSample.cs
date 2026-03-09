@@ -1,4 +1,4 @@
-namespace DiskChecker.UI.WPF.ViewModels;
+namespace DiskChecker.UI.WPF.Models;
 
 /// <summary>
 /// Represents a single speed sample point in the real-time graph.

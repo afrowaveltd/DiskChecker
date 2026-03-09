@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text.Json;
@@ -66,15 +66,27 @@ public static class SmartctlJsonParser
             if (root.TryGetProperty("ata_smart_self_test_log", out var selfTest2) &&
                 selfTest2.TryGetProperty("current_test", out var currentTest))
             {
-                result.CurrentSelfTest = new SmartctlSelfTestStatus
+                var statusValue = "";
+                var remainingPercent = 0;
+                
+                if (currentTest.TryGetProperty("status", out var status) && 
+                    status.TryGetProperty("string", out var str))
                 {
-                    IsRunning = currentTest.TryGetProperty("status", out var status) && status.TryGetProperty("string", out var str) 
-                        && str.GetString()?.Contains("Self-test routine in progress") == true,
-                    StatusText = currentTest.TryGetProperty("status", out var st) && st.TryGetProperty("string", out var stStr) 
-                        ? stStr.GetString() ?? "" 
-                        : "",
-                    RemainingPercent = currentTest.TryGetProperty("percent", out var pct) && pct.TryGetInt32(out var p) ? p : 0,
-                    CheckedAtUtc = DateTime.UtcNow
+                    statusValue = str.GetString() ?? "";
+                }
+                
+                if (currentTest.TryGetProperty("percent", out var pct))
+                {
+                    remainingPercent = pct.TryGetInt32(out var p) ? p : 0;
+                }
+                
+                var isRunning = statusValue.Contains("Self-test routine in progress");
+                result.CurrentSelfTest = new SmartaSelfTestEntry
+                {
+                    Status = isRunning ? SmartaSelfTestStatus.InProgress : 
+                        ParseSelfTestStatus(statusValue),
+                    RemainingPercent = remainingPercent,
+                    CompletedAt = DateTime.UtcNow
                 };
             }
             
@@ -125,7 +137,7 @@ public static class SmartctlJsonParser
                 var attr = new SmartaAttributeItem
                 {
                     Id = item.TryGetProperty("id", out var id) ? id.GetInt32() : 0,
-                    Name = item.TryGetProperty("name", out var name) ? name.GetString() : null,
+                    Name = item.TryGetProperty("name", out var name) ? name.GetString() ?? string.Empty : string.Empty,
                     Value = (byte)(item.TryGetProperty("value", out var val) && val.TryGetInt32(out var v) ? v : 0),
                     Worst = (byte)(item.TryGetProperty("worst", out var worst) && worst.TryGetInt32(out var w) ? w : 0),
                     Threshold = item.TryGetProperty("thresh", out var thresh) && thresh.TryGetInt32(out var t) ? t : 0,
@@ -135,8 +147,8 @@ public static class SmartctlJsonParser
                         : true,
                     Current = (byte)(item.TryGetProperty("value", out var curVal) && curVal.TryGetInt32(out var cv) ? cv : 0),
                     WhenFailed = item.TryGetProperty("when_failed", out var wf) && wf.ValueKind != JsonValueKind.Null 
-                        ? wf.GetString() 
-                        : null
+                        ? wf.GetString() ?? string.Empty 
+                        : string.Empty
                 };
                 attrs.Add(attr);
             }
@@ -154,14 +166,16 @@ public static class SmartctlJsonParser
         {
             foreach (var test in testTable.EnumerateArray())
             {
+                var typeStr = test.TryGetProperty("type", out var type) ? type.GetString() : null;
+                var statusStr = test.TryGetProperty("status", out var status) ? status.GetString() : null;
                 var entry = new SmartaSelfTestEntry
                 {
                     Number = test.TryGetProperty("num", out var num) && num.TryGetInt32(out var n) ? n : 0,
-                    Type = ParseSelfTestType(test.TryGetProperty("type", out var type) ? type.GetString() : ""),
-                    Status = ParseSelfTestStatus(test.TryGetProperty("status", out var status) ? status.GetString() : ""),
+                    Type = ParseSelfTestType(typeStr),
+                    Status = ParseSelfTestStatus(statusStr),
                     RemainingPercent = test.TryGetProperty("remaining", out var rem) && rem.TryGetInt32(out var r) ? r : 0,
                     LifeTimeHours = test.TryGetProperty("lifetime_hours", out var lifetime) && lifetime.TryGetInt32(out var l) ? l : 0,
-                    LbaOfFirstError = (ulong)(test.TryGetProperty("lba_of_first_error", out var lba) && lba.TryGetInt64(out var lb) ? lb : 0)
+                    LbaOfFirstError = test.TryGetProperty("lba_of_first_error", out var lba) && lba.TryGetInt64(out var lb) ? (long)lb : 0
                 };
                 tests.Add(entry);
             }
@@ -186,20 +200,50 @@ public static class SmartctlJsonParser
     
     public static SmartaSelfTestStatus ParseSelfTestStatus(string? status)
     {
-        if (string.IsNullOrEmpty(status)) return SmartaSelfTestStatus.None;
+        if (string.IsNullOrEmpty(status)) 
+        {
+            return SmartaSelfTestStatus.ErrorUnknown;
+        }
         
         var s = status.ToLowerInvariant();
-        if (s.Contains("completed without error") || s.Contains("passed")) return SmartaSelfTestStatus.Passed;
-        if (s.Contains("aborted")) return SmartaSelfTestStatus.Aborted;
-        if (s.Contains("interrupted")) return SmartaSelfTestStatus.Interrupted;
-        if (s.Contains("fatal")) return SmartaSelfTestStatus.Fatal;
-        if (s.Contains("electrical")) return SmartaSelfTestStatus.ElectricalFailure;
-        if (s.Contains("servo")) return SmartaSelfTestStatus.ServoFailure;
-        if (s.Contains("read")) return SmartaSelfTestStatus.ReadFailure;
-        if (s.Contains("handling")) return SmartaSelfTestStatus.HandlingDamage;
-        if (s.Contains("in progress") || s.Contains("running")) return SmartaSelfTestStatus.Running;
+        if (s.Contains("completed without error") || s.Contains("passed")) 
+        {
+            return SmartaSelfTestStatus.CompletedWithoutError;
+        }
+        if (s.Contains("aborted")) 
+        {
+            return SmartaSelfTestStatus.AbortedByUser;
+        }
+        if (s.Contains("interrupted")) 
+        {
+            return SmartaSelfTestStatus.AbortedByHost;
+        }
+        if (s.Contains("fatal")) 
+        {
+            return SmartaSelfTestStatus.FatalError;
+        }
+        if (s.Contains("electrical")) 
+        {
+            return SmartaSelfTestStatus.ErrorElectrical;
+        }
+        if (s.Contains("servo")) 
+        {
+            return SmartaSelfTestStatus.ErrorServo;
+        }
+        if (s.Contains("read")) 
+        {
+            return SmartaSelfTestStatus.ErrorRead;
+        }
+        if (s.Contains("handling")) 
+        {
+            return SmartaSelfTestStatus.ErrorHandling;
+        }
+        if (s.Contains("in progress") || s.Contains("running")) 
+        {
+            return SmartaSelfTestStatus.InProgress;
+        }
         
-        return SmartaSelfTestStatus.Unknown;
+        return SmartaSelfTestStatus.ErrorUnknown;
     }
     
     // Helper method to convert SmartCheckResult to SmartaData
@@ -207,8 +251,8 @@ public static class SmartctlJsonParser
     {
         return new SmartaData
         {
-            DeviceModel = deviceModel,
-            SerialNumber = serialNumber,
+            DeviceModel = deviceModel?.ToIntOrNull() ?? 0,
+            SerialNumber = serialNumber ?? string.Empty,
             SmartEnabled = result.IsEnabled,
             SmartHealthy = result.IsHealthy,
             PowerOnHours = result.PowerOnHours,
@@ -218,7 +262,7 @@ public static class SmartctlJsonParser
             Temperature = result.Temperature,
             WearLevelingCount = result.WearLevelingCount,
             Attributes = result.Attributes,
-            SelfTests = result.SelfTests
+            SelfTests = result.SelfTests ?? new List<SmartaSelfTestEntry>()
         };
     }
 }

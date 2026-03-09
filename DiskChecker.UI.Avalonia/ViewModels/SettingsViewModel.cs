@@ -1,6 +1,7 @@
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using DiskChecker.UI.Avalonia.Services.Interfaces;
+using DiskChecker.Application.Services;
 using System;
 using System.Collections.ObjectModel;
 using System.IO;
@@ -10,14 +11,14 @@ namespace DiskChecker.UI.Avalonia.ViewModels
 {
     public partial class SettingsViewModel : ViewModelBase
     {
-        private readonly ISettingsService _settingsService;
+        private readonly HistoryService _historyService;
         private readonly IDialogService _dialogService;
         private readonly IBackupService _backupService;
         
         private bool _isSaving;
         private string _statusMessage = string.Empty;
         private bool _isLoadingBackups;
-        private ObservableCollection<BackupInfo> _availableBackups = new();
+        private ObservableCollection<IBackupService.BackupInfo> _availableBackups = new();
         
         // Nastavení aplikace
         private bool _autoCheckForUpdates;
@@ -29,9 +30,9 @@ namespace DiskChecker.UI.Avalonia.ViewModels
         private bool _enableLogging;
         private string _logLevel = "Information";
 
-        public SettingsViewModel(ISettingsService settingsService, IDialogService dialogService, IBackupService backupService)
+        public SettingsViewModel(HistoryService historyService, IDialogService dialogService, IBackupService backupService)
         {
-            _settingsService = settingsService ?? throw new ArgumentNullException(nameof(settingsService));
+            _historyService = settingsService ?? throw new ArgumentNullException(nameof(settingsService));
             _dialogService = dialogService ?? throw new ArgumentNullException(nameof(dialogService));
             _backupService = backupService ?? throw new ArgumentNullException(nameof(backupService));
             
@@ -120,14 +121,14 @@ namespace DiskChecker.UI.Avalonia.ViewModels
             set => SetProperty(ref _isLoadingBackups, value);
         }
 
-        public ObservableCollection<BackupInfo> AvailableBackups
+        public ObservableCollection<IBackupService.BackupInfo> AvailableBackups
         {
             get => _availableBackups;
             set => SetProperty(ref _availableBackups, value);
         }
 
-        private BackupInfo? _selectedBackup;
-        public BackupInfo? SelectedBackup
+        private IBackupService.BackupInfo? _selectedBackup;
+        public IBackupService.BackupInfo? SelectedBackup
         {
             get => _selectedBackup;
             set
@@ -155,14 +156,14 @@ namespace DiskChecker.UI.Avalonia.ViewModels
                 StatusMessage = "Načítám nastavení...";
                 
                 // Načteme nastavení ze služby
-                AutoCheckForUpdates = await _settingsService.GetAutoCheckForUpdatesAsync();
-                RunAtStartup = await _settingsService.GetRunAtStartupAsync();
-                MinimizeToTray = await _settingsService.GetMinimizeToTrayAsync();
-                AutoSaveInterval = await _settingsService.GetAutoSaveIntervalAsync();
-                DefaultExportPath = await _settingsService.GetDefaultExportPathAsync();
-                Language = await _settingsService.GetLanguageAsync();
-                EnableLogging = await _settingsService.GetEnableLoggingAsync();
-                LogLevel = await _settingsService.GetLogLevelAsync();
+                AutoCheckForUpdates = await _historyService.GetAutoCheckForUpdatesAsync();
+                RunAtStartup = await _historyService.GetRunAtStartupAsync();
+                MinimizeToTray = await _historyService.GetMinimizeToTrayAsync();
+                AutoSaveInterval = await _historyService.GetAutoSaveIntervalAsync();
+                DefaultExportPath = await _historyService.GetDefaultExportPathAsync();
+                Language = await _historyService.GetLanguageAsync();
+                EnableLogging = await _historyService.GetEnableLoggingAsync();
+                LogLevel = await _historyService.GetLogLevelAsync();
                 
                 StatusMessage = "Nastavení načteno";
             }
@@ -181,14 +182,14 @@ namespace DiskChecker.UI.Avalonia.ViewModels
                 StatusMessage = "Ukládám nastavení...";
                 
                 // Uložíme nastavení do služby
-                await _settingsService.SetAutoCheckForUpdatesAsync(AutoCheckForUpdates);
-                await _settingsService.SetRunAtStartupAsync(RunAtStartup);
-                await _settingsService.SetMinimizeToTrayAsync(MinimizeToTray);
-                await _settingsService.SetAutoSaveIntervalAsync(AutoSaveInterval);
-                await _settingsService.SetDefaultExportPathAsync(DefaultExportPath);
-                await _settingsService.SetLanguageAsync(Language);
-                await _settingsService.SetEnableLoggingAsync(EnableLogging);
-                await _settingsService.SetLogLevelAsync(LogLevel);
+                await _historyService.SetAutoCheckForUpdatesAsync(AutoCheckForUpdates);
+                await _historyService.SetRunAtStartupAsync(RunAtStartup);
+                await _historyService.SetMinimizeToTrayAsync(MinimizeToTray);
+                await _historyService.SetAutoSaveIntervalAsync(AutoSaveInterval);
+                await _historyService.SetDefaultExportPathAsync(DefaultExportPath);
+                await _historyService.SetLanguageAsync(Language);
+                await _historyService.SetEnableLoggingAsync(EnableLogging);
+                await _historyService.SetLogLevelAsync(LogLevel);
                 
                 StatusMessage = "Nastavení úspěšně uloženo";
             }
@@ -216,7 +217,7 @@ namespace DiskChecker.UI.Avalonia.ViewModels
                     StatusMessage = "Resetuji nastavení...";
                     
                     // Resetujeme nastavení ve službě
-                    await _settingsService.ResetToDefaultsAsync();
+                    await _historyService.ResetToDefaultsAsync();
                     
                     // Znovu načteme nastavení
                     LoadSettings();
@@ -320,7 +321,7 @@ namespace DiskChecker.UI.Avalonia.ViewModels
             {
                 IsLoadingBackups = true;
                 var backups = await _backupService.GetAvailableBackupsAsync();
-                AvailableBackups = new ObservableCollection<BackupInfo>(backups);
+                AvailableBackups = new ObservableCollection<IBackupService.BackupInfo>(backups);
             }
             catch (Exception ex)
             {

@@ -2,6 +2,7 @@ using DiskChecker.Core.Interfaces;
 using DiskChecker.Core.Models;
 using DiskChecker.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
+using DiskChecker.Application.Models;
 
 namespace DiskChecker.Application.Services;
 
@@ -75,9 +76,9 @@ public class HistoryService
         return new PagedResult<TestHistoryItem>
         {
             Items = items,
-            TotalItems = totalItems,
+            TotalCount = totalItems,
             PageSize = pageSize,
-            PageIndex = pageIndex
+            PageNumber = pageIndex + 1
         };
     }
 
@@ -145,7 +146,7 @@ public class HistoryService
                 Temperature = test.SmartaData.Temperature,
                 WearLevelingCount = test.SmartaData.WearLevelingCount
             } : null,
-            SurfaceSamples = test.SurfaceSamples.Select(s => new SpeedSample
+            SurfaceSamples = test.SurfaceSamples.Select(s => new SurfaceTestSample
             {
                 OffsetBytes = s.OffsetBytes,
                 BlockSizeBytes = (int)s.BlockSizeBytes,

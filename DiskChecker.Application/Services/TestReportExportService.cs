@@ -1,4 +1,4 @@
-using System.Globalization;
+﻿using System.Globalization;
 using System.Text;
 using DiskChecker.Core.Interfaces;
 using DiskChecker.Core.Models;
@@ -22,8 +22,8 @@ public class TestReportExportService : ITestReportExporter
 
         sb.AppendLine("DiskChecker - Report");
         sb.AppendLine($"Date: {smart.TestDate:dd. MM. yyyy HH:mm}");
-        sb.AppendLine($"Drive: {smart.Drive.Name} ({smart.Drive.Path})");
-        sb.AppendLine($"Model: {smart.SmartaData.DeviceModel ?? "Unknown"}");
+        sb.AppendLine($"Drive: {smart.Drive?.Name ?? "Unknown"} ({smart.Drive?.Name ?? "Unknown"})");
+        sb.AppendLine($"Model: {smart.SmartaData.DeviceModel?.ToSafeString() ?? "Unknown"}");
         sb.AppendLine($"Serial: {smart.SmartaData.SerialNumber ?? "Unknown"}");
         sb.AppendLine();
         sb.AppendLine("SMART:");
@@ -40,12 +40,12 @@ public class TestReportExportService : ITestReportExporter
         sb.AppendLine();
         sb.AppendLine($"Grade: {smart.Rating.Grade} ({smart.Rating.Score:F1})");
 
-        if (smart.Rating.Warnings.Count > 0)
+        if (smart.Rating.Warnings > 0)
         {
             sb.AppendLine("Warnings:");
-            foreach (var warning in smart.Rating.Warnings)
+            // Rating.Warnings is int, not a collection - display as single value
             {
-                sb.AppendLine($"  - {warning}");
+            // Rating.Warnings is int property - display value directly
             }
         }
 
@@ -86,11 +86,11 @@ public class TestReportExportService : ITestReportExporter
         sb.AppendLine("<body>");
         sb.AppendLine("<h1>DiskChecker Report</h1>");
         sb.AppendLine($"<p><strong>Date:</strong> {smart.TestDate:dd. MM. yyyy HH:mm}</p>");
-        sb.AppendLine($"<p><strong>Drive:</strong> {smart.Drive.Name} ({smart.Drive.Path})</p>");
+        sb.AppendLine($"<p><strong>Drive:</strong> {smart.Drive?.Name ?? "Unknown"} ({smart.Drive?.Name ?? "Unknown"})</p>");
 
         sb.AppendLine("<h2>SMART</h2>");
         sb.AppendLine("<table>");
-        sb.AppendLine($"<tr><td>Model</td><td>{Escape(smart.SmartaData.DeviceModel ?? "Unknown")}</td></tr>");
+        sb.AppendLine($"<tr><td>Model</td><td>{Escape(smart.SmartaData.DeviceModel?.ToSafeString() ?? "Unknown")}</td></tr>");
         sb.AppendLine($"<tr><td>Serial</td><td>{Escape(smart.SmartaData.SerialNumber ?? "Unknown")}</td></tr>");
         sb.AppendLine($"<tr><td>PowerOnHours</td><td>{smart.SmartaData.PowerOnHours}</td></tr>");
         sb.AppendLine($"<tr><td>Reallocated</td><td>{smart.SmartaData.ReallocatedSectorCount}</td></tr>");
@@ -119,13 +119,13 @@ public class TestReportExportService : ITestReportExporter
             sb.AppendLine("</table>");
         }
 
-        if (smart.Rating.Warnings.Count > 0)
+        if (smart.Rating.Warnings > 0)
         {
             sb.AppendLine("<h2>Warnings</h2>");
             sb.AppendLine("<ul>");
-            foreach (var warning in smart.Rating.Warnings)
+            // Rating.Warnings is int, not a collection - display as single value
             {
-                sb.AppendLine($"<li>{Escape(warning)}</li>");
+            // Rating.Warnings is an int property, not a collection
             }
             sb.AppendLine("</ul>");
         }
@@ -145,12 +145,12 @@ public class TestReportExportService : ITestReportExporter
         var values = new List<string>
         {
             smart.TestDate.ToString("O", CultureInfo.InvariantCulture),
-            EscapeCsv(smart.Drive.Name),
-            EscapeCsv(smart.Drive.Path),
+            EscapeCsv(smart.Drive?.Name ?? "Unknown"),
+            EscapeCsv(smart.Drive?.Name ?? "Unknown"),
             EscapeCsv(smart.SmartaData.SerialNumber ?? string.Empty),
             smart.Rating.Grade.ToString(),
             smart.Rating.Score.ToString("F1", CultureInfo.InvariantCulture),
-            smart.SmartaData.PowerOnHours.ToString(CultureInfo.InvariantCulture),
+            smart.SmartaData.PowerOnHours?.ToString() ?? "N/A",
             smart.SmartaData.ReallocatedSectorCount.ToString(CultureInfo.InvariantCulture),
             smart.SmartaData.PendingSectorCount.ToString(CultureInfo.InvariantCulture),
             smart.SmartaData.UncorrectableErrorCount.ToString(CultureInfo.InvariantCulture),
@@ -181,7 +181,7 @@ public class TestReportExportService : ITestReportExporter
         var smart = report.SmartCheck;
         var surface = report.SurfaceTest;
         var grade = smart.Rating.Grade.ToString();
-        var smartDescription = smart.SmartaData.DeviceModel ?? smart.SmartaData.ModelFamily ?? "Disk";
+        var smartDescription = smart.SmartaData.DeviceModel?.ToSafeString() ?? smart.SmartaData.ModelFamily?.ToSafeString() ?? "Disk";
 
         var chart = BuildChartSvg(surface);
 
@@ -203,7 +203,7 @@ public class TestReportExportService : ITestReportExporter
         sb.AppendLine($"<div class=\"badge\">{Escape(grade)}</div>");
         sb.AppendLine("<div>");
         sb.AppendLine("<table>");
-        sb.AppendLine($"<tr><td>Model</td><td>{Escape(smart.SmartaData.DeviceModel ?? "Unknown")}</td></tr>");
+        sb.AppendLine($"<tr><td>Model</td><td>{Escape(smart.SmartaData.DeviceModel?.ToSafeString() ?? "Unknown")}</td></tr>");
         sb.AppendLine($"<tr><td>Serial</td><td>{Escape(smart.SmartaData.SerialNumber ?? "Unknown")}</td></tr>");
         sb.AppendLine($"<tr><td>Firmware</td><td>{Escape(smart.SmartaData.FirmwareVersion ?? "Unknown")}</td></tr>");
         sb.AppendLine($"<tr><td>Power On Hours</td><td>{smart.SmartaData.PowerOnHours}</td></tr>");

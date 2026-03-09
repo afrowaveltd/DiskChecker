@@ -23,14 +23,20 @@ public class QualityCalculator : IQualityCalculator
 
         score = Math.Max(0, Math.Min(100, Math.Round(score, 2)));
 
-        // Return enum based on score
-        if (score >= 95) return QualityRating.APlus;
-        if (score >= 85) return QualityRating.A;
-        if (score >= 75) return QualityRating.B;
-        if (score >= 65) return QualityRating.C;
-        if (score >= 55) return QualityRating.D;
-        if (score >= 40) return QualityRating.E;
-        return QualityRating.F;
+        QualityGrade grade;
+        if (score >= 90) grade = QualityGrade.A;
+        else if (score >= 80) grade = QualityGrade.B;
+        else if (score >= 70) grade = QualityGrade.C;
+        else if (score >= 60) grade = QualityGrade.D;
+        else if (score >= 50) grade = QualityGrade.E;
+        else grade = QualityGrade.F;
+
+        return new QualityRating
+        {
+            Grade = grade,
+            Score = score,
+            Warnings = warnings
+        };
     }
 
     private double CalculateReallocatedSectorsScore(long count, List<string> warnings)

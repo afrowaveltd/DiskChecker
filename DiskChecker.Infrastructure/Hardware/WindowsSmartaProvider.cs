@@ -1,4 +1,4 @@
-using System.Diagnostics;
+﻿using System.Diagnostics;
 using System.Text.Json;
 using System.ComponentModel;
 using DiskChecker.Core.Interfaces;
@@ -56,8 +56,8 @@ public class WindowsSmartaProvider : ISmartaProvider, IAdvancedSmartaProvider
         if (smartctl != null && windows != null)
         {
             // Use Windows model if smartctl model is missing or contains "USB Device"
-            if ((string.IsNullOrEmpty(smartctl.DeviceModel) || smartctl.DeviceModel.Contains("USB", StringComparison.OrdinalIgnoreCase)) 
-                && !string.IsNullOrEmpty(windows.DeviceModel))
+            if ((string.IsNullOrEmpty(smartctl.DeviceModel?.ToSafeString()) || smartctl.DeviceModel?.ToSafeString()?.Contains("USB", StringComparison.OrdinalIgnoreCase) == true) 
+                && !string.IsNullOrEmpty(windows.DeviceModel?.ToSafeString()))
             {
                 result!.DeviceModel = windows.DeviceModel;
             }
@@ -74,7 +74,7 @@ public class WindowsSmartaProvider : ISmartaProvider, IAdvancedSmartaProvider
             }
 
             // Model and firmware are also static
-            if (string.IsNullOrEmpty(result.DeviceModel))
+            if (string.IsNullOrEmpty(result.DeviceModel?.ToSafeString()))
             {
                 result.DeviceModel = _lastSuccessfulSmartData.DeviceModel;
             }
@@ -82,7 +82,7 @@ public class WindowsSmartaProvider : ISmartaProvider, IAdvancedSmartaProvider
             {
                 result.FirmwareVersion = _lastSuccessfulSmartData.FirmwareVersion;
             }
-            if (string.IsNullOrEmpty(result.ModelFamily))
+            if (string.IsNullOrEmpty(result.ModelFamily?.ToSafeString()))
             {
                 result.ModelFamily = _lastSuccessfulSmartData.ModelFamily;
             }
@@ -492,7 +492,7 @@ $res | ConvertTo-Json -Compress";
         if (data.PowerOnHours > 0) score += 80;
         
         // Model information
-        if (!string.IsNullOrEmpty(data.DeviceModel)) score += 40;
+        if (!string.IsNullOrEmpty(data.DeviceModel?.ToSafeString())) score += 40;
         
         // Serial number (prefer real SN over USB controller ID)
         if (!string.IsNullOrEmpty(data.SerialNumber) && !IsUsbControllerSerialNumber(data.SerialNumber))
@@ -504,12 +504,12 @@ $res | ConvertTo-Json -Compress";
         if (data.UncorrectableErrorCount > 0) score += 20;
         if (data.WearLevelingCount.HasValue) score += 15;
         if (!string.IsNullOrEmpty(data.FirmwareVersion)) score += 10;
-        if (!string.IsNullOrEmpty(data.ModelFamily)) score += 10;
+        if (!string.IsNullOrEmpty(data.ModelFamily?.ToSafeString())) score += 10;
         
         return score;
     }
 
-    private bool IsDataEmpty(SmartaData? d) => d == null || (d.Temperature <= 0 && d.PowerOnHours <= 0 && string.IsNullOrEmpty(d.DeviceModel));
+    private bool IsDataEmpty(SmartaData? d) => d == null || (d.Temperature <= 0 && d.PowerOnHours <= 0 && string.IsNullOrEmpty(d.DeviceModel?.ToSafeString()));
 
     private async Task<SmartaData?> ExecuteSmartctlAsync(string drivePath, string? deviceType, CancellationToken cancellationToken)
     {

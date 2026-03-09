@@ -13,6 +13,7 @@ using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.Diagnostics;
 using System.IO;
+using DiskChecker.UI.WPF.Models;
 
 namespace DiskChecker.UI.WPF.ViewModels;
 

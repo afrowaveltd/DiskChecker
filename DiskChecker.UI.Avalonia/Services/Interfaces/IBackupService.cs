@@ -16,9 +16,9 @@ public interface IBackupService
     Task RestoreBackupAsync(string backupPath);
     
     /// <summary>
-    /// Get list of available backups.
+    /// Get list of available backups with info.
     /// </summary>
-    Task<IEnumerable<string>> GetAvailableBackupsAsync();
+    Task<IEnumerable<IBackupService.BackupInfo>> GetAvailableBackupsAsync();
     
     /// <summary>
     /// Delete a backup file.
@@ -30,8 +30,10 @@ public interface IBackupService
     /// </summary>
     public class BackupInfo
     {
+        public string FileName { get; set; } = string.Empty;
         public string FilePath { get; set; } = string.Empty;
         public DateTime CreatedAt { get; set; }
         public long SizeBytes { get; set; }
+        public string Version { get; set; } = "1.0.0";
     }
 }

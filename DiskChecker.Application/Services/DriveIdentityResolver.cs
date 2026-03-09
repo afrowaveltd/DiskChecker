@@ -1,35 +1,28 @@
 namespace DiskChecker.Application.Services;
 
-internal static class DriveIdentityResolver
+/// <summary>
+/// Helper for building unique drive identity keys.
+/// </summary>
+public static class DriveIdentityResolver
 {
-    internal static string BuildIdentityKey(string? drivePath, string? serialNumber, string? model, string? firmware)
+    /// <summary>
+    /// Builds an identity key from drive information.
+    /// </summary>
+    public static string BuildIdentityKey(string drivePath, string? serialNumber, string deviceModel, string? firmwareVersion)
     {
+        // Use serial number as primary identifier if available
         if (!string.IsNullOrWhiteSpace(serialNumber))
         {
-            return $"SER:{serialNumber.Trim().ToUpperInvariant()}";
+            return $"{serialNumber}_{deviceModel}_{firmwareVersion ?? "unknown"}";
         }
-
-        var normalizedPath = NormalizeDrivePath(drivePath);
-        if (!string.IsNullOrWhiteSpace(normalizedPath))
+        
+        // Fall back to path-based identifier
+        if (!string.IsNullOrWhiteSpace(deviceModel))
         {
-            return $"PATH:{normalizedPath}";
+            return $"{deviceModel}_{drivePath.Replace("\\", "_").Replace("/", "_")}_{firmwareVersion ?? "unknown"}";
         }
-
-        var modelPart = string.IsNullOrWhiteSpace(model) ? "UNKNOWN-MODEL" : model.Trim().ToUpperInvariant();
-        var firmwarePart = string.IsNullOrWhiteSpace(firmware) ? "UNKNOWN-FW" : firmware.Trim().ToUpperInvariant();
-        return $"SIG:{modelPart}|{firmwarePart}";
-    }
-
-    internal static string NormalizeDrivePath(string? drivePath)
-    {
-        if (string.IsNullOrWhiteSpace(drivePath))
-        {
-            return string.Empty;
-        }
-
-        return drivePath
-            .Replace("\\\\.\\", string.Empty, StringComparison.OrdinalIgnoreCase)
-            .Trim()
-            .ToUpperInvariant();
+        
+        // Final fallback to path only
+        return drivePath;
     }
 }

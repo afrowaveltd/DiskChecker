@@ -1,19 +1,4 @@
-<!-- EXTRA_MARKER_FOR_VOLUME -->
-                    
-                    <!-- Volume and FileSystem Info -->
-                    <StackPanel Orientation="Horizontal" Margin="0,4,0,0">
-                        <TextBlock Text="{Binding VolumeInfo}" FontSize="14" FontWeight="SemiBold"/>
-                        <TextBlock Text=" • " Opacity="0.5"/>
-                        <TextBlock FontSize="12" Opacity="0.7">
-                            <TextBlock.Text>
-                                <MultiBinding StringFormat="{}{0} • {1}">
-                                    <Binding Path="FileSystem"/>
-                                    <Binding Path="TotalSize" Converter="{x:Static converters:SizeConverter.Instance}"/>
-                                </MultiBinding>
-                            </TextBlock.Text>
-                        </TextBlock>
-                    </StackPanel>
-                </StackPanel>="https://github.com/avaloniaui"
+<UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:vm="using:DiskChecker.UI.Avalonia.ViewModels"
              xmlns:converters="using:DiskChecker.UI.Avalonia.Converters"
@@ -37,20 +22,8 @@
                     <ColumnDefinition Width="Auto"/>
                 </Grid.ColumnDefinitions>
 
-                <!-- DISK_ITEM_STACKPANEL -->
-                <StackPanel Grid.Column="0" Margin="0,0,0,5" CornerRadius="8">
-                    <StackPanel.Background>
-                        <MultiBinding Converter="{x:Static converters:DiskCardBackgroundConverter.Instance}">
-                            <Binding Path="IsSystemDisk"/>
-                            <Binding Path="FileSystem"/>
-                            <Binding Path="VolumeInfo"/>
-                        </MultiBinding>
-                    </StackPanel.Background>
-                    <StackPanel.BorderBrush>
-                        <Binding Path="FileSystem" Converter="{x:Static converters:FileSystemColorConverter.Instance}"/>
-                    </StackPanel.BorderBrush>
-                    <StackPanel.BORDER_THICK_2</StackPanel.BorderThickness>
-                    <TextBlock Text="💾 Vyberte Disk pro Testování" 
+                <StackPanel Grid.Column="0" Margin="0,0,0,5">
+                    <TextBlock Text="💿 Vyberte Disk pro Testování" 
                                FontSize="28" FontWeight="Bold" Foreground="#1a1a1a" Margin="0,0,0,5"/>
                     <TextBlock Text="Zvolte disk, který chcete diagnostikovat" 
                                FontSize="13" Foreground="#444444"/>
@@ -80,23 +53,23 @@
 
             <Border Grid.Column="0" Background="{DynamicResource ThemePanelBrush}" BorderBrush="{DynamicResource ThemeBorderBrush}" BorderThickness="1" Padding="14" Margin="0,0,10,0">
                 <StackPanel>
-                    <TextBlock Text="⚙️ Rychlý SMART report systémového disku" FontSize="13" FontWeight="Bold" Foreground="#333333" Margin="0,0,0,10"/>
-                    <TextBlock Text="{Binding DiskCards[0].DisplayName, FallbackValue='Načítání...'}" FontSize="12" FontWeight="SemiBold" Foreground="#1A1A1A" Margin="0,0,0,6"/>
+                    <TextBlock Text="📊 Rychlý SMART report systémového disku" FontSize="13" FontWeight="Bold" Foreground="#333333" Margin="0,0,0,10"/>
+                    <TextBlock Text="{Binding SystemDiskName}" FontSize="12" FontWeight="SemiBold" Foreground="#1A1A1A" Margin="0,0,0,6"/>
                     <TextBlock FontSize="12" Foreground="#007ACC" Margin="0,0,0,4">
                         <TextBlock.Text>
                             <MultiBinding StringFormat="Známka: {0}">
-                                <Binding Path="DiskCards[0].GradeText" FallbackValue="?"/>
+                                <Binding Path="SystemDiskGrade"/>
                             </MultiBinding>
                         </TextBlock.Text>
                     </TextBlock>
                     <TextBlock FontSize="12" Foreground="#333333" Margin="0,0,0,4">
                         <TextBlock.Text>
                             <MultiBinding StringFormat="Teplota: {0}">
-                                <Binding Path="DiskCards[0].TemperatureText" FallbackValue="N/A"/>
+                                <Binding Path="SystemDiskTemperature"/>
                             </MultiBinding>
                         </TextBlock.Text>
                     </TextBlock>
-                    <TextBlock Text="Disk je v dobrém stavu, žádné kritické chyby SMART." FontSize="11" Foreground="#444444" TextWrapping="Wrap"/>
+                    <TextBlock Text="{Binding SystemDiskSummary}" FontSize="11" Foreground="#444444" TextWrapping="Wrap"/>
                 </StackPanel>
             </Border>
 
@@ -107,23 +80,22 @@
                         <RowDefinition Height="*"/>
                     </Grid.RowDefinitions>
 
-                    <TextBlock Grid.Row="0" Text="🕒 Poslední testy" FontSize="13" FontWeight="Bold" Foreground="#333333" Margin="0,0,0,8"/>
+                    <TextBlock Grid.Row="0" Text="📋 Poslední testy" FontSize="13" FontWeight="Bold" Foreground="#333333" Margin="0,0,0,8"/>
 
-                    <ListBox Grid.Row="1"
-                             ItemsSource="{Binding RecentTests}"
-                             IsHitTestVisible="False">
-                        <ListBox.ItemTemplate>
-                            <DataTemplate>
-                                <StackPanel Orientation="Horizontal">
-                                    <TextBlock Text="{Binding TestDate}" Width="130"/>
-                                    <TextBlock Text="{Binding DriveName}" Width="150"/>
-                                    <TextBlock Text="{Binding TestType}" Width="120"/>
-                                    <TextBlock Text="{Binding Grade}" Width="80"/>
-                                    <TextBlock Text="{Binding Score}" Width="80"/>
-                                </StackPanel>
-                            </DataTemplate>
-                        </ListBox.ItemTemplate>
-                    </ListBox>
+                    <DataGrid Grid.Row="1"
+                              ItemsSource="{Binding RecentTests}"
+                              AutoGenerateColumns="False"
+                              IsReadOnly="True"
+                              HeadersVisibility="Column"
+                              GridLinesVisibility="Horizontal">
+                        <DataGrid.Columns>
+                            <DataGridTextColumn Header="Datum" Binding="{Binding TestDate}" Width="130"/>
+                            <DataGridTextColumn Header="Disk" Binding="{Binding DriveName}" Width="*"/>
+                            <DataGridTextColumn Header="Typ" Binding="{Binding TestType}" Width="120"/>
+                            <DataGridTextColumn Header="Známka" Binding="{Binding Grade}" Width="80"/>
+                            <DataGridTextColumn Header="Skóre" Binding="{Binding Score}" Width="80"/>
+                        </DataGrid.Columns>
+                    </DataGrid>
                 </Grid>
             </Border>
         </Grid>
@@ -136,7 +108,7 @@
                     <RowDefinition Height="*"/>
                 </Grid.RowDefinitions>
 
-                <TextBlock Grid.Row="0" Text="📦 Vyberte disk z nabídky" FontSize="14" FontWeight="Bold" Foreground="#333333" Margin="0,0,0,12"/>
+                <TextBlock Grid.Row="0" Text="💾 Vyberte disk z nabídky" FontSize="14" FontWeight="Bold" Foreground="#333333" Margin="0,0,0,12"/>
 
                 <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto">
                     <ItemsControl ItemsSource="{Binding DiskCards}">
@@ -155,8 +127,6 @@
                                             CornerRadius="6"
                                             Padding="16"
                                             MinHeight="200">
-                                        <!-- Styles/classes removed for compatibility with Avalonia XAML generator -->
-
                                         <Grid>
                                             <Grid.RowDefinitions>
                                                 <RowDefinition Height="Auto"/>
@@ -169,7 +139,7 @@
                                             <TextBlock Grid.Row="0" Text="💾" FontSize="32" 
                                                       HorizontalAlignment="Left" Margin="0,0,0,8"/>
 
-                                            <!-- Name &amp; Path -->
+                                            <!-- Name & Path -->
                                             <StackPanel Grid.Row="1" Margin="0,0,0,8">
                                                 <TextBlock Text="{Binding DisplayName}" 
                                                           FontSize="14" FontWeight="Bold" Foreground="#1a1a1a" Margin="0,0,0,2"/>
@@ -214,100 +184,51 @@
                                                 </TextBlock>
                                             </StackPanel>
 
-                                            <!-- Click Area -->
-                                            <!-- Note: Click handling is done via Button inside the card -->
+                                            <!-- Selection Button -->
+                                            <Button Grid.Row="0" Grid.RowSpan="4"
+                                                    Command="{Binding $parent[ItemsControl].((vm:DiskSelectionViewModel)DataContext).SelectDriveCommand}"
+                                                    CommandParameter="{Binding}"
+                                                    Background="Transparent"
+                                                    HorizontalAlignment="Stretch"
+                                                    VerticalAlignment="Stretch">
+                                                <Button.Template>
+                                                    <ControlTemplate>
+                                                        <Border Background="Transparent" Cursor="Hand"/>
+                                                    </ControlTemplate>
+                                                </Button.Template>
+                                            </Button>
                                         </Grid>
                                     </Border>
                                 </Border>
                             </DataTemplate>
                         </ItemsControl.ItemTemplate>
                     </ItemsControl>
-                </Grid.RowDefinitions>
-            </Grid>
-        </ScrollViewer>
                 </ScrollViewer>
             </Grid>
         </Border>
 
         <!-- ========== ACTION BUTTONS ========== -->
         <StackPanel Grid.Row="3" Orientation="Horizontal" HorizontalAlignment="Center" Margin="20,0,20,20">
-            <Button Content="🧪 Test Povrchu" 
+            <Button Content="🔧 Test Povrchu" 
                     Command="{Binding NavigateToSurfaceTestCommand}"
                     IsEnabled="{Binding SelectedDrive, Converter={StaticResource NotNullConverter}}"
                     Background="#004B93" Foreground="White" 
                     Padding="20,12" Margin="0,0,12,0"
-                    FontSize="13" Width="200">
-                <Button.Styles>
-                    <Style Selector="Button">
-                        <Setter Property="BorderThickness" Value="0"/>
-                        <Setter Property="Opacity" Value="1"/>
-                        <Setter Property="Padding" Value="12,8"/>
-                        <Setter Property="FontWeight" Value="Bold"/>
-                        <Setter Property="Cursor" Value="Hand"/>
-                    </Style>
-                    <Style Selector="Button:pointerover">
-                        <Setter Property="Opacity" Value="0.9"/>
-                    </Style>
-                    <Style Selector="Button:pressed">
-                        <Setter Property="Opacity" Value="0.78"/>
-                    </Style>
-                    <Style Selector="Button:disabled">
-                        <Setter Property="Opacity" Value="0.45"/>
-                    </Style>
-                </Button.Styles>
-            </Button>
+                    FontSize="13" Width="200"/>
             
-            <Button Content="🔧 SMART Check" 
+            <Button Content="🔍 SMART Check" 
                     Command="{Binding NavigateToSmartCheckCommand}"
                     IsEnabled="{Binding SelectedDrive, Converter={StaticResource NotNullConverter}}"
                     Background="#F7C600" Foreground="#1A1A1A"
                     Padding="20,12" Margin="0,0,12,0"
-                    FontSize="13" Width="200">
-                <Button.Styles>
-                    <Style Selector="Button">
-                        <Setter Property="BorderThickness" Value="0"/>
-                        <Setter Property="Opacity" Value="1"/>
-                        <Setter Property="Padding" Value="12,8"/>
-                        <Setter Property="FontWeight" Value="Bold"/>
-                        <Setter Property="Cursor" Value="Hand"/>
-                    </Style>
-                    <Style Selector="Button:pointerover">
-                        <Setter Property="Opacity" Value="0.9"/>
-                    </Style>
-                    <Style Selector="Button:pressed">
-                        <Setter Property="Opacity" Value="0.78"/>
-                    </Style>
-                    <Style Selector="Button:disabled">
-                        <Setter Property="Opacity" Value="0.45"/>
-                    </Style>
-                </Button.Styles>
-            </Button>
+                    FontSize="13" Width="200"/>
 
             <Button Content="📊 Detail Disku" 
                     Command="{Binding NavigateToDiskDetailCommand}"
                     IsEnabled="{Binding SelectedDrive, Converter={StaticResource NotNullConverter}}"
                     Background="#005A2B" Foreground="White"
                     Padding="20,12"
-                    FontSize="13" Width="200">
-                <Button.Styles>
-                    <Style Selector="Button">
-                        <Setter Property="BorderThickness" Value="0"/>
-                        <Setter Property="Opacity" Value="1"/>
-                        <Setter Property="Padding" Value="12,8"/>
-                        <Setter Property="FontWeight" Value="Bold"/>
-                        <Setter Property="Cursor" Value="Hand"/>
-                    </Style>
-                    <Style Selector="Button:pointerover">
-                        <Setter Property="Opacity" Value="0.9"/>
-                    </Style>
-                    <Style Selector="Button:pressed">
-                        <Setter Property="Opacity" Value="0.78"/>
-                    </Style>
-                    <Style Selector="Button:disabled">
-                        <Setter Property="Opacity" Value="0.45"/>
-                    </Style>
-                </Button.Styles>
-            </Button>
+                    FontSize="13" Width="200"/>
         </StackPanel>
 
         <!-- ========== STATUS BAR ========== -->
@@ -316,8 +237,4 @@
                    FontSize="11" Foreground="#333333"
                    TextTrimming="CharacterEllipsis"/>
     </Grid>
-<!-- END_DISK_ITEM -->
-                </StackPanel>
-            </DataTemplate>
-        </ItemsControl.ItemTemplate>
-    </ItemsControl>
+</UserControl>

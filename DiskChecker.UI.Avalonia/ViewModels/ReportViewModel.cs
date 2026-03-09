@@ -2,6 +2,8 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using DiskChecker.Core.Models;
 using DiskChecker.UI.Avalonia.Services.Interfaces;
+using DiskChecker.Application.Models;
+using DiskChecker.Application.Services;
 using System;
 using System.Collections.ObjectModel;
 using System.Threading.Tasks;
@@ -10,16 +12,16 @@ namespace DiskChecker.UI.Avalonia.ViewModels
 {
     public partial class ReportViewModel : ViewModelBase
     {
-        private readonly IReportService _reportService;
+        private readonly HistoryService _historyService;
         private readonly IDialogService _dialogService;
         private ObservableCollection<TestReport> _reports = new();
         private TestReport? _selectedReport;
         private bool _isGenerating;
         private string _statusMessage = string.Empty;
 
-        public ReportViewModel(IReportService reportService, IDialogService dialogService)
+        public ReportViewModel(HistoryService reportService, IDialogService dialogService)
         {
-            _reportService = reportService ?? throw new ArgumentNullException(nameof(reportService));
+            _historyService = reportService ?? throw new ArgumentNullException(nameof(reportService));
             _dialogService = dialogService ?? throw new ArgumentNullException(nameof(dialogService));
             
             GenerateReportCommand = new AsyncRelayCommand(GenerateReportAsync, () => !IsGenerating);
@@ -79,7 +81,7 @@ namespace DiskChecker.UI.Avalonia.ViewModels
                 IsGenerating = true;
                 StatusMessage = "Generuji report...";
                 
-                var report = await _reportService.GenerateReportAsync();
+                var report = await _historyService.GenerateReportAsync();
                 
                 Reports.Add(report);
                 SelectedReport = report;
@@ -109,7 +111,7 @@ namespace DiskChecker.UI.Avalonia.ViewModels
                 
                 if (confirmation)
                 {
-                    await _reportService.DeleteReportAsync(SelectedReport.ReportId);
+                    await _historyService.DeleteReportAsync(SelectedReport.ReportId);
                     Reports.Remove(SelectedReport);
                     SelectedReport = null;
                     StatusMessage = "Report úspěšně smazán";
@@ -129,7 +131,7 @@ namespace DiskChecker.UI.Avalonia.ViewModels
             try
             {
                 StatusMessage = "Exportuji report...";
-                await _reportService.ExportReportAsync(SelectedReport, "pdf");
+                await _historyService.ExportReportAsync(SelectedReport, "pdf");
                 StatusMessage = "Report úspěšně exportován";
             }
             catch (Exception ex)
@@ -144,7 +146,7 @@ namespace DiskChecker.UI.Avalonia.ViewModels
             try
             {
                 StatusMessage = "Načítám reporty...";
-                var reports = await _reportService.GetReportsAsync();
+                var reports = await _historyService.GetReportsAsync();
                 Reports = new ObservableCollection<TestReport>(reports);
                 StatusMessage = $"Načteno {reports.Count()} reportů";
             }

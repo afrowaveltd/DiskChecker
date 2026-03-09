@@ -1,4 +1,4 @@
-using DiskChecker.Core.Interfaces;
+﻿using DiskChecker.Core.Interfaces;
 using DiskChecker.Core.Models;
 using System.Diagnostics;
 using System.Runtime.InteropServices;
@@ -97,9 +97,9 @@ public class SequentialFileTestExecutor : ISurfaceTestExecutor
             var smartData = await _smartaProvider.GetSmartaDataAsync(request.Drive.Path, cancellationToken);
             if(smartData != null)
             {
-               result.DriveModel = smartData.DeviceModel ?? request.Drive.Name;
+               result.DriveModel = smartData.DeviceModel?.ToSafeString() ?? request.Drive.Name;
                result.DriveSerialNumber = smartData.SerialNumber;
-               result.DriveManufacturer = ExtractManufacturer(smartData.DeviceModel);
+               result.DriveManufacturer = ExtractManufacturer(smartData.DeviceModel?.ToSafeString());
                result.DriveTotalBytes = request.Drive.TotalSize;
 
                result.PowerOnHours = smartData.PowerOnHours > 0 ? smartData.PowerOnHours : null;

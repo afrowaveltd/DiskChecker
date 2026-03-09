@@ -1,4 +1,4 @@
-using DiskChecker.Core.Interfaces;
+﻿using DiskChecker.Core.Interfaces;
 using DiskChecker.Core.Models;
 using SkiaSharp;
 
@@ -58,34 +58,34 @@ public class PdfReportExportService : IPdfReportExporter
         var y = Margin + 20;
         canvas.DrawText("Certifikát kvality disku", Margin, y, SKTextAlign.Left, headerFont, textPaint);
 
-        var model = smart.SmartaData.DeviceModel ?? smart.SmartaData.ModelFamily ?? "Unknown";
+        var model = (smart?.SmartaData?.DeviceModel?.ToSafeString() ?? smart?.SmartaData?.ModelFamily?.ToSafeString()) ?? smart?.Drive?.Name ?? "Unknown";
         canvas.DrawText(model, PageWidth - Margin - 150, Margin + 16, SKTextAlign.Left, smallFont, grayPaint);
         canvas.DrawText(model, PageWidth - Margin - 150, Margin + 30, SKTextAlign.Left, smallFont, grayPaint);
 
         y += 40;
-        canvas.DrawText(smart.Rating.Grade.ToString(), Margin, y + 72, SKTextAlign.Left, gradeFont, gradePaint);
+        var pending = smart?.SmartaData?.PendingSectorCount ?? 0;
 
         var tableX = Margin + 140;
         var tableY = y + 20;
-        DrawTableRow(canvas, tableFont, textPaint, tableX, tableY, "Model", smart.SmartaData.DeviceModel ?? "Unknown");
+        DrawTableRow(canvas, tableFont, textPaint, tableX, tableY, "Model", (smart?.SmartaData?.DeviceModel?.ToSafeString()) ?? "Unknown");
         tableY += 18;
-        DrawTableRow(canvas, tableFont, textPaint, tableX, tableY, "Serial", smart.SmartaData.SerialNumber ?? "Unknown");
+        DrawTableRow(canvas, tableFont, textPaint, tableX, tableY, "Temperature", (smart?.SmartaData?.Temperature ?? 0).ToString());
         tableY += 18;
-        DrawTableRow(canvas, tableFont, textPaint, tableX, tableY, "Firmware", smart.SmartaData.FirmwareVersion ?? "Unknown");
+        DrawTableRow(canvas, tableFont, textPaint, tableX, tableY, "Firmware", smart?.SmartaData?.FirmwareVersion ?? "Unknown");
         tableY += 18;
-        DrawTableRow(canvas, tableFont, textPaint, tableX, tableY, "Power On Hours", smart.SmartaData.PowerOnHours.ToString());
+        DrawTableRow(canvas, tableFont, textPaint, tableX, tableY, "Power On Hours", $"{(smart?.SmartaData?.PowerOnHours ?? 0)}h");
         tableY += 18;
-        DrawTableRow(canvas, tableFont, textPaint, tableX, tableY, "Reallocated", smart.SmartaData.ReallocatedSectorCount.ToString());
+        DrawTableRow(canvas, tableFont, textPaint, tableX, tableY, "Reallocated", $"{smart?.SmartaData?.ReallocatedSectorCount ?? 0}");
         tableY += 18;
-        DrawTableRow(canvas, tableFont, textPaint, tableX, tableY, "Pending", smart.SmartaData.PendingSectorCount.ToString());
+        DrawTableRow(canvas, tableFont, textPaint, tableX - 20, tableY, "Temperature", (smart?.SmartaData?.Temperature ?? 0).ToString() + "Â°C");
         tableY += 18;
-        DrawTableRow(canvas, tableFont, textPaint, tableX, tableY, "Uncorrectable", smart.SmartaData.UncorrectableErrorCount.ToString());
+        DrawTableRow(canvas, tableFont, textPaint, tableX, tableY, "Pending/Uncorrectable", $"{(smart?.SmartaData?.PendingSectorCount ?? 0)}/{(smart?.SmartaData?.UncorrectableErrorCount ?? 0)}");
         tableY += 18;
-        DrawTableRow(canvas, tableFont, textPaint, tableX, tableY, "Temperature", $"{smart.SmartaData.Temperature:F1} °C");
-        if (smart.SmartaData.WearLevelingCount.HasValue)
+        DrawTableRow(canvas, tableFont, textPaint, tableX, tableY, "Temperature", $"{smart?.SmartaData?.Temperature:F1} °C");
+        var isHealthy = smart?.SmartaData?.IsHealthy ?? true;
         {
             tableY += 18;
-            DrawTableRow(canvas, tableFont, textPaint, tableX, tableY, "Wear Leveling", $"{smart.SmartaData.WearLevelingCount.Value}%");
+        DrawTableRow(canvas, tableFont, textPaint, tableX, tableY, "Wear Level", $"{(smart?.SmartaData?.WearLevelingCount ?? 0)}%");
         }
 
         y += 180;
@@ -94,7 +94,7 @@ public class PdfReportExportService : IPdfReportExporter
 
         DrawSpeedChart(canvas, surface, new SKRect(Margin, y + 20, PageWidth - Margin, y + 180));
 
-        canvas.DrawText($"Datum testu: {smart.TestDate:dd. MM. yyyy HH:mm}", Margin, PageHeight - Margin, SKTextAlign.Left, smallFont, grayPaint);
+        DrawTableRow(canvas, tableFont, textPaint, tableX, tableY, "Rating", smart?.Rating.GetDescription() ?? "Unknown");
     }
 
     private static void DrawTableRow(SKCanvas canvas, SKFont font, SKPaint paint, float x, float y, string label, string value)

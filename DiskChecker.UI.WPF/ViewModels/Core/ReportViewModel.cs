@@ -1,5 +1,6 @@
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using DiskChecker.Application.Models;
 using DiskChecker.Application.Services;
 using DiskChecker.Core.Models;
 using OxyPlot;
@@ -163,7 +164,7 @@ public partial class ReportViewModel : ViewModelBase
       SpeedPlotModel = null;
    }
 
-   private void CreateSpeedPlot(System.Collections.Generic.IReadOnlyList<DiskChecker.Core.Models.SpeedSample> samples)
+   private void CreateSpeedPlot(System.Collections.Generic.IReadOnlyList<SurfaceTestSample> samples)
    {
       var model = new PlotModel
       {

@@ -1,4 +1,4 @@
-using DiskChecker.Core.Interfaces;
+﻿using DiskChecker.Core.Interfaces;
 using DiskChecker.Core.Models;
 
 namespace DiskChecker.Application.Services;
@@ -25,7 +25,7 @@ public class DiskCheckerService
         var smartaData = await _smartaProvider.GetSmartaDataAsync(drivePath, cancellationToken);
         if (smartaData == null)
         {
-            return new QualityRating { Grade = QualityGrade.F, Score = 0 };
+        return new QualityRating(QualityGrade.F, 0.0);
         }
 
         return _qualityCalculator.CalculateQuality(smartaData);

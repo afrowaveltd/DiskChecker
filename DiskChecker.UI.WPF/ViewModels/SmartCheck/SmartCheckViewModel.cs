@@ -443,10 +443,10 @@ public partial class SmartCheckViewModel : ViewModelBase, IDisposable
          return;
       }
 
-      IsSelfTestRunning = status.IsRunning;
-      var translatedStatus = TranslateSelfTestStatus(status.StatusText);
-      SelfTestStatusText = status.RemainingPercent.HasValue
-          ? $"{translatedStatus} (zbývá {status.RemainingPercent.Value} %)"
+      IsSelfTestRunning = status.HasValue && status.Value.IsRunning();
+      var translatedStatus = TranslateSelfTestStatus(status.HasValue ? result.SelfTestStatus.Value.StatusText() : "Unknown");
+      SelfTestStatusText = status.HasValue && result.SelfTestStatus.Value.GetRemainingPercent() > 0
+          ? $"{translatedStatus} (zbývá {result.SelfTestStatus.Value.GetRemainingPercent()} %)"
           : translatedStatus;
    }
 
@@ -521,14 +521,14 @@ public partial class SmartCheckViewModel : ViewModelBase, IDisposable
                break;
             }
 
-            IsSelfTestRunning = status.IsRunning;
-            SelfTestProgressPercent = status.RemainingPercent.HasValue
-               ? Math.Max(0, 100 - status.RemainingPercent.Value)
+            IsSelfTestRunning = status.HasValue && status.Value.IsRunning();
+            SelfTestProgressPercent = status.HasValue && result.SelfTestStatus.Value.GetRemainingPercent() > 0
+               ? Math.Max(0, 100 - result.SelfTestStatus.Value.GetRemainingPercent())
                : (status.IsRunning ? SelfTestProgressPercent : 100);
 
-            var translatedStatus = TranslateSelfTestStatus(status.StatusText);
-            SelfTestStatusText = status.RemainingPercent.HasValue
-               ? $"{translatedStatus} (zbývá {status.RemainingPercent.Value} %)"
+            var translatedStatus = TranslateSelfTestStatus(status.HasValue ? result.SelfTestStatus.Value.StatusText() : "Unknown");
+            SelfTestStatusText = status.HasValue && result.SelfTestStatus.Value.GetRemainingPercent() > 0
+               ? $"{translatedStatus} (zbývá {result.SelfTestStatus.Value.GetRemainingPercent()} %)"
                : translatedStatus;
 
             // Měření teploty BĚHEM testu (každých 10s)
@@ -690,7 +690,7 @@ public partial class SmartCheckViewModel : ViewModelBase, IDisposable
       UncorrectableErrorCount = result.SmartaData.UncorrectableErrorCount;
       PowerOnHours = result.SmartaData.PowerOnHours;
       LastCheckDate = result.TestDate;
-      WarningsSummary = result.Rating.Warnings.Count == 0
+      WarningsSummary = result.Rating.Warnings == 0
           ? "Žádná varování"
           : string.Join(Environment.NewLine, result.Rating.Warnings);
 
@@ -698,10 +698,10 @@ public partial class SmartCheckViewModel : ViewModelBase, IDisposable
       SelfTestLogEntries = new ObservableCollection<SmartaSelfTestEntry>(result.SelfTestLog.OrderByDescending(e => e.Number));
       if(result.SelfTestStatus != null)
       {
-         IsSelfTestRunning = result.SelfTestStatus.IsRunning;
-         var translatedStatus = TranslateSelfTestStatus(result.SelfTestStatus.StatusText);
-         SelfTestStatusText = result.SelfTestStatus.RemainingPercent.HasValue
-             ? $"{translatedStatus} (zbývá {result.SelfTestStatus.RemainingPercent.Value} %)"
+         IsSelfTestRunning = result.SelfTestStatus.HasValue && result.SelfTestStatus.Value.IsRunning();
+         var translatedStatus = TranslateSelfTestStatus(result.SelfTeststatus.HasValue ? result.SelfTestStatus.Value.StatusText() : "Unknown");
+         SelfTestStatusText = result.SelfTeststatus.HasValue && result.SelfTestStatus.Value.GetRemainingPercent() > 0
+             ? $"{translatedStatus} (zbývá {result.SelfTestresult.SelfTestStatus.Value.GetRemainingPercent()} %)"
              : translatedStatus;
       }
    }
