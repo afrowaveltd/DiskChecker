@@ -1,0 +1,191 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:DiskChecker.UI.Avalonia.ViewModels"
+             xmlns:converters="using:DiskChecker.UI.Avalonia.Converters"
+             x:Class="DiskChecker.UI.Avalonia.Views.DiskCardsView"
+             Background="{DynamicResource ThemeBackgroundBrush}">
+
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+
+        <!-- ========== HEADER ========== -->
+        <Border Grid.Row="0" Background="{DynamicResource ThemePanelBrush}"
+                BorderBrush="{DynamicResource ThemeBorderBrush}"
+                BorderThickness="0,0,0,1" Padding="20">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+
+                <StackPanel Grid.Column="0">
+                    <TextBlock Text="💾 Karty Disků"
+                               FontSize="28" FontWeight="Bold"
+                               Foreground="#1a1a1a" Margin="0,0,0,5"/>
+                    <TextBlock Text="Historie testů a certifikací disků"
+                               FontSize="13" Foreground="#444444"/>
+                </StackPanel>
+
+                <StackPanel Grid.Column="1" Orientation="Horizontal">
+                    <Button Content="🔄 Obnovit"
+                            Command="{Binding RefreshCommand}"
+                            Background="#3498DB" Foreground="White"
+                            FontWeight="Bold" Padding="15,8" Margin="0,0,10,0"
+                            Cursor="Hand">
+                        <Button.Styles>
+                            <Style Selector="Button">
+                                <Setter Property="BorderThickness" Value="0"/>
+                            </Style>
+                        </Button.Styles>
+                    </Button>
+                    <Button Content="🏠 Zpět"
+                            Command="{Binding NavigateBackCommand}"
+                            Background="#666666" Foreground="White"
+                            FontWeight="Bold" Padding="15,8"
+                            Cursor="Hand">
+                        <Button.Styles>
+                            <Style Selector="Button">
+                                <Setter Property="BorderThickness" Value="0"/>
+                            </Style>
+                        </Button.Styles>
+                    </Button>
+                </StackPanel>
+            </Grid>
+        </Border>
+
+        <!-- ========== SEARCH AND FILTER ========== -->
+        <Border Grid.Row="1" Background="#F8F9FA" Padding="20,10">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+
+                <TextBox Grid.Column="0" Watermark="🔍 Hledat podle modelu, sériového čísla..."
+                         Text="{Binding SearchText}" Width="300" HorizontalAlignment="Left"/>
+
+                <ComboBox Grid.Column="1" ItemsSource="{Binding GradeFilters}"
+                          SelectedItem="{Binding SelectedGradeFilter}"
+                          Width="100" Margin="10,0,0,0"/>
+
+                <CheckBox Grid.Column="2" Content="Pouze zamčené"
+                          IsChecked="{Binding ShowLockedOnly}"
+                          Margin="10,0,0,0"/>
+
+                <CheckBox Grid.Column="3" Content="Pouze archivované"
+                          IsChecked="{Binding ShowArchivedOnly}"
+                          Margin="10,0,0,0"/>
+            </Grid>
+        </Border>
+
+        <!-- ========== DATA GRID ========== -->
+        <Border Grid.Row="2" Margin="20" Background="White" BorderBrush="#DEE2E6" BorderThickness="1">
+            <Grid>
+                <DataGrid ItemsSource="{Binding FilteredCards}"
+                          SelectedItem="{Binding SelectedCard}"
+                          AutoGenerateColumns="False"
+                          IsReadOnly="True"
+                          HeadersVisibility="Column"
+                          GridLinesVisibility="Horizontal"
+                          BorderThickness="0"
+                          FontSize="12"
+                          DoubleTapped="CardsDataGrid_DoubleTapped">
+                    <DataGrid.Columns>
+                        <DataGridTextColumn Header="Model" Binding="{Binding ModelName}" Width="180"/>
+                        <DataGridTextColumn Header="Sériové č." Binding="{Binding SerialNumber}" Width="120"/>
+                        <DataGridTextColumn Header="Kapacita" Binding="{Binding CapacityText}" Width="80"/>
+                        <DataGridTextColumn Header="Známka" Binding="{Binding OverallGrade}" Width="60"/>
+                        <DataGridTextColumn Header="Skóre" Binding="{Binding OverallScore, StringFormat={}{0:F0}}" Width="60"/>
+                        <DataGridTextColumn Header="Testů" Binding="{Binding TestCount}" Width="60"/>
+                        <DataGridTextColumn Header="Poslední test" Binding="{Binding LastTestedAt, StringFormat={}{0:dd.MM.yyyy HH:mm}}" Width="130"/>
+                        <DataGridTextColumn Header="Poznámky" Binding="{Binding Notes}" Width="*"/>
+                        <DataGridTemplateColumn Header="Akce" Width="200">
+                            <DataGridTemplateColumn.CellTemplate>
+                                <DataTemplate>
+                                    <StackPanel Orientation="Horizontal" Spacing="4">
+                                        <Button Content="📋 Detail"
+                                                Command="{Binding $parent[DataGrid].DataContext.ViewCardDetailsCommand}"
+                                                CommandParameter="{Binding}"
+                                                Background="#3498DB" Foreground="White"
+                                                FontSize="10" Padding="8,4" Cursor="Hand">
+                                            <Button.Styles>
+                                                <Style Selector="Button"><Setter Property="BorderThickness" Value="0"/></Style>
+                                            </Button.Styles>
+                                        </Button>
+                                        <Button Content="📄 Cert."
+                                                Command="{Binding $parent[DataGrid].DataContext.GenerateCertificateCommand}"
+                                                CommandParameter="{Binding}"
+                                                IsEnabled="{Binding CanGenerateCertificate}"
+                                                Background="#27AE60" Foreground="White"
+                                                FontSize="10" Padding="8,4" Cursor="Hand">
+                                            <Button.Styles>
+                                                <Style Selector="Button"><Setter Property="BorderThickness" Value="0"/></Style>
+                                            </Button.Styles>
+                                        </Button>
+                                        <Button Content="📁 Archiv"
+                                                Command="{Binding $parent[DataGrid].DataContext.ArchiveCardCommand}"
+                                                CommandParameter="{Binding}"
+                                                Background="#E67E22" Foreground="White"
+                                                FontSize="10" Padding="8,4" Cursor="Hand">
+                                            <Button.Styles>
+                                                <Style Selector="Button"><Setter Property="BorderThickness" Value="0"/></Style>
+                                            </Button.Styles>
+                                        </Button>
+                                    </StackPanel>
+                                </DataTemplate>
+                            </DataGridTemplateColumn.CellTemplate>
+                        </DataGridTemplateColumn>
+                    </DataGrid.Columns>
+                </DataGrid>
+
+                <!-- Loading overlay -->
+                <Panel IsVisible="{Binding IsLoading}" Background="#80FFFFFF">
+                    <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center">
+                        <TextBlock Text="⏳ Načítám data..." FontSize="18" FontWeight="Bold" HorizontalAlignment="Center"/>
+                        <ProgressBar IsIndeterminate="True" Width="200" Margin="0,10,0,0"/>
+                    </StackPanel>
+                </Panel>
+
+                <!-- Empty state -->
+                <Panel IsVisible="{Binding !IsLoading}">
+                    <Panel.IsVisible>
+                        <MultiBinding Converter="{x:Static converters:InverseBooleanMultiConverter.Instance}">
+                            <Binding Path="FilteredCards.Count"/>
+                        </MultiBinding>
+                    </Panel.IsVisible>
+                    <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center">
+                        <TextBlock Text="📂" FontSize="48" HorizontalAlignment="Center"/>
+                        <TextBlock Text="Žádné karty disků" FontSize="18" FontWeight="Bold"
+                                   HorizontalAlignment="Center" Margin="0,10,0,5"/>
+                        <TextBlock Text="Spusťte test disku pro vytvoření nové karty"
+                                   FontSize="12" Foreground="#666" HorizontalAlignment="Center"/>
+                    </StackPanel>
+                </Panel>
+            </Grid>
+        </Border>
+
+        <!-- ========== STATUS BAR ========== -->
+        <Border Grid.Row="3" Background="#F0F0F0" Padding="20,10">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+
+                <TextBlock Grid.Column="0" Text="{Binding StatusMessage}" FontSize="11"/>
+
+                <StackPanel Grid.Column="1" Orientation="Horizontal">
+                    <TextBlock Text="{Binding CardCount, StringFormat='Celkem karet: {0}'}" FontSize="11" Margin="0,0,20,0"/>
+                    <TextBlock Text="{Binding FilteredCount, StringFormat='Zobrazeno: {0}'}" FontSize="11"/>
+                </StackPanel>
+            </Grid>
+        </Border>
+    </Grid>
+</UserControl>

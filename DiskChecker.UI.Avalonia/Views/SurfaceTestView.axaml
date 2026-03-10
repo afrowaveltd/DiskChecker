@@ -29,10 +29,11 @@
 
                 <Button Grid.Column="1"
                         Content="🏠 Zpět"
-                        Command="{Binding $parent[UserControl].DataContext.NavigationService.NavigateToDiskSelectionCommand}"
+                        Command="{Binding GoBackCommand}"
                         Background="#666666"
                         Foreground="White"
-                        VerticalAlignment="Center"/>
+                        VerticalAlignment="Center"
+                        Padding="15,8"/>
             </Grid>
         </Border>
 
@@ -131,18 +132,30 @@
                         <ItemsControl ItemsSource="{Binding TestProfiles}">
                             <ItemsControl.ItemTemplate>
                                 <DataTemplate>
-                                    <Border Background="{Binding IsSelected, Converter={StaticResource BooleanToBrushConverter}, ConverterParameter=Selected:#E3F2FD;Normal:#FFFFFF}" 
-                                            BorderBrush="{Binding IsSelected, Converter={StaticResource BooleanToBrushConverter}, ConverterParameter=Selected:#004B93;Normal:#CCCCCC}" 
-                                            BorderThickness="1" 
-                                            CornerRadius="4" 
-                                            Padding="10" 
-                                            Margin="0,0,0,5" 
-                                            Cursor="Hand">
-                                        <StackPanel>
-                                            <TextBlock Text="{Binding Name}" FontWeight="Bold" FontSize="11" Foreground="#1A1A1A"/>
-                                            <TextBlock Text="{Binding Description}" FontSize="10" Foreground="#666666"/>
-                                        </StackPanel>
-                                    </Border>
+                                    <Button Command="{Binding $parent[ItemsControl].DataContext.SelectProfileCommand}"
+                                             CommandParameter="{Binding}"
+                                             Background="Transparent"
+                                             HorizontalAlignment="Stretch"
+                                             HorizontalContentAlignment="Stretch"
+                                             Padding="0"
+                                             BorderThickness="0">
+                                        <Button.Styles>
+                                            <Style Selector="Button">
+                                                <Setter Property="Cursor" Value="Hand"/>
+                                            </Style>
+                                        </Button.Styles>
+                                        <Border Background="{Binding IsSelected, Converter={StaticResource BooleanToBrushConverter}, ConverterParameter=Selected:#E3F2FD;Normal:#FFFFFF}"
+                                                BorderBrush="{Binding IsSelected, Converter={StaticResource BooleanToBrushConverter}, ConverterParameter=Selected:#004B93;Normal:#CCCCCC}"
+                                                BorderThickness="1"
+                                                CornerRadius="4"
+                                                Padding="10"
+                                                Margin="0,0,0,5">
+                                            <StackPanel>
+                                                <TextBlock Text="{Binding Name}" FontWeight="Bold" FontSize="11" Foreground="#1A1A1A"/>
+                                                <TextBlock Text="{Binding Description}" FontSize="10" Foreground="#666666" TextWrapping="Wrap"/>
+                                            </StackPanel>
+                                        </Border>
+                                    </Button>
                                 </DataTemplate>
                             </ItemsControl.ItemTemplate>
                         </ItemsControl>

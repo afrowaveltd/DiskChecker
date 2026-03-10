@@ -19,20 +19,10 @@ public class FileTestResult
     public string TestId { get; set; } = Guid.NewGuid().ToString();
     public DateTime StartTime { get; set; } = DateTime.UtcNow;
     public DateTime EndTime { get; set; } = DateTime.UtcNow;
-    public TestStatus Status { get; set; } = TestStatus.NotStarted;
+    public TestStatus Status { get; set; } = TestStatus.Pending;
     public string? FilePath { get; set; }
     public string? Message { get; set; }
     public long BytesProcessed { get; set; }
     public double AverageSpeedMbps { get; set; }
     public int ErrorCount { get; set; }
-}
-
-public enum TestStatus
-{
-    NotStarted,
-    Running,
-    Paused,
-    Completed,
-    Failed,
-    Cancelled
 }

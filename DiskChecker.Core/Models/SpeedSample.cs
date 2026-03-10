@@ -1,9 +1,12 @@
-namespace DiskChecker.Core.Models {
-      public class SpeedSample {
-          public long OffsetBytes { get; set; }
-          public int BlockSizeBytes { get; set; }
-          public double ThroughputMbps { get; set; }
-          public DateTime TimestampUtc { get; set; }
-          public int ErrorCount { get; set; }
-      }
-    }
+namespace DiskChecker.Core.Models;
+
+/// <summary>
+/// Speed sample for test speed tracking.
+/// </summary>
+public class SpeedSample
+{
+    public DateTime Timestamp { get; set; }
+    public double SpeedMBps { get; set; }
+    public double ProgressPercent { get; set; }
+    public long BytesProcessed { get; set; }
+}

@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256">
+  <!-- Disk background -->
+  <circle cx="128" cy="128" r="120" fill="#2196F3"/>
+  <!-- Disk inner ring -->
+  <circle cx="128" cy="128" r="80" fill="#1976D2"/>
+  <!-- Disk center -->
+  <circle cx="128" cy="128" r="40" fill="#0D47A1"/>
+  <!-- Check mark -->
+  <path d="M 80 128 L 110 158 L 180 88" stroke="white" stroke-width="16" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+  <!-- Disk label -->
+  <rect x="60" y="180" width="136" height="30" rx="5" fill="white"/>
+  <text x="128" y="200" text-anchor="middle" font-family="Arial, sans-serif" font-size="16" font-weight="bold" fill="#1976D2">DISK CHECKER</text>
+</svg>

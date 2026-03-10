@@ -12,12 +12,17 @@ using DiskChecker.UI.Avalonia.Services;
 using DiskChecker.UI.Avalonia.Services.Interfaces;
 using DiskChecker.Core.Interfaces;
 using DiskChecker.Infrastructure.Hardware;
+using DiskChecker.Infrastructure.Hardware.Sanitization;
 using DiskChecker.Infrastructure.Persistence;
+using DiskChecker.Infrastructure.Services;
 using DiskChecker.Application.Services;
 using DiskChecker.Core;
+using System.Runtime.Versioning;
+using Microsoft.EntityFrameworkCore;
 
 namespace DiskChecker.UI.Avalonia;
 
+[SupportedOSPlatform("windows")]
 public partial class App : global::Avalonia.Application
 {
     private ServiceProvider? _serviceProvider;
@@ -49,6 +54,9 @@ public partial class App : global::Avalonia.Application
             ConfigureServices(services);
             _serviceProvider = services.BuildServiceProvider();
             
+            // Initialize database
+            InitializeDatabase();
+            
             // Create main window with DI
             var mainWindow = new MainWindow();
             mainWindow.DataContext = _serviceProvider.GetRequiredService<MainWindowViewModel>();
@@ -70,6 +78,13 @@ public partial class App : global::Avalonia.Application
         }
     }
     
+    private void InitializeDatabase()
+    {
+        using var scope = _serviceProvider!.CreateScope();
+        var dbContext = scope.ServiceProvider.GetRequiredService<DiskCheckerDbContext>();
+        dbContext.Database.EnsureCreated();
+    }
+    
     private void ConfigureServices(IServiceCollection services)
     {
         // Logging
@@ -82,7 +97,8 @@ public partial class App : global::Avalonia.Application
         services.AddCoreServices();
 
         // Database context
-        services.AddSingleton<DiskCheckerDbContext>();
+        services.AddDbContext<DiskCheckerDbContext>(options =>
+            options.UseSqlite("Data Source=DiskChecker.db"));
 
         // Application services
         services.AddSingleton<HistoryService>();
@@ -103,10 +119,31 @@ public partial class App : global::Avalonia.Application
         // Settings service interface
         services.AddSingleton<ISettingsService, SettingsService>();
         
+        // Selected disk service for sharing between views
+        services.AddSingleton<ISelectedDiskService, SelectedDiskService>();
+        
         // Disk detection service
         services.AddSingleton<IDiskDetectionService, DiskDetectionService>();
         
-        // View models
+        // Platform-specific SMART provider
+        services.AddTransient<ISmartaProvider, WindowsSmartaProvider>();
+        
+        // Disk sanitization service
+        services.AddSingleton<DiskSanitizationService>();
+        
+        // Infrastructure services
+        services.AddScoped<DiskCardRepository>();
+        services.AddScoped<CertificateGenerator>();
+        services.AddScoped<MetricsCollector>();
+        services.AddScoped<DiskComparisonService>();
+        
+        // Interfaces
+        services.AddScoped<IDiskCardRepository, DiskCardRepository>();
+        services.AddScoped<IDiskComparisonService, DiskComparisonService>();
+        services.AddScoped<ICertificateGenerator, CertificateGenerator>();
+        services.AddScoped<IMetricsCollector>(provider => provider.GetRequiredService<MetricsCollector>());
+        
+        // View models - existing
         services.AddSingleton<MainWindowViewModel>();
         services.AddTransient<DiskSelectionViewModel>();
         services.AddTransient<SurfaceTestViewModel>();
@@ -116,7 +153,10 @@ public partial class App : global::Avalonia.Application
         services.AddTransient<HistoryViewModel>();
         services.AddTransient<SettingsViewModel>();
         
-        // Platform-specific SMART provider
-        services.AddTransient<ISmartaProvider, WindowsSmartaProvider>();
+        // View models - new
+        services.AddTransient<DiskCardsViewModel>();
+        services.AddTransient<DiskCardDetailViewModel>();
+        services.AddTransient<CertificateViewModel>();
+        services.AddTransient<DiskComparisonViewModel>();
     }
 }

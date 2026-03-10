@@ -144,10 +144,41 @@ $res | ConvertTo-Json -Compress";
         var execution = await ExecuteSmartctlCommandAsync(devicePath, "-j -a", cancellationToken);
         if (execution == null || string.IsNullOrWhiteSpace(execution.Value.Output))
         {
+            if (_logger != null)
+            {
+                _logger.LogWarning("GetSmartAttributesAsync: No output from smartctl for {DevicePath}", devicePath);
+            }
             return new List<SmartaAttributeItem>();
         }
 
-        return SmartctlJsonParser.ParseAttributes(execution.Value.Output).ToList();
+        if (_logger != null && _logger.IsEnabled(LogLevel.Debug))
+        {
+            _logger.LogDebug("GetSmartAttributesAsync: Received {Length} chars of JSON", execution.Value.Output.Length);
+        }
+        
+        var attributes = SmartctlJsonParser.ParseAttributes(execution.Value.Output);
+        
+        if (_logger != null && _logger.IsEnabled(LogLevel.Debug))
+        {
+            _logger.LogDebug("GetSmartAttributesAsync: Parsed {Count} attributes", attributes.Count);
+        }
+        
+        if (attributes.Count == 0)
+        {
+            // Debug: Save JSON for analysis
+            try
+            {
+                var debugPath = Path.Combine(Path.GetTempPath(), $"smart_debug_{DateTime.Now:yyyyMMdd_HHmmss}.json");
+                File.WriteAllText(debugPath, execution.Value.Output);
+                if (_logger != null)
+                {
+                    _logger.LogWarning("GetSmartAttributesAsync: No attributes parsed. JSON saved to {DebugPath}", debugPath);
+                }
+            }
+            catch { }
+        }
+        
+        return attributes.ToList();
     }
 
     public async Task<bool> StartSelfTestAsync(string devicePath, SmartaSelfTestType testType, CancellationToken cancellationToken = default)
@@ -224,7 +255,10 @@ $res | ConvertTo-Json -Compress";
                 return null;
             }
 
-            // On Windows, use /dev/pdN format for smartctl
+            // On Windows smartctl (Cygwin/MSYS builds), use /dev/pdN format
+            // This format works correctly with smartmontools on Windows
+            
+            // Try Cygwin/MSYS format first (this is the one that WORKS!)
             var devPath = $"/dev/pd{driveIndex}";
             var args = $"{commandArguments} {devPath}";
 
@@ -244,6 +278,7 @@ $res | ConvertTo-Json -Compress";
             var output = await process.StandardOutput.ReadToEndAsync(cancellationToken);
             var error = await process.StandardError.ReadToEndAsync(cancellationToken);
             await process.WaitForExitAsync(cancellationToken);
+            
             return (process.ExitCode, output, error);
         }
         catch
@@ -267,7 +302,7 @@ $res | ConvertTo-Json -Compress";
             var driveNumber = new string(devicePath.Where(char.IsDigit).ToArray());
             if (string.IsNullOrEmpty(driveNumber)) return null;
 
-            // On Windows, use /dev/pdN format for smartctl
+            // Use /dev/pdN format (Cygwin/MSYS) - this is the format that WORKS!
             var devPath = $"/dev/pd{driveNumber}";
             var args = $"-j -a {devPath}";
 

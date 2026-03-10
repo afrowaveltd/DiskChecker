@@ -9,6 +9,7 @@ namespace DiskChecker.UI.Avalonia.ViewModels;
 public class DiskStatusCardItem : ObservableObject
 {
     private bool _isSelected;
+    private bool _isLocked;
     private CoreDriveInfo? _drive;
     private SmartaData? _smartData;
     private QualityRating? _quality;
@@ -49,12 +50,38 @@ public class DiskStatusCardItem : ObservableObject
     public string IsSystemDiskLabel { get; set; } = string.Empty;
 
     /// <summary>
+    /// Lock symbol to display (🔒 if locked, empty if not).
+    /// </summary>
+    public string LockSymbol => IsLocked ? "🔒" : "";
+
+    /// <summary>
+    /// Status text for locked disk.
+    /// </summary>
+    public string LockStatusText => IsLocked ? "Zamčeno - destruktivní operace blokovány" : "";
+
+    /// <summary>
     /// Whether this card is currently selected.
     /// </summary>
     public bool IsSelected
     {
         get => _isSelected;
         set => SetProperty(ref _isSelected, value);
+    }
+
+    /// <summary>
+    /// Whether this disk is locked (protected from destructive operations).
+    /// </summary>
+    public bool IsLocked
+    {
+        get => _isLocked;
+        set
+        {
+            if (SetProperty(ref _isLocked, value))
+            {
+                OnPropertyChanged(nameof(LockSymbol));
+                OnPropertyChanged(nameof(LockStatusText));
+            }
+        }
     }
 
     /// <summary>

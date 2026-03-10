@@ -22,4 +22,30 @@ public interface ISettingsService
     Task<string> GetLogLevelAsync();
     Task SetLogLevelAsync(string level);
     Task ResetToDefaultsAsync();
+    
+    // Disk Lock Management
+    /// <summary>
+    /// Gets the list of locked disk paths (serial numbers or device paths).
+    /// </summary>
+    Task<List<string>> GetLockedDisksAsync();
+    
+    /// <summary>
+    /// Sets the list of locked disk paths.
+    /// </summary>
+    Task SetLockedDisksAsync(List<string> lockedPaths);
+    
+    /// <summary>
+    /// Checks if a disk is locked.
+    /// </summary>
+    Task<bool> IsDiskLockedAsync(string diskPath);
+    
+    /// <summary>
+    /// Locks a disk (adds to locked list).
+    /// </summary>
+    Task LockDiskAsync(string diskPath);
+    
+    /// <summary>
+    /// Unlocks a disk (removes from locked list).
+    /// </summary>
+    Task UnlockDiskAsync(string diskPath);
 }

@@ -1,30 +1,39 @@
-using CommunityToolkit.Mvvm.ComponentModel;
-
 namespace DiskChecker.UI.Avalonia.ViewModels;
 
 /// <summary>
-/// Represents a test profile item for selection in the UI.
+/// Represents a test profile item for UI display.
 /// </summary>
 public class TestProfileItem : ObservableObject
 {
+    private string _name = string.Empty;
+    private string _description = string.Empty;
     private bool _isSelected;
+    private bool _isDestructive;
 
-    /// <summary>
-    /// Gets or sets the name of the test profile.
-    /// </summary>
-    public string Name { get; set; } = string.Empty;
+    public string Name
+    {
+        get => _name;
+        set => SetProperty(ref _name, value);
+    }
 
-    /// <summary>
-    /// Gets or sets the description of the test profile.
-    /// </summary>
-    public string Description { get; set; } = string.Empty;
+    public string Description
+    {
+        get => _description;
+        set => SetProperty(ref _description, value);
+    }
 
-    /// <summary>
-    /// Gets or sets whether this profile is currently selected.
-    /// </summary>
     public bool IsSelected
     {
         get => _isSelected;
         set => SetProperty(ref _isSelected, value);
+    }
+
+    /// <summary>
+    /// Whether this test performs destructive operations (disk wipe).
+    /// </summary>
+    public bool IsDestructive
+    {
+        get => _isDestructive;
+        set => SetProperty(ref _isDestructive, value);
     }
 }

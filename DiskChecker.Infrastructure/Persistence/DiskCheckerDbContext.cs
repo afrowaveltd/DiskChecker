@@ -1,124 +1,200 @@
-using DiskChecker.Core.Models;
 using Microsoft.EntityFrameworkCore;
-using System;
+using DiskChecker.Infrastructure.Persistence;
+using DiskChecker.Core.Models;
 
-namespace DiskChecker.Infrastructure.Persistence
+namespace DiskChecker.Infrastructure.Persistence;
+
+/// <summary>
+/// Entity Framework database context for DiskChecker.
+/// </summary>
+public class DiskCheckerDbContext : DbContext
 {
-   public class DiskCheckerDbContext : DbContext
-   {
-      public DiskCheckerDbContext(DbContextOptions<DiskCheckerDbContext> options)
-          : base(options)
-      {
-      }
+    public DiskCheckerDbContext(DbContextOptions<DiskCheckerDbContext> options)
+        : base(options)
+    {
+    }
 
-      public DbSet<TestRecord> Tests { get; set; } = null!;
-      public DbSet<SmartaRecord> SmartaData { get; set; } = null!;
-      public DbSet<DriveRecord> Drives { get; set; } = null!;
-      public DbSet<SurfaceTestSampleRecord> SurfaceTestSamples { get; set; } = null!;
-      public DbSet<EmailSettingsRecord> EmailSettings { get; set; } = null!;
-      public DbSet<ReplicationQueueRecord> ReplicationQueue { get; set; } = null!;
-      public DbSet<DiskCard> DiskCards { get; set; } = null!;
-      public DbSet<TestReport> TestReports { get; set; } = null!;
-      public DbSet<HistoricalTest> HistoricalTests => Set<HistoricalTest>();
-      public DbSet<DiskBenchmark> DiskBenchmarks => Set<DiskBenchmark>();
+    // Existing tables
+    public DbSet<DriveRecord> DriveRecords { get; set; } = null!;
+    public DbSet<TestRecord> TestRecords { get; set; } = null!;
+    public DbSet<SmartaRecord> SmartaRecords { get; set; } = null!;
+    public DbSet<SurfaceTestSampleRecord> SurfaceTestSamples { get; set; } = null!;
+    public DbSet<EmailSettingsRecord> EmailSettings { get; set; } = null!;
+    public DbSet<ReplicationQueueRecord> ReplicationQueue { get; set; } = null!;
 
-      protected override void OnModelCreating(ModelBuilder modelBuilder)
-      {
-         base.OnModelCreating(modelBuilder);
-         
-         // Ignore transient DTOs used by services/UI so EF Core does not try to map them as entities.
-         modelBuilder.Ignore<SmartCheckResult>();
+    // New tables for disk cards and testing
+    public DbSet<DiskCard> DiskCards { get; set; } = null!;
+    public DbSet<TestSession> TestSessions { get; set; } = null!;
+    public DbSet<DiskCertificate> DiskCertificates { get; set; } = null!;
+    public DbSet<DiskArchive> DiskArchives { get; set; } = null!;
 
-         // HistoricalTest - uses TestId as primary key
-         modelBuilder.Entity<HistoricalTest>(entity =>
-         {
-             entity.HasKey(e => e.TestId);
-             entity.Property(e => e.SerialNumber).HasMaxLength(100);
-             entity.Property(e => e.Model).HasMaxLength(200);
-             entity.Property(e => e.TestType).HasMaxLength(50);
-             entity.Property(e => e.Grade).HasMaxLength(10);
-             entity.Property(e => e.HealthAssessment).HasMaxLength(200);
-             entity.HasIndex(e => e.SerialNumber);
-             entity.HasIndex(e => e.TestDate);
-         });
+    // Legacy aliases for backward compatibility
+    public DbSet<DriveRecord> Drives => DriveRecords;
+    public DbSet<TestRecord> Tests => TestRecords;
+    public DbSet<SmartaRecord> SmartaData => SmartaRecords;
 
-         // DiskBenchmark
-         modelBuilder.Entity<DiskBenchmark>(entity =>
-         {
-             entity.HasKey(e => e.Id);
-             entity.Property(e => e.SerialNumber).HasMaxLength(100);
-             entity.Property(e => e.Model).HasMaxLength(200);
-             entity.HasIndex(e => e.SerialNumber);
-             entity.HasIndex(e => e.BenchmarkDate);
-         });
+    protected override void OnModelCreating(ModelBuilder modelBuilder)
+    {
+        base.OnModelCreating(modelBuilder);
 
-         // DiskCard indexes
-         modelBuilder.Entity<DiskCard>()
-             .HasIndex(d => d.SerialNumber)
-             .IsUnique();
+        // Existing configurations
+        modelBuilder.Entity<DriveRecord>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.Name).HasMaxLength(256);
+            entity.Property(e => e.Path).HasMaxLength(512);
+            entity.HasIndex(e => e.Path).IsUnique();
+        });
 
-         modelBuilder.Entity<DiskCard>()
-             .HasIndex(d => d.LastTestedDate)
-             .IsUnique(false);
+        modelBuilder.Entity<TestRecord>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+        });
 
-         modelBuilder.Entity<DiskCard>()
-             .HasIndex(d => d.Status);
+        // New configurations
 
-         // TestReport indexes
-        // Ensure TestReport has an explicitly configured primary key (property is named ReportId)
-        modelBuilder.Entity<TestReport>().HasKey(r => r.ReportId);
-         modelBuilder.Entity<TestReport>()
-             .HasIndex(r => r.DiskCardId);
+        // DiskCard - medical record card for disk
+        modelBuilder.Entity<DiskCard>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            
+            entity.Property(e => e.ModelName).HasMaxLength(256).IsRequired();
+            entity.Property(e => e.SerialNumber).HasMaxLength(128).IsRequired();
+            entity.Property(e => e.DevicePath).HasMaxLength(512);
+            entity.Property(e => e.DiskType).HasMaxLength(32);
+            entity.Property(e => e.InterfaceType).HasMaxLength(32);
+            entity.Property(e => e.FirmwareVersion).HasMaxLength(64);
+            entity.Property(e => e.ConnectionType).HasMaxLength(32);
+            entity.Property(e => e.OverallGrade).HasMaxLength(1);
+            entity.Property(e => e.ArchiveReason).HasMaxLength(256);
+            entity.Property(e => e.Notes).HasMaxLength(2000);
+            entity.Property(e => e.LockReason).HasMaxLength(256);
 
-         modelBuilder.Entity<TestReport>()
-             .HasIndex(r => r.TestDate);
+            entity.HasIndex(e => e.SerialNumber).IsUnique();
+            entity.HasIndex(e => e.IsArchived);
+            entity.HasIndex(e => e.OverallScore);
 
-         modelBuilder.Entity<TestReport>()
-             .HasIndex(r => new { r.DiskCardId, r.TestDate });
+            // LatestSmartData is runtime data, not stored in DB
+            entity.Ignore(e => e.LatestSmartData);
 
-         // Foreign key relationships
-         modelBuilder.Entity<TestReport>()
-             .HasOne(r => r.DiskCard)
-             .WithMany(d => d.TestReports)
-             .HasForeignKey(r => r.DiskCardId)
-             .OnDelete(DeleteBehavior.Cascade);
+            entity.HasMany(e => e.TestSessions)
+                .WithOne(t => t.DiskCard)
+                .HasForeignKey(t => t.DiskCardId)
+                .OnDelete(DeleteBehavior.Cascade);
 
-         modelBuilder.Entity<DriveRecord>()
-             .HasIndex(d => d.SerialNumber)
-             .IsUnique();
+            entity.HasMany(e => e.Certificates)
+                .WithOne(c => c.DiskCard)
+                .HasForeignKey(c => c.DiskCardId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
 
-         modelBuilder.Entity<TestRecord>()
-             .HasIndex(t => t.DriveId)
-             .IsUnique(false);
+        // TestSession - individual test run
+        modelBuilder.Entity<TestSession>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            
+            entity.Property(e => e.SessionId).IsRequired();
+            entity.Property(e => e.PartitionScheme).HasMaxLength(32);
+            entity.Property(e => e.FileSystem).HasMaxLength(32);
+            entity.Property(e => e.VolumeLabel).HasMaxLength(256);
+            entity.Property(e => e.Grade).HasMaxLength(1);
+            entity.Property(e => e.Notes).HasMaxLength(2000);
 
-         modelBuilder.Entity<TestRecord>()
-             .HasIndex(t => t.TestDate);
+            // SmartBefore and SmartAfter are runtime data, not stored in DB
+            entity.Ignore(e => e.SmartBefore);
+            entity.Ignore(e => e.SmartAfter);
 
-         modelBuilder.Entity<TestRecord>()
-             .HasIndex(t => new { t.IsCompleted, t.IsArchived, t.TestType });
+            entity.HasIndex(e => e.SessionId).IsUnique();
+            entity.HasIndex(e => e.DiskCardId);
+            entity.HasIndex(e => e.StartedAt);
+            entity.HasIndex(e => e.Result);
+            entity.HasIndex(e => e.HealthAssessment);
 
-         modelBuilder.Entity<TestRecord>()
-             .HasOne(t => t.SmartaData)
-             .WithOne(s => s.Test)
-             .HasForeignKey<SmartaRecord>(s => s.TestId)
-             .OnDelete(DeleteBehavior.Cascade);
+            entity.OwnsMany(e => e.TemperatureSamples, samples =>
+            {
+                samples.WithOwner().HasForeignKey("TestSessionId");
+                samples.Property(s => s.Phase).HasMaxLength(32);
+            });
 
-         modelBuilder.Entity<SurfaceTestSampleRecord>()
-             .HasIndex(s => s.TestId);
+            entity.OwnsMany(e => e.WriteSamples, samples =>
+            {
+                samples.WithOwner().HasForeignKey("TestSessionId");
+            });
 
-         modelBuilder.Entity<TestRecord>()
-             .HasMany(t => t.SurfaceSamples)
-             .WithOne(s => s.Test)
-             .HasForeignKey(s => s.TestId)
-             .OnDelete(DeleteBehavior.Cascade);
+            entity.OwnsMany(e => e.ReadSamples, samples =>
+            {
+                samples.WithOwner().HasForeignKey("TestSessionId");
+            });
 
-         modelBuilder.Entity<EmailSettingsRecord>()
-             .HasIndex(s => s.Id)
-             .IsUnique();
-             
-         modelBuilder.Entity<EmailSettingsRecord>()
-             .HasIndex(e => new { e.Host, e.FromAddress })
-             .IsUnique();
-      }
-   }
+            entity.OwnsMany(e => e.SmartChanges, changes =>
+            {
+                changes.WithOwner().HasForeignKey("TestSessionId");
+                changes.Property(c => c.AttributeName).HasMaxLength(128);
+                changes.Property(c => c.Warning).HasMaxLength(512);
+            });
+
+            entity.OwnsMany(e => e.Errors, errors =>
+            {
+                errors.WithOwner().HasForeignKey("TestSessionId");
+                errors.Property(e => e.ErrorCode).HasMaxLength(32);
+                errors.Property(e => e.Message).HasMaxLength(1024);
+                errors.Property(e => e.Phase).HasMaxLength(32);
+                errors.Property(e => e.Details).HasMaxLength(2000);
+            });
+        });
+
+        // DiskCertificate - generated certificate
+        modelBuilder.Entity<DiskCertificate>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            
+            entity.Property(e => e.CertificateNumber).HasMaxLength(64).IsRequired();
+            entity.Property(e => e.GeneratedBy).HasMaxLength(256);
+            entity.Property(e => e.DiskModel).HasMaxLength(256);
+            entity.Property(e => e.SerialNumber).HasMaxLength(128);
+            entity.Property(e => e.Capacity).HasMaxLength(32);
+            entity.Property(e => e.DiskType).HasMaxLength(32);
+            entity.Property(e => e.Firmware).HasMaxLength(64);
+            entity.Property(e => e.Interface).HasMaxLength(32);
+            entity.Property(e => e.TestType).HasMaxLength(64);
+            entity.Property(e => e.Grade).HasMaxLength(1);
+            entity.Property(e => e.HealthStatus).HasMaxLength(64);
+            entity.Property(e => e.TemperatureRange).HasMaxLength(32);
+            entity.Property(e => e.SanitizationMethod).HasMaxLength(64);
+            entity.Property(e => e.PartitionScheme).HasMaxLength(32);
+            entity.Property(e => e.FileSystem).HasMaxLength(32);
+            entity.Property(e => e.VolumeLabel).HasMaxLength(256);
+            entity.Property(e => e.PdfPath).HasMaxLength(512);
+            entity.Property(e => e.Notes).HasMaxLength(2000);
+            entity.Property(e => e.RecommendationNotes).HasMaxLength(1024);
+
+            entity.HasIndex(e => e.CertificateNumber).IsUnique();
+            entity.HasIndex(e => e.DiskCardId);
+            entity.HasIndex(e => e.GeneratedAt);
+            entity.HasIndex(e => e.Status);
+
+            entity.OwnsMany(e => e.SmartAttributes, attrs =>
+            {
+                attrs.WithOwner().HasForeignKey("DiskCertificateId");
+                attrs.Property(a => a.Name).HasMaxLength(128);
+                attrs.Property(a => a.Value).HasMaxLength(64);
+                attrs.Property(a => a.Status).HasMaxLength(32);
+            });
+        });
+
+        // DiskArchive - archived disks
+        modelBuilder.Entity<DiskArchive>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            
+            entity.Property(e => e.ArchivedBy).HasMaxLength(256);
+            entity.Property(e => e.Summary).HasMaxLength(512);
+            entity.Property(e => e.FinalGrade).HasMaxLength(1);
+            entity.Property(e => e.Notes).HasMaxLength(2000);
+
+            entity.HasIndex(e => e.DiskCardId);
+            entity.HasIndex(e => e.ArchivedAt);
+            entity.HasIndex(e => e.Reason);
+        });
+    }
 }

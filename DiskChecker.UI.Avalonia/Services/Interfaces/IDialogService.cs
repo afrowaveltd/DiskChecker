@@ -19,4 +19,9 @@ public interface IDialogService
     /// Show a confirmation dialog and return true if user clicked OK.
     /// </summary>
     Task<bool> ShowConfirmationAsync(string title, string message);
+    
+    /// <summary>
+    /// Show an input dialog and return the user's input.
+    /// </summary>
+    Task<string?> ShowInputDialogAsync(string title, string message, string defaultValue = "");
 }

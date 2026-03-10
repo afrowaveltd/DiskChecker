@@ -4,6 +4,7 @@
              xmlns:dg="clr-namespace:Avalonia.Controls;assembly=Avalonia.Controls.DataGrid"
              x:Class="DiskChecker.UI.Avalonia.Views.SmartCheckView"
              Background="{DynamicResource ThemeBackgroundBrush}">
+    
     <Grid>
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto"/>
@@ -13,7 +14,9 @@
         </Grid.RowDefinitions>
 
         <!-- ========== HEADER ========== -->
-        <Border Grid.Row="0" Background="{DynamicResource ThemePanelBrush}" BorderBrush="{DynamicResource ThemeBorderBrush}" BorderThickness="0,0,0,1" Padding="20">
+        <Border Grid.Row="0" Background="{DynamicResource ThemePanelBrush}" 
+                BorderBrush="{DynamicResource ThemeBorderBrush}" 
+                BorderThickness="0,0,0,1" Padding="20">
             <Grid>
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="*"/>
@@ -21,11 +24,13 @@
                 </Grid.ColumnDefinitions>
 
                 <StackPanel Grid.Column="0">
-                    <TextBlock Text="🔧 SMART Kontrola" 
-                               FontSize="28" FontWeight="Bold" Foreground="#1a1a1a" Margin="0,0,0,5"/>
-                    <TextBlock Text="Technické parametry a stav disku" 
+                    <TextBlock Text="🔍 SMART Kontrola" 
+                               FontSize="28" FontWeight="Bold" 
+                               Foreground="#1a1a1a" Margin="0,0,0,5"/>
+                    <TextBlock Text="Komplexní přehled zdraví a parametrů disku" 
                                FontSize="13" Foreground="#444444"/>
-                    <TextBlock Text="{Binding StatusMessage}" FontSize="11" Foreground="#333333" Margin="0,4,0,0"/>
+                    <TextBlock Text="{Binding StatusMessage}" 
+                               FontSize="11" Foreground="#333333" Margin="0,4,0,0"/>
                 </StackPanel>
 
                 <Button Grid.Column="1"
@@ -33,15 +38,20 @@
                         Command="{Binding $parent[UserControl].DataContext.NavigationService.NavigateToDiskSelectionCommand}"
                         Background="#666666"
                         Foreground="White"
-                        VerticalAlignment="Center"/>
+                        FontWeight="Bold"
+                        VerticalAlignment="Center"
+                        Padding="15,8"/>
             </Grid>
         </Border>
 
-        <!-- ========== DISK SELECTION & INFO ========== -->
-        <Border Grid.Row="1" Background="{DynamicResource ThemePanelBrush}" BorderBrush="{DynamicResource ThemeBorderBrush}" BorderThickness="1" Margin="20,12,20,0" Padding="15">
+        <!-- ========== DISK SELECTION ========== -->
+        <Border Grid.Row="1" Background="{DynamicResource ThemePanelBrush}" 
+                BorderBrush="{DynamicResource ThemeBorderBrush}" 
+                BorderThickness="1" Margin="20,12,20,0" Padding="15">
             <Grid>
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
                     <ColumnDefinition Width="Auto"/>
                 </Grid.ColumnDefinitions>
 
@@ -50,13 +60,19 @@
                     <TextBlock Text="Vyberte disk:" FontSize="11" Foreground="#444444" Margin="0,0,0,5"/>
                     <ComboBox ItemsSource="{Binding Disks}" 
                               SelectedItem="{Binding SelectedDisk}"
-                              Width="400" HorizontalAlignment="Left">
+                              Width="500" HorizontalAlignment="Left"
+                              IsEnabled="{Binding !IsChecking}">
                         <ComboBox.ItemTemplate>
                             <DataTemplate>
                                 <StackPanel Orientation="Horizontal">
                                     <TextBlock Text="{Binding DisplayName}" FontWeight="Bold"/>
-                                    <TextBlock Text=" - " Foreground="#888888"/>
-                                    <TextBlock Text="{Binding DisplayPath}" Foreground="#666666"/>
+                                    <TextBlock Text=" (" Foreground="#888888"/>
+                                    <TextBlock Text="{Binding CapacityText}" Foreground="#666666"/>
+                                    <TextBlock Text=") - " Foreground="#888888"/>
+                                    <TextBlock Text="{Binding GradeText}" 
+                                               Foreground="#27AE60" FontWeight="Bold"/>
+                                    <TextBlock Text="{Binding IsSystemDiskLabel}" 
+                                               Foreground="#E74C3C" Margin="8,0,0,0"/>
                                 </StackPanel>
                             </DataTemplate>
                         </ComboBox.ItemTemplate>
@@ -64,185 +80,376 @@
                 </StackPanel>
 
                 <!-- Grade Display -->
-                <StackPanel Grid.Column="1" HorizontalAlignment="Right">
-                    <TextBlock FontSize="16" FontWeight="Bold" Foreground="#007ACC" Margin="0,0,0,4">
-                        <TextBlock.Text>
-                            <MultiBinding StringFormat="Známka: {0}">
-                                <Binding Path="Grade"/>
-                            </MultiBinding>
-                        </TextBlock.Text>
-                    </TextBlock>
-                    <TextBlock FontSize="14" FontWeight="Bold" Foreground="#27AE60">
-                        <TextBlock.Text>
-                            <MultiBinding StringFormat="Skóre: {0}/100">
-                                <Binding Path="Score"/>
-                            </MultiBinding>
-                        </TextBlock.Text>
-                    </TextBlock>
-                </StackPanel>
+                <Border Grid.Column="1" Background="#F8F9FA" CornerRadius="8" Padding="15,8" Margin="15,0,0,0">
+                    <StackPanel>
+                        <TextBlock Text="Celkové hodnocení" FontSize="10" Foreground="#666666" HorizontalAlignment="Center"/>
+                        <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" Margin="0,4,0,0">
+                            <TextBlock Text="{Binding Grade}" FontSize="32" FontWeight="Bold"
+                                       Foreground="{Binding GradeColor}"/>
+                            <TextBlock Text=" (" FontSize="16" VerticalAlignment="Center"/>
+                            <TextBlock Text="{Binding Score}" FontSize="16" FontWeight="Bold"
+                                       VerticalAlignment="Center"/>
+                            <TextBlock Text="%)" FontSize="16" VerticalAlignment="Center"/>
+                        </StackPanel>
+                    </StackPanel>
+                </Border>
+
+                <!-- Health Status -->
+                <Border Grid.Column="2" Background="#F0F0F0" CornerRadius="8" Padding="15,8" Margin="10,0,0,0">
+                    <StackPanel>
+                        <TextBlock Text="Stav disku" FontSize="10" Foreground="#666666" HorizontalAlignment="Center"/>
+                        <TextBlock Text="{Binding HealthStatus}" FontSize="14" FontWeight="Bold"
+                                   Foreground="{Binding GradeColor}" Margin="0,8,0,0"/>
+                    </StackPanel>
+                </Border>
             </Grid>
         </Border>
 
-        <!-- ========== SMART DATA & TABLES ========== -->
+        <!-- ========== MAIN CONTENT ========== -->
         <Grid Grid.Row="2" Margin="20,12,20,12">
             <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="1*"/>
-                <ColumnDefinition Width="2*"/>
+                <ColumnDefinition Width="1.2*"/>
+                <ColumnDefinition Width="1.8*"/>
             </Grid.ColumnDefinitions>
 
-            <!-- SMART Overview -->
+            <!-- LEFT COLUMN: Drive Info & Critical Attributes -->
             <Grid Grid.Column="0" Margin="0,0,10,0">
                 <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto"/>
                     <RowDefinition Height="Auto"/>
                     <RowDefinition Height="*"/>
                 </Grid.RowDefinitions>
 
-                <Border Grid.Row="0" Background="{DynamicResource ThemePanelBrush}" BorderBrush="{DynamicResource ThemeBorderBrush}" BorderThickness="1" Padding="10" Margin="0,0,0,10">
+                <!-- Drive Information -->
+                <Border Grid.Row="0" Background="#F8F9FA" BorderBrush="#DEE2E6" 
+                        BorderThickness="1" Padding="12" Margin="0,0,0,10">
                     <StackPanel>
-                        <TextBlock Text="ℹ️ Základní informace" FontSize="12" FontWeight="Bold" Foreground="#333333" Margin="0,0,0,8"/>
-                        <Grid Margin="0,0,0,4">
+                        <TextBlock Text="📋 Informace o disku" FontSize="13" FontWeight="Bold" 
+                                   Foreground="#333333" Margin="0,0,0,10"/>
+                        
+                        <Grid Margin="0,2">
                             <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="Auto"/>
+                                <ColumnDefinition Width="100"/>
                                 <ColumnDefinition Width="*"/>
                             </Grid.ColumnDefinitions>
-                            <TextBlock Grid.Column="0" Text="Disk:" FontSize="11" Foreground="#444444"/>
-                            <TextBlock Grid.Column="1" Text="{Binding DiskName}" FontSize="11" FontWeight="Bold" HorizontalAlignment="Right"/>
+                            <TextBlock Grid.Column="0" Text="Model:" FontSize="11" Foreground="#555"/>
+                            <TextBlock Grid.Column="1" Text="{Binding DeviceModel}" FontSize="11" 
+                                       FontWeight="Bold" TextWrapping="Wrap"/>
                         </Grid>
-                        <Grid Margin="0,0,0,4">
+                        <Grid Margin="0,2">
                             <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="Auto"/>
+                                <ColumnDefinition Width="100"/>
                                 <ColumnDefinition Width="*"/>
                             </Grid.ColumnDefinitions>
-                            <TextBlock Grid.Column="0" Text="Cesta:" FontSize="11" Foreground="#444444"/>
-                            <TextBlock Grid.Column="1" Text="{Binding DiskPath}" FontSize="11" HorizontalAlignment="Right"/>
+                            <TextBlock Grid.Column="0" Text="Sériové č.:" FontSize="11" Foreground="#555"/>
+                            <TextBlock Grid.Column="1" Text="{Binding SerialNumber}" FontSize="11" 
+                                       FontWeight="Bold" FontFamily="Consolas"/>
                         </Grid>
-                        <Separator Margin="0,6"/>
-                        <Grid Margin="0,0,0,4">
+                        <Grid Margin="0,2">
                             <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="Auto"/>
+                                <ColumnDefinition Width="100"/>
                                 <ColumnDefinition Width="*"/>
                             </Grid.ColumnDefinitions>
-                            <TextBlock Grid.Column="0" Text="Sériové číslo:" FontSize="11" Foreground="#444444"/>
-                            <TextBlock Grid.Column="1" Text="{Binding SerialNumber}" FontSize="11" FontWeight="Bold" HorizontalAlignment="Right"/>
+                            <TextBlock Grid.Column="0" Text="Firmware:" FontSize="11" Foreground="#555"/>
+                            <TextBlock Grid.Column="1" Text="{Binding FirmwareVersion}" FontSize="11"/>
                         </Grid>
-                        <Grid Margin="0,0,0,4">
+                        <Grid Margin="0,2">
                             <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="Auto"/>
+                                <ColumnDefinition Width="100"/>
                                 <ColumnDefinition Width="*"/>
                             </Grid.ColumnDefinitions>
-                            <TextBlock Grid.Column="0" Text="Firmware:" FontSize="11" Foreground="#444444"/>
-                            <TextBlock Grid.Column="1" Text="{Binding FirmwareVersion}" FontSize="11" FontWeight="Bold" HorizontalAlignment="Right"/>
+                            <TextBlock Grid.Column="0" Text="Typ:" FontSize="11" Foreground="#555"/>
+                            <TextBlock Grid.Column="1" Text="{Binding DeviceType}" FontSize="11"/>
                         </Grid>
-                        <Grid Margin="0,0,0,4">
+                        <Grid Margin="0,2">
                             <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="Auto"/>
+                                <ColumnDefinition Width="100"/>
                                 <ColumnDefinition Width="*"/>
                             </Grid.ColumnDefinitions>
-                            <TextBlock Grid.Column="0" Text="Teplota:" FontSize="11" Foreground="#444444"/>
-                            <TextBlock Grid.Column="1" Text="{Binding Temperature}" FontSize="11" FontWeight="Bold" HorizontalAlignment="Right"/>
-                        </Grid>
-                        <Grid Margin="0,0,0,4">
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="Auto"/>
-                                <ColumnDefinition Width="*"/>
-                            </Grid.ColumnDefinitions>
-                            <TextBlock Grid.Column="0" Text="Provozní hodiny:" FontSize="11" Foreground="#444444"/>
-                            <TextBlock Grid.Column="1" Text="{Binding PowerOnHours}" FontSize="11" FontWeight="Bold" HorizontalAlignment="Right"/>
+                            <TextBlock Grid.Column="0" Text="Cesta:" FontSize="11" Foreground="#555"/>
+                            <TextBlock Grid.Column="1" Text="{Binding DiskPath}" FontSize="10" 
+                                       FontFamily="Consolas" Foreground="#666"/>
                         </Grid>
                     </StackPanel>
                 </Border>
 
-                <Border Grid.Row="1" Background="{DynamicResource ThemePanelBrush}" BorderBrush="{DynamicResource ThemeBorderBrush}" BorderThickness="1" Padding="10">
+                <!-- Health Metrics -->
+                <Border Grid.Row="1" Background="#F8F9FA" BorderBrush="#DEE2E6" 
+                        BorderThickness="1" Padding="12" Margin="0,0,0,10">
+                    <StackPanel>
+                        <TextBlock Text="📊 Zdravotní metriky" FontSize="13" FontWeight="Bold" 
+                                   Foreground="#333333" Margin="0,0,0,10"/>
+                        
+                        <!-- Temperature -->
+                        <Grid Margin="0,3">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="100"/>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Grid.Column="0" Text="🌡️ Teplota:" FontSize="11" Foreground="#555"/>
+                            <TextBlock Grid.Column="1" Text="{Binding Temperature}" FontSize="12" FontWeight="Bold"/>
+                            <TextBlock Grid.Column="2" Text="{Binding TemperatureStatus}" FontSize="10" 
+                                       Foreground="{Binding TempColor}"/>
+                        </Grid>
+                        
+                        <!-- Power On Hours -->
+                        <Grid Margin="0,3">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="100"/>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Grid.Column="0" Text="⏱️ Provozní hodiny:" FontSize="11" Foreground="#555"/>
+                            <TextBlock Grid.Column="1" Text="{Binding PowerOnHours}" FontSize="12" FontWeight="Bold"/>
+                            <TextBlock Grid.Column="2" Text="{Binding LifetimeStatus}" FontSize="10" Foreground="#666"/>
+                        </Grid>
+                        
+                        <!-- Power Cycles -->
+                        <Grid Margin="0,3">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="100"/>
+                                <ColumnDefinition Width="*"/>
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Grid.Column="0" Text="🔄 Cykly:" FontSize="11" Foreground="#555"/>
+                            <TextBlock Grid.Column="1" Text="{Binding PowerCycles}" FontSize="12"/>
+                        </Grid>
+                        
+                        <Separator Margin="0,8"/>
+                        
+                        <!-- Critical sectors -->
+                        <TextBlock Text="⚠️ Kritické atributy:" FontSize="11" FontWeight="Bold" Margin="0,4,0,6"/>
+                        
+                        <Grid Margin="0,2">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="140"/>
+                                <ColumnDefinition Width="*"/>
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Grid.Column="0" Text="Přemapované sektory:" FontSize="10" Foreground="#555"/>
+                            <TextBlock Grid.Column="1" Text="{Binding ReallocatedSectors}" FontSize="10" FontWeight="Bold"/>
+                        </Grid>
+                        <Grid Margin="0,2">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="140"/>
+                                <ColumnDefinition Width="*"/>
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Grid.Column="0" Text="Čekající sektory:" FontSize="10" Foreground="#555"/>
+                            <TextBlock Grid.Column="1" Text="{Binding PendingSectors}" FontSize="10" FontWeight="Bold"/>
+                        </Grid>
+                        <Grid Margin="0,2">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="140"/>
+                                <ColumnDefinition Width="*"/>
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Grid.Column="0" Text="Neopravitelné chyby:" FontSize="10" Foreground="#555"/>
+                            <TextBlock Grid.Column="1" Text="{Binding UncorrectableErrors}" FontSize="10" FontWeight="Bold"/>
+                        </Grid>
+                        
+                        <!-- NVMe specific -->
+                        <Panel IsVisible="{Binding IsNvMe}" Margin="0,10,0,0">
+                            <StackPanel>
+                                <TextBlock Text="💎 NVMe specifické:" FontSize="11" FontWeight="Bold" Margin="0,0,0,6"/>
+                                <Grid Margin="0,2">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="120"/>
+                                        <ColumnDefinition Width="*"/>
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Grid.Column="0" Text="Využití životnosti:" FontSize="10" Foreground="#555"/>
+                                    <TextBlock Grid.Column="1" Text="{Binding NvMePercentageUsed}" FontSize="10"/>
+                                </Grid>
+                                <Grid Margin="0,2">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="120"/>
+                                        <ColumnDefinition Width="*"/>
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Grid.Column="0" Text="Media chyby:" FontSize="10" Foreground="#555"/>
+                                    <TextBlock Grid.Column="1" Text="{Binding NvMeMediaErrors}" FontSize="10"/>
+                                </Grid>
+                                <Grid Margin="0,2">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="120"/>
+                                        <ColumnDefinition Width="*"/>
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Grid.Column="0" Text="Nebezpečné vyp:" FontSize="10" Foreground="#555"/>
+                                    <TextBlock Grid.Column="1" Text="{Binding NvMeUnsafeShutdowns}" FontSize="10"/>
+                                </Grid>
+                            </StackPanel>
+                        </Panel>
+                    </StackPanel>
+                </Border>
+
+                <!-- Critical Attributes Table -->
+                <Border Grid.Row="2" Background="{DynamicResource ThemePanelBrush}" 
+                        BorderBrush="{DynamicResource ThemeBorderBrush}" 
+                        BorderThickness="1" Padding="10">
                     <Grid>
                         <Grid.RowDefinitions>
                             <RowDefinition Height="Auto"/>
                             <RowDefinition Height="*"/>
                         </Grid.RowDefinitions>
                         
-                        <TextBlock Grid.Row="0" Text="⚠️ Kritické SMART atributy" FontSize="12" FontWeight="Bold" Foreground="#333333" Margin="0,0,0,8"/>
+                        <TextBlock Grid.Row="0" Text="⚠️ Kritické SMART atributy" 
+                                   FontSize="12" FontWeight="Bold" Foreground="#333" Margin="0,0,0,8"/>
                         
-                        <dg:DataGrid Grid.Row="1" ItemsSource="{Binding SmartAttributes}" IsReadOnly="True" HeadersVisibility="Column">
+                        <dg:DataGrid Grid.Row="1" 
+                                     ItemsSource="{Binding CriticalAttributes}" 
+                                     IsReadOnly="True" 
+                                     HeadersVisibility="Column"
+                                     AutoGenerateColumns="False"
+                                     GridLinesVisibility="Horizontal"
+                                     BorderThickness="0"
+                                     FontSize="11">
                             <dg:DataGrid.Columns>
-                                <dg:DataGridTextColumn Header="ID" Binding="{Binding Id}" Width="40"/>
-                                <dg:DataGridTextColumn Header="Název" Binding="{Binding Name}" Width="*"/>
-                                <dg:DataGridTextColumn Header="Hodnota" Binding="{Binding RawValue}" Width="80"/>
+                                <dg:DataGridTextColumn Header="ID" Binding="{Binding Id}" Width="35"/>
+                                <dg:DataGridTextColumn Header="Atribut" Binding="{Binding Name}" Width="*"/>
+                                <dg:DataGridTextColumn Header="Hodnota" Binding="{Binding Value}" Width="50"/>
+                                <dg:DataGridTextColumn Header="Raw" Binding="{Binding RawValue}" Width="60"/>
                             </dg:DataGrid.Columns>
                         </dg:DataGrid>
                     </Grid>
                 </Border>
             </Grid>
 
-            <!-- Self-Test Log -->
+            <!-- RIGHT COLUMN: All Attributes & Self-Tests -->
             <Grid Grid.Column="1" Margin="10,0,0,0">
                 <Grid.RowDefinitions>
-                    <RowDefinition Height="Auto"/>
                     <RowDefinition Height="*"/>
                     <RowDefinition Height="Auto"/>
                 </Grid.RowDefinitions>
 
-                <Border Grid.Row="0" Background="{DynamicResource ThemePanelBrush}" BorderBrush="{DynamicResource ThemeBorderBrush}" BorderThickness="1" Padding="10" Margin="0,0,0,10">
-                    <StackPanel>
-                        <TextBlock Text="⏱️ Stav self-testu" FontSize="12" FontWeight="Bold" Foreground="#333333" Margin="0,0,0,8"/>
-                        <TextBlock Text="Spusťte self-test pro kontrolu zdraví disku" FontSize="11" Foreground="#27AE60"/>
-                    </StackPanel>
-                </Border>
-
-                <Border Grid.Row="1" Background="{DynamicResource ThemePanelBrush}" BorderBrush="{DynamicResource ThemeBorderBrush}" BorderThickness="1" Padding="10" Margin="0,0,0,10">
+                <!-- All Attributes -->
+                <Border Grid.Row="0" Background="{DynamicResource ThemePanelBrush}" 
+                        BorderBrush="{DynamicResource ThemeBorderBrush}" 
+                        BorderThickness="1" Padding="10" Margin="0,0,0,10">
                     <Grid>
                         <Grid.RowDefinitions>
                             <RowDefinition Height="Auto"/>
                             <RowDefinition Height="*"/>
                         </Grid.RowDefinitions>
                         
-                        <TextBlock Grid.Row="0" Text="📝 Historie self-testů" FontSize="12" FontWeight="Bold" Foreground="#333333" Margin="0,0,0,8"/>
+                        <TextBlock Grid.Row="0" Text="📊 Všechny SMART atributy" 
+                                   FontSize="12" FontWeight="Bold" Foreground="#333" Margin="0,0,0,8"/>
                         
-                        <dg:DataGrid Grid.Row="1" ItemsSource="{Binding SelfTestLog}" IsReadOnly="True" HeadersVisibility="Column">
+                        <dg:DataGrid Grid.Row="1" 
+                                     ItemsSource="{Binding SmartAttributes}" 
+                                     IsReadOnly="True" 
+                                     HeadersVisibility="Column"
+                                     AutoGenerateColumns="False"
+                                     GridLinesVisibility="All"
+                                     BorderThickness="1"
+                                     BorderBrush="#DEE2E6">
                             <dg:DataGrid.Columns>
-                                <dg:DataGridTextColumn Header="#" Binding="{Binding Number}" Width="30"/>
-                                <dg:DataGridTextColumn Header="Typ" Binding="{Binding TestType}" Width="*"/>
-                                <dg:DataGridTextColumn Header="Stav" Binding="{Binding Status}" Width="*"/>
-                                <dg:DataGridTextColumn Header="Hodin" Binding="{Binding LifeTimeHours}" Width="60"/>
+                                <dg:DataGridTextColumn Header="ID" Binding="{Binding Id}" Width="35"/>
+                                <dg:DataGridTextColumn Header="Název atributu" Binding="{Binding Name}" Width="180"/>
+                                <dg:DataGridTextColumn Header="Hodnota" Binding="{Binding Value}" Width="55"/>
+                                <dg:DataGridTextColumn Header="Nejhorší" Binding="{Binding Worst}" Width="55"/>
+                                <dg:DataGridTextColumn Header="Limit" Binding="{Binding Threshold}" Width="45"/>
+                                <dg:DataGridTextColumn Header="Raw" Binding="{Binding RawValue}" Width="80"/>
+                                <dg:DataGridTextColumn Header="Stav" Binding="{Binding IsOk}" Width="45"/>
                             </dg:DataGrid.Columns>
                         </dg:DataGrid>
                     </Grid>
                 </Border>
 
-                <StackPanel Grid.Row="2" Orientation="Horizontal">
-                    <Button Content="▶️ Spustit Extended Self-Test" 
-                            Command="{Binding RunSelfTestCommand}"
-                            IsEnabled="{Binding !IsChecking}"
-                            Background="#27AE60" Foreground="White" 
-                            Padding="15,10" Margin="0,0,10,0">
-                        <Button.Styles>
-                            <Style Selector="Button">
-                                <Setter Property="BorderThickness" Value="0"/>
-                                <Setter Property="FontWeight" Value="Bold"/>
-                                <Setter Property="Cursor" Value="Hand"/>
-                            </Style>
-                        </Button.Styles>
-                    </Button>
-                    
-                    <Button Content="🔁 Obnovit data" 
-                            Command="{Binding RefreshCommand}"
-                            IsEnabled="{Binding !IsChecking}"
-                            Background="#004B93" Foreground="White" 
-                            Padding="15,10">
-                        <Button.Styles>
-                            <Style Selector="Button">
-                                <Setter Property="BorderThickness" Value="0"/>
-                                <Setter Property="FontWeight" Value="Bold"/>
-                                <Setter Property="Cursor" Value="Hand"/>
-                            </Style>
-                        </Button.Styles>
-                    </Button>
-                </StackPanel>
+                <!-- Self-Tests -->
+                <Border Grid.Row="1" Background="{DynamicResource ThemePanelBrush}" 
+                        BorderBrush="{DynamicResource ThemeBorderBrush}" 
+                        BorderThickness="1" Padding="10">
+                    <Grid>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="*"/>
+                        </Grid.RowDefinitions>
+                        
+                        <TextBlock Grid.Row="0" Text="🔧 Self-testy" 
+                                   FontSize="12" FontWeight="Bold" Foreground="#333" Margin="0,0,0,8"/>
+                        
+                        <!-- Test buttons -->
+                        <StackPanel Grid.Row="1" Orientation="Horizontal" Margin="0,0,0,10">
+                            <Button Content="▶️ Krátký test" 
+                                    Command="{Binding RunShortTestCommand}"
+                                    IsEnabled="{Binding !IsChecking}"
+                                    Background="#27AE60" Foreground="White" 
+                                    FontWeight="Bold" Padding="12,6" Margin="0,0,8,0">
+                                <Button.Styles>
+                                    <Style Selector="Button">
+                                        <Setter Property="BorderThickness" Value="0"/>
+                                        <Setter Property="Cursor" Value="Hand"/>
+                                    </Style>
+                                </Button.Styles>
+                            </Button>
+                            <Button Content="🔍 Rozšířený test" 
+                                    Command="{Binding RunLongTestCommand}"
+                                    IsEnabled="{Binding !IsChecking}"
+                                    Background="#3498DB" Foreground="White" 
+                                    FontWeight="Bold" Padding="12,6" Margin="0,0,8,0">
+                                <Button.Styles>
+                                    <Style Selector="Button">
+                                        <Setter Property="BorderThickness" Value="0"/>
+                                        <Setter Property="Cursor" Value="Hand"/>
+                                    </Style>
+                                </Button.Styles>
+                            </Button>
+                            <Button Content="⏹️ Přerušit test" 
+                                    Command="{Binding AbortTestCommand}"
+                                    IsEnabled="{Binding !IsChecking}"
+                                    Background="#E74C3C" Foreground="White" 
+                                    FontWeight="Bold" Padding="12,6" Margin="0,0,8,0">
+                                <Button.Styles>
+                                    <Style Selector="Button">
+                                        <Setter Property="BorderThickness" Value="0"/>
+                                        <Setter Property="Cursor" Value="Hand"/>
+                                    </Style>
+                                </Button.Styles>
+                            </Button>
+                            <Button Content="🔁 Obnovit" 
+                                    Command="{Binding RefreshCommand}"
+                                    IsEnabled="{Binding !IsChecking}"
+                                    Background="#666666" Foreground="White" 
+                                    FontWeight="Bold" Padding="12,6">
+                                <Button.Styles>
+                                    <Style Selector="Button">
+                                        <Setter Property="BorderThickness" Value="0"/>
+                                        <Setter Property="Cursor" Value="Hand"/>
+                                    </Style>
+                                </Button.Styles>
+                            </Button>
+                        </StackPanel>
+                        
+                        <!-- Self-test log -->
+                        <dg:DataGrid Grid.Row="2" 
+                                     ItemsSource="{Binding SelfTestLog}" 
+                                     IsReadOnly="True" 
+                                     HeadersVisibility="Column"
+                                     AutoGenerateColumns="False"
+                                     MaxHeight="150"
+                                     GridLinesVisibility="Horizontal">
+                            <dg:DataGrid.Columns>
+                                <dg:DataGridTextColumn Header="#" Binding="{Binding Number}" Width="25"/>
+                                <dg:DataGridTextColumn Header="Typ" Binding="{Binding TestTypeName}" Width="80"/>
+                                <dg:DataGridTextColumn Header="Stav" Binding="{Binding StatusName}" Width="*"/>
+                                <dg:DataGridTextColumn Header="Hod." Binding="{Binding FormattedHours}" Width="60"/>
+                                <dg:DataGridTextColumn Header="Progress" Binding="{Binding FormattedProgress}" Width="60"/>
+                            </dg:DataGrid.Columns>
+                        </dg:DataGrid>
+                    </Grid>
+                </Border>
             </Grid>
         </Grid>
 
         <!-- ========== STATUS BAR ========== -->
-        <TextBlock Grid.Row="3" Text="{Binding StatusMessage}" 
-                   Background="#F0F0F0" Padding="20,8" 
-                   FontSize="11" Foreground="#333333"
-                   TextTrimming="CharacterEllipsis"/>
+        <Border Grid.Row="3" Background="#F0F0F0" Padding="20,10">
+            <StackPanel Orientation="Horizontal">
+                <TextBlock Text="{Binding StatusMessage}" FontSize="11" Foreground="#333"/>
+                <TextBlock Text=" | " Foreground="#888" Margin="10,0"/>
+                <TextBlock Text="Počet disků: " FontSize="11" Foreground="#555"/>
+                <TextBlock Text="{Binding Disks.Count}" FontSize="11" FontWeight="Bold"/>
+                <TextBlock Text=" | " Foreground="#888" Margin="10,0"/>
+                <Panel IsVisible="{Binding IsChecking}">
+                    <TextBlock Text="⏳ Načítám..." FontSize="11" Foreground="#E67E22"/>
+                </Panel>
+            </StackPanel>
+        </Border>
     </Grid>
 </UserControl>

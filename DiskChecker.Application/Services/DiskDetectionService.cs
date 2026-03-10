@@ -11,15 +11,47 @@ namespace DiskChecker.Application.Services;
 /// </summary>
 public class DiskDetectionService : IDiskDetectionService
 {
+    // Cache for system disk path
+    private string? _systemDiskPath;
+    
     public async Task<IReadOnlyList<CoreDriveInfo>> GetDrivesAsync(CancellationToken cancellationToken = default)
     {
         var drives = new List<CoreDriveInfo>();
+        
+        // Detect system disk path (C: drive physical path)
+        _systemDiskPath = await GetSystemDiskPathAsync();
+        
+        // DEBUG: Log detected system disk path
+        Debug.WriteLine($"[DiskDetectionService] Detected system disk path: {_systemDiskPath ?? "NULL"}");
+        Console.WriteLine($"[DiskDetectionService] Detected system disk path: {_systemDiskPath ?? "NULL"}");
         
         // Get physical drives on Windows
         if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
         {
             var physicalDrives = await GetPhysicalDrivesWindowsAsync(cancellationToken);
+            
+            // Mark system disk
+            foreach (var drive in physicalDrives)
+            {
+                drive.IsSystemDisk = IsSystemDisk(drive.Path, drive.Name);
+                // DEBUG: Log each drive's system disk status
+                Debug.WriteLine($"[DiskDetectionService] Drive: {drive.Path}, Name: {drive.Name}, IsSystemDisk: {drive.IsSystemDisk}");
+                Console.WriteLine($"[DiskDetectionService] Drive: {drive.Path}, Name: {drive.Name}, IsSystemDisk: {drive.IsSystemDisk}");
+            }
+            
             drives.AddRange(physicalDrives);
+        }
+        
+        // If no physical drives found, try fallback
+        if (drives.Count == 0)
+        {
+            // Fallback: Try WMI directly
+            var wmiDrives = await GetPhysicalDrivesWmiAsync(cancellationToken);
+            foreach (var drive in wmiDrives)
+            {
+                drive.IsSystemDisk = IsSystemDisk(drive.Path, drive.Name);
+            }
+            drives.AddRange(wmiDrives);
         }
         
         // Get logical drives
@@ -34,11 +66,129 @@ public class DiskDetectionService : IDiskDetectionService
             
             if (existing == null)
             {
+                // Mark system disk for logical drives too
+                logical.IsSystemDisk = logical.Path.StartsWith("C:", StringComparison.OrdinalIgnoreCase);
                 drives.Add(logical);
             }
         }
         
+        // If still no drives, add a placeholder for system disk
+        if (drives.Count == 0)
+        {
+            drives.Add(new CoreDriveInfo
+            {
+                Id = Guid.NewGuid(),
+                Path = @"\\.\PHYSICALDRIVE0",
+                Name = "System Drive (C:)",
+                TotalSize = GetSystemDriveSize(),
+                IsPhysical = true,
+                IsSystemDisk = true,
+                IsReady = true
+            });
+        }
+        
         return drives.AsReadOnly();
+    }
+    
+    /// <summary>
+    /// Checks if a drive is the system disk
+    /// </summary>
+    private bool IsSystemDisk(string devicePath, string? name)
+    {
+        // Check by device path
+        if (!string.IsNullOrEmpty(devicePath))
+        {
+            // FIRST: Check if we detected system disk path via PowerShell (most reliable)
+            if (!string.IsNullOrEmpty(_systemDiskPath) && 
+                devicePath.Equals(_systemDiskPath, StringComparison.OrdinalIgnoreCase))
+            {
+                return true;
+            }
+            
+            // SECOND: Fallback - PhysicalDrive0 is usually system disk (only if PowerShell detection failed)
+            if (string.IsNullOrEmpty(_systemDiskPath) && 
+                (devicePath.Contains("PhysicalDrive0", StringComparison.OrdinalIgnoreCase) ||
+                 devicePath.Contains("PHYSICALDRIVE0", StringComparison.OrdinalIgnoreCase)))
+            {
+                return true;
+            }
+        }
+        
+        // Fallback: check by name (C: drive)
+        if (!string.IsNullOrEmpty(name) && name.Contains("C:", StringComparison.OrdinalIgnoreCase))
+        {
+            return true;
+        }
+        
+        return false;
+    }
+    
+    /// <summary>
+    /// Gets the physical path of the system disk (C: drive)
+    /// </summary>
+    private async Task<string?> GetSystemDiskPathAsync()
+    {
+        try
+        {
+            if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+            {
+                // Use PowerShell to get the physical disk for C: drive
+                var psi = new ProcessStartInfo
+                {
+                    FileName = "powershell.exe",
+                    Arguments = "-NoProfile -ExecutionPolicy Bypass -Command \"Get-Partition | Where-Object { $_.DriveLetter -eq 'C' } | Get-Disk | Select-Object -ExpandProperty DeviceId\"",
+                    RedirectStandardOutput = true,
+                    RedirectStandardError = true,
+                    UseShellExecute = false,
+                    CreateNoWindow = true
+                };
+                
+                using var process = Process.Start(psi);
+                if (process == null) return null;
+                
+                var output = await process.StandardOutput.ReadToEndAsync();
+                await process.WaitForExitAsync();
+                
+                // Parse output - might be something like "\\?\scsi#disk&ven_xxx#..."
+                var lines = output.Trim().Split('\n');
+                foreach (var line in lines)
+                {
+                    var trimmed = line.Trim();
+                    if (!string.IsNullOrEmpty(trimmed))
+                    {
+                        // Extract physical drive number from path
+                        var match = System.Text.RegularExpressions.Regex.Match(trimmed, @"PHYSICALDRIVE(\d+)", 
+                            System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+                        if (match.Success)
+                        {
+                            return $@"\\.\PHYSICALDRIVE{match.Groups[1].Value}";
+                        }
+                    }
+                }
+            }
+        }
+        catch
+        {
+            // Ignore errors
+        }
+        
+        return null;
+    }
+    
+    /// <summary>
+    /// Gets the size of C: drive as fallback
+    /// </summary>
+    private long GetSystemDriveSize()
+    {
+        try
+        {
+            var systemDrive = new DriveInfo("C");
+            return systemDrive.TotalSize;
+        }
+        catch
+        {
+            return 0;
+        }
     }
 
     private async Task<List<CoreDriveInfo>> GetPhysicalDrivesWindowsAsync(CancellationToken cancellationToken)

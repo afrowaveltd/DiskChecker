@@ -9,7 +9,8 @@
         Height="700" 
         Width="1300"
         WindowStartupLocation="CenterScreen"
-        Background="#FFFFFF">
+        Background="#FFFFFF"
+        Icon="/Assets/icon.ico">
     <Grid>
         <Grid.RowDefinitions>
             <RowDefinition Height="64"/>
@@ -43,6 +44,13 @@
                             FontSize="12" FontWeight="SemiBold" Cursor="Hand"
                             ToolTip.Tip="Vrátit se na přehled disků" />
                     
+                    <Button Content="📚 Karty disků" 
+                            Command="{Binding NavigateToDiskCardsCommand}"
+                            Background="#F8F9FA" Foreground="#1A1A1A"
+                            Padding="15,20" BorderThickness="0"
+                            FontSize="12" FontWeight="SemiBold" Cursor="Hand"
+                            ToolTip.Tip="Karty disků s historií" />
+                    
                     <Button Content="🧪 Test povrchu" 
                             Command="{Binding NavigateToSurfaceTestCommand}"
                             Background="#F8F9FA" Foreground="#1A1A1A"
@@ -63,6 +71,13 @@
                             Padding="15,20" BorderThickness="0"
                             FontSize="12" FontWeight="SemiBold" Cursor="Hand"
                             ToolTip.Tip="Trend disku v čase" />
+                    
+                    <Button Content="⚖️ Porovnání" 
+                            Command="{Binding NavigateToDiskComparisonCommand}"
+                            Background="#F8F9FA" Foreground="#1A1A1A"
+                            Padding="15,20" BorderThickness="0"
+                            FontSize="12" FontWeight="SemiBold" Cursor="Hand"
+                            ToolTip.Tip="Porovnat disky" />
                     
                     <Button Content="📄 Reporty" 
                             Command="{Binding NavigateToReportCommand}"

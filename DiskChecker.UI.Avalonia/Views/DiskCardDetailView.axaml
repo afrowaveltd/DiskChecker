@@ -1,0 +1,323 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:DiskChecker.UI.Avalonia.ViewModels"
+             xmlns:converters="using:DiskChecker.UI.Avalonia.Converters"
+             xmlns:dg="clr-namespace:Avalonia.Controls;assembly=Avalonia.Controls.DataGrid"
+             x:Class="DiskChecker.UI.Avalonia.Views.DiskCardDetailView"
+             Background="{DynamicResource ThemeBackgroundBrush}">
+
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+
+        <!-- ========== HEADER ========== -->
+        <Border Grid.Row="0" Background="{DynamicResource ThemePanelBrush}"
+                BorderBrush="{DynamicResource ThemeBorderBrush}"
+                BorderThickness="0,0,0,1" Padding="20">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+
+                <StackPanel Grid.Column="0">
+                    <TextBlock Text="📋 Detail Karty Disku"
+                               FontSize="28" FontWeight="Bold"
+                               Foreground="#1a1a1a" Margin="0,0,0,5"/>
+                    <TextBlock Text="Kompletní historie testů a zdraví disku"
+                               FontSize="13" Foreground="#444444"/>
+                </StackPanel>
+
+                <StackPanel Grid.Column="1" Orientation="Horizontal">
+                    <Button Content="📄 Generovat certifikát"
+                            Command="{Binding GenerateCertificateCommand}"
+                            IsEnabled="{Binding HasTestSessions}"
+                            Background="#27AE60" Foreground="White"
+                            FontWeight="Bold" Padding="15,8" Margin="0,0,10,0"
+                            Cursor="Hand">
+                        <Button.Styles>
+                            <Style Selector="Button">
+                                <Setter Property="BorderThickness" Value="0"/>
+                            </Style>
+                        </Button.Styles>
+                    </Button>
+                    <Button Content="🏠 Zpět na přehled"
+                            Command="{Binding NavigateBackCommand}"
+                            Background="#666666" Foreground="White"
+                            FontWeight="Bold" Padding="15,8"
+                            Cursor="Hand">
+                        <Button.Styles>
+                            <Style Selector="Button">
+                                <Setter Property="BorderThickness" Value="0"/>
+                            </Style>
+                        </Button.Styles>
+                    </Button>
+                </StackPanel>
+            </Grid>
+        </Border>
+
+        <!-- ========== DISK INFO ========== -->
+        <Border Grid.Row="1" Background="#F8F9FA" Margin="20,15,20,0" Padding="15" CornerRadius="8"
+                BorderBrush="#DEE2E6" BorderThickness="1">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="2*"/>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="1*"/>
+                </Grid.ColumnDefinitions>
+
+                <!-- Basic Info -->
+                <StackPanel Grid.Column="0">
+                    <TextBlock Text="💾 Informace o disku" FontSize="14" FontWeight="Bold" Margin="0,0,0,10"/>
+                    
+                    <Grid Margin="0,3">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="100"/>
+                            <ColumnDefinition Width="*"/>
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Grid.Column="0" Text="Model:" FontSize="11" Foreground="#555"/>
+                        <TextBlock Grid.Column="1" Text="{Binding Card.ModelName}" FontSize="12" FontWeight="Bold"/>
+                    </Grid>
+                    <Grid Margin="0,3">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="100"/>
+                            <ColumnDefinition Width="*"/>
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Grid.Column="0" Text="Sériové č.:" FontSize="11" Foreground="#555"/>
+                        <TextBlock Grid.Column="1" Text="{Binding Card.SerialNumber}" FontSize="11" FontFamily="Consolas"/>
+                    </Grid>
+                    <Grid Margin="0,3">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="100"/>
+                            <ColumnDefinition Width="*"/>
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Grid.Column="0" Text="Kapacita:" FontSize="11" Foreground="#555"/>
+                        <TextBlock Grid.Column="1" Text="{Binding Card.CapacityText}" FontSize="11"/>
+                    </Grid>
+                    <Grid Margin="0,3">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="100"/>
+                            <ColumnDefinition Width="*"/>
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Grid.Column="0" Text="Typ disku:" FontSize="11" Foreground="#555"/>
+                        <TextBlock Grid.Column="1" Text="{Binding Card.DiskType}" FontSize="11"/>
+                    </Grid>
+                    <Grid Margin="0,3">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="100"/>
+                            <ColumnDefinition Width="*"/>
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Grid.Column="0" Text="Počet testů:" FontSize="11" Foreground="#555"/>
+                        <TextBlock Grid.Column="1" Text="{Binding Card.TestCount}" FontSize="11" FontWeight="Bold"/>
+                    </Grid>
+                </StackPanel>
+
+                <!-- Separator -->
+                <Separator Grid.Column="1" Background="#DEE2E6" Margin="20,0"/>
+
+                <!-- Grade & Score -->
+                <StackPanel Grid.Column="2" VerticalAlignment="Center" HorizontalAlignment="Center">
+                    <TextBlock Text="Celkové hodnocení" FontSize="11" Foreground="#666" HorizontalAlignment="Center"/>
+                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" Margin="0,5">
+                        <TextBlock Text="{Binding Card.OverallGrade}" FontSize="42" FontWeight="Bold"
+                                   Foreground="{Binding GradeColor}"/>
+                    </StackPanel>
+                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
+                        <TextBlock Text="Skóre: " FontSize="12"/>
+                        <TextBlock Text="{Binding Card.OverallScore, StringFormat={}{0:F0}}" FontSize="12" FontWeight="Bold"/>
+                        <TextBlock Text="%" FontSize="12"/>
+                    </StackPanel>
+                </StackPanel>
+            </Grid>
+        </Border>
+
+        <!-- ========== TABS ========== -->
+        <TabControl Grid.Row="2" Margin="20,15,20,15">
+            <!-- Test History Tab -->
+            <TabItem Header="📊 Historie testů">
+                <Grid Margin="10">
+                    <DataGrid ItemsSource="{Binding TestSessions}"
+                              SelectedItem="{Binding SelectedSession}"
+                              AutoGenerateColumns="False"
+                              IsReadOnly="True"
+                              HeadersVisibility="Column"
+                              GridLinesVisibility="Horizontal"
+                              FontSize="12">
+                        <DataGrid.Columns>
+                            <DataGridTextColumn Header="Datum" Binding="{Binding TestedAt, StringFormat={}{0:dd.MM.yyyy HH:mm}}" Width="130"/>
+                            <DataGridTextColumn Header="Typ testu" Binding="{Binding TestType}" Width="120"/>
+                            <DataGridTextColumn Header="Známka" Binding="{Binding Grade}" Width="60"/>
+                            <DataGridTextColumn Header="Skóre" Binding="{Binding Score, StringFormat={}{0:F0}}" Width="60"/>
+                            <DataGridTextColumn Header="Sektory" Binding="{Binding SectorsTested}" Width="80"/>
+                            <DataGridTextColumn Header="Chyby" Binding="{Binding ErrorCount}" Width="60"/>
+                            <DataGridTextColumn Header="Teplota" Binding="{Binding Temperature, StringFormat={}{0}°C}" Width="80"/>
+                            <DataGridTextColumn Header="Trvání" Binding="{Binding Duration, StringFormat={}{0} min}" Width="70"/>
+                            <DataGridTextColumn Header="Poznámky" Binding="{Binding Notes}" Width="*"/>
+                        </DataGrid.Columns>
+                    </DataGrid>
+                </Grid>
+            </TabItem>
+
+            <!-- SMART History Tab -->
+            <TabItem Header="📈 SMART trend">
+                <Grid Margin="10">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="*"/>
+                    </Grid.RowDefinitions>
+
+                    <TextBlock Grid.Row="0" Text="Vývoj SMART atributů v čase" FontSize="11" Foreground="#666" Margin="0,0,0,10"/>
+
+                    <DataGrid Grid.Row="1" ItemsSource="{Binding SmartHistory}"
+                              AutoGenerateColumns="False"
+                              IsReadOnly="True"
+                              HeadersVisibility="Column"
+                              GridLinesVisibility="Horizontal"
+                              FontSize="12">
+                        <DataGrid.Columns>
+                            <DataGridTextColumn Header="Datum" Binding="{Binding TestedAt, StringFormat={}{0:dd.MM.yyyy}}" Width="100"/>
+                            <DataGridTextColumn Header="Teplota" Binding="{Binding Temperature}" Width="70"/>
+                            <DataGridTextColumn Header="Provozní hodiny" Binding="{Binding PowerOnHours}" Width="110"/>
+                            <DataGridTextColumn Header="Reallocated" Binding="{Binding ReallocatedSectors}" Width="90"/>
+                            <DataGridTextColumn Header="Pending" Binding="{Binding PendingSectors}" Width="70"/>
+                            <DataGridTextColumn Header="Chyby čtení" Binding="{Binding ReadErrors}" Width="80"/>
+                            <DataGridTextColumn Header="Realloc. události" Binding="{Binding ReallocEvents}" Width="100"/>
+                            <DataGridTextColumn Header="Poznámky" Binding="{Binding Notes}" Width="*"/>
+                        </DataGrid.Columns>
+                    </DataGrid>
+                </Grid>
+            </TabItem>
+
+            <!-- Notes Tab -->
+            <TabItem Header="📝 Poznámky">
+                <Grid Margin="10">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="*"/>
+                        <RowDefinition Height="Auto"/>
+                    </Grid.RowDefinitions>
+
+                    <TextBox Grid.Row="0"
+                             Text="{Binding Notes}"
+                             AcceptsReturn="True"
+                             TextWrapping="Wrap"
+                             Watermark="Zadejte poznámky k tomuto disku..."
+                             FontSize="12"
+                             Padding="10"/>
+
+                    <StackPanel Grid.Row="1" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,10,0,0">
+                        <Button Content="💾 Uložit poznámky"
+                                Command="{Binding SaveNotesCommand}"
+                                Background="#27AE60" Foreground="White"
+                                FontWeight="Bold" Padding="15,8" Cursor="Hand">
+                            <Button.Styles>
+                                <Style Selector="Button">
+                                    <Setter Property="BorderThickness" Value="0"/>
+                                </Style>
+                            </Button.Styles>
+                        </Button>
+                    </StackPanel>
+                </Grid>
+            </TabItem>
+
+            <!-- Disk Info Tab -->
+            <TabItem Header="📄 Informace">
+                <Grid Margin="10">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="*"/>
+                    </Grid.ColumnDefinitions>
+
+                    <!-- Left: Device Info -->
+                    <StackPanel Grid.Column="0" Margin="0,0,10,0">
+                        <TextBlock Text="Zařízení" FontSize="14" FontWeight="Bold" Margin="0,0,0,10"/>
+                        
+                        <Border Background="#F8F9FA" Padding="10" CornerRadius="4" Margin="0,0,0,10">
+                            <StackPanel>
+                                <Grid Margin="0,2">
+                                    <TextBlock Grid.Column="0" Text="Cesta:" FontSize="11" Foreground="#555" Width="120"/>
+                                    <TextBlock Text="{Binding Card.DevicePath}" FontSize="11" FontFamily="Consolas"/>
+                                </Grid>
+                                <Grid Margin="0,2">
+                                    <TextBlock Text="Firmware:" FontSize="11" Foreground="#555" Width="120"/>
+                                    <TextBlock Text="{Binding Card.FirmwareVersion}" FontSize="11"/>
+                                </Grid>
+                                <Grid Margin="0,2">
+                                    <TextBlock Text="Vyrobce:" FontSize="11" Foreground="#555" Width="120"/>
+                                    <TextBlock Text="{Binding Card.Manufacturer}" FontSize="11"/>
+                                </Grid>
+                                <Grid Margin="0,2">
+                                    <TextBlock Text="Vytvořeno:" FontSize="11" Foreground="#555" Width="120"/>
+                                    <TextBlock Text="{Binding Card.CreatedAt, StringFormat={}{0:dd.MM.yyyy HH:mm}}" FontSize="11"/>
+                                </Grid>
+                                <Grid Margin="0,2">
+                                    <TextBlock Text="Aktualizováno:" FontSize="11" Foreground="#555" Width="120"/>
+                                    <TextBlock Text="{Binding Card.UpdatedAt, StringFormat={}{0:dd.MM.yyyy HH:mm}}" FontSize="11"/>
+                                </Grid>
+                            </StackPanel>
+                        </Border>
+                    </StackPanel>
+
+                    <!-- Right: Statistics -->
+                    <StackPanel Grid.Column="1" Margin="10,0,0,0">
+                        <TextBlock Text="Statistiky" FontSize="14" FontWeight="Bold" Margin="0,0,0,10"/>
+                        
+                        <Border Background="#F8F9FA" Padding="10" CornerRadius="4">
+                            <StackPanel>
+                                <Grid Margin="0,3">
+                                    <TextBlock Text="Celkem testů:" FontSize="11" Foreground="#555" Width="140"/>
+                                    <TextBlock Text="{Binding Card.TestCount}" FontSize="11" FontWeight="Bold"/>
+                                </Grid>
+                                <Grid Margin="0,3">
+                                    <TextBlock Text="Průměrné skóre:" FontSize="11" Foreground="#555" Width="140"/>
+                                    <TextBlock Text="{Binding AverageScore, StringFormat={}{0:F1}}" FontSize="11"/>
+                                </Grid>
+                                <Grid Margin="0,3">
+                                    <TextBlock Text="Poslední známka:" FontSize="11" Foreground="#555" Width="140"/>
+                                    <TextBlock Text="{Binding Card.OverallGrade}" FontSize="11" FontWeight="Bold"/>
+                                </Grid>
+                                <Grid Margin="0,3">
+                                    <TextBlock Text="Nejlepší známka:" FontSize="11" Foreground="#555" Width="140"/>
+                                    <TextBlock Text="{Binding BestGrade}" FontSize="11" FontWeight="Bold" Foreground="#27AE60"/>
+                                </Grid>
+                                <Grid Margin="0,3">
+                                    <TextBlock Text="Nejhorší známka:" FontSize="11" Foreground="#555" Width="140"/>
+                                    <TextBlock Text="{Binding WorstGrade}" FontSize="11" FontWeight="Bold" Foreground="#E74C3C"/>
+                                </Grid>
+                                <Grid Margin="0,3">
+                                    <TextBlock Text="Celkem test. sektorů:" FontSize="11" Foreground="#555" Width="140"/>
+                                    <TextBlock Text="{Binding TotalSectorsTested}" FontSize="11"/>
+                                </Grid>
+                                <Grid Margin="0,3">
+                                    <TextBlock Text="Celkem chyb:" FontSize="11" Foreground="#555" Width="140"/>
+                                    <TextBlock Text="{Binding TotalErrors}" FontSize="11"/>
+                                </Grid>
+                            </StackPanel>
+                        </Border>
+                    </StackPanel>
+                </Grid>
+            </TabItem>
+        </TabControl>
+
+        <!-- ========== STATUS BAR ========== -->
+        <Border Grid.Row="3" Background="#F0F0F0" Padding="20,10">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+
+                <TextBlock Grid.Column="0" Text="{Binding StatusMessage}" FontSize="11"/>
+
+                <StackPanel Grid.Column="1" Orientation="Horizontal">
+                    <Panel IsVisible="{Binding IsLoading}">
+                        <TextBlock Text="⏳ Načítám..." FontSize="11" Foreground="#E67E22"/>
+                    </Panel>
+                </StackPanel>
+            </Grid>
+        </Border>
+    </Grid>
+</UserControl>

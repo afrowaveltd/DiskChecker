@@ -35,5 +35,8 @@
         <converters:EnumToBooleanConverter x:Key="EnumToBooleanConverter"/>
         <!-- Simple NotNull converter used in views -->
         <converters:NotNullConverter x:Key="NotNullConverter"/>
+        <!-- Lock converters for disk protection -->
+        <converters:LockTextConverter x:Key="LockTextConverter"/>
+        <converters:LockButtonConverter x:Key="LockButtonConverter"/>
     </Application.Resources>
 </Application>

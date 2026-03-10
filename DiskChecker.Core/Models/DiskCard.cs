@@ -1,87 +1,117 @@
+using System;
+using System.Collections.Generic;
+
 namespace DiskChecker.Core.Models;
 
 /// <summary>
-/// Represents a disk card (permanent record of a tested disk in the database).
+/// Medical record card for a disk - stores all tests and data for a specific disk.
 /// </summary>
 public class DiskCard
 {
+    public int Id { get; set; }
+    
     /// <summary>
-    /// Unique identifier for the disk card.
+    /// Disk model name (e.g., "Samsung SSD 870 EVO 500GB")
     /// </summary>
-    public Guid DiskCardId { get; set; } = Guid.NewGuid();
-
+    public string ModelName { get; set; } = string.Empty;
+    
     /// <summary>
-    /// Disk serial number (unique identifier from disk itself).
+    /// Serial number - unique identifier
     /// </summary>
-    public required string SerialNumber { get; set; }
-
+    public string SerialNumber { get; set; } = string.Empty;
+    
     /// <summary>
-    /// Disk model name.
+    /// Device path (\\.\PhysicalDrive0, /dev/sda, etc.)
     /// </summary>
-    public required string ModelName { get; set; }
-
+    public string DevicePath { get; set; } = string.Empty;
+    
     /// <summary>
-    /// Disk manufacturer.
+    /// Disk type (SSD, HDD, NVMe)
     /// </summary>
-    public string? Manufacturer { get; set; }
-
+    public string DiskType { get; set; } = string.Empty;
+    
     /// <summary>
-    /// Disk interface type (SATA, NVMe, etc.).
+    /// Interface type (SATA, NVMe, SAS)
     /// </summary>
-    public string? InterfaceType { get; set; }
-
+    public string InterfaceType { get; set; } = string.Empty;
+    
     /// <summary>
-    /// Total disk capacity in bytes.
+    /// Capacity in bytes
     /// </summary>
-    public long CapacityBytes { get; set; }
-
+    public long Capacity { get; set; }
+    
     /// <summary>
-    /// Date when disk card was created (first test).
+    /// Firmware version
     /// </summary>
-    public DateTime CreatedDate { get; set; } = DateTime.UtcNow;
-
+    public string FirmwareVersion { get; set; } = string.Empty;
+    
     /// <summary>
-    /// Last test performed on this disk.
+    /// Connection type (Internal, USB, etc.)
     /// </summary>
-    public DateTime? LastTestedDate { get; set; }
-
+    public string ConnectionType { get; set; } = string.Empty;
+    
     /// <summary>
-    /// Current status of the disk (OK, WARNING, FAILED, etc.).
+    /// When this card was created (first test)
     /// </summary>
-    public string Status { get; set; } = "OK";
-
+    public DateTime CreatedAt { get; set; }
+    
     /// <summary>
-    /// Number of times this disk has been tested.
+    /// Last time this disk was tested
+    /// </summary>
+    public DateTime LastTestedAt { get; set; }
+    
+    /// <summary>
+    /// Overall health grade (A-F)
+    /// </summary>
+    public string OverallGrade { get; set; } = "?";
+    
+    /// <summary>
+    /// Overall health score (0-100)
+    /// </summary>
+    public double OverallScore { get; set; }
+    
+    /// <summary>
+    /// Number of test sessions
     /// </summary>
     public int TestCount { get; set; }
-
+    
     /// <summary>
-    /// Current health grade (A, B, C, D, F).
+    /// Whether this disk is archived (removed from active testing)
     /// </summary>
-    public string? CurrentGrade { get; set; }
-
+    public bool IsArchived { get; set; }
+    
     /// <summary>
-    /// Current health score (0-100).
+    /// Reason for archiving (Failed, Sold, Donated, etc.)
     /// </summary>
-    public int? CurrentScore { get; set; }
-
+    public string? ArchiveReason { get; set; }
+    
     /// <summary>
-    /// Notes or observations about this disk.
+    /// Notes about this disk
     /// </summary>
     public string? Notes { get; set; }
-
+    
     /// <summary>
-    /// Collection of all surface tests performed on this disk.
+    /// Current lock status
     /// </summary>
-    public virtual ICollection<SurfaceTestResult> SurfaceTests { get; set; } = new List<SurfaceTestResult>();
-
+    public bool IsLocked { get; set; }
+    
     /// <summary>
-    /// Collection of all SMART checks performed on this disk.
+    /// Lock reason (System disk, User locked, etc.)
     /// </summary>
-    public virtual ICollection<SmartCheckResult> SmartChecks { get; set; } = new List<SmartCheckResult>();
-
+    public string? LockReason { get; set; }
+    
     /// <summary>
-    /// Collection of all test reports (historical records) for this disk.
+    /// All test sessions for this disk
     /// </summary>
-    public virtual ICollection<TestReport> TestReports { get; set; } = new List<TestReport>();
+    public List<TestSession> TestSessions { get; set; } = new();
+    
+    /// <summary>
+    /// Latest SMART data snapshot
+    /// </summary>
+    public SmartaData? LatestSmartData { get; set; }
+    
+    /// <summary>
+    /// All certificates generated for this disk
+    /// </summary>
+    public List<DiskCertificate> Certificates { get; set; } = new();
 }

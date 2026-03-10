@@ -22,7 +22,7 @@
                 </Grid.ColumnDefinitions>
 
                 <StackPanel Grid.Column="0" Margin="0,0,0,5">
-                    <TextBlock Text="💿 Vyberte Disk pro Testování" 
+                    <TextBlock Text="💾 Vyberte Disk pro Testování" 
                                FontSize="28" FontWeight="Bold" Foreground="#1a1a1a" Margin="0,0,0,5"/>
                     <TextBlock Text="Zvolte disk, který chcete diagnostikovat" 
                                FontSize="13" Foreground="#444444"/>
@@ -107,7 +107,10 @@
                     <RowDefinition Height="*"/>
                 </Grid.RowDefinitions>
 
-                <TextBlock Grid.Row="0" Text="💾 Vyberte disk z nabídky" FontSize="14" FontWeight="Bold" Foreground="#333333" Margin="0,0,0,12"/>
+                <StackPanel Grid.Row="0" Orientation="Horizontal" Margin="0,0,0,12">
+                    <TextBlock Text="💿 Vyberte disk z nabídky" FontSize="14" FontWeight="Bold" Foreground="#333333"/>
+                    <TextBlock Text="  |  🔒 = Zamčeno (destruktivní operace blokovány)" FontSize="11" Foreground="#E74C3C" VerticalAlignment="Center"/>
+                </StackPanel>
 
                 <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto">
                     <ItemsControl ItemsSource="{Binding DiskCards}">
@@ -134,9 +137,18 @@
                                                 <RowDefinition Height="*"/>
                                             </Grid.RowDefinitions>
 
-                                            <!-- Icon -->
-                                            <TextBlock Grid.Row="0" Text="💾" FontSize="32" 
-                                                      HorizontalAlignment="Left" Margin="0,0,0,8"/>
+                                            <!-- Icon and Lock Symbol -->
+                                            <Grid Grid.Row="0" Margin="0,0,0,8">
+                                                <TextBlock Text="💾" FontSize="32" HorizontalAlignment="Left"/>
+                                                <!-- Lock icon overlay for locked disks -->
+                                                <TextBlock Text="🔒" FontSize="20" 
+                                                          HorizontalAlignment="Right" VerticalAlignment="Top"
+                                                          Foreground="#E74C3C">
+                                                    <TextBlock.IsVisible>
+                                                        <Binding Path="IsLocked"/>
+                                                    </TextBlock.IsVisible>
+                                                </TextBlock>
+                                            </Grid>
 
                                             <!-- Name & Path -->
                                             <StackPanel Grid.Row="1" Margin="0,0,0,8">
@@ -178,23 +190,45 @@
                                                 <TextBlock Text="{Binding IsSystemDiskLabel}" 
                                                           FontSize="9" Foreground="#FF9800" Margin="0,6,0,0" FontWeight="Bold">
                                                     <TextBlock.IsVisible>
-                                                        <Binding Path="IsSystemDisk" />
+                                                        <Binding Path="IsSystemDisk"/>
+                                                    </TextBlock.IsVisible>
+                                                </TextBlock>
+                                                
+                                                <TextBlock Text="{Binding LockStatusText}" 
+                                                          FontSize="9" Foreground="#E74C3C" Margin="0,2,0,0" FontWeight="SemiBold" TextWrapping="Wrap">
+                                                    <TextBlock.IsVisible>
+                                                        <Binding Path="IsLocked"/>
                                                     </TextBlock.IsVisible>
                                                 </TextBlock>
                                             </StackPanel>
 
-                                            <!-- Selection Button -->
+                                            <!-- Selection Button (transparent overlay) - MUST BE FIRST for proper z-order -->
                                             <Button Grid.Row="0" Grid.RowSpan="4"
-                                                    Command="{Binding $parent[ItemsControl].DataContext.SelectDriveCommand}"
+                                                    Command="{Binding $parent[ItemsControl].DataContext.SelectDiskCommand}"
                                                     CommandParameter="{Binding}"
                                                     Background="Transparent"
                                                     HorizontalAlignment="Stretch"
-                                                    VerticalAlignment="Stretch">
+                                                    VerticalAlignment="Stretch"
+                                                    Margin="0,0,0,40">
                                                 <Button.Template>
                                                     <ControlTemplate>
                                                         <Border Background="Transparent" Cursor="Hand"/>
                                                     </ControlTemplate>
                                                 </Button.Template>
+                                            </Button>
+
+                                            <!-- Lock/Unlock Button (only for non-system disks) - MUST BE LAST to be clickable -->
+                                            <Button Grid.Row="3"
+                                                    Command="{Binding $parent[ItemsControl].DataContext.ToggleLockDiskCommand}"
+                                                    CommandParameter="{Binding}"
+                                                    Background="#607D8B"
+                                                    Foreground="White"
+                                                    FontSize="10"
+                                                    Padding="8,4"
+                                                    HorizontalAlignment="Center"
+                                                    IsVisible="{Binding IsSystemDisk, Converter={StaticResource InverseBooleanConverter}}"
+                                                    ZIndex="999">
+                                                <TextBlock Text="{Binding IsLocked, Converter={StaticResource LockTextConverter}}"/>
                                             </Button>
                                         </Grid>
                                     </Border>
@@ -205,30 +239,6 @@
                 </ScrollViewer>
             </Grid>
         </Border>
-
-        <!-- ========== ACTION BUTTONS ========== -->
-        <StackPanel Grid.Row="3" Orientation="Horizontal" HorizontalAlignment="Center" Margin="20,0,20,20">
-            <Button Content="🔧 Test Povrchu" 
-                    Command="{Binding NavigateToSurfaceTestCommand}"
-                    IsEnabled="{Binding SelectedDrive, Converter={StaticResource NotNullConverter}}"
-                    Background="#004B93" Foreground="#FFFFFF" 
-                    Padding="20,12" Margin="0,0,12,0"
-                    FontSize="13" FontWeight="Bold" Width="200"/>
-            
-            <Button Content="🔍 SMART Check" 
-                    Command="{Binding NavigateToSmartCheckCommand}"
-                    IsEnabled="{Binding SelectedDrive, Converter={StaticResource NotNullConverter}}"
-                    Background="#E67E22" Foreground="#FFFFFF"
-                    Padding="20,12" Margin="0,0,12,0"
-                    FontSize="13" FontWeight="Bold" Width="200"/>
-
-            <Button Content="📊 Detail Disku" 
-                    Command="{Binding NavigateToDiskDetailCommand}"
-                    IsEnabled="{Binding SelectedDrive, Converter={StaticResource NotNullConverter}}"
-                    Background="#27AE60" Foreground="#FFFFFF"
-                    Padding="20,12"
-                    FontSize="13" FontWeight="Bold" Width="200"/>
-        </StackPanel>
 
         <!-- ========== STATUS BAR ========== -->
         <TextBlock Grid.Row="4" Text="{Binding StatusMessage}" 
