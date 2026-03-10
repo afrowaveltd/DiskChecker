@@ -3,7 +3,6 @@
              xmlns:vm="using:DiskChecker.UI.Avalonia.ViewModels"
              xmlns:converters="using:DiskChecker.UI.Avalonia.Converters"
              x:Class="DiskChecker.UI.Avalonia.Views.DiskSelectionView"
-             x:DataType="vm:DiskSelectionViewModel"
              Background="{DynamicResource ThemeBackgroundBrush}">
     <Grid>
         <Grid.RowDefinitions>
@@ -186,7 +185,7 @@
 
                                             <!-- Selection Button -->
                                             <Button Grid.Row="0" Grid.RowSpan="4"
-                                                    Command="{Binding $parent[ItemsControl].((vm:DiskSelectionViewModel)DataContext).SelectDriveCommand}"
+                                                    Command="{Binding $parent[ItemsControl].DataContext.SelectDriveCommand}"
                                                     CommandParameter="{Binding}"
                                                     Background="Transparent"
                                                     HorizontalAlignment="Stretch"
@@ -212,23 +211,23 @@
             <Button Content="🔧 Test Povrchu" 
                     Command="{Binding NavigateToSurfaceTestCommand}"
                     IsEnabled="{Binding SelectedDrive, Converter={StaticResource NotNullConverter}}"
-                    Background="#004B93" Foreground="White" 
+                    Background="#004B93" Foreground="#FFFFFF" 
                     Padding="20,12" Margin="0,0,12,0"
-                    FontSize="13" Width="200"/>
+                    FontSize="13" FontWeight="Bold" Width="200"/>
             
             <Button Content="🔍 SMART Check" 
                     Command="{Binding NavigateToSmartCheckCommand}"
                     IsEnabled="{Binding SelectedDrive, Converter={StaticResource NotNullConverter}}"
-                    Background="#F7C600" Foreground="#1A1A1A"
+                    Background="#E67E22" Foreground="#FFFFFF"
                     Padding="20,12" Margin="0,0,12,0"
-                    FontSize="13" Width="200"/>
+                    FontSize="13" FontWeight="Bold" Width="200"/>
 
             <Button Content="📊 Detail Disku" 
                     Command="{Binding NavigateToDiskDetailCommand}"
                     IsEnabled="{Binding SelectedDrive, Converter={StaticResource NotNullConverter}}"
-                    Background="#005A2B" Foreground="White"
+                    Background="#27AE60" Foreground="#FFFFFF"
                     Padding="20,12"
-                    FontSize="13" Width="200"/>
+                    FontSize="13" FontWeight="Bold" Width="200"/>
         </StackPanel>
 
         <!-- ========== STATUS BAR ========== -->

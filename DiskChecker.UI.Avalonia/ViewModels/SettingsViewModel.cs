@@ -1,7 +1,7 @@
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using DiskChecker.UI.Avalonia.Services.Interfaces;
-using DiskChecker.Application.Services;
+using DiskChecker.Core.Interfaces;
 using System;
 using System.Collections.ObjectModel;
 using System.IO;
@@ -11,7 +11,7 @@ namespace DiskChecker.UI.Avalonia.ViewModels
 {
     public partial class SettingsViewModel : ViewModelBase
     {
-        private readonly HistoryService _historyService;
+        private readonly ISettingsService _settingsService;
         private readonly IDialogService _dialogService;
         private readonly IBackupService _backupService;
         
@@ -30,9 +30,9 @@ namespace DiskChecker.UI.Avalonia.ViewModels
         private bool _enableLogging;
         private string _logLevel = "Information";
 
-        public SettingsViewModel(HistoryService historyService, IDialogService dialogService, IBackupService backupService)
+        public SettingsViewModel(ISettingsService settingsService, IDialogService dialogService, IBackupService backupService)
         {
-            _historyService = settingsService ?? throw new ArgumentNullException(nameof(settingsService));
+            _settingsService = settingsService ?? throw new ArgumentNullException(nameof(settingsService));
             _dialogService = dialogService ?? throw new ArgumentNullException(nameof(dialogService));
             _backupService = backupService ?? throw new ArgumentNullException(nameof(backupService));
             
@@ -156,14 +156,14 @@ namespace DiskChecker.UI.Avalonia.ViewModels
                 StatusMessage = "Načítám nastavení...";
                 
                 // Načteme nastavení ze služby
-                AutoCheckForUpdates = await _historyService.GetAutoCheckForUpdatesAsync();
-                RunAtStartup = await _historyService.GetRunAtStartupAsync();
-                MinimizeToTray = await _historyService.GetMinimizeToTrayAsync();
-                AutoSaveInterval = await _historyService.GetAutoSaveIntervalAsync();
-                DefaultExportPath = await _historyService.GetDefaultExportPathAsync();
-                Language = await _historyService.GetLanguageAsync();
-                EnableLogging = await _historyService.GetEnableLoggingAsync();
-                LogLevel = await _historyService.GetLogLevelAsync();
+                AutoCheckForUpdates = await _settingsService.GetAutoCheckForUpdatesAsync();
+                RunAtStartup = await _settingsService.GetRunAtStartupAsync();
+                MinimizeToTray = await _settingsService.GetMinimizeToTrayAsync();
+                AutoSaveInterval = await _settingsService.GetAutoSaveIntervalAsync();
+                DefaultExportPath = await _settingsService.GetDefaultExportPathAsync();
+                Language = await _settingsService.GetLanguageAsync();
+                EnableLogging = await _settingsService.GetEnableLoggingAsync();
+                LogLevel = await _settingsService.GetLogLevelAsync();
                 
                 StatusMessage = "Nastavení načteno";
             }
@@ -182,14 +182,14 @@ namespace DiskChecker.UI.Avalonia.ViewModels
                 StatusMessage = "Ukládám nastavení...";
                 
                 // Uložíme nastavení do služby
-                await _historyService.SetAutoCheckForUpdatesAsync(AutoCheckForUpdates);
-                await _historyService.SetRunAtStartupAsync(RunAtStartup);
-                await _historyService.SetMinimizeToTrayAsync(MinimizeToTray);
-                await _historyService.SetAutoSaveIntervalAsync(AutoSaveInterval);
-                await _historyService.SetDefaultExportPathAsync(DefaultExportPath);
-                await _historyService.SetLanguageAsync(Language);
-                await _historyService.SetEnableLoggingAsync(EnableLogging);
-                await _historyService.SetLogLevelAsync(LogLevel);
+                await _settingsService.SetAutoCheckForUpdatesAsync(AutoCheckForUpdates);
+                await _settingsService.SetRunAtStartupAsync(RunAtStartup);
+                await _settingsService.SetMinimizeToTrayAsync(MinimizeToTray);
+                await _settingsService.SetAutoSaveIntervalAsync(AutoSaveInterval);
+                await _settingsService.SetDefaultExportPathAsync(DefaultExportPath);
+                await _settingsService.SetLanguageAsync(Language);
+                await _settingsService.SetEnableLoggingAsync(EnableLogging);
+                await _settingsService.SetLogLevelAsync(LogLevel);
                 
                 StatusMessage = "Nastavení úspěšně uloženo";
             }
@@ -217,7 +217,7 @@ namespace DiskChecker.UI.Avalonia.ViewModels
                     StatusMessage = "Resetuji nastavení...";
                     
                     // Resetujeme nastavení ve službě
-                    await _historyService.ResetToDefaultsAsync();
+                    await _settingsService.ResetToDefaultsAsync();
                     
                     // Znovu načteme nastavení
                     LoadSettings();
@@ -239,7 +239,7 @@ namespace DiskChecker.UI.Avalonia.ViewModels
                 StatusMessage = "Vyberte složku pro export...";
                 // Zde bychom normálně otevřeli dialog pro výběr složky
                 // Pro demo účely použijeme placeholder
-                var selectedPath = "/home/user/Documents/DiskCheckerExports"; // Placeholder hodnota
+                var selectedPath = Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments);
                 DefaultExportPath = selectedPath;
                 StatusMessage = "Složka pro export vybrána";
             }
@@ -257,15 +257,12 @@ namespace DiskChecker.UI.Avalonia.ViewModels
                 IsSaving = true;
                 StatusMessage = "Vytvářím zálohu...";
                 
-                // Show save file dialog - in Avalonia this would use a file dialog
-                // For now, we'll save to the default backup directory
                 var backupPath = await _backupService.CreateBackupAsync(string.Empty);
                 
                 StatusMessage = $"Záloha vytvořena: {Path.GetFileName(backupPath)}";
                 await _dialogService.ShowMessageAsync("Záloha vytvořena", 
                     $"Záloha byla úspěšně vytvořena.\n\nUmístění: {backupPath}");
                 
-                // Refresh the backup list
                 await RefreshBackupsAsync();
             }
             catch (Exception ex)
@@ -301,7 +298,7 @@ namespace DiskChecker.UI.Avalonia.ViewModels
                     
                     StatusMessage = "Data byla úspěšně obnovena";
                     await _dialogService.ShowMessageAsync("Obnovení dokončeno", 
-                        "Data byla úspěšně obnovena ze zálohy.\n\n restartujte aplikaci pro načtení obnovených dat.");
+                        "Data byla úspěšně obnovena ze zálohy.\n\nRestartujte aplikaci pro načtení obnovených dat.");
                 }
             }
             catch (Exception ex)

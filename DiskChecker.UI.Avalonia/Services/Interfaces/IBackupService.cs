@@ -18,12 +18,17 @@ public interface IBackupService
     /// <summary>
     /// Get list of available backups with info.
     /// </summary>
-    Task<IEnumerable<IBackupService.BackupInfo>> GetAvailableBackupsAsync();
+    Task<IEnumerable<BackupInfo>> GetAvailableBackupsAsync();
     
     /// <summary>
     /// Delete a backup file.
     /// </summary>
     Task DeleteBackupAsync(string backupPath);
+    
+    /// <summary>
+    /// Get the default backup directory path.
+    /// </summary>
+    string GetDefaultBackupDirectory();
     
     /// <summary>
     /// Information about a backup.

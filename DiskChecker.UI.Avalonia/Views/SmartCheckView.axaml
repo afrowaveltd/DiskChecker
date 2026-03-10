@@ -3,7 +3,6 @@
              xmlns:vm="using:DiskChecker.UI.Avalonia.ViewModels"
              xmlns:dg="clr-namespace:Avalonia.Controls;assembly=Avalonia.Controls.DataGrid"
              x:Class="DiskChecker.UI.Avalonia.Views.SmartCheckView"
-             x:DataType="vm:SmartCheckViewModel"
              Background="{DynamicResource ThemeBackgroundBrush}">
     <Grid>
         <Grid.RowDefinitions>

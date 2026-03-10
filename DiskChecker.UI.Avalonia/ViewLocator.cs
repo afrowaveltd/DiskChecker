@@ -19,7 +19,13 @@ public class ViewLocator : IDataTemplate
         if (param is null)
             return null;
         
-        var name = param.GetType().FullName!.Replace("ViewModel", "View", StringComparison.Ordinal);
+        var name = param.GetType().FullName!;
+        
+        // Convert namespace from ViewModels to Views and class name from ViewModel to View
+        // e.g., DiskChecker.UI.Avalonia.ViewModels.DiskSelectionViewModel -> DiskChecker.UI.Avalonia.Views.DiskSelectionView
+        name = name.Replace(".ViewModels.", ".Views.", StringComparison.Ordinal);
+        name = name.Replace("ViewModel", "View", StringComparison.Ordinal);
+        
         var type = Type.GetType(name);
 
         if (type != null)

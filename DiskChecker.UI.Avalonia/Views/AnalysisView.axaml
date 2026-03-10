@@ -2,7 +2,6 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:vm="using:DiskChecker.UI.Avalonia.ViewModels"
              x:Class="DiskChecker.UI.Avalonia.Views.AnalysisView"
-             x:DataType="vm:AnalysisViewModel"
              Background="{DynamicResource ThemeBackgroundBrush}">
     <Grid>
         <Grid.RowDefinitions>

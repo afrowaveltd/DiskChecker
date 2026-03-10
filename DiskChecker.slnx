@@ -3,19 +3,14 @@
     <Platform Name="Any CPU" />
     <Platform Name="x64" />
   </Configurations>
-  <Project Path="DiskChecker.Application/DiskChecker.Application.csproj">
-    <Platform Solution="*|x64" Project="x64" />
-  </Project>
   <Project Path="DiskChecker.Core/DiskChecker.Core.csproj">
     <Platform Solution="*|x64" Project="x64" />
   </Project>
   <Project Path="DiskChecker.Infrastructure/DiskChecker.Infrastructure.csproj">
     <Platform Solution="*|x64" Project="x64" />
   </Project>
-  <Project Path="DiskChecker.UI.Avalonia/DiskChecker.UI.Avalonia.csproj" />
-  <Project Path="DiskChecker.UI.WPF/DiskChecker.UI.WPF.csproj" />
-  <Project Path="DiskChecker.UI/DiskChecker.UI.csproj">
+  <Project Path="DiskChecker.Application/DiskChecker.Application.csproj">
     <Platform Solution="*|x64" Project="x64" />
   </Project>
+  <Project Path="DiskChecker.UI.Avalonia/DiskChecker.UI.Avalonia.csproj" />
 </Solution>
-

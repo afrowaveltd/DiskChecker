@@ -57,6 +57,11 @@ public class TestReport
     public int ErrorCount { get; set; }
 
     /// <summary>
+    /// Errors count (alias for ErrorCount).
+    /// </summary>
+    public int Errors { get; set; }
+
+    /// <summary>
     /// Percentage of anomalies detected.
     /// </summary>
     public double AnomalyPercentage { get; set; }
@@ -67,9 +72,19 @@ public class TestReport
     public double AverageThroughputMbps { get; set; }
 
     /// <summary>
+    /// Average speed in MB/s (alias for AverageThroughputMbps).
+    /// </summary>
+    public double AverageSpeed { get; set; }
+
+    /// <summary>
     /// Peak throughput in MB/s.
     /// </summary>
     public double PeakThroughputMbps { get; set; }
+
+    /// <summary>
+    /// Peak speed in MB/s (alias for PeakThroughputMbps).
+    /// </summary>
+    public double PeakSpeed { get; set; }
 
     /// <summary>
     /// Minimum throughput in MB/s (filtered).
@@ -122,7 +137,22 @@ public class TestReport
     public bool IsExported { get; set; }
 
     /// <summary>
+    /// Whether the test is completed.
+    /// </summary>
+    public bool IsCompleted { get; set; }
+
+    /// <summary>
     /// Date when report was last printed/exported.
     /// </summary>
     public DateTime? LastExportDate { get; set; }
+
+    /// <summary>
+    /// Drive model name.
+    /// </summary>
+    public string DriveModel { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Drive serial number.
+    /// </summary>
+    public string SerialNumber { get; set; } = string.Empty;
 }

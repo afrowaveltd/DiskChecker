@@ -12,14 +12,13 @@ using DiskChecker.UI.Avalonia.Services;
 using DiskChecker.UI.Avalonia.Services.Interfaces;
 using DiskChecker.Core.Interfaces;
 using DiskChecker.Infrastructure.Hardware;
+using DiskChecker.Infrastructure.Persistence;
+using DiskChecker.Application.Services;
 using DiskChecker.Core;
-
-// Alias to avoid namespace conflicts
-using AvaloniaApp = Avalonia.Application;
 
 namespace DiskChecker.UI.Avalonia;
 
-public partial class App : AvaloniaApp
+public partial class App : global::Avalonia.Application
 {
     private ServiceProvider? _serviceProvider;
 
@@ -82,14 +81,30 @@ public partial class App : AvaloniaApp
         // Core services
         services.AddCoreServices();
 
+        // Database context
+        services.AddSingleton<DiskCheckerDbContext>();
+
+        // Application services
+        services.AddSingleton<HistoryService>();
+        services.AddSingleton<SettingsService>();
+        services.AddSingleton<SmartCheckService>();
+        services.AddSingleton<SurfaceTestService>();
+        services.AddSingleton<DiskDetectionService>();
+        
         // Navigation service
         services.AddSingleton<INavigationService, NavigationService>();
         
         // Dialog service
-        services.AddSingleton<DialogService>();
+        services.AddSingleton<IDialogService, DialogService>();
         
         // Backup service
         services.AddSingleton<IBackupService, BackupService>();
+        
+        // Settings service interface
+        services.AddSingleton<ISettingsService, SettingsService>();
+        
+        // Disk detection service
+        services.AddSingleton<IDiskDetectionService, DiskDetectionService>();
         
         // View models
         services.AddSingleton<MainWindowViewModel>();

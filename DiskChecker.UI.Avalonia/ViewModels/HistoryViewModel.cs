@@ -4,6 +4,7 @@ using DiskChecker.Core.Models;
 using DiskChecker.UI.Avalonia.Services.Interfaces;
 using System;
 using System.Collections.ObjectModel;
+using System.Linq;
 using System.Threading.Tasks;
 
 namespace DiskChecker.UI.Avalonia.ViewModels
@@ -77,7 +78,7 @@ namespace DiskChecker.UI.Avalonia.ViewModels
                 IsLoading = true;
                 StatusMessage = "Načítám historii testů...";
                 
-                var tests = await _historyService.GetHistoricalTestsAsync();
+                var tests = await _historyService.GetHistoryAsync();
                 Tests = new ObservableCollection<HistoricalTest>(tests);
                 
                 StatusMessage = $"Načteno {tests.Count()} testů z historie";
@@ -105,7 +106,7 @@ namespace DiskChecker.UI.Avalonia.ViewModels
                 
                 if (confirmation)
                 {
-                    await _historyService.DeleteHistoricalTestAsync(SelectedTest.TestId);
+                    await _historyService.DeleteHistoryAsync(SelectedTest.Id);
                     Tests.Remove(SelectedTest);
                     SelectedTest = null;
                     StatusMessage = "Test úspěšně smazán z historie";

@@ -1,11 +1,8 @@
 using Avalonia.Controls;
 using Avalonia;
-using DiskChecker.UI.Avalonia.Services;
+using DiskChecker.UI.Avalonia.Services.Interfaces;
 using DiskChecker.UI.Avalonia.ViewModels;
 using Microsoft.Extensions.DependencyInjection;
-
-// Alias to avoid namespace conflicts
-using AvaloniaApp = Avalonia.Application;
 
 namespace DiskChecker.UI.Avalonia.Views;
 

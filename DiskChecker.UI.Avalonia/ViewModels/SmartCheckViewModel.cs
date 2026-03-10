@@ -2,7 +2,6 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using DiskChecker.Core.Interfaces;
 using DiskChecker.Core.Models;
-using DiskChecker.UI.Avalonia.Services;
 using DiskChecker.UI.Avalonia.Services.Interfaces;
 using System;
 using System.Collections.ObjectModel;
@@ -13,6 +12,7 @@ namespace DiskChecker.UI.Avalonia.ViewModels
     public partial class SmartCheckViewModel : ViewModelBase, INavigableViewModel
     {
         private readonly ISmartaProvider _smartaProvider;
+        private readonly IDiskDetectionService _diskDetectionService;
         private readonly IQualityCalculator _qualityCalculator;
         private readonly IDialogService _dialogService;
         
@@ -25,9 +25,14 @@ namespace DiskChecker.UI.Avalonia.ViewModels
         private ObservableCollection<SmartaAttributeItem> _smartAttributes = new();
         private ObservableCollection<SmartaSelfTestEntry> _selfTestLog = new();
 
-        public SmartCheckViewModel(ISmartaProvider smartaProvider, IQualityCalculator qualityCalculator, IDialogService dialogService)
+        public SmartCheckViewModel(
+            ISmartaProvider smartaProvider, 
+            IDiskDetectionService diskDetectionService,
+            IQualityCalculator qualityCalculator, 
+            IDialogService dialogService)
         {
             _smartaProvider = smartaProvider ?? throw new ArgumentNullException(nameof(smartaProvider));
+            _diskDetectionService = diskDetectionService ?? throw new ArgumentNullException(nameof(diskDetectionService));
             _qualityCalculator = qualityCalculator ?? throw new ArgumentNullException(nameof(qualityCalculator));
             _dialogService = dialogService ?? throw new ArgumentNullException(nameof(dialogService));
             
@@ -110,7 +115,7 @@ namespace DiskChecker.UI.Avalonia.ViewModels
         public string SerialNumber => CurrentSmartData?.SerialNumber ?? "-";
         public string FirmwareVersion => CurrentSmartData?.FirmwareVersion ?? "-";
         public string Temperature => CurrentSmartData?.Temperature > 0 ? $"{CurrentSmartData.Temperature}°C" : "-";
-        public string PowerOnHours => CurrentSmartData?.PowerOnHours.ToString() ?? "-";
+        public string PowerOnHours => CurrentSmartData?.PowerOnHours?.ToString() ?? "-";
         public string Grade => CurrentQuality?.Grade.ToString() ?? "-";
         public string Score => CurrentQuality?.Score.ToString("F0") ?? "-";
 
@@ -131,7 +136,7 @@ namespace DiskChecker.UI.Avalonia.ViewModels
                 StatusMessage = "Načítám seznam disků...";
                 IsChecking = true;
                 
-                var drives = await _smartaProvider.ListDrivesAsync();
+                var drives = await _diskDetectionService.GetDrivesAsync();
                 Disks.Clear();
                 
                 foreach (var drive in drives)
@@ -139,7 +144,7 @@ namespace DiskChecker.UI.Avalonia.ViewModels
                     var smartData = await _smartaProvider.GetSmartaDataAsync(drive.Path);
                     var quality = smartData != null 
                         ? _qualityCalculator.CalculateQuality(smartData) 
-                        : new QualityRating { Grade = QualityGrade.F, Score = 0 };
+                        : new QualityRating(QualityGrade.F, 0);
                     
                     var card = new DiskStatusCardItem
                     {
@@ -200,7 +205,7 @@ namespace DiskChecker.UI.Avalonia.ViewModels
                 if (smartData == null)
                 {
                     await _dialogService.ShowErrorAsync("Chyba", "Nepodařilo se načíst SMART data");
-                    StatusMessage = "SMART data недоступны";
+                    StatusMessage = "SMART data nejsou dostupná";
                     return;
                 }
                 
@@ -243,7 +248,7 @@ namespace DiskChecker.UI.Avalonia.ViewModels
                 
                 StatusMessage = "SMART kontrola dokončena";
                 
-                var healthStatus = smartData.Temperature > 0 ? "Zdravý" : "Neznámý";
+                var healthStatus = CurrentQuality?.Grade >= QualityGrade.B ? "Zdravý" : "Vyžaduje pozornost";
                 await _dialogService.ShowMessageAsync("Výsledek SMART kontroly", 
                     $"Disk: {smartData.DeviceModel ?? "Unknown"}\n" +
                     $"Serial: {smartData.SerialNumber ?? "N/A"}\n" +
@@ -251,7 +256,7 @@ namespace DiskChecker.UI.Avalonia.ViewModels
                     $"Hodin v provozu: {smartData.PowerOnHours}\n" +
                     $"Přemapované sektory: {smartData.ReallocatedSectorCount}\n" +
                     $"Čekající sektory: {smartData.PendingSectorCount}\n" +
-                    $"Hodnocení: {CurrentQuality.Grade} ({CurrentQuality.Score:F0}%)\n" +
+                    $"Hodnocení: {CurrentQuality?.Grade} ({CurrentQuality?.Score:F0}%)\n" +
                     $"Stav: {healthStatus}");
             }
             catch (Exception ex)
@@ -290,7 +295,7 @@ namespace DiskChecker.UI.Avalonia.ViewModels
                 }
                 else
                 {
-                    await _dialogService.ShowMessageAsync("Not Supported", "Self-test není podporován na tomto systému.");
+                    await _dialogService.ShowMessageAsync("Nepodporováno", "Self-test není podporován na tomto systému.");
                 }
             }
             catch (Exception ex)

@@ -9,6 +9,17 @@ using System.Threading.Tasks;
 namespace DiskChecker.UI.Avalonia.Services;
 
 /// <summary>
+/// Metadata for a backup file.
+/// </summary>
+public class BackupMetadata
+{
+    public string Version { get; set; } = "1.0.0";
+    public DateTime CreatedAt { get; set; }
+    public string? DatabasePath { get; set; }
+    public string? SettingsPath { get; set; }
+}
+
+/// <summary>
 /// Service for database backup and restore operations.
 /// </summary>
 public class BackupService : IBackupService
@@ -66,13 +77,13 @@ public class BackupService : IBackupService
             "DiskChecker");
     }
 
-    public async Task<string> CreateBackupAsync(string outputPath)
+    public async Task<string> CreateBackupAsync(string destinationPath)
     {
         var timestamp = DateTime.Now.ToString("yyyyMMdd_HHmmss");
         var backupFileName = $"DiskChecker_Backup_{timestamp}.zip";
-        var fullPath = string.IsNullOrEmpty(outputPath) 
+        var fullPath = string.IsNullOrEmpty(destinationPath) 
             ? Path.Combine(_defaultBackupDir, backupFileName)
-            : outputPath;
+            : destinationPath;
 
         // Ensure directory exists
         var directory = Path.GetDirectoryName(fullPath);
@@ -210,8 +221,6 @@ public class BackupService : IBackupService
                 }
             }
         });
-
-        return true;
     }
 
     public string GetDefaultBackupDirectory()
@@ -221,7 +230,7 @@ public class BackupService : IBackupService
 
     public async Task<IEnumerable<IBackupService.BackupInfo>> GetAvailableBackupsAsync()
     {
-        var backups = new List<BackupInfo>();
+        var backups = new List<IBackupService.BackupInfo>();
         
         await Task.Run(() =>
         {

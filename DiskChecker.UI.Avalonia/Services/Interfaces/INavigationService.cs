@@ -1,29 +1,44 @@
+using System;
 using Avalonia.Controls;
+using DiskChecker.UI.Avalonia.ViewModels;
 
 namespace DiskChecker.UI.Avalonia.Services.Interfaces;
 
 /// <summary>
-/// Service for navigating between views in the application.
+/// Service for handling navigation between views.
 /// </summary>
 public interface INavigationService
 {
     /// <summary>
-    /// Navigate to a view by type.
+    /// Gets the current view model.
     /// </summary>
-    void NavigateTo<T>() where T : UserControl;
+    ViewModelBase? CurrentViewModel { get; }
     
     /// <summary>
-    /// Navigate to a view by type with parameters.
+    /// Navigates to the specified view model type.
     /// </summary>
-    void NavigateTo<T>(object parameter) where T : UserControl;
+    void NavigateTo<T>() where T : ViewModelBase;
     
     /// <summary>
-    /// Go back to previous view.
+    /// Registers a view for a view model type.
     /// </summary>
-    void GoBack();
+    void RegisterViewForViewModel<TViewModel, TView>()
+        where TViewModel : ViewModelBase
+        where TView : UserControl;
     
     /// <summary>
-    /// Get the current view type.
+    /// Event raised when navigation occurs.
     /// </summary>
-    Type? CurrentView { get; }
+    event EventHandler<NavigationEventArgs>? Navigated;
+}
+
+/// <summary>
+/// Event args for navigation events.
+/// </summary>
+public class NavigationEventArgs : EventArgs
+{
+    /// <summary>
+    /// Gets or sets the view model being navigated to.
+    /// </summary>
+    public ViewModelBase? ViewModel { get; set; }
 }

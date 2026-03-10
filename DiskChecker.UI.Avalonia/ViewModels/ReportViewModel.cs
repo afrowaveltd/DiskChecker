@@ -2,10 +2,10 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using DiskChecker.Core.Models;
 using DiskChecker.UI.Avalonia.Services.Interfaces;
-using DiskChecker.Application.Models;
 using DiskChecker.Application.Services;
 using System;
 using System.Collections.ObjectModel;
+using System.Linq;
 using System.Threading.Tasks;
 
 namespace DiskChecker.UI.Avalonia.ViewModels
@@ -19,9 +19,9 @@ namespace DiskChecker.UI.Avalonia.ViewModels
         private bool _isGenerating;
         private string _statusMessage = string.Empty;
 
-        public ReportViewModel(HistoryService reportService, IDialogService dialogService)
+        public ReportViewModel(HistoryService historyService, IDialogService dialogService)
         {
-            _historyService = reportService ?? throw new ArgumentNullException(nameof(reportService));
+            _historyService = historyService ?? throw new ArgumentNullException(nameof(historyService));
             _dialogService = dialogService ?? throw new ArgumentNullException(nameof(dialogService));
             
             GenerateReportCommand = new AsyncRelayCommand(GenerateReportAsync, () => !IsGenerating);

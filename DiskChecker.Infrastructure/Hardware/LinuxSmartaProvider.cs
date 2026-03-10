@@ -2,65 +2,68 @@ using DiskChecker.Core.Interfaces;
 using DiskChecker.Core.Models;
 using Microsoft.Extensions.Logging;
 
-namespace DiskChecker.Infrastructure.Hardware
+namespace DiskChecker.Infrastructure.Hardware;
+
+/// <summary>
+/// SMART data provider for Linux systems using smartctl.
+/// </summary>
+public class LinuxSmartaProvider : ISmartaProvider
 {
-    public class LinuxSmartaProvider : ISmartaProvider
+    private readonly ILogger<LinuxSmartaProvider> _logger;
+
+    public LinuxSmartaProvider(ILogger<LinuxSmartaProvider>? logger)
     {
-        private readonly ILogger<LinuxSmartaProvider> _logger;
+        _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+    }
 
-        public LinuxSmartaProvider(ILogger<LinuxSmartaProvider>? logger)
+    public async Task<SmartaData?> GetSmartaDataAsync(string devicePath, CancellationToken cancellationToken = default)
+    {
+        try
         {
-            _logger = logger ?? throw new ArgumentNullException(nameof(logger));
-        }
-
-        public async Task<SmartaData?> GetSmartaDataAsync(string devicePath)
-        {
-            try
+            if (_logger.IsEnabled(LogLevel.Information))
             {
-                // Implementation would go here
-                var smartaData = new SmartaData
-                {
-                    DeviceModel = "Linux Drive",
-                    SerialNumber = "SN123456",
-                    Temperature = 35 // example value
-                };
-                
-                return await Task.FromResult(smartaData);
+                _logger.LogInformation("Getting SMART data for device: {DevicePath}", devicePath);
             }
-            catch (Exception ex)
+
+            // Implementation would go here - using smartctl
+            var smartaData = new SmartaData
             {
-                _logger.LogError(ex, "Error getting SMART data for {DevicePath}", devicePath);
-                return null;
-            }
+                DeviceModel = "Linux Drive",
+                SerialNumber = "SN123456",
+                Temperature = 35
+            };
+            
+            return await Task.FromResult(smartaData);
         }
-
-        public Task<bool> IsDriveValidAsync(string devicePath)
+        catch (Exception ex)
         {
-            // Implementation would go here
-            return Task.FromResult(true);
+            _logger.LogError(ex, "Error getting SMART data for {DevicePath}", devicePath);
+            return null;
         }
+    }
 
-        public Task<List<string>> ListDrivesAsync()
-        {
-            // Implementation would go here
-            return Task.FromResult(new List<string> { "/dev/sda", "/dev/sdb" });
-        }
+    public Task<bool> IsDriveValidAsync(string devicePath, CancellationToken cancellationToken = default)
+    {
+        return Task.FromResult(!string.IsNullOrEmpty(devicePath));
+    }
 
-        public Task<string> GetDependencyInstructionsAsync()
-        {
-            return Task.FromResult("Install smartmontools package");
-        }
+    public Task<List<string>> ListDrivesAsync(CancellationToken cancellationToken = default)
+    {
+        return Task.FromResult(new List<string> { "/dev/sda", "/dev/sdb" });
+    }
 
-        public Task<bool> TryInstallDependenciesAsync()
-        {
-            // Implementation would go here
-            return Task.FromResult(true);
-        }
+    public Task<string> GetDependencyInstructionsAsync(CancellationToken cancellationToken = default)
+    {
+        return Task.FromResult("Install smartmontools package");
+    }
 
-        public Task<int?> GetTemperatureOnlyAsync(string devicePath)
-        {
-            // Implementation would go here
-            return Task.FromResult<int?>(35);
-        }
+    public Task<bool> TryInstallDependenciesAsync(CancellationToken cancellationToken = default)
+    {
+        return Task.FromResult(true);
+    }
+
+    public Task<int?> GetTemperatureOnlyAsync(string devicePath, CancellationToken cancellationToken = default)
+    {
+        return Task.FromResult<int?>(35);
     }
 }

@@ -2,7 +2,6 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:vm="using:DiskChecker.UI.Avalonia.ViewModels"
              x:Class="DiskChecker.UI.Avalonia.Views.SettingsView"
-             x:DataType="vm:SettingsViewModel"
              Background="{DynamicResource ThemeBackgroundBrush}">
     <Grid>
         <Grid.RowDefinitions>
@@ -233,7 +232,7 @@
                                                     
                                                     <RadioButton Grid.Column="0" 
                                                                  GroupName="Backups"
-                                                                 IsChecked="{Binding $parent[ItemsControl].((vm:SettingsViewModel)DataContext).SelectedBackup, 
+                                                                 IsChecked="{Binding $parent[ItemsControl].(DataContext).SelectedBackup, 
                                                                             Converter={x:Static ObjectConverters.IsNotNull},
                                                                             ConverterParameter={Binding}}"
                                                                  Margin="0,0,8,0"/>

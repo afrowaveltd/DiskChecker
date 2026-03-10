@@ -4,6 +4,9 @@ using DiskChecker.Core.Services;
 
 namespace DiskChecker.Application.Services;
 
+/// <summary>
+/// Service for generating disk health certificates.
+/// </summary>
 public class CertificationService
 {
     private readonly ISmartaProvider _smartaProvider;
@@ -20,11 +23,11 @@ public class CertificationService
         var smartaData = await _smartaProvider.GetSmartaDataAsync(drivePath, cancellationToken);
         if (smartaData == null)
         {
-            return "Chyba: Nelze získat SMART data pro daný disk.";
+            return "Error: Unable to retrieve SMART data for the specified drive.";
         }
 
         var qualityRating = _qualityCalculator.CalculateQuality(smartaData);
-        var testDate = DateTime.Now;
+        var testDate = DateTime.UtcNow;
 
         return qualityRating.GenerateCertificate(smartaData, testDate);
     }
@@ -32,6 +35,6 @@ public class CertificationService
     public async Task SaveCertificateToFileAsync(string drivePath, string filePath, CancellationToken cancellationToken = default)
     {
         var certificateText = await GenerateCertificateTextAsync(drivePath, cancellationToken);
-        File.WriteAllText(filePath, certificateText);
+        await File.WriteAllTextAsync(filePath, certificateText, cancellationToken);
     }
 }

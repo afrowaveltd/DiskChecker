@@ -4,6 +4,7 @@ namespace DiskChecker.Core.Models
 {
     public class SmartaData
     {
+        public string? ModelFamily { get; set; }
         public string? DeviceModel { get; set; }
         public string? SerialNumber { get; set; }
         public string? FirmwareVersion { get; set; }

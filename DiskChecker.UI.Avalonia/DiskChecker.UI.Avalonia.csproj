@@ -5,7 +5,7 @@
     <Nullable>enable</Nullable>
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <AvaloniaUseCompiledBindingsByDefault>false</AvaloniaUseCompiledBindingsByDefault>
-    <AvaloniaUseCompiledXaml>true</AvaloniaUseCompiledXaml>
+    <AvaloniaUseCompiledXaml>false</AvaloniaUseCompiledXaml>
   </PropertyGroup>
 
   <ItemGroup>

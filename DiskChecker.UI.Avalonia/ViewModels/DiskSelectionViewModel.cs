@@ -1,62 +1,95 @@
 using System;
 using System.Collections.ObjectModel;
+using System.Linq;
 using System.Threading.Tasks;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using DiskChecker.Core.Interfaces;
 using DiskChecker.Core.Models;
-using DiskChecker.UI.Avalonia.Services;
-
-using DiskChecker.Application.Models;
+using DiskChecker.UI.Avalonia.Services.Interfaces;
 
 namespace DiskChecker.UI.Avalonia.ViewModels;
 
+/// <summary>
+/// View model for disk selection view.
+/// Displays list of available disks with their health status.
+/// </summary>
 public partial class DiskSelectionViewModel : ViewModelBase, INavigableViewModel
 {
     private readonly INavigationService _navigationService;
+    private readonly IDiskDetectionService _diskDetectionService;
     private readonly ISmartaProvider _smartaProvider;
     private readonly IQualityCalculator _qualityCalculator;
+    
     private string _loadingState = "Načítám disky...";
     private bool _isBusy = true;
     private string _statusMessage = "Připraven";
     private CoreDriveInfo? _selectedDrive;
 
-    public DiskSelectionViewModel(INavigationService navigationService, ISmartaProvider smartaProvider, IQualityCalculator qualityCalculator)
+    /// <summary>
+    /// Initializes a new instance of the DiskSelectionViewModel.
+    /// </summary>
+    public DiskSelectionViewModel(
+        INavigationService navigationService, 
+        IDiskDetectionService diskDetectionService,
+        ISmartaProvider smartaProvider, 
+        IQualityCalculator qualityCalculator)
     {
         _navigationService = navigationService;
+        _diskDetectionService = diskDetectionService;
         _smartaProvider = smartaProvider;
         _qualityCalculator = qualityCalculator;
         DiskCards = new ObservableCollection<DiskStatusCardItem>();
         RecentTests = new ObservableCollection<TestHistoryItem>();
     }
 
+    /// <summary>
+    /// Collection of disk cards to display.
+    /// </summary>
     public ObservableCollection<DiskStatusCardItem> DiskCards { get; }
+
+    /// <summary>
+    /// Collection of recent tests.
+    /// </summary>
     public ObservableCollection<TestHistoryItem> RecentTests { get; }
 
+    /// <summary>
+    /// Current loading state message.
+    /// </summary>
     public string LoadingState
     {
         get => _loadingState;
         set => SetProperty(ref _loadingState, value);
     }
 
+    /// <summary>
+    /// Whether the view is currently busy loading.
+    /// </summary>
     public bool IsBusy
     {
         get => _isBusy;
         set => SetProperty(ref _isBusy, value);
     }
 
+    /// <summary>
+    /// Current status message.
+    /// </summary>
     public string StatusMessage
     {
         get => _statusMessage;
         set => SetProperty(ref _statusMessage, value);
     }
 
+    /// <summary>
+    /// Currently selected drive.
+    /// </summary>
     public CoreDriveInfo? SelectedDrive
     {
         get => _selectedDrive;
         set => SetProperty(ref _selectedDrive, value);
     }
 
+    /// <inheritdoc/>
     public void OnNavigatedTo()
     {
         // Load data when navigated to
@@ -70,8 +103,8 @@ public partial class DiskSelectionViewModel : ViewModelBase, INavigableViewModel
             IsBusy = true;
             LoadingState = "Načítám disky...";
 
-            // Get list of drives from SMART provider
-            var drives = await _smartaProvider.ListDrivesAsync();
+            // Get list of drives from detection service
+            var drives = await _diskDetectionService.GetDrivesAsync();
             
             // Clear existing items
             DiskCards.Clear();
@@ -81,56 +114,12 @@ public partial class DiskSelectionViewModel : ViewModelBase, INavigableViewModel
             {
                 try
                 {
-                    // Get SMART data for the drive
-                    var smartData = await _smartaProvider.GetSmartaDataAsync(drive.Path);
-                    
-                    // Calculate quality rating
-                    var quality = smartData != null 
-                        ? _qualityCalculator.CalculateQuality(smartData) 
-                        : new QualityRating { Grade = QualityGrade.F, Score = 0 };
-                    
-                    // Format capacity
-                    var capacityText = FormatCapacity(drive.TotalSize);
-                    
-                    // Format temperature
-                    var temperatureText = smartData?.Temperature > 0 
-                        ? $"{smartData.Temperature}°C" 
-                        : "N/A";
-                    
-                    // Determine if this is likely the system disk (by checking if it has Windows installed)
-                    var isSystemDisk = drive.Path.Contains('0'); // PhysicalDrive0 is usually system
-                    
-                    var card = new DiskStatusCardItem
-                    {
-                        Drive = drive,
-                        DisplayName = !string.IsNullOrEmpty(smartData?.DeviceModel) 
-                            ? smartData.DeviceModel 
-                            : drive.Name ?? "Unknown",
-                        DisplayPath = drive.Path,
-                        CapacityText = capacityText,
-                        GradeText = quality.Grade.ToString(),
-                        TemperatureText = temperatureText,
-                        SmartData = smartData,
-                        Quality = quality,
-                        IsSystemDisk = isSystemDisk,
-                        IsSystemDiskLabel = isSystemDisk ? "Systémový disk" : ""
-                    };
-                    
-                    DiskCards.Add(card);
+                    await LoadDriveAsync(drive);
                 }
                 catch (Exception)
                 {
-                    // If we can't get SMART data, at least add the drive with basic info
-                    DiskCards.Add(new DiskStatusCardItem
-                    {
-                        Drive = drive,
-                        DisplayName = drive.Name ?? "Unknown",
-                        DisplayPath = drive.Path,
-                        CapacityText = FormatCapacity(drive.TotalSize),
-                        GradeText = "?",
-                        TemperatureText = "N/A",
-                        IsSystemDisk = drive.Path.Contains('0')
-                    });
+                    // If we can't get SMART data, add the drive with basic info
+                    AddBasicDriveCard(drive);
                 }
             }
 
@@ -147,6 +136,60 @@ public partial class DiskSelectionViewModel : ViewModelBase, INavigableViewModel
             IsBusy = false;
         }
     }
+
+    private async Task LoadDriveAsync(CoreDriveInfo drive)
+    {
+        // Get SMART data for the drive
+        var smartData = await _smartaProvider.GetSmartaDataAsync(drive.Path);
+        
+        // Calculate quality rating
+        var quality = smartData != null 
+            ? _qualityCalculator.CalculateQuality(smartData) 
+            : new QualityRating(QualityGrade.F, 0);
+        
+        // Format capacity
+        var capacityText = FormatCapacity(drive.TotalSize);
+        
+        // Format temperature (handle nullable Temperature)
+        var temperatureText = smartData?.Temperature.HasValue == true && smartData.Temperature.Value > 0 
+            ? $"{smartData.Temperature.Value}°C" 
+            : "N/A";
+        
+        // Determine if this is likely the system disk
+        var isSystemDisk = drive.Path.Contains('0') || (drive.Name != null && drive.Name.Contains("C:"));
+        
+        var card = new DiskStatusCardItem
+        {
+            Drive = drive,
+            DisplayName = !string.IsNullOrEmpty(smartData?.DeviceModel) 
+                ? smartData.DeviceModel 
+                : drive.Name ?? "Unknown",
+            DisplayPath = drive.Path,
+            CapacityText = capacityText,
+            GradeText = quality.Grade.ToString(),
+            TemperatureText = temperatureText,
+            SmartData = smartData,
+            Quality = quality,
+            IsSystemDisk = isSystemDisk,
+            IsSystemDiskLabel = isSystemDisk ? "Systémový disk" : ""
+        };
+        
+        DiskCards.Add(card);
+    }
+
+    private void AddBasicDriveCard(CoreDriveInfo drive)
+    {
+        DiskCards.Add(new DiskStatusCardItem
+        {
+            Drive = drive,
+            DisplayName = drive.Name ?? "Unknown",
+            DisplayPath = drive.Path,
+            CapacityText = FormatCapacity(drive.TotalSize),
+            GradeText = "?",
+            TemperatureText = "N/A",
+            IsSystemDisk = drive.Path.Contains('0')
+        });
+    }
     
     private static string FormatCapacity(long bytes)
     {
@@ -160,6 +203,9 @@ public partial class DiskSelectionViewModel : ViewModelBase, INavigableViewModel
         return $"{gb:F0} GB";
     }
 
+    /// <summary>
+    /// Reload the list of disks.
+    /// </summary>
     [RelayCommand]
     private async Task ReloadDisks()
     {
@@ -167,6 +213,9 @@ public partial class DiskSelectionViewModel : ViewModelBase, INavigableViewModel
         await LoadDataAsync();
     }
 
+    /// <summary>
+    /// Select a disk card.
+    /// </summary>
     [RelayCommand]
     private void SelectDisk(DiskStatusCardItem card)
     {
@@ -180,45 +229,5 @@ public partial class DiskSelectionViewModel : ViewModelBase, INavigableViewModel
         card.IsSelected = true;
         SelectedDrive = card.Drive;
         StatusMessage = $"Vybrán disk: {card.DisplayName}";
-    }
-}
-
-public class DiskStatusCardItem : ObservableObject
-{
-    private bool _isSelected;
-    private CoreDriveInfo? _drive;
-    private SmartaData? _smartData;
-    private QualityRating? _quality;
-
-    public string DisplayName { get; set; } = string.Empty;
-    public string DisplayPath { get; set; } = string.Empty;
-    public string CapacityText { get; set; } = string.Empty;
-    public string GradeText { get; set; } = string.Empty;
-    public string TemperatureText { get; set; } = string.Empty;
-    public bool IsSystemDisk { get; set; }
-    public string IsSystemDiskLabel { get; set; } = string.Empty;
-
-    public bool IsSelected
-    {
-        get => _isSelected;
-        set => SetProperty(ref _isSelected, value);
-    }
-
-    public CoreDriveInfo? Drive
-    {
-        get => _drive;
-        set => SetProperty(ref _drive, value);
-    }
-
-    public SmartaData? SmartData
-    {
-        get => _smartData;
-        set => SetProperty(ref _smartData, value);
-    }
-
-    public QualityRating? Quality
-    {
-        get => _quality;
-        set => SetProperty(ref _quality, value);
     }
 }

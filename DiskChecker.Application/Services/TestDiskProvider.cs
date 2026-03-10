@@ -1,39 +1,40 @@
-
 using DiskChecker.Core.Interfaces;
 using DiskChecker.Core.Models;
 
-namespace DiskChecker.Application.Services
+namespace DiskChecker.Application.Services;
+
+/// <summary>
+/// Test implementation of ISmartaProvider for unit testing.
+/// </summary>
+public class TestDiskProvider : ISmartaProvider
 {
-    public class TestDiskProvider : ISmartaProvider
+    public Task<SmartaData?> GetSmartaDataAsync(string devicePath, CancellationToken cancellationToken = default)
     {
-        public Task<SmartaData?> GetSmartaDataAsync(string devicePath)
-        {
-            throw new NotImplementedException();
-        }
+        throw new NotImplementedException();
+    }
 
-        public Task<bool> IsDriveValidAsync(string devicePath)
-        {
-            throw new NotImplementedException();
-        }
+    public Task<bool> IsDriveValidAsync(string devicePath, CancellationToken cancellationToken = default)
+    {
+        throw new NotImplementedException();
+    }
 
-        public Task<List<string>> ListDrivesAsync()
-        {
-            throw new NotImplementedException();
-        }
+    public Task<List<string>> ListDrivesAsync(CancellationToken cancellationToken = default)
+    {
+        throw new NotImplementedException();
+    }
 
-        public Task<string> GetDependencyInstructionsAsync()
-        {
-            throw new NotImplementedException();
-        }
+    public Task<string> GetDependencyInstructionsAsync(CancellationToken cancellationToken = default)
+    {
+        throw new NotImplementedException();
+    }
 
-        public Task<bool> TryInstallDependenciesAsync()
-        {
-            throw new NotImplementedException();
-        }
+    public Task<bool> TryInstallDependenciesAsync(CancellationToken cancellationToken = default)
+    {
+        throw new NotImplementedException();
+    }
 
-        public Task<int?> GetTemperatureOnlyAsync(string devicePath)
-        {
-            throw new NotImplementedException();
-        }
+    public Task<int?> GetTemperatureOnlyAsync(string devicePath, CancellationToken cancellationToken = default)
+    {
+        throw new NotImplementedException();
     }
 }
