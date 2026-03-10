@@ -8,6 +8,8 @@ namespace DiskChecker.UI.Avalonia.ViewModels;
 /// </summary>
 public class DiskStatusCardItem : ObservableObject
 {
+        private bool _isLoading;
+        private string? _errorMessage;
     private bool _isSelected;
     private bool _isLocked;
     private CoreDriveInfo? _drive;
@@ -69,6 +71,24 @@ public class DiskStatusCardItem : ObservableObject
     }
 
     /// <summary>
+    /// Whether this card is currently loading SMART data.
+    /// </summary>
+    public bool IsLoading
+    {
+        get => _isLoading;
+        set => SetProperty(ref _isLoading, value);
+    }
+
+    /// <summary>
+    /// Error message if SMART probe failed for this device.
+    /// </summary>
+    public string? ErrorMessage
+    {
+        get => _errorMessage;
+        set => SetProperty(ref _errorMessage, value);
+    }
+
+    /// <summary>
     /// Whether this disk is locked (protected from destructive operations).
     /// </summary>
     public bool IsLocked
@@ -90,7 +110,53 @@ public class DiskStatusCardItem : ObservableObject
     public CoreDriveInfo? Drive
     {
         get => _drive;
-        set => SetProperty(ref _drive, value);
+        set
+        {
+            if (SetProperty(ref _drive, value))
+            {
+                // Update derived volume properties when drive changes
+                if (_drive != null && _drive.Volumes != null && _drive.Volumes.Count > 0)
+                {
+                    VolumesCount = _drive.Volumes.Count;
+                    VolumesSummary = string.Join(", ", _drive.Volumes.Select(v =>
+                        {
+                            var name = string.IsNullOrEmpty(v.Name) ? v.Path : v.Name;
+                            // prefer drive letter if available
+                            if (!string.IsNullOrEmpty(v.Path) && v.Path.Length >= 2 && v.Path[1] == ':')
+                                return v.Path.TrimEnd('\\');
+                            return name;
+                        })) ;
+                }
+                else
+                {
+                    VolumesCount = 0;
+                    VolumesSummary = string.Empty;
+                }
+                OnPropertyChanged(nameof(VolumesCount));
+                OnPropertyChanged(nameof(VolumesSummary));
+            }
+        }
+    }
+
+    private int _volumesCount;
+    private string _volumesSummary = string.Empty;
+
+    /// <summary>
+    /// Number of logical volumes associated with this drive.
+    /// </summary>
+    public int VolumesCount
+    {
+        get => _volumesCount;
+        set => SetProperty(ref _volumesCount, value);
+    }
+
+    /// <summary>
+    /// Short summary of logical volumes (e.g., "C:\, D:\").
+    /// </summary>
+    public string VolumesSummary
+    {
+        get => _volumesSummary;
+        set => SetProperty(ref _volumesSummary, value);
     }
 
     /// <summary>
