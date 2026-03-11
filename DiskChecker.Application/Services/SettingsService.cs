@@ -18,6 +18,10 @@ public class SettingsService : ISettingsService
     private bool _enableLogging = true;
     private string _logLevel = "Information";
     private List<string> _lockedDisks = new();
+    // SMART probe persisted settings
+    private int _smartCacheTtlMinutes = 10;
+    private int _smartProbeTimeoutSeconds = 4;
+    private int _smartProbeParallelism; // 0 = auto
     
     private readonly string _settingsFilePath;
     private readonly string _lockedDisksFilePath;
@@ -33,7 +37,8 @@ public class SettingsService : ISettingsService
         
         _settingsFilePath = Path.Combine(appFolder, "settings.json");
         _lockedDisksFilePath = Path.Combine(appFolder, "locked_disks.json");
-        
+
+        LoadSettingsFromFile();
         LoadLockedDisksFromFile();
     }
 
@@ -72,7 +77,11 @@ public class SettingsService : ISettingsService
         _enableLogging = true;
         _logLevel = "Information";
         _lockedDisks = new List<string>();
+        _smartCacheTtlMinutes = 10;
+        _smartProbeTimeoutSeconds = 4;
+        _smartProbeParallelism = 0;
         SaveLockedDisksToFile();
+        SaveSettingsToFile();
         return Task.CompletedTask;
     }
     
@@ -84,6 +93,59 @@ public class SettingsService : ISettingsService
         _lockedDisks = lockedPaths ?? new List<string>();
         SaveLockedDisksToFile();
         return Task.CompletedTask;
+    }
+
+    // SMART settings persisted
+    public Task<int> GetSmartCacheTtlMinutesAsync() => Task.FromResult(_smartCacheTtlMinutes);
+    public Task SetSmartCacheTtlMinutesAsync(int minutes) { _smartCacheTtlMinutes = Math.Max(1, minutes); return Task.CompletedTask; }
+    public Task<int> GetSmartProbeTimeoutSecondsAsync() => Task.FromResult(_smartProbeTimeoutSeconds);
+    public Task SetSmartProbeTimeoutSecondsAsync(int seconds) { _smartProbeTimeoutSeconds = Math.Max(1, seconds); SaveSettingsToFile(); return Task.CompletedTask; }
+    public Task<int> GetSmartProbeParallelismAsync() => Task.FromResult(_smartProbeParallelism);
+    public Task SetSmartProbeParallelismAsync(int parallelism) { _smartProbeParallelism = Math.Max(0, parallelism); SaveSettingsToFile(); return Task.CompletedTask; }
+    public Task SetSmartCacheTtlMinutesAsyncPersistent(int minutes) { _smartCacheTtlMinutes = Math.Max(1, minutes); SaveSettingsToFile(); return Task.CompletedTask; }
+
+    private void LoadSettingsFromFile()
+    {
+        try
+        {
+            if (File.Exists(_settingsFilePath))
+            {
+                var json = File.ReadAllText(_settingsFilePath);
+                var doc = JsonSerializer.Deserialize<Dictionary<string, object>>(json);
+                if (doc != null)
+                {
+                    if (doc.TryGetValue("SmartCacheTtlMinutes", out var ttlObj) && int.TryParse(ttlObj.ToString(), out var ttl))
+                        _smartCacheTtlMinutes = Math.Max(1, ttl);
+                    if (doc.TryGetValue("SmartProbeTimeoutSeconds", out var toObj) && int.TryParse(toObj.ToString(), out var to))
+                        _smartProbeTimeoutSeconds = Math.Max(1, to);
+                    if (doc.TryGetValue("SmartProbeParallelism", out var pObj) && int.TryParse(pObj.ToString(), out var p))
+                        _smartProbeParallelism = Math.Max(0, p);
+                }
+            }
+        }
+        catch
+        {
+            // ignore and use defaults
+        }
+    }
+
+    private void SaveSettingsToFile()
+    {
+        try
+        {
+            var dict = new Dictionary<string, object>
+            {
+                ["SmartCacheTtlMinutes"] = _smartCacheTtlMinutes,
+                ["SmartProbeTimeoutSeconds"] = _smartProbeTimeoutSeconds,
+                ["SmartProbeParallelism"] = _smartProbeParallelism
+            };
+            var json = JsonSerializer.Serialize(dict, JsonOptions);
+            File.WriteAllText(_settingsFilePath, json);
+        }
+        catch
+        {
+            // ignore save errors
+        }
     }
     
     public Task<bool> IsDiskLockedAsync(string diskPath)

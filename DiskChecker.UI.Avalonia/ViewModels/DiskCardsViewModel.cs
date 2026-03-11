@@ -155,7 +155,34 @@ public partial class DiskCardsViewModel : ViewModelBase, INavigableViewModel
             
             foreach (var card in cards.OrderByDescending(c => c.LastTestedAt))
             {
-                DiskCards.Add(card);
+                // Create a shallow copy to avoid accidental shared-reference issues
+                // between repository entities and UI-bound objects which can cause
+                // display problems in the DataGrid when EF proxies or tracked
+                // entities are reused.
+                var copy = new DiskCard
+                {
+                    Id = card.Id,
+                    ModelName = card.ModelName,
+                    SerialNumber = card.SerialNumber,
+                    DevicePath = card.DevicePath,
+                    DiskType = card.DiskType,
+                    InterfaceType = card.InterfaceType,
+                    Capacity = card.Capacity,
+                    FirmwareVersion = card.FirmwareVersion,
+                    ConnectionType = card.ConnectionType,
+                    CreatedAt = card.CreatedAt,
+                    LastTestedAt = card.LastTestedAt,
+                    OverallGrade = card.OverallGrade,
+                    OverallScore = card.OverallScore,
+                    TestCount = card.TestCount,
+                    IsArchived = card.IsArchived,
+                    ArchiveReason = card.ArchiveReason,
+                    Notes = card.Notes,
+                    IsLocked = card.IsLocked,
+                    LockReason = card.LockReason
+                };
+
+                DiskCards.Add(copy);
             }
 
             ApplyFilters();

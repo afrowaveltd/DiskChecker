@@ -2,9 +2,15 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:vm="using:DiskChecker.UI.Avalonia.ViewModels"
              xmlns:dg="clr-namespace:Avalonia.Controls;assembly=Avalonia.Controls.DataGrid"
+             xmlns:converters="using:DiskChecker.UI.Avalonia.Converters"
              x:Class="DiskChecker.UI.Avalonia.Views.SmartCheckView"
              Background="{DynamicResource ThemeBackgroundBrush}">
     
+    <UserControl.Resources>
+        <converters:FileSystemToBrushConverter x:Key="FileSystemToBrushConverter" />
+        <converters:BytesToHumanReadableConverter x:Key="BytesToHumanReadableConverter" />
+    </UserControl.Resources>
+
     <Grid>
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto"/>
@@ -64,19 +70,80 @@
                               IsEnabled="{Binding !IsChecking}">
                         <ComboBox.ItemTemplate>
                             <DataTemplate>
-                                <StackPanel Orientation="Horizontal">
-                                    <TextBlock Text="{Binding DisplayName}" FontWeight="Bold"/>
-                                    <TextBlock Text=" (" Foreground="#888888"/>
-                                    <TextBlock Text="{Binding CapacityText}" Foreground="#666666"/>
-                                    <TextBlock Text=") - " Foreground="#888888"/>
-                                    <TextBlock Text="{Binding GradeText}" 
-                                               Foreground="#27AE60" FontWeight="Bold"/>
-                                    <TextBlock Text="{Binding IsSystemDiskLabel}" 
-                                               Foreground="#E74C3C" Margin="8,0,0,0"/>
-                                </StackPanel>
+                                <Border Background="{Binding Drive.FileSystem, Converter={StaticResource FileSystemToBrushConverter}}" CornerRadius="6" Padding="6" Margin="2">
+                                    <Grid ColumnDefinitions="Auto,Auto,*,Auto" VerticalAlignment="Center">
+                                        <StackPanel Grid.Column="0" Orientation="Horizontal">
+                                            <TextBlock Text="{Binding DisplayName}" FontWeight="Bold"/>
+                                            <TextBlock Text=" (" Foreground="#888888"/>
+                                            <TextBlock Text="{Binding CapacityText}" Foreground="#666666"/>
+                                            <TextBlock Text=") - " Foreground="#888888"/>
+                                        </StackPanel>
+                                        <TextBlock Grid.Column="1" Text="{Binding GradeText}" Foreground="#27AE60" FontWeight="Bold" Margin="6,0"/>
+                                        <StackPanel Grid.Column="2" Orientation="Vertical" Margin="12,0,0,0">
+                                            <TextBlock Text="{Binding IsSystemDiskLabel}" Foreground="#E74C3C" />
+                                            <TextBlock Text="{Binding VolumesSummary}" Foreground="#444" FontSize="11" />
+                                            <!-- Expandable list of volumes -->
+                                            <ItemsControl ItemsSource="{Binding Drive.Volumes}" Margin="0,6,0,0">
+                                                <ItemsControl.ItemTemplate>
+                                                    <DataTemplate>
+                                                        <Border Background="{Binding FileSystem, Converter={StaticResource FileSystemToBrushConverter}}" CornerRadius="4" Padding="6" Margin="0,3">
+                                                            <Grid ColumnDefinitions="Auto,*,Auto" VerticalAlignment="Center">
+                                                                <StackPanel Grid.Column="0" Orientation="Vertical">
+                                                                    <TextBlock Text="{Binding Path}" FontWeight="Bold" FontSize="12"/>
+                                                                    <TextBlock Text="{Binding Name}" FontSize="11" Foreground="#666"/>
+                                                                </StackPanel>
+                                                                <TextBlock Grid.Column="1" Text="{Binding FileSystem}" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                                                <StackPanel Grid.Column="2" Orientation="Horizontal">
+                                                                    <TextBlock Text="{Binding TotalSize, Converter={StaticResource BytesToHumanReadableConverter}}" Margin="0,0,6,0"/>
+                                                                    <Button Content="Vybrat" Command="{Binding DataContext.SelectVolumeCommand, RelativeSource={RelativeSource AncestorType=UserControl}}" CommandParameter="{Binding}" FontSize="11"/>
+                                                                </StackPanel>
+                                                            </Grid>
+                                                        </Border>
+                                                    </DataTemplate>
+                                                </ItemsControl.ItemTemplate>
+                                            </ItemsControl>
+                                        </StackPanel>
+                                        <!-- Spinner / error indicator -->
+                                        <StackPanel Grid.Column="3" Orientation="Horizontal" HorizontalAlignment="Right">
+                                            <Border Background="Transparent" Padding="4" IsVisible="{Binding IsLoading}">
+                                                <ProgressBar Width="60" Height="8" IsVisible="{Binding IsLoading}" IsIndeterminate="True"/>
+                                            </Border>
+                                            <Border Background="Transparent" Padding="4" IsVisible="{Binding ErrorMessage}">
+                                                <TextBlock Text="⚠️" Foreground="#E74C3C" ToolTip.Tip="{Binding ErrorMessage}"/>
+                                            </Border>
+                                        </StackPanel>
+                                    </Grid>
+                                </Border>
                             </DataTemplate>
                         </ComboBox.ItemTemplate>
                     </ComboBox>
+                    <StackPanel Orientation="Horizontal" Margin="0,8,0,0" Spacing="6">
+                        <Button Content="🧹 Vymazat cache (disk)"
+                                Command="{Binding ClearCacheForSelectedCommand}"
+                                IsEnabled="{Binding SelectedDisk}"
+                                FontSize="12" Padding="8,4"/>
+                        <Button Content="🧰 Vymazat cache (vše)"
+                                Command="{Binding ClearAllSmartCacheCommand}"
+                                FontSize="12" Padding="8,4"/>
+                        <TextBlock Text="{Binding SmartCacheInfo}" FontSize="11" Foreground="#666" Margin="12,4,0,0"/>
+                        <TextBlock Text="{Binding SmartCacheStats}" FontSize="11" Foreground="#666" Margin="12,4,0,0"/>
+                        <StackPanel Orientation="Horizontal" Margin="12,0,0,0" Spacing="4">
+                            <TextBlock Text="TTL (min):" VerticalAlignment="Center" FontSize="11" Foreground="#666"/>
+                            <TextBox Width="60" Watermark="10" Text="10" Name="CacheTtlBox"/>
+                            <Button Content="Nastavit" Command="{Binding SetCacheTtlCommand}" CommandParameter="{Binding Text, ElementName=CacheTtlBox}" FontSize="11" Padding="6,2"/>
+                        </StackPanel>
+                        <StackPanel Orientation="Horizontal" Margin="12,6,0,0" Spacing="4">
+                            <TextBlock Text="Timeout (s):" VerticalAlignment="Center" FontSize="11" Foreground="#666"/>
+                            <TextBox Width="60" Watermark="4" Text="4" Name="ProbeTimeoutBox"/>
+                            <Button Content="Nastavit" Command="{Binding SetProbeTimeoutCommand}" CommandParameter="{Binding Text, ElementName=ProbeTimeoutBox}" FontSize="11" Padding="6,2"/>
+                        </StackPanel>
+                        <StackPanel Orientation="Horizontal" Margin="12,6,0,0" Spacing="4">
+                            <TextBlock Text="Paralelismus:" VerticalAlignment="Center" FontSize="11" Foreground="#666"/>
+                            <TextBox Width="60" Watermark="0 (auto)" Text="0" Name="ProbeParallelBox"/>
+                            <Button Content="Nastavit" Command="{Binding SetProbeParallelismCommand}" CommandParameter="{Binding Text, ElementName=ProbeParallelBox}" FontSize="11" Padding="6,2"/>
+                        </StackPanel>
+                        <!-- Spinner and error indicator are shown per-disk in item template -->
+                    </StackPanel>
                 </StackPanel>
 
                 <!-- Grade Display -->

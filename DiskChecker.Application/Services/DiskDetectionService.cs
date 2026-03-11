@@ -3,6 +3,7 @@ using System.Runtime.InteropServices;
 using System.Text.Json;
 using DiskChecker.Core.Interfaces;
 using DiskChecker.Core.Models;
+using DiskChecker.Infrastructure.Hardware;
 
 namespace DiskChecker.Application.Services;
 
@@ -54,22 +55,64 @@ public class DiskDetectionService : IDiskDetectionService
             drives.AddRange(wmiDrives);
         }
         
-        // Get logical drives
-        var logicalDrives = await GetLogicalDrivesAsync(cancellationToken);
-        
-        // Merge logical drive info with physical drives where possible
-        foreach (var logical in logicalDrives)
+        // For each physical drive, try to enumerate its volumes (partitions) and attach them
+        if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
         {
-            // Don't add duplicates - physical drives already added
-            var existing = drives.FirstOrDefault(d => 
-                d.Path.Equals(logical.Path, StringComparison.OrdinalIgnoreCase));
-            
-            if (existing == null)
+            try
             {
-                // Mark system disk for logical drives too
-                logical.IsSystemDisk = logical.Path.StartsWith("C:", StringComparison.OrdinalIgnoreCase);
-                drives.Add(logical);
+                foreach (var phys in drives.Where(d => d.IsPhysical).ToList())
+                {
+                    try
+                    {
+                        var vols = VolumeInfoHelper.GetVolumeDetails(phys.Path);
+                        foreach (var v in vols)
+                        {
+                            try
+                            {
+                                var driveLetter = v.DriveLetter; // e.g., "C:"
+                                long totalSize = 0;
+                                long freeSpace = 0;
+                                string fs = v.FileSystem ?? string.Empty;
+                                string name = v.VolumeLabel ?? driveLetter;
+                                if (!string.IsNullOrEmpty(driveLetter))
+                                {
+                                    try
+                                    {
+                                        var di = new DriveInfo(driveLetter.TrimEnd('\\'));
+                                        if (di.IsReady)
+                                        {
+                                            totalSize = di.TotalSize;
+                                            freeSpace = di.AvailableFreeSpace;
+                                            fs = di.DriveFormat;
+                                        }
+                                    }
+                                    catch
+                                    {
+                                        // ignore
+                                    }
+                                }
+
+                                var volumeInfo = new CoreDriveInfo
+                                {
+                                    Id = Guid.NewGuid(),
+                                    Path = driveLetter ?? string.Empty,
+                                    Name = name,
+                                    TotalSize = totalSize,
+                                    FreeSpace = freeSpace,
+                                    FileSystem = fs,
+                                    IsPhysical = false,
+                                    IsReady = true
+                                };
+
+                                phys.Volumes.Add(volumeInfo);
+                            }
+                            catch { }
+                        }
+                    }
+                    catch { /* ignore volume enumeration errors */ }
+                }
             }
+            catch { /* safe fallback - don't let volume enumeration break drive listing */ }
         }
         
         // If still no drives, add a placeholder for system disk

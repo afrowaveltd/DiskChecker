@@ -83,6 +83,12 @@ public class CoreDriveInfo
     /// Additional metadata about the drive.
     /// </summary>
     public Dictionary<string, object> Metadata { get; set; } = new();
+
+    /// <summary>
+    /// Logical volumes (partitions) that belong to this physical drive.
+    /// Populated when logical drives are associated with physical devices.
+    /// </summary>
+    public List<CoreDriveInfo> Volumes { get; set; } = new();
     
     // Legacy compatibility properties
     public string? VolumeInfo { get; set; }

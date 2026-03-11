@@ -4,6 +4,10 @@ using System.ComponentModel;
 using DiskChecker.Core.Interfaces;
 using DiskChecker.Core.Models;
 using Microsoft.Extensions.Logging;
+using System.Collections.Concurrent;
+using System.Threading;
+using Microsoft.Extensions.Options;
+using DiskChecker.Infrastructure.Configuration;
 
 namespace DiskChecker.Infrastructure.Hardware;
 
@@ -13,11 +17,27 @@ namespace DiskChecker.Infrastructure.Hardware;
 public class WindowsSmartaProvider : ISmartaProvider, IAdvancedSmartaProvider
 {
     private readonly ILogger<WindowsSmartaProvider>? _logger;
-    private SmartaData? _lastSuccessfulSmartData;
+    private readonly ConcurrentDictionary<string, (SmartaData Data, DateTime Timestamp)> _smartCache = new();
+    private TimeSpan _cacheTtl;
+    private long _cacheHits;
+    private long _cacheMisses;
 
-    public WindowsSmartaProvider(ILogger<WindowsSmartaProvider>? logger = null)
+    public WindowsSmartaProvider(ILogger<WindowsSmartaProvider>? logger = null, IOptions<SmartaCacheOptions>? options = null)
     {
         _logger = logger;
+        var minutes = options?.Value?.TtlMinutes ?? 10;
+        _cacheTtl = TimeSpan.FromMinutes(Math.Max(1, minutes));
+    }
+
+    public Task SetCacheTtlMinutesAsync(int minutes, CancellationToken cancellationToken = default)
+    {
+        var m = Math.Max(1, minutes);
+        _cacheTtl = TimeSpan.FromMinutes(m);
+        if (_logger != null && _logger.IsEnabled(LogLevel.Information))
+        {
+            _logger.LogInformation("SMART cache TTL set to {Minutes} minutes", m);
+        }
+        return Task.CompletedTask;
     }
 
     public async Task<SmartaData?> GetSmartaDataAsync(string devicePath, CancellationToken cancellationToken = default)
@@ -30,32 +50,66 @@ public class WindowsSmartaProvider : ISmartaProvider, IAdvancedSmartaProvider
         var smartctl = await smartctlTask;
         var windows = await windowsTask;
 
-        if (smartctl == null && windows == null) 
+        if (smartctl == null && windows == null)
         {
-            return _lastSuccessfulSmartData;
+            // Try to return cached SMART data for this devicePath if available and not expired.
+            var deviceKey = NormalizeDeviceKey(devicePath);
+            if (_smartCache.TryGetValue(deviceKey, out var cached) && (DateTime.UtcNow - cached.Timestamp) < _cacheTtl)
+            {
+                if (_logger != null && _logger.IsEnabled(LogLevel.Information))
+                {
+                    _logger.LogInformation("GetSmartaDataAsync: returning cached SMART data for {DevicePath}", devicePath);
+                }
+                Interlocked.Increment(ref _cacheHits);
+                var cachedCopy = cached.Data;
+                cachedCopy.IsFromCache = true;
+                cachedCopy.RetrievedAtUtc = cached.Timestamp;
+                return cachedCopy;
+            }
+
+            if (_logger != null && _logger.IsEnabled(LogLevel.Warning))
+            {
+                _logger.LogWarning("GetSmartaDataAsync: failed to obtain SMART data for {DevicePath} and no valid cache", devicePath);
+            }
+            Interlocked.Increment(ref _cacheMisses);
+            return null;
         }
 
         var result = smartctl ?? windows;
 
-        if (result != null && _lastSuccessfulSmartData != null)
+        // If some important fields are missing try to supplement them from cache for the same device
+        try
         {
-            if (string.IsNullOrEmpty(result.SerialNumber) || result.SerialNumber == "N/A")
+            var deviceKey = NormalizeDeviceKey(devicePath);
+            if (_smartCache.TryGetValue(deviceKey, out var cached))
             {
-                result.SerialNumber = _lastSuccessfulSmartData.SerialNumber;
-            }
-            if (string.IsNullOrEmpty(result.DeviceModel))
-            {
-                result.DeviceModel = _lastSuccessfulSmartData.DeviceModel;
-            }
-            if (string.IsNullOrEmpty(result.FirmwareVersion))
-            {
-                result.FirmwareVersion = _lastSuccessfulSmartData.FirmwareVersion;
+                var cachedData = cached.Data;
+                if (result != null)
+                {
+                    if (string.IsNullOrEmpty(result.SerialNumber) || result.SerialNumber == "N/A")
+                        result.SerialNumber = cachedData.SerialNumber;
+                    if (string.IsNullOrEmpty(result.DeviceModel))
+                        result.DeviceModel = cachedData.DeviceModel;
+                    if (string.IsNullOrEmpty(result.FirmwareVersion))
+                        result.FirmwareVersion = cachedData.FirmwareVersion;
+                }
             }
         }
+        catch { /* best-effort only */ }
 
-        if (result != null && !string.IsNullOrEmpty(result.SerialNumber) && result.SerialNumber != "N/A")
+        // Store result in cache under deviceKey and serial (if present)
+        if (result != null)
         {
-            _lastSuccessfulSmartData = result;
+            var deviceKey = NormalizeDeviceKey(devicePath);
+            result.IsFromCache = false;
+            result.RetrievedAtUtc = DateTime.UtcNow;
+            _smartCache[deviceKey] = (result, DateTime.UtcNow);
+
+            if (!string.IsNullOrWhiteSpace(result.SerialNumber) && !string.Equals(result.SerialNumber, "N/A", StringComparison.OrdinalIgnoreCase))
+            {
+                var serialKey = NormalizeDeviceKey("SN:" + result.SerialNumber);
+                _smartCache[serialKey] = (result, DateTime.UtcNow);
+            }
         }
 
         return result;
@@ -137,6 +191,42 @@ $res | ConvertTo-Json -Compress";
         { 
             return null; 
         }
+    }
+
+    private static string NormalizeDeviceKey(string key)
+    {
+        if (string.IsNullOrWhiteSpace(key)) return string.Empty;
+        return key.Trim().ToLowerInvariant();
+    }
+
+    // Cache management
+    public Task ClearSmartCacheAsync(CancellationToken cancellationToken = default)
+    {
+        _smartCache.Clear();
+        return Task.CompletedTask;
+    }
+
+    public Task RemoveSmartCacheForDeviceAsync(string devicePath, CancellationToken cancellationToken = default)
+    {
+        var key = NormalizeDeviceKey(devicePath);
+        _smartCache.TryRemove(key, out _);
+        return Task.CompletedTask;
+    }
+
+    public Task RemoveSmartCacheForSerialAsync(string serialNumber, CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(serialNumber)) return Task.CompletedTask;
+        var key = NormalizeDeviceKey("SN:" + serialNumber);
+        _smartCache.TryRemove(key, out _);
+        return Task.CompletedTask;
+    }
+
+    public Task<(int Hits, int Misses, int Items)> GetSmartCacheStatsAsync(CancellationToken cancellationToken = default)
+    {
+        var items = _smartCache.Count;
+        var hits = (int)Interlocked.Read(ref _cacheHits);
+        var misses = (int)Interlocked.Read(ref _cacheMisses);
+        return Task.FromResult((hits, misses, items));
     }
 
     public async Task<List<SmartaAttributeItem>> GetSmartAttributesAsync(string devicePath, CancellationToken cancellationToken = default)

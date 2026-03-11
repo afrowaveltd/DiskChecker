@@ -77,5 +77,16 @@ namespace DiskChecker.Core.Models
                 return $"Starý ({years:F1} let)";
             }
         }
+
+        // Metadata set by providers
+        /// <summary>
+        /// Timestamp (UTC) when this SmartaData was retrieved (or when cached data was recorded).
+        /// </summary>
+        public DateTime? RetrievedAtUtc { get; set; }
+
+        /// <summary>
+        /// Whether this SmartaData was served from provider cache.
+        /// </summary>
+        public bool IsFromCache { get; set; }
     }
 }

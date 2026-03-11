@@ -22,6 +22,16 @@ public interface ISettingsService
     Task<string> GetLogLevelAsync();
     Task SetLogLevelAsync(string level);
     Task ResetToDefaultsAsync();
+
+    // SMART probe configuration (persisted)
+    Task<int> GetSmartCacheTtlMinutesAsync();
+    Task SetSmartCacheTtlMinutesAsync(int minutes);
+    Task<int> GetSmartProbeTimeoutSecondsAsync();
+    Task SetSmartProbeTimeoutSecondsAsync(int seconds);
+    Task<int> GetSmartProbeParallelismAsync();
+    Task SetSmartProbeParallelismAsync(int parallelism);
+    // Persisted setter for SMART cache TTL
+    Task SetSmartCacheTtlMinutesAsyncPersistent(int minutes);
     
     // Disk Lock Management
     /// <summary>

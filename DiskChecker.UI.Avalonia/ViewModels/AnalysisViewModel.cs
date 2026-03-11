@@ -1,6 +1,7 @@
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using DiskChecker.Core.Models;
+using DiskChecker.Core.Interfaces;
 using DiskChecker.UI.Avalonia.Services.Interfaces;
 using System;
 using System.Collections.ObjectModel;

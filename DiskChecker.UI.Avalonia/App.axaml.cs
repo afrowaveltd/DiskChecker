@@ -12,6 +12,7 @@ using DiskChecker.UI.Avalonia.Services;
 using DiskChecker.UI.Avalonia.Services.Interfaces;
 using DiskChecker.Core.Interfaces;
 using DiskChecker.Infrastructure.Hardware;
+using DiskChecker.Infrastructure.Configuration;
 using DiskChecker.Infrastructure.Hardware.Sanitization;
 using DiskChecker.Infrastructure.Persistence;
 using DiskChecker.Infrastructure.Services;
@@ -101,10 +102,21 @@ public partial class App : global::Avalonia.Application
             options.UseSqlite("Data Source=DiskChecker.db"));
 
         // Application services
-        services.AddSingleton<HistoryService>();
+        // HistoryService depends on DbContext (scoped). Register the concrete service as scoped
+        // and expose it via the UI-facing IHistoryService interface using a factory to avoid
+        // requiring the application service to implement the UI interface directly.
+        services.AddScoped<DiskChecker.Application.Services.HistoryService>();
+        services.AddScoped<IHistoryService, HistoryServiceAdapter>();
         services.AddSingleton<SettingsService>();
         services.AddSingleton<SmartCheckService>();
-        services.AddSingleton<SurfaceTestService>();
+        // Infrastructure and application surface test components
+        services.AddSingleton<DiskChecker.Infrastructure.Hardware.SurfaceTestExecutorFactory>();
+        services.AddScoped<SurfaceTestPersistenceService>();
+        services.AddScoped<ISurfaceTestService, SurfaceTestService>();
+        // Register analysis/reporting components
+        services.AddSingleton<TestReportAnalysisService>();
+        // Register UI analysis service implementation so AnalysisViewModel can resolve IAnalysisService.
+        services.AddSingleton<IAnalysisService, AnalysisService>();
         services.AddSingleton<DiskDetectionService>();
         
         // Navigation service
@@ -126,6 +138,30 @@ public partial class App : global::Avalonia.Application
         services.AddSingleton<IDiskDetectionService, DiskDetectionService>();
         
         // Platform-specific SMART provider
+        // Load configuration (optional appsettings.json) and bind SMART cache options
+        // Load simple appsettings.json (optional) to configure SMART cache TTL without
+        // pulling in the full Microsoft.Configuration extensions at runtime.
+        var ttl = 10;
+        try
+        {
+            var settingsPath = System.IO.Path.Combine(AppContext.BaseDirectory, "appsettings.json");
+            if (System.IO.File.Exists(settingsPath))
+            {
+                using var fs = System.IO.File.OpenRead(settingsPath);
+                using var doc = System.Text.Json.JsonDocument.Parse(fs);
+                if (doc.RootElement.TryGetProperty("SmartaCacheOptions", out var section) &&
+                    section.TryGetProperty("TtlMinutes", out var ttlProp) && ttlProp.ValueKind == System.Text.Json.JsonValueKind.Number)
+                {
+                    var v = ttlProp.GetInt32();
+                    if (v > 0) ttl = v;
+                }
+            }
+        }
+        catch { /* ignore config parse errors, use default */ }
+
+        services.Configure<SmartaCacheOptions>(opt => opt.TtlMinutes = ttl);
+        // Fallback default if not configured
+        services.PostConfigure<SmartaCacheOptions>(opt => { if (opt.TtlMinutes <= 0) opt.TtlMinutes = 10; });
         services.AddTransient<ISmartaProvider, WindowsSmartaProvider>();
         
         // Disk sanitization service

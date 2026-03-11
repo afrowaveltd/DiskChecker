@@ -29,6 +29,10 @@ namespace DiskChecker.UI.Avalonia.ViewModels
         private string _language = string.Empty;
         private bool _enableLogging;
         private string _logLevel = "Information";
+        // Exposed SMART probe settings for UI
+        private int _smartCacheTtlMinutes;
+        private int _smartProbeTimeoutSeconds;
+        private int _smartProbeParallelismValue;
 
         public SettingsViewModel(ISettingsService settingsService, IDialogService dialogService, IBackupService backupService)
         {
@@ -93,6 +97,24 @@ namespace DiskChecker.UI.Avalonia.ViewModels
         {
             get => _logLevel;
             set => SetProperty(ref _logLevel, value);
+        }
+
+        public int SmartCacheTtlMinutes
+        {
+            get => _smartCacheTtlMinutes;
+            set => SetProperty(ref _smartCacheTtlMinutes, value);
+        }
+
+        public int SmartProbeTimeoutSeconds
+        {
+            get => _smartProbeTimeoutSeconds;
+            set => SetProperty(ref _smartProbeTimeoutSeconds, value);
+        }
+
+        public int SmartProbeParallelism
+        {
+            get => _smartProbeParallelismValue;
+            set => SetProperty(ref _smartProbeParallelismValue, value);
         }
 
         public bool IsSaving
@@ -164,6 +186,11 @@ namespace DiskChecker.UI.Avalonia.ViewModels
                 Language = await _settingsService.GetLanguageAsync();
                 EnableLogging = await _settingsService.GetEnableLoggingAsync();
                 LogLevel = await _settingsService.GetLogLevelAsync();
+                // SMART probe persisted settings
+                var ttl = await _settingsService.GetSmartCacheTtlMinutesAsync();
+                var timeout = await _settingsService.GetSmartProbeTimeoutSecondsAsync();
+                var parallel = await _settingsService.GetSmartProbeParallelismAsync();
+                // Expose them to UI if needed via StatusMessage or dedicated properties
                 
                 StatusMessage = "Nastavení načteno";
             }
@@ -190,6 +217,10 @@ namespace DiskChecker.UI.Avalonia.ViewModels
                 await _settingsService.SetLanguageAsync(Language);
                 await _settingsService.SetEnableLoggingAsync(EnableLogging);
                 await _settingsService.SetLogLevelAsync(LogLevel);
+                // Persist SMART probe settings
+                await _settingsService.SetSmartCacheTtlMinutesAsyncPersistent(SmartCacheTtlMinutes);
+                await _settingsService.SetSmartProbeTimeoutSecondsAsync(SmartProbeTimeoutSeconds);
+                await _settingsService.SetSmartProbeParallelismAsync(SmartProbeParallelism);
                 
                 StatusMessage = "Nastavení úspěšně uloženo";
             }
