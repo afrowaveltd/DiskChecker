@@ -6,7 +6,9 @@ using DiskChecker.UI.Avalonia.Services.Interfaces;
 using System;
 using System.Collections.ObjectModel;
 using System.Collections.Concurrent;
+using System.Diagnostics;
 using System.Globalization;
+using System.IO;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
@@ -18,7 +20,7 @@ namespace DiskChecker.UI.Avalonia.ViewModels;
 /// Full-featured SMART data viewer and disk health monitor.
 /// Supports ATA/SATA, NVMe, and SCSI/SAS drives.
 /// </summary>
-public partial class SmartCheckViewModel : ViewModelBase, INavigableViewModel
+public partial class SmartCheckViewModel : ViewModelBase, INavigableViewModel, IDisposable
 {
     private readonly ISmartaProvider _smartaProvider;
     private readonly IDiskDetectionService _diskDetectionService;
@@ -57,10 +59,10 @@ public partial class SmartCheckViewModel : ViewModelBase, INavigableViewModel
         _settingsService = settingsService ?? throw new ArgumentNullException(nameof(settingsService));
         
         LoadDisksCommand = new AsyncRelayCommand(LoadDisksAsync);
-        RefreshCommand = new AsyncRelayCommand(RefreshAsync, () => SelectedDisk != null && !IsChecking);
-        RunShortTestCommand = new AsyncRelayCommand(RunShortTestAsync, () => SelectedDisk != null && !IsChecking);
-        RunLongTestCommand = new AsyncRelayCommand(RunLongTestAsync, () => SelectedDisk != null && !IsChecking);
-        AbortTestCommand = new AsyncRelayCommand(AbortTestAsync, () => SelectedDisk != null && !IsChecking);
+        RefreshCommand = new AsyncRelayCommand(RefreshAsync, () => CanRunSelfTest);
+        RunShortTestCommand = new AsyncRelayCommand(RunShortTestAsync, () => CanRunSelfTest);
+        RunLongTestCommand = new AsyncRelayCommand(RunLongTestAsync, () => CanRunSelfTest);
+        AbortTestCommand = new AsyncRelayCommand(AbortTestAsync, () => SelectedDisk != null && (IsSelfTestRunning || !IsChecking));
         ClearCacheForSelectedCommand = new AsyncRelayCommand(ClearCacheForSelectedAsync, () => SelectedDisk != null);
         ClearAllSmartCacheCommand = new AsyncRelayCommand(ClearAllSmartCacheAsync);
         // Provide runtime TTL setter command (string-based for UI binding)
@@ -85,6 +87,11 @@ public partial class SmartCheckViewModel : ViewModelBase, INavigableViewModel
         {
             if (SetProperty(ref _selectedDisk, value))
             {
+                OnPropertyChanged(nameof(CanRunSelfTest));
+                RefreshCommand.NotifyCanExecuteChanged();
+                RunShortTestCommand.NotifyCanExecuteChanged();
+                RunLongTestCommand.NotifyCanExecuteChanged();
+                AbortTestCommand.NotifyCanExecuteChanged();
                 _ = LoadSmartDataAsync();
             }
         }
@@ -97,6 +104,7 @@ public partial class SmartCheckViewModel : ViewModelBase, INavigableViewModel
         {
             if (SetProperty(ref _isChecking, value))
             {
+                OnPropertyChanged(nameof(CanRunSelfTest));
                 RefreshCommand.NotifyCanExecuteChanged();
                 RunShortTestCommand.NotifyCanExecuteChanged();
                 RunLongTestCommand.NotifyCanExecuteChanged();
@@ -173,7 +181,18 @@ public partial class SmartCheckViewModel : ViewModelBase, INavigableViewModel
         set => SetProperty(ref _selfTestLog, value);
     }
 
-    public string SelectedTestType
+    // Raw smartctl output for display
+    private string _rawSmartOutput = string.Empty;
+    public string RawSmartOutput
+    {
+        get => _rawSmartOutput;
+        set => SetProperty(ref _rawSmartOutput, value);
+    }
+
+    
+    
+    
+public string SelectedTestType
     {
         get => _selectedTestType;
         set => SetProperty(ref _selectedTestType, value);
@@ -182,6 +201,48 @@ public partial class SmartCheckViewModel : ViewModelBase, INavigableViewModel
     // Computed properties for display
     public bool HasData => CurrentSmartData != null;
     public bool HasHealthData => CurrentSmartData?.IsHealthy == true;
+    
+    // Self-test progress tracking
+    private int _selfTestProgress;
+    private string _selfTestProgressText = "";
+    private string _selfTestTypeText = "";
+    private bool _isSelfTestRunning;
+    private CancellationTokenSource? _selfTestPollingCts;
+    
+    public int SelfTestProgress
+    {
+        get => _selfTestProgress;
+        set => SetProperty(ref _selfTestProgress, value);
+    }
+    
+    public string SelfTestProgressText
+    {
+        get => _selfTestProgressText;
+        set => SetProperty(ref _selfTestProgressText, value);
+    }
+    
+    public string SelfTestTypeText
+    {
+        get => _selfTestTypeText;
+        set => SetProperty(ref _selfTestTypeText, value);
+    }
+    
+    public bool IsSelfTestRunning
+    {
+        get => _isSelfTestRunning;
+        set
+        {
+            if (SetProperty(ref _isSelfTestRunning, value))
+            {
+                OnPropertyChanged(nameof(CanRunSelfTest));
+                RunShortTestCommand.NotifyCanExecuteChanged();
+                RunLongTestCommand.NotifyCanExecuteChanged();
+                AbortTestCommand.NotifyCanExecuteChanged();
+            }
+        }
+    }
+    
+    public bool CanRunSelfTest => !IsChecking && !IsSelfTestRunning && SelectedDisk != null;
     
     // Safe property accessors with fallbacks
     public string DiskName => SelectedDisk?.DisplayName ?? "Nevybrán žádný disk";
@@ -221,7 +282,7 @@ public partial class SmartCheckViewModel : ViewModelBase, INavigableViewModel
     // Quality display
     public string Grade => CurrentQuality?.Grade.ToString() ?? "-";
     public string Score => CurrentQuality?.Score > 0 
-        ? $"{CurrentQuality.Score:F0}%" : "-";
+        ? $"{CurrentQuality.Score:F0}" : "-";
     public string HealthStatus => CurrentSmartData?.HealthStatus ?? "-";
     
     // Color helpers
@@ -301,7 +362,43 @@ public partial class SmartCheckViewModel : ViewModelBase, INavigableViewModel
 
     #endregion
 
-    #region Private Methods
+    
+    private async Task<string> GetRawSmartctlOutputAsync(string devicePath)
+    {
+        try
+        {
+            var tempFile = Path.Combine(Path.GetTempPath(), $"smartctl_output_{Guid.NewGuid():N}.txt");
+            
+            // Extract drive number from path
+            var driveNumber = new string(devicePath.Where(char.IsDigit).ToArray());
+            if (string.IsNullOrEmpty(driveNumber)) return "Chyba: Nelze určit číslo disku";
+            
+            var psi = new ProcessStartInfo
+            {
+                FileName = "smartctl.exe",
+                Arguments = $"-a /dev/pd{driveNumber}",
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                UseShellExecute = false,
+                CreateNoWindow = true,
+                WorkingDirectory = @"C:\Program Files\smartmontools\bin"
+            };
+            
+            using var process = Process.Start(psi);
+            if (process == null) return "Chyba: Nelze spustit smartctl";
+            
+            var output = await process.StandardOutput.ReadToEndAsync();
+            await process.WaitForExitAsync();
+            
+            return output;
+        }
+        catch (Exception ex)
+        {
+            return $"Chyba při získávání SMART dat: {ex.Message}";
+        }
+    }
+
+#region Private Methods
 
     private async Task LoadDisksAsync()
     {
@@ -423,13 +520,19 @@ public partial class SmartCheckViewModel : ViewModelBase, INavigableViewModel
 
     private async Task LoadSmartDataAsync()
     {
+        Console.WriteLine($"[SMART] LoadSmartDataAsync called, SelectedDisk: {SelectedDisk?.DisplayName ?? "null"}");
+        
         if (SelectedDisk?.Drive == null)
         {
+            Console.WriteLine("[SMART] No disk selected, clearing data");
             CurrentSmartData = null;
             CurrentQuality = null;
-            SmartAttributes.Clear();
-            CriticalAttributes.Clear();
-            SelfTestLog.Clear();
+            await Dispatcher.UIThread.InvokeAsync(() =>
+            {
+                SmartAttributes.Clear();
+                CriticalAttributes.Clear();
+                SelfTestLog.Clear();
+            });
             return;
         }
 
@@ -459,32 +562,19 @@ public partial class SmartCheckViewModel : ViewModelBase, INavigableViewModel
                 smartData.DeviceType = "SATA/ATA";
             }
             
-            // Mark metadata if provider supplied it
-            if (smartData != null)
-            {
-                // Ensure RetrievedAtUtc is set (provider may set it)
-                if (smartData.RetrievedAtUtc == null)
-                    smartData.RetrievedAtUtc = DateTime.UtcNow;
+            // Ensure RetrievedAtUtc is set
+            if (smartData.RetrievedAtUtc == null)
+                smartData.RetrievedAtUtc = DateTime.UtcNow;
 
-                // Explicit non-null assertion for analyzer
-                ArgumentNullException.ThrowIfNull(smartData);
-
-                CurrentSmartData = smartData;
-                CurrentQuality = _qualityCalculator.CalculateQuality(smartData);
-            }
-            else
-            {
-                CurrentSmartData = null;
-                CurrentQuality = null;
-            }
+            CurrentSmartData = smartData;
+            CurrentQuality = _qualityCalculator.CalculateQuality(smartData);
 
             // Build cache info text
-            if (smartData?.RetrievedAtUtc != null)
+            if (smartData.RetrievedAtUtc != null)
             {
                 var age = DateTime.UtcNow - smartData.RetrievedAtUtc.Value;
                 var ageText = age.TotalMinutes >= 1 ? $"{(int)age.TotalMinutes} min" : $"{(int)age.TotalSeconds} s";
                 SmartCacheInfo = smartData.IsFromCache ? $"Data z cache ({ageText})" : $"Aktuální data ({ageText})";
-                // Query cache stats for telemetry if provider supports it
                 if (_smartaProvider is IAdvancedSmartaProvider statsProvider)
                 {
                     try
@@ -509,35 +599,61 @@ public partial class SmartCheckViewModel : ViewModelBase, INavigableViewModel
                 SelectedDisk.GradeText = CurrentQuality?.Grade.ToString() ?? "?";
             }
             
-            // Load attributes
+            // Load attributes using advanced provider
+            Console.WriteLine($"[SMART] Loading attributes, provider type: {_smartaProvider?.GetType().Name}");
             if (_smartaProvider is IAdvancedSmartaProvider advancedProvider)
             {
                 var devicePath = SelectedDisk!.Drive.Path;
+                Console.WriteLine($"[SMART] Device path: {devicePath}");
                 try
                 {
                     var attributes = await advancedProvider.GetSmartAttributesAsync(devicePath);
-                    SmartAttributes = new ObservableCollection<SmartaAttributeItem>(attributes);
-                    System.Diagnostics.Debug.WriteLine($"Loaded {attributes.Count} SMART attributes");
+                    Console.WriteLine($"[SMART] GetSmartAttributesAsync returned {attributes?.Count ?? -1} attributes");
                     
-                    // Extract critical attributes
-                    var criticalIds = new[] { 5, 177, 179, 181, 182, 187, 188, 190, 194, 195, 196, 197, 198, 199, 231, 233 };
-                    CriticalAttributes = new ObservableCollection<SmartaAttributeItem>(
-                        attributes.Where(a => criticalIds.Contains(a.Id))
-                            .OrderBy(a => Array.IndexOf(criticalIds, a.Id)));
+                    // Update collections on UI thread for proper CollectionChanged events
+                    Console.WriteLine($"[SMART] Updating collections on UI thread...");
+                    await Dispatcher.UIThread.InvokeAsync(() =>
+                    {
+                        Console.WriteLine($"[SMART] Inside UI thread, attributes count: {attributes?.Count ?? -1}");
+                        SmartAttributes.Clear();
+                        if (attributes != null)
+                        {
+                            foreach (var attr in attributes)
+                                SmartAttributes.Add(attr);
+                        }
+                        Console.WriteLine($"[SMART] SmartAttributes now has {SmartAttributes.Count} items");
+                        
+                        var criticalIds = new[] { 5, 177, 179, 181, 182, 187, 188, 190, 194, 195, 196, 197, 198, 199, 231, 233 };
+                        CriticalAttributes.Clear();
+                        if (attributes != null)
+                        {
+                            foreach (var attr in attributes.Where(a => criticalIds.Contains(a.Id))
+                                .OrderBy(a => Array.IndexOf(criticalIds, a.Id)))
+                            {
+                                CriticalAttributes.Add(attr);
+                            }
+                        }
+                        Console.WriteLine($"[SMART] CriticalAttributes now has {CriticalAttributes.Count} items");
+                    });
                     System.Diagnostics.Debug.WriteLine($"Found {CriticalAttributes.Count} critical attributes");
                 }
                 catch (Exception ex)
                 {
+                    Console.WriteLine($"[SMART] ERROR loading attributes: {ex.Message}");
+                    Console.WriteLine($"[SMART] Stack trace: {ex.StackTrace}");
                     System.Diagnostics.Debug.WriteLine($"Error loading SMART attributes: {ex.Message}");
-                    // Attributes not supported
                 }
                 
                 try
                 {
                     var log = await advancedProvider.GetSelfTestLogAsync(devicePath);
-                    SelfTestLog = new ObservableCollection<SmartaSelfTestEntry>(log);
+                    await Dispatcher.UIThread.InvokeAsync(() =>
+                    {
+                        SelfTestLog.Clear();
+                        foreach (var entry in log)
+                            SelfTestLog.Add(entry);
+                    });
                     
-                    // Check for running test
                     var status = await advancedProvider.GetSelfTestStatusAsync(devicePath);
                     if (status == SmartaSelfTestStatus.InProgress)
                     {
@@ -553,6 +669,9 @@ public partial class SmartCheckViewModel : ViewModelBase, INavigableViewModel
             
             UpdateComputedProperties();
             StatusMessage = $"SMART načten: {CurrentSmartData?.HealthStatus ?? "-"}";
+            
+            // Load raw smartctl output
+            _ = RefreshRawOutput();
         }
         catch (Exception ex)
         {
@@ -682,16 +801,13 @@ public partial class SmartCheckViewModel : ViewModelBase, INavigableViewModel
             return;
         }
 
-        var confirmed = await _dialogService.ShowConfirmationAsync("Potvrzení", 
-            $"Opravdu chcete spustit {testName} self-test na disku:\n\n{SelectedDisk.DisplayName}\n\n" +
-            "Během testu může být disk nedostupný.");
-        
-        if (!confirmed) return;
+        var result = await ShowSelfTestConfirmationAsync(testName);
+        if (result == SelfTestConfirmationResult.Cancel) return;
 
         try
         {
             IsChecking = true;
-            StatusMessage = $"Spouštím {testName} self-test...";
+            StatusMessage = "Spouštím " + testName + " self-test...";
             
             if (_smartaProvider is IAdvancedSmartaProvider advancedProvider)
             {
@@ -699,26 +815,25 @@ public partial class SmartCheckViewModel : ViewModelBase, INavigableViewModel
                 
                 if (success)
                 {
-                    StatusMessage = $"✅ {testName.Capitalize()} self-test spuštěn";
-                    await _dialogService.ShowMessageAsync("Self-Test", 
-                        $"{testName.Capitalize()} self-test byl úspěšně spuštěn.\n\n" +
-                        "Výsledek zkontrolujte obnovením dat za několik minut.");
-                    // Clear SMART cache for this device and serial so subsequent reads return fresh data
+                    StatusMessage = "✅ " + testName.Capitalize() + " self-test spuštěn";
+                    
                     try
                     {
                         await advancedProvider.RemoveSmartCacheForDeviceAsync(SelectedDisk.Drive.Path);
                         if (!string.IsNullOrWhiteSpace(CurrentSmartData?.SerialNumber))
-                        {
                             await advancedProvider.RemoveSmartCacheForSerialAsync(CurrentSmartData.SerialNumber);
-                        }
-                        var stats = await advancedProvider.GetSmartCacheStatsAsync();
-                        SmartCacheStats = $"Cache: hits={stats.Hits} misses={stats.Misses} items={stats.Items}";
-                        SmartCacheInfo = "Cache vymazána pro tento disk";
                     }
-                    catch (Exception ex)
+                    catch { }
+                    
+                    if (result == SelfTestConfirmationResult.StartWithPolling)
                     {
-                        // Do not block user flow on cache errors, just log
-                        System.Diagnostics.Debug.WriteLine($"Failed to clear SMART cache: {ex.Message}");
+                        _ = StartPollingSelfTestProgressCommand.ExecuteAsync(null);
+                    }
+                    else
+                    {
+                        await _dialogService.ShowSuccessAsync("Self-Test", 
+                            testName.Capitalize() + " self-test byl úspěšně spuštěn.\n\n" +
+                            "Výsledek zkontrolujte obnovením dat za několik minut.");
                     }
                 }
                 else
@@ -737,7 +852,7 @@ public partial class SmartCheckViewModel : ViewModelBase, INavigableViewModel
         }
         catch (Exception ex)
         {
-            StatusMessage = $"Chyba: {ex.Message}";
+            StatusMessage = "Chyba: " + ex.Message;
             await _dialogService.ShowErrorAsync("Chyba", ex.Message);
         }
         finally
@@ -746,7 +861,34 @@ public partial class SmartCheckViewModel : ViewModelBase, INavigableViewModel
         }
     }
 
-    private async Task AbortTestAsync()
+
+    // Self-test confirmation result
+    private enum SelfTestConfirmationResult { Cancel, Start, StartWithPolling }
+    
+    private async Task<SelfTestConfirmationResult> ShowSelfTestConfirmationAsync(string testName)
+    {
+        var message = "Spustit " + testName + " self-test na disku:\n\n" +
+                      "📋 " + (SelectedDisk?.DisplayName ?? "Neznámý") + "\n\n" +
+                      "Možnosti:\n" +
+                      "• Spustit - jen spustí test\n" +
+                      "• Spustit s monitoringem - sleduje průběh\n\n" +
+                      "⚠️ Během testu může být disk dočasně nedostupný.";
+        
+        var confirmed = await _dialogService.ShowConfirmationAsync(
+            "Spustit " + testName + " self-test?", 
+            message);
+        
+        if (!confirmed) return SelfTestConfirmationResult.Cancel;
+        
+        var wantPolling = await _dialogService.ShowConfirmationAsync(
+            "Sledovat průběh?",
+            "Chcete sledovat průběh self-testu v reálném čase?\n\n" +
+            "Aplikace bude kontrolovat stav testu každých 5 sekund.");
+        
+        return wantPolling ? SelfTestConfirmationResult.StartWithPolling : SelfTestConfirmationResult.Start;
+    }
+
+private async Task AbortTestAsync()
     {
         if (SelectedDisk?.Drive == null) return;
 
@@ -775,7 +917,101 @@ public partial class SmartCheckViewModel : ViewModelBase, INavigableViewModel
         }
     }
 
-    private void UpdateComputedProperties()
+    
+    [RelayCommand]
+    private async Task RefreshRawOutput()
+    {
+        if (SelectedDisk?.Drive == null) return;
+        
+        try
+        {
+            var devicePath = SelectedDisk.Drive.Path;
+            var driveNumber = new string(devicePath.Where(char.IsDigit).ToArray());
+            
+            if (string.IsNullOrEmpty(driveNumber)) return;
+            
+            // Find smartctl
+            string? smartctlPath = null;
+            var commonPaths = new[] 
+            { 
+                @"C:\Program Files\smartmontools\bin\smartctl.exe",
+                @"C:\Program Files (x86)\smartmontools\bin\smartctl.exe",
+                @"C:\ProgramData\chocolatey\bin\smartctl.exe"
+            };
+            
+            foreach (var p in commonPaths)
+            {
+                if (File.Exists(p)) { smartctlPath = p; break; }
+            }
+            
+            if (smartctlPath == null)
+            {
+                // Check PATH
+                try
+                {
+                    var psi = new ProcessStartInfo 
+                    { 
+                        FileName = "where", 
+                        Arguments = "smartctl", 
+                        RedirectStandardOutput = true, 
+                        UseShellExecute = false, 
+                        CreateNoWindow = true 
+                    };
+                    using var proc = Process.Start(psi);
+                    if (proc != null)
+                    {
+                        await proc.WaitForExitAsync();
+                        if (proc.ExitCode == 0)
+                        {
+                            var output = await proc.StandardOutput.ReadToEndAsync();
+                            smartctlPath = output.Trim().Split('\n')[0].Trim();
+                        }
+                    }
+                }
+                catch { }
+            }
+            
+            if (smartctlPath == null)
+            {
+                RawSmartOutput = "smartctl nenalezen. Nainstalujte smartmontools.";
+                return;
+            }
+            
+            // Run smartctl -a /dev/pdN
+            var devPath = "/dev/pd" + driveNumber;
+            var startInfo = new ProcessStartInfo
+            {
+                FileName = smartctlPath,
+                Arguments = "-a " + devPath,
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                UseShellExecute = false,
+                CreateNoWindow = true
+            };
+            
+            using var process = Process.Start(startInfo);
+            if (process == null) return;
+            
+            var stdout = await process.StandardOutput.ReadToEndAsync();
+            var stderr = await process.StandardError.ReadToEndAsync();
+            await process.WaitForExitAsync();
+            
+            var output2 = stdout;
+            if (!string.IsNullOrEmpty(stderr) && !stderr.Contains("smartctl"))
+                output2 += "\n\n--- Errors ---\n" + stderr;
+            
+            await Dispatcher.UIThread.InvokeAsync(() =>
+            {
+                RawSmartOutput = output2;
+            });
+        }
+        catch (Exception ex)
+        {
+            RawSmartOutput = "Chyba: " + ex.Message;
+        }
+    }
+
+private void UpdateComputedProperties()
     {
         OnPropertyChanged(nameof(DeviceModel));
         OnPropertyChanged(nameof(SerialNumber));
@@ -793,10 +1029,107 @@ public partial class SmartCheckViewModel : ViewModelBase, INavigableViewModel
         OnPropertyChanged(nameof(TempColor));
         OnPropertyChanged(nameof(HealthColor));
         OnPropertyChanged(nameof(IsNvMe));
+        OnPropertyChanged(nameof(IsSelfTestRunning));
+        OnPropertyChanged(nameof(CanRunSelfTest));
+        OnPropertyChanged(nameof(SelfTestProgress));
+        OnPropertyChanged(nameof(SelfTestProgressText));
+        OnPropertyChanged(nameof(SelfTestTypeText));
         OnPropertyChanged(nameof(NvMePercentageUsed));
         OnPropertyChanged(nameof(NvMeMediaErrors));
         OnPropertyChanged(nameof(NvMeUnsafeShutdowns));
     }
+
+    [RelayCommand]
+    private async Task StartPollingSelfTestProgress()
+    {
+        if (SelectedDisk?.Drive == null) return;
+        
+        _selfTestPollingCts?.Cancel();
+        _selfTestPollingCts = new CancellationTokenSource();
+        var token = _selfTestPollingCts.Token;
+        
+        try
+        {
+            IsSelfTestRunning = true;
+            SelfTestProgressText = "Self-test probíhá...";
+            StatusMessage = "⏳ Self-test probíhá, sleduji průběh...";
+            
+            while (!token.IsCancellationRequested)
+            {
+                await Task.Delay(5000, token); // Poll every 5 seconds
+                
+                if (_smartaProvider is IAdvancedSmartaProvider advancedProvider)
+                {
+                    try
+                    {
+                        var status = await advancedProvider.GetSelfTestStatusAsync(SelectedDisk.Drive.Path);
+                        
+                        if (status == SmartaSelfTestStatus.InProgress)
+                        {
+                            // Try to get progress from raw output
+                            await RefreshRawOutput();
+                            
+                            // Parse progress from RawSmartOutput
+                            var progressMatch = System.Text.RegularExpressions.Regex.Match(
+                                RawSmartOutput, 
+                                @"(\d+)\s*%\s*(?:of test )?remaining",
+                                System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+                            
+                            if (progressMatch.Success && int.TryParse(progressMatch.Groups[1].Value, out var remainingPercent))
+                            {
+                                SelfTestProgress = 100 - remainingPercent;
+                                SelfTestProgressText = $"Self-test probíhá: {SelfTestProgress}% dokončeno";
+                                StatusMessage = $"⏳ Self-test: {SelfTestProgress}% dokončeno ({remainingPercent}% zbývá)";
+                            }
+                            else
+                            {
+                                // Check for "in progress" without percentage
+                                if (RawSmartOutput.Contains("in progress", System.StringComparison.OrdinalIgnoreCase))
+                                {
+                                    SelfTestProgressText = "Self-test probíhá...";
+                                    StatusMessage = "⏳ Self-test probíhá...";
+                                }
+                            }
+                        }
+                        else
+                        {
+                            // Test completed
+                            IsSelfTestRunning = false;
+                            SelfTestProgress = 100;
+                            SelfTestProgressText = "Self-test dokončen";
+                            StatusMessage = "✅ Self-test dokončen";
+                            
+                            // Refresh data
+                            await RefreshCommand.ExecuteAsync(null);
+                            break;
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        Console.WriteLine($"[SMART] Polling error: {ex.Message}");
+                    }
+                }
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            // Polling cancelled
+        }
+        finally
+        {
+            IsSelfTestRunning = false;
+        }
+    }
+
+    private void StopPollingSelfTestProgress()
+    {
+        _selfTestPollingCts?.Cancel();
+        _selfTestPollingCts?.Dispose();
+        _selfTestPollingCts = null;
+        IsSelfTestRunning = false;
+    }
+
+
 
     private static bool IsSystemDisk(CoreDriveInfo drive)
     {
@@ -872,7 +1205,14 @@ public partial class SmartCheckViewModel : ViewModelBase, INavigableViewModel
     }
 
     #endregion
+    public void Dispose()
+    {
+        _selfTestPollingCts?.Cancel();
+        _selfTestPollingCts?.Dispose();
+        GC.SuppressFinalize(this);
+    }
 }
+
 
 public static class StringExtensions
 {

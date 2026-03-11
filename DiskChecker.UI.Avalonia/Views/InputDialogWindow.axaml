@@ -1,0 +1,113 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Class="DiskChecker.UI.Avalonia.Views.InputDialogWindow"
+        Title="{Binding DialogTitle}"
+        Width="450"
+        SizeToContent="Height"
+        MinHeight="180"
+        WindowStartupLocation="CenterOwner"
+        Background="#F8FAFC"
+        CanResize="False">
+    
+    <Border Background="#F8FAFC" 
+            BorderBrush="#E2E8F0" 
+            BorderThickness="1">
+        <Grid>
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="Auto"/>
+            </Grid.RowDefinitions>
+            
+            <!-- Header -->
+            <Border Grid.Row="0" 
+                    Background="#EFF6FF"
+                    Padding="20,16">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="*"/>
+                    </Grid.ColumnDefinitions>
+                    
+                    <Border Grid.Column="0" 
+                            Background="#DBEAFE"
+                            CornerRadius="8"
+                            Padding="10"
+                            Margin="0,0,16,0">
+                        <TextBlock Text="✎" 
+                                   FontSize="24"
+                                   Foreground="#2563EB"/>
+                    </Border>
+                    
+                    <TextBlock Grid.Column="1" 
+                               Text="{Binding DialogTitle}" 
+                               FontSize="18" 
+                               FontWeight="Bold"
+                               Foreground="#1E293B"
+                               VerticalAlignment="Center"/>
+                </Grid>
+            </Border>
+            
+            <!-- Content -->
+            <Border Grid.Row="1" Padding="24,20">
+                <StackPanel Spacing="16">
+                    <TextBlock Text="{Binding Message}" 
+                               FontSize="14" 
+                               Foreground="#334155"
+                               TextWrapping="Wrap"/>
+                    
+                    <TextBox Text="{Binding InputText}"
+                             Watermark="{Binding Placeholder}"
+                             FontSize="14"
+                             Padding="12,8"
+                             CornerRadius="8"
+                             BorderBrush="#CBD5E1"
+                             BorderThickness="1">
+                        <TextBox.Styles>
+                            <Style Selector="TextBox:focus">
+                                <Setter Property="BorderBrush" Value="#2563EB"/>
+                            </Style>
+                        </TextBox.Styles>
+                    </TextBox>
+                </StackPanel>
+            </Border>
+            
+            <!-- Buttons -->
+            <Border Grid.Row="2" 
+                    Background="#F1F5F9"
+                    Padding="20,16">
+                <StackPanel Orientation="Horizontal" 
+                            HorizontalAlignment="Right" 
+                            Spacing="12">
+                    
+                    <Button Content="Zrušit"
+                            Command="{Binding CancelCommand}"
+                            Background="#FFFFFF"
+                            Foreground="#475569"
+                            BorderBrush="#CBD5E1"
+                            BorderThickness="1"
+                            Padding="20,10"
+                            CornerRadius="8"
+                            Cursor="Hand"/>
+                    
+                    <Button Content="OK"
+                            Command="{Binding OkCommand}"
+                            Background="#2563EB"
+                            Foreground="White"
+                            BorderThickness="0"
+                            Padding="24,10"
+                            CornerRadius="8"
+                            FontWeight="SemiBold"
+                            Cursor="Hand">
+                        <Button.Styles>
+                            <Style Selector="Button:pointerover">
+                                <Setter Property="Background" Value="#1D4ED8"/>
+                            </Style>
+                        </Button.Styles>
+                    </Button>
+                    
+                </StackPanel>
+            </Border>
+        </Grid>
+    </Border>
+</Window>

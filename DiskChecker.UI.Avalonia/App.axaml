@@ -38,5 +38,10 @@
         <!-- Lock converters for disk protection -->
         <converters:LockTextConverter x:Key="LockTextConverter"/>
         <converters:LockButtonConverter x:Key="LockButtonConverter"/>
+        <!-- Speed converter for graph -->
+        <converters:SpeedToHeightConverter x:Key="SpeedToHeightConverter"/>
+        <!-- Int to bool converter -->
+        <converters:IntToBoolConverter x:Key="IntToBoolConverter"/>
+        <converters:IntToBoolConverter x:Key="InvertedIntToBoolConverter" Invert="True"/>
     </Application.Resources>
 </Application>

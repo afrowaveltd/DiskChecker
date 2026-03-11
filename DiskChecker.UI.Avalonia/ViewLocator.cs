@@ -22,7 +22,6 @@ public class ViewLocator : IDataTemplate
         var name = param.GetType().FullName!;
         
         // Convert namespace from ViewModels to Views and class name from ViewModel to View
-        // e.g., DiskChecker.UI.Avalonia.ViewModels.DiskSelectionViewModel -> DiskChecker.UI.Avalonia.Views.DiskSelectionView
         name = name.Replace(".ViewModels.", ".Views.", StringComparison.Ordinal);
         name = name.Replace("ViewModel", "View", StringComparison.Ordinal);
         

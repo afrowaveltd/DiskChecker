@@ -11,7 +11,6 @@ namespace DiskChecker.UI.Avalonia.Services;
 /// </summary>
 public class NavigationService : INavigationService
 {
-    private readonly Dictionary<Type, Type> _viewModelToViewMap = new();
     private readonly Dictionary<Type, object> _viewModels = new();
     private readonly IServiceProvider _serviceProvider;
 
@@ -28,14 +27,14 @@ public class NavigationService : INavigationService
         where TViewModel : ViewModelBase
         where TView : UserControl
     {
-        _viewModelToViewMap[typeof(TViewModel)] = typeof(TView);
+        // View resolution is done via ViewLocator
     }
 
     public void NavigateTo<T>() where T : ViewModelBase
     {
         var viewModelType = typeof(T);
         
-        // Singleton instance management
+        // Get or create ViewModel instance
         if (!_viewModels.TryGetValue(viewModelType, out var instance))
         {
             instance = _serviceProvider.GetService(viewModelType) ?? Activator.CreateInstance(viewModelType);
@@ -44,7 +43,7 @@ public class NavigationService : INavigationService
 
         var viewModel = (T)instance!;
         
-        // Notify current view model that it's being navigated away from
+        // Dispose previous ViewModel if needed
         if (CurrentViewModel is IDisposable disposable)
         {
             disposable.Dispose();
@@ -52,7 +51,7 @@ public class NavigationService : INavigationService
 
         CurrentViewModel = viewModel;
         
-        // Notify new view model that it's being navigated to
+        // Notify navigation
         if (viewModel is INavigableViewModel navigableViewModel)
         {
             navigableViewModel.OnNavigatedTo();

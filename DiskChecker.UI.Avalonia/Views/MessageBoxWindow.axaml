@@ -2,33 +2,132 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         x:Class="DiskChecker.UI.Avalonia.Views.MessageBoxWindow"
         Title="{Binding MessageTitle}"
-        Width="400"
-        Height="200"
+        Width="480"
+        SizeToContent="Height"
+        MinHeight="150"
+        MaxHeight="400"
         WindowStartupLocation="CenterOwner"
-        Background="{DynamicResource ThemeBackgroundBrush}">
+        Background="#F8FAFC"
+        CanResize="False">
+    
+    <Window.Styles>
+        <Style Selector="Button.primary">
+            <Setter Property="Background" Value="#2563EB"/>
+            <Setter Property="Foreground" Value="White"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="Padding" Value="24,10"/>
+            <Setter Property="CornerRadius" Value="8"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="Cursor" Value="Hand"/>
+        </Style>
+        <Style Selector="Button.primary:pointerover /template/ ContentPresenter">
+            <Setter Property="Background" Value="#1D4ED8"/>
+        </Style>
+        
+        <Style Selector="Button.secondary">
+            <Setter Property="Background" Value="#FFFFFF"/>
+            <Setter Property="Foreground" Value="#475569"/>
+            <Setter Property="BorderBrush" Value="#CBD5E1"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="Padding" Value="20,10"/>
+            <Setter Property="CornerRadius" Value="8"/>
+            <Setter Property="Cursor" Value="Hand"/>
+        </Style>
+        <Style Selector="Button.secondary:pointerover /template/ ContentPresenter">
+            <Setter Property="Background" Value="#F8FAFC"/>
+        </Style>
+        
+        <Style Selector="Button.danger">
+            <Setter Property="Background" Value="#DC2626"/>
+            <Setter Property="Foreground" Value="White"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="Padding" Value="24,10"/>
+            <Setter Property="CornerRadius" Value="8"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="Cursor" Value="Hand"/>
+        </Style>
+        <Style Selector="Button.danger:pointerover /template/ ContentPresenter">
+            <Setter Property="Background" Value="#B91C1C"/>
+        </Style>
+    </Window.Styles>
+    
     <Grid>
         <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
             <RowDefinition Height="*"/>
             <RowDefinition Height="Auto"/>
         </Grid.RowDefinitions>
-
-        <StackPanel Grid.Row="0" Orientation="Horizontal" Margin="20" HorizontalAlignment="Left">
-            <TextBlock Text="{Binding MessageIcon}" FontSize="32" Margin="0,0,15,0" VerticalAlignment="Top"/>
-            <TextBlock Text="{Binding Message}" 
-                       TextWrapping="Wrap" 
-                       VerticalAlignment="Center" 
-                       FontSize="14"/>
-        </StackPanel>
-
-        <StackPanel Grid.Row="1" Orientation="Horizontal" HorizontalAlignment="Right" Margin="20">
-            <Button Name="YesButton" Content="Ano" IsVisible="{Binding ShowYesNo}" 
-                    Click="YesButton_Click" Margin="0,0,10,0" Width="75"/>
-            <Button Name="NoButton" Content="Ne" IsVisible="{Binding ShowYesNo}" 
-                    Click="NoButton_Click" Margin="0,0,10,0" Width="75"/>
-            <Button Name="OKButton" Content="OK" IsVisible="{Binding ShowOK}" 
-                    Click="OKButton_Click" Width="75"/>
-            <Button Name="CancelButton" Content="Zrušit" IsVisible="{Binding ShowCancel}" 
-                    Click="CancelButton_Click" Margin="0,0,10,0" Width="75"/>
-        </StackPanel>
+        
+        <!-- Header with icon and title -->
+        <Border Grid.Row="0" 
+                Background="#EFF6FF"
+                Padding="20,16">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="*"/>
+                </Grid.ColumnDefinitions>
+                
+                <!-- Icon -->
+                <Border Grid.Column="0" 
+                        Background="#DBEAFE"
+                        CornerRadius="8"
+                        Padding="10"
+                        Margin="0,0,16,0">
+                    <TextBlock Text="{Binding MessageIcon}" 
+                               FontSize="24"
+                               VerticalAlignment="Center"
+                               HorizontalAlignment="Center"/>
+                </Border>
+                
+                <!-- Title -->
+                <TextBlock Grid.Column="1" 
+                           Text="{Binding MessageTitle}" 
+                           FontSize="18" 
+                           FontWeight="Bold"
+                           Foreground="#1E293B"
+                           VerticalAlignment="Center"
+                           TextWrapping="Wrap"/>
+            </Grid>
+        </Border>
+        
+        <!-- Message content -->
+        <Border Grid.Row="1" Padding="24,20">
+            <ScrollViewer MaxHeight="200">
+                <TextBlock Text="{Binding Message}" 
+                           FontSize="14" 
+                           Foreground="#334155"
+                           TextWrapping="Wrap"/>
+            </ScrollViewer>
+        </Border>
+        
+        <!-- Buttons -->
+        <Border Grid.Row="2" 
+                Background="#F1F5F9"
+                Padding="20,16">
+            <StackPanel Orientation="Horizontal" 
+                        HorizontalAlignment="Right" 
+                        Spacing="12">
+                
+                <!-- Cancel button -->
+                <Button Content="Zrušit"
+                        IsVisible="{Binding ShowCancel}"
+                        Command="{Binding CancelCommand}"
+                        Classes="secondary"/>
+                
+                <!-- No button -->
+                <Button Content="Ne"
+                        IsVisible="{Binding ShowNoButton}"
+                        Command="{Binding NoCommand}"
+                        Classes="secondary"/>
+                
+                <!-- Primary button (OK/Yes) -->
+                <Button Content="{Binding PrimaryButtonText}"
+                        IsVisible="{Binding ShowPrimary}"
+                        Command="{Binding PrimaryCommand}"
+                        Classes="primary"/>
+                
+            </StackPanel>
+        </Border>
     </Grid>
 </Window>

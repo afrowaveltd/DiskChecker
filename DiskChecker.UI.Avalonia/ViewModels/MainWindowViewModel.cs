@@ -64,7 +64,7 @@ public partial class MainWindowViewModel : ViewModelBase
     private void NavigateToReport()
     {
         _navigationService.NavigateTo<ReportViewModel>();
-        StatusMessage = "Naviguji na reporty...";
+        StatusMessage = "Naviguji na report...";
     }
 
     [RelayCommand]
@@ -79,34 +79,6 @@ public partial class MainWindowViewModel : ViewModelBase
     {
         _navigationService.NavigateTo<SettingsViewModel>();
         StatusMessage = "Naviguji na nastavení...";
-    }
-
-    [RelayCommand]
-    private void NavigateToDiskCards()
-    {
-        _navigationService.NavigateTo<DiskCardsViewModel>();
-        StatusMessage = "Naviguji na karty disků...";
-    }
-
-    [RelayCommand]
-    private void NavigateToDiskCardDetail()
-    {
-        _navigationService.NavigateTo<DiskCardDetailViewModel>();
-        StatusMessage = "Naviguji na detail disku...";
-    }
-
-    [RelayCommand]
-    private void NavigateToCertificate()
-    {
-        _navigationService.NavigateTo<CertificateViewModel>();
-        StatusMessage = "Naviguji na certifikát...";
-    }
-
-    [RelayCommand]
-    private void NavigateToDiskComparison()
-    {
-        _navigationService.NavigateTo<DiskComparisonViewModel>();
-        StatusMessage = "Naviguji na porovnání disků...";
     }
 
     private void OnNavigated(object? sender, NavigationEventArgs e)
