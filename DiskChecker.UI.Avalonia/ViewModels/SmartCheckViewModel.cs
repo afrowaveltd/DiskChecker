@@ -10,6 +10,7 @@ using System.Diagnostics;
 using System.Globalization;
 using System.IO;
 using System.Linq;
+using System.Runtime.InteropServices;
 using System.Threading;
 using System.Threading.Tasks;
 using Avalonia.Threading;
@@ -208,6 +209,7 @@ public string SelectedTestType
     private string _selfTestTypeText = "";
     private bool _isSelfTestRunning;
     private CancellationTokenSource? _selfTestPollingCts;
+    private bool _wasTestInProgress; // Track if test was running to detect completion
     
     public int SelfTestProgress
     {
@@ -926,59 +928,36 @@ private async Task AbortTestAsync()
         try
         {
             var devicePath = SelectedDisk.Drive.Path;
-            var driveNumber = new string(devicePath.Where(char.IsDigit).ToArray());
             
-            if (string.IsNullOrEmpty(driveNumber)) return;
-            
-            // Find smartctl
-            string? smartctlPath = null;
-            var commonPaths = new[] 
-            { 
-                @"C:\Program Files\smartmontools\bin\smartctl.exe",
-                @"C:\Program Files (x86)\smartmontools\bin\smartctl.exe",
-                @"C:\ProgramData\chocolatey\bin\smartctl.exe"
-            };
-            
-            foreach (var p in commonPaths)
-            {
-                if (File.Exists(p)) { smartctlPath = p; break; }
-            }
+            // Find smartctl - cross-platform
+            string? smartctlPath = await FindSmartctlPathAsync();
             
             if (smartctlPath == null)
             {
-                // Check PATH
-                try
-                {
-                    var psi = new ProcessStartInfo 
-                    { 
-                        FileName = "where", 
-                        Arguments = "smartctl", 
-                        RedirectStandardOutput = true, 
-                        UseShellExecute = false, 
-                        CreateNoWindow = true 
-                    };
-                    using var proc = Process.Start(psi);
-                    if (proc != null)
-                    {
-                        await proc.WaitForExitAsync();
-                        if (proc.ExitCode == 0)
-                        {
-                            var output = await proc.StandardOutput.ReadToEndAsync();
-                            smartctlPath = output.Trim().Split('\n')[0].Trim();
-                        }
-                    }
-                }
-                catch { }
-            }
-            
-            if (smartctlPath == null)
-            {
-                RawSmartOutput = "smartctl nenalezen. Nainstalujte smartmontools.";
+                RawSmartOutput = "smartctl nenalezen. Nainstalujte smartmontools.\n" +
+                    "Windows: winget install smartmontools\n" +
+                    "Linux: sudo apt install smartmontools nebo sudo dnf install smartmontools";
                 return;
             }
             
-            // Run smartctl -a /dev/pdN
-            var devPath = "/dev/pd" + driveNumber;
+            // Determine device path for smartctl
+            string devPath;
+            if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+            {
+                // Windows: use /dev/pdN format for Cygwin/MSYS smartctl
+                var driveNumber = new string(devicePath.Where(char.IsDigit).ToArray());
+                if (string.IsNullOrEmpty(driveNumber))
+                {
+                    driveNumber = "0";
+                }
+                devPath = "/dev/pd" + driveNumber;
+            }
+            else
+            {
+                // Linux: use device path directly (/dev/sda, /dev/nvme0, etc.)
+                devPath = devicePath;
+            }
+            
             var startInfo = new ProcessStartInfo
             {
                 FileName = smartctlPath,
@@ -1009,6 +988,120 @@ private async Task AbortTestAsync()
         {
             RawSmartOutput = "Chyba: " + ex.Message;
         }
+    }
+    
+    private static string? s_cachedSmartctlPath;
+    
+    private static async Task<string?> FindSmartctlPathAsync()
+    {
+        // Check cache first
+        if (s_cachedSmartctlPath != null && File.Exists(s_cachedSmartctlPath))
+            return s_cachedSmartctlPath;
+        
+        string[] commonPaths;
+        string searchCommand;
+        string searchArgs;
+        
+        if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+        {
+            commonPaths = new[] 
+            { 
+                @"C:\Program Files\smartmontools\bin\smartctl.exe",
+                @"C:\Program Files (x86)\smartmontools\bin\smartctl.exe",
+                @"C:\ProgramData\chocolatey\bin\smartctl.exe",
+                @"C:\tools\smartmontools\smartctl.exe"
+            };
+            searchCommand = "where";
+            searchArgs = "smartctl";
+        }
+        else
+        {
+            // Linux paths
+            commonPaths = new[]
+            {
+                "/usr/sbin/smartctl",
+                "/usr/bin/smartctl",
+                "/usr/local/sbin/smartctl",
+                "/usr/local/bin/smartctl",
+                "/sbin/smartctl",
+                "/bin/smartctl"
+            };
+            searchCommand = "/usr/bin/which";
+            searchArgs = "smartctl";
+        }
+        
+        // Check known paths first
+        foreach (var path in commonPaths)
+        {
+            if (File.Exists(path))
+            {
+                s_cachedSmartctlPath = path;
+                return path;
+            }
+        }
+        
+        // Try search command
+        try
+        {
+            var psi = new ProcessStartInfo 
+            { 
+                FileName = searchCommand, 
+                Arguments = searchArgs, 
+                RedirectStandardOutput = true, 
+                UseShellExecute = false, 
+                CreateNoWindow = true 
+            };
+            using var proc = Process.Start(psi);
+            if (proc != null)
+            {
+                var output = await proc.StandardOutput.ReadToEndAsync();
+                await proc.WaitForExitAsync();
+                if (proc.ExitCode == 0)
+                {
+                    var path = output.Trim().Split('\n')[0].Trim();
+                    if (File.Exists(path))
+                    {
+                        s_cachedSmartctlPath = path;
+                        return path;
+                    }
+                }
+            }
+        }
+        catch { }
+        
+        // Linux fallback: try command -v
+        if (!RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+        {
+            try
+            {
+                var psi = new ProcessStartInfo 
+                { 
+                    FileName = "/bin/sh", 
+                    Arguments = "-c \"command -v smartctl\"", 
+                    RedirectStandardOutput = true, 
+                    UseShellExecute = false, 
+                    CreateNoWindow = true 
+                };
+                using var proc = Process.Start(psi);
+                if (proc != null)
+                {
+                    var output = await proc.StandardOutput.ReadToEndAsync();
+                    await proc.WaitForExitAsync();
+                    if (!string.IsNullOrWhiteSpace(output))
+                    {
+                        var path = output.Trim();
+                        if (File.Exists(path))
+                        {
+                            s_cachedSmartctlPath = path;
+                            return path;
+                        }
+                    }
+                }
+            }
+            catch { }
+        }
+        
+        return null;
     }
 
 private void UpdateComputedProperties()
@@ -1044,83 +1137,274 @@ private void UpdateComputedProperties()
     {
         if (SelectedDisk?.Drive == null) return;
         
+        Console.WriteLine($"[SMART] Starting polling for: {SelectedDisk.Drive.Path}");
+        
+        _wasTestInProgress = false; // Reset at start
         _selfTestPollingCts?.Cancel();
         _selfTestPollingCts = new CancellationTokenSource();
         var token = _selfTestPollingCts.Token;
         
-        try
+        // Set UI state immediately on UI thread
+        await Dispatcher.UIThread.InvokeAsync(() =>
         {
             IsSelfTestRunning = true;
-            SelfTestProgressText = "Self-test probíhá...";
-            StatusMessage = "⏳ Self-test probíhá, sleduji průběh...";
-            
+            SelfTestProgress = 0;
+            SelfTestProgressText = "Self-test spuštěn...";
+            StatusMessage = "⏳ Self-test spuštěn, kontroluji stav...";
+            Console.WriteLine($"[SMART] UI state set: IsSelfTestRunning={IsSelfTestRunning}");
+        });
+        
+        // Give the drive a moment to start the test before first check
+        await Task.Delay(2000, token);
+        
+        // Poll every 2 seconds
+        var pollInterval = TimeSpan.FromSeconds(2);
+        var maxPollTime = TimeSpan.FromMinutes(30);
+        var startTime = DateTime.Now;
+        var consecutiveUnknowns = 0;
+        const int maxUnknownCount = 5; // Allow up to 5 unknown status before finishing
+        
+        try
+        {
             while (!token.IsCancellationRequested)
             {
-                await Task.Delay(5000, token); // Poll every 5 seconds
+                // Check timeout
+                if (DateTime.Now - startTime > maxPollTime)
+                {
+                    await Dispatcher.UIThread.InvokeAsync(() =>
+                    {
+                        StatusMessage = "⏰ Timeout - self-test trvá příliš dlouho";
+                    });
+                    break;
+                }
                 
                 if (_smartaProvider is IAdvancedSmartaProvider advancedProvider)
                 {
                     try
                     {
+                        Console.WriteLine($"[SMART] Polling: Getting status for {SelectedDisk.Drive.Path}");
                         var status = await advancedProvider.GetSelfTestStatusAsync(SelectedDisk.Drive.Path);
+                        Console.WriteLine($"[SMART] Polling: Status = {status}");
                         
                         if (status == SmartaSelfTestStatus.InProgress)
                         {
-                            // Try to get progress from raw output
+                            consecutiveUnknowns = 0; // Reset counter since we have a valid status
+                            _wasTestInProgress = true; // Mark that we've seen a test running
+                            Console.WriteLine("[SMART] Test is in progress, getting raw output");
+                            // Test is running - try to get progress
                             await RefreshRawOutput();
                             
                             // Parse progress from RawSmartOutput
-                            var progressMatch = System.Text.RegularExpressions.Regex.Match(
+                            // Try multiple patterns for different smartctl output formats:
+                            // 1. "X% remaining" (ATA format)
+                            // 2. "X% completed" or "X% complete" (NVMe format)
+                            // 3. "Self-test in progress" without percentage
+                            
+                            var remainingMatch = System.Text.RegularExpressions.Regex.Match(
                                 RawSmartOutput, 
                                 @"(\d+)\s*%\s*(?:of test )?remaining",
                                 System.Text.RegularExpressions.RegexOptions.IgnoreCase);
                             
-                            if (progressMatch.Success && int.TryParse(progressMatch.Groups[1].Value, out var remainingPercent))
+                            var completedMatch = System.Text.RegularExpressions.Regex.Match(
+                                RawSmartOutput,
+                                @"(?:in progress|running)[^\d]*(\d+)\s*%\s*(?:completed|complete)",
+                                System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+                            
+                            // Also try simpler pattern for progress percentage near "in progress"
+                            var simpleProgressMatch = System.Text.RegularExpressions.Regex.Match(
+                                RawSmartOutput,
+                                @"(\d+)\s*%\s*(?:completed|complete)",
+                                System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+                            
+                            await Dispatcher.UIThread.InvokeAsync(() =>
                             {
-                                SelfTestProgress = 100 - remainingPercent;
-                                SelfTestProgressText = $"Self-test probíhá: {SelfTestProgress}% dokončeno";
-                                StatusMessage = $"⏳ Self-test: {SelfTestProgress}% dokončeno ({remainingPercent}% zbývá)";
-                            }
-                            else
-                            {
-                                // Check for "in progress" without percentage
-                                if (RawSmartOutput.Contains("in progress", System.StringComparison.OrdinalIgnoreCase))
+                                if (remainingMatch.Success && int.TryParse(remainingMatch.Groups[1].Value, out var remainingPercent))
+                                {
+                                    // ATA format: "X% remaining"
+                                    SelfTestProgress = 100 - remainingPercent;
+                                    SelfTestProgressText = $"Self-test probíhá: {SelfTestProgress}% dokončeno";
+                                    StatusMessage = $"⏳ Self-test: {SelfTestProgress}% dokončeno ({remainingPercent}% zbývá)";
+                                    Console.WriteLine($"[SMART] Parsed progress from 'remaining': {SelfTestProgress}% done");
+                                }
+                                else if (completedMatch.Success && int.TryParse(completedMatch.Groups[1].Value, out var completedPercent))
+                                {
+                                    // NVMe format: "in progress (X% completed)"
+                                    SelfTestProgress = completedPercent;
+                                    SelfTestProgressText = $"Self-test probíhá: {SelfTestProgress}% dokončeno";
+                                    StatusMessage = $"⏳ Self-test: {SelfTestProgress}% dokončeno";
+                                    Console.WriteLine($"[SMART] Parsed progress from 'completed': {SelfTestProgress}% done");
+                                }
+                                else if (simpleProgressMatch.Success && int.TryParse(simpleProgressMatch.Groups[1].Value, out var simplePct))
+                                {
+                                    // Simpler pattern: just "X% completed"
+                                    SelfTestProgress = simplePct;
+                                    SelfTestProgressText = $"Self-test probíhá: {SelfTestProgress}% dokončeno";
+                                    StatusMessage = $"⏳ Self-test: {SelfTestProgress}% dokončeno";
+                                    Console.WriteLine($"[SMART] Parsed progress from simple pattern: {SelfTestProgress}% done");
+                                }
+                                else if (RawSmartOutput.Contains("in progress", System.StringComparison.OrdinalIgnoreCase))
                                 {
                                     SelfTestProgressText = "Self-test probíhá...";
                                     StatusMessage = "⏳ Self-test probíhá...";
+                                    Console.WriteLine("[SMART] Found 'in progress' but no percentage");
                                 }
-                            }
+                            });
                         }
-                        else
+                        else if (status == SmartaSelfTestStatus.CompletedWithoutError)
                         {
-                            // Test completed
-                            IsSelfTestRunning = false;
-                            SelfTestProgress = 100;
-                            SelfTestProgressText = "Self-test dokončen";
-                            StatusMessage = "✅ Self-test dokončen";
+                            await Dispatcher.UIThread.InvokeAsync(() =>
+                            {
+                                IsSelfTestRunning = false;
+                                SelfTestProgress = 100;
+                                SelfTestProgressText = "Self-test dokončen";
+                                StatusMessage = "✅ Self-test dokončen úspěšně";
+                            });
                             
-                            // Refresh data
                             await RefreshCommand.ExecuteAsync(null);
                             break;
+                        }
+                        else if (status == SmartaSelfTestStatus.AbortedByUser)
+                        {
+                            await Dispatcher.UIThread.InvokeAsync(() =>
+                            {
+                                IsSelfTestRunning = false;
+                                SelfTestProgress = 0;
+                                SelfTestProgressText = "Self-test přerušen";
+                                StatusMessage = "⏹️ Self-test byl přerušen";
+                            });
+                            break;
+                        }
+                        else if (status == SmartaSelfTestStatus.NoTest)
+                        {
+                            // No test running - depending on context:
+                            // 1. Right after starting: test hasn't begun yet, continue polling
+                            // 2. After test was in progress: test likely completed, check log
+                            Console.WriteLine($"[SMART] No test running (wasTestInProgress={_wasTestInProgress})");
+                            
+                            if (_wasTestInProgress)
+                            {
+                                // Test was running before, now it's not - likely completed
+                                Console.WriteLine("[SMART] Test was in progress, now NoTest - checking log for result");
+                                consecutiveUnknowns++;
+                                
+                                // Check the log to see the actual result
+                                var log = await advancedProvider.GetSelfTestLogAsync(SelectedDisk.Drive.Path);
+                                var latestTest = log.FirstOrDefault();
+                                
+                                Console.WriteLine($"[SMART] Log result: {latestTest?.StatusName ?? "no entry"}");
+                                
+                                // If latest test in log is completed (not in progress), we're done
+                                if (latestTest != null && latestTest.Status != SmartaSelfTestStatus.InProgress)
+                                {
+                                    await Dispatcher.UIThread.InvokeAsync(() =>
+                                    {
+                                        IsSelfTestRunning = false;
+                                        SelfTestProgress = 100;
+                                        
+                                        StatusMessage = latestTest.Status switch
+                                        {
+                                            SmartaSelfTestStatus.CompletedWithoutError => "✅ Self-test dokončen úspěšně bez chyb.",
+                                            SmartaSelfTestStatus.AbortedByUser => "⏹️ Self-test byl přerušen uživatelem.",
+                                            SmartaSelfTestStatus.AbortedByHost => "⏹️ Self-test přerušen systémem.",
+                                            SmartaSelfTestStatus.FatalError => "❌ Self-test skončil s chybou!",
+                                            SmartaSelfTestStatus.ErrorRead => "📖 Self-test skončil s chybou čtení.",
+                                            SmartaSelfTestStatus.ErrorElectrical => "⚡ Self-test skončil s elektrickou chybou.",
+                                            SmartaSelfTestStatus.ErrorServo => "🔧 Self-test skončil s mechanickou chybou.",
+                                            _ => $"✅ Self-test dokončen: {latestTest.StatusName}"
+                                        };
+                                        SelfTestProgressText = "Self-test dokončen";
+                                    });
+                                    
+                                    await RefreshCommand.ExecuteAsync(null);
+                                    break;
+                                }
+                                // Otherwise continue polling (test might be finishing)
+                            }
+                            else
+                            {
+                                // Test not started yet - continue polling
+                                consecutiveUnknowns++;
+                            }
+                        }
+                        else if (status == SmartaSelfTestStatus.Unknown)
+                        {
+                            // Unknown status - could be test not started yet, parsing error, or other issue
+                            consecutiveUnknowns++;
+                            Console.WriteLine($"[SMART] Unknown status ({consecutiveUnknowns}/{maxUnknownCount}), checking log...");
+                            
+                            // If we've had too many unknowns, check the log and finish
+                            if (consecutiveUnknowns >= maxUnknownCount)
+                            {
+                                var log = await advancedProvider.GetSelfTestLogAsync(SelectedDisk.Drive.Path);
+                                var latestTest = log.FirstOrDefault();
+                                
+                                await Dispatcher.UIThread.InvokeAsync(() =>
+                                {
+                                    IsSelfTestRunning = false;
+                                    SelfTestProgress = 100;
+                                    
+                                    if (latestTest != null)
+                                    {
+                                        StatusMessage = latestTest.Status switch
+                                        {
+                                            SmartaSelfTestStatus.CompletedWithoutError => "✅ Self-test dokončen úspěšně bez chyb.",
+                                            SmartaSelfTestStatus.AbortedByUser => "⏹️ Self-test byl přerušen uživatelem.",
+                                            SmartaSelfTestStatus.FatalError => "❌ Self-test skončil s fatální chybou!",
+                                            SmartaSelfTestStatus.ErrorRead => "📖 Self-test skončil s chybou čtení.",
+                                            SmartaSelfTestStatus.ErrorElectrical => "⚡ Self-test skončil s elektrickou chybou.",
+                                            SmartaSelfTestStatus.InProgress => "⏳ Self-test stále probíhá...",
+                                            SmartaSelfTestStatus.AbortedByHost => "⏹️ Self-test přerušen systémem.",
+                                            _ => $"❓ Self-test dokončen: {latestTest.StatusName}"
+                                        };
+                                    }
+                                    else
+                                    {
+                                        StatusMessage = "✅ Self-test dokončen (výsledek nedostupný)";
+                                    }
+                                });
+                                
+                                await RefreshCommand.ExecuteAsync(null);
+                                break;
+                            }
                         }
                     }
                     catch (Exception ex)
                     {
                         Console.WriteLine($"[SMART] Polling error: {ex.Message}");
+                        await Dispatcher.UIThread.InvokeAsync(() =>
+                        {
+                            StatusMessage = $"⚠️ Chyba při kontrole stavu: {ex.Message}";
+                        });
                     }
                 }
+                
+                // Wait before next poll
+                await Task.Delay(pollInterval, token);
             }
         }
         catch (OperationCanceledException)
         {
-            // Polling cancelled
+            await Dispatcher.UIThread.InvokeAsync(() =>
+            {
+                StatusMessage = "⏹️ Sledování testu přerušeno";
+            });
+        }
+        catch (Exception ex)
+        {
+            await Dispatcher.UIThread.InvokeAsync(() =>
+            {
+                StatusMessage = $"❌ Chyba: {ex.Message}";
+            });
         }
         finally
         {
-            IsSelfTestRunning = false;
+            await Dispatcher.UIThread.InvokeAsync(() =>
+            {
+                IsSelfTestRunning = false;
+            });
         }
     }
-
+    
     private void StopPollingSelfTestProgress()
     {
         _selfTestPollingCts?.Cancel();
@@ -1128,8 +1412,6 @@ private void UpdateComputedProperties()
         _selfTestPollingCts = null;
         IsSelfTestRunning = false;
     }
-
-
 
     private static bool IsSystemDisk(CoreDriveInfo drive)
     {

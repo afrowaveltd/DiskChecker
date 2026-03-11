@@ -18,12 +18,11 @@ using DiskChecker.Infrastructure.Persistence;
 using DiskChecker.Infrastructure.Services;
 using DiskChecker.Application.Services;
 using DiskChecker.Core;
-using System.Runtime.Versioning;
+using System.Runtime.InteropServices;
 using Microsoft.EntityFrameworkCore;
 
 namespace DiskChecker.UI.Avalonia;
 
-[SupportedOSPlatform("windows")]
 public partial class App : global::Avalonia.Application
 {
     private ServiceProvider? _serviceProvider;
@@ -117,7 +116,6 @@ public partial class App : global::Avalonia.Application
         services.AddSingleton<TestReportAnalysisService>();
         // Register UI analysis service implementation so AnalysisViewModel can resolve IAnalysisService.
         services.AddSingleton<IAnalysisService, AnalysisService>();
-        services.AddSingleton<DiskDetectionService>();
         
         // Navigation service
         services.AddSingleton<INavigationService, NavigationService>();
@@ -134,10 +132,7 @@ public partial class App : global::Avalonia.Application
         // Selected disk service for sharing between views
         services.AddSingleton<ISelectedDiskService, SelectedDiskService>();
         
-        // Disk detection service
-        services.AddSingleton<IDiskDetectionService, DiskDetectionService>();
-        
-        // Platform-specific SMART provider
+        // Platform-specific
         // Load configuration (optional appsettings.json) and bind SMART cache options
         // Load simple appsettings.json (optional) to configure SMART cache TTL without
         // pulling in the full Microsoft.Configuration extensions at runtime.
@@ -162,7 +157,18 @@ public partial class App : global::Avalonia.Application
         services.Configure<SmartaCacheOptions>(opt => opt.TtlMinutes = ttl);
         // Fallback default if not configured
         services.PostConfigure<SmartaCacheOptions>(opt => { if (opt.TtlMinutes <= 0) opt.TtlMinutes = 10; });
-        services.AddTransient<ISmartaProvider, WindowsSmartaProvider>();
+        
+        // Platform-specific SMART provider and disk detection
+        if (RuntimeInformation.IsOSPlatform(OSPlatform.Linux))
+        {
+            services.AddSingleton<IDiskDetectionService, LinuxDiskDetectionService>();
+            services.AddTransient<ISmartaProvider, LinuxSmartaProvider>();
+        }
+        else
+        {
+            services.AddSingleton<IDiskDetectionService, DiskDetectionService>();
+            services.AddTransient<ISmartaProvider, WindowsSmartaProvider>();
+        }
         
         // Disk sanitization service
         services.AddSingleton<DiskSanitizationService>();

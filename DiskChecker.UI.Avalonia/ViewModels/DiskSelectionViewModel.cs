@@ -149,7 +149,7 @@ public partial class DiskSelectionViewModel : ViewModelBase, INavigableViewModel
         try
         {
             IsBusy = true;
-            LoadingState = "NaÄŤĂ­tĂˇm disky...";
+            LoadingState = "Načítám disky...";
 
             // Get list of locked disks from settings
             var lockedDisks = await _settingsService.GetLockedDisksAsync();
@@ -188,7 +188,7 @@ public partial class DiskSelectionViewModel : ViewModelBase, INavigableViewModel
             }
 
             LoadingState = DiskCards.Count > 0 ? "Disky naÄŤteny" : "Ĺ˝ĂˇdnĂ© disky nalezeny";
-            StatusMessage = $"Nalezeno {DiskCards.Count} diskĹŻ";
+            StatusMessage = $"Nalezeno {DiskCards.Count} disků";
         }
         catch (Exception ex)
         {
