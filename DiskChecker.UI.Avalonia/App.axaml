@@ -46,5 +46,7 @@
         <!-- Active navigation converters -->
         <converters:ActiveNavConverter x:Key="ActiveNavConverter"/>
         <converters:ActiveNavTextConverter x:Key="ActiveNavTextConverter"/>
+        <!-- Grade to color converter -->
+        <converters:GradeToColorConverter x:Key="GradeToColorConverter"/>
     </Application.Resources>
 </Application>

@@ -18,9 +18,16 @@ public class SmartCheckService
             new EventId(1, nameof(SmartCheckService)),
             "SMART data could not be retrieved for {DrivePath}.");
 
+    private static readonly Action<ILogger, Exception?> LogDiskCardSaveFailed =
+        LoggerMessage.Define(
+            LogLevel.Warning,
+            new EventId(2, nameof(SmartCheckService)),
+            "Failed to save SMART check to disk card");
+
     private readonly ISmartaProvider _smartaProvider;
     private readonly IQualityCalculator _qualityCalculator;
     private readonly DiskCheckerDbContext _dbContext;
+    private readonly DiskCardTestService _cardTestService;
     private readonly ILogger<SmartCheckService> _logger;
 
     private IAdvancedSmartaProvider? AdvancedProvider => _smartaProvider as IAdvancedSmartaProvider;
@@ -29,11 +36,13 @@ public class SmartCheckService
         ISmartaProvider smartaProvider,
         IQualityCalculator qualityCalculator,
         DiskCheckerDbContext dbContext,
+        DiskCardTestService cardTestService,
         ILogger<SmartCheckService> logger)
     {
         _smartaProvider = smartaProvider;
         _qualityCalculator = qualityCalculator;
         _dbContext = dbContext;
+        _cardTestService = cardTestService;
         _logger = logger;
     }
 
@@ -145,6 +154,18 @@ public class SmartCheckService
         _dbContext.SmartaData.Add(smartaRecord);
 
         await _dbContext.SaveChangesAsync(cancellationToken);
+
+        // Also save to disk card for card view
+        try
+        {
+            var card = await _cardTestService.GetOrCreateCardAsync(drive, cancellationToken);
+            await _cardTestService.SaveSmartCheckAsync(card, smartaData, rating, cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            // Log but don't fail - the legacy test record was saved
+            LogDiskCardSaveFailed(_logger, ex);
+        }
 
         return new SmartCheckResult
         {

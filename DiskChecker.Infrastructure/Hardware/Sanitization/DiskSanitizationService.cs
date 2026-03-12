@@ -518,16 +518,31 @@ foreach ($vol in $volumes) {
     {
         return await Task.Run(() =>
         {
-            var overlapped = IntPtr.Zero;
-            if (!Win32DiskInterop.WriteFile(handle.DangerousGetHandle(), 
-                Marshal.UnsafeAddrOfPinnedArrayElement(buffer, 0), 
-                (uint)bytesToWrite, 
-                out var bytesWritten, 
-                overlapped))
+            // Use GCHandle to safely pin the buffer for the duration of the write
+            var bufferHandle = GCHandle.Alloc(buffer, GCHandleType.Pinned);
+            try
             {
-                Marshal.ThrowExceptionForHR(Marshal.GetLastWin32Error());
+                var bufferPtr = bufferHandle.AddrOfPinnedObject();
+                if (!Win32DiskInterop.WriteFile(handle.DangerousGetHandle(),
+                    bufferPtr,
+                    (uint)bytesToWrite,
+                    out var bytesWritten,
+                    IntPtr.Zero))
+                {
+                    var error = Marshal.GetLastWin32Error();
+                    // Don't throw on partial writes - return what was actually written
+                    if (error == 0 && bytesWritten > 0)
+                    {
+                        return (int)bytesWritten;
+                    }
+                    Marshal.ThrowExceptionForHR(error);
+                }
+                return (int)bytesWritten;
             }
-            return (int)bytesWritten;
+            finally
+            {
+                bufferHandle.Free();
+            }
         }, cancellationToken);
     }
 
@@ -535,15 +550,31 @@ foreach ($vol in $volumes) {
     {
         return await Task.Run(() =>
         {
-            if (!Win32DiskInterop.ReadFile(handle.DangerousGetHandle(),
-                Marshal.UnsafeAddrOfPinnedArrayElement(buffer, 0),
-                (uint)bytesToRead,
-                out var bytesRead,
-                IntPtr.Zero))
+            // Use GCHandle to safely pin the buffer for the duration of the read
+            var bufferHandle = GCHandle.Alloc(buffer, GCHandleType.Pinned);
+            try
             {
-                Marshal.ThrowExceptionForHR(Marshal.GetLastWin32Error());
+                var bufferPtr = bufferHandle.AddrOfPinnedObject();
+                if (!Win32DiskInterop.ReadFile(handle.DangerousGetHandle(),
+                    bufferPtr,
+                    (uint)bytesToRead,
+                    out var bytesRead,
+                    IntPtr.Zero))
+                {
+                    var error = Marshal.GetLastWin32Error();
+                    // Don't throw on partial reads - return what was actually read
+                    if (error == 0 && bytesRead > 0)
+                    {
+                        return (int)bytesRead;
+                    }
+                    Marshal.ThrowExceptionForHR(error);
+                }
+                return (int)bytesRead;
             }
-            return (int)bytesRead;
+            finally
+            {
+                bufferHandle.Free();
+            }
         }, cancellationToken);
     }
 

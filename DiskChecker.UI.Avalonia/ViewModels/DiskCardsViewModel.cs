@@ -40,6 +40,8 @@ public partial class DiskCardsViewModel : ViewModelBase, INavigableViewModel
         _dialogService = dialogService;
         _selectedDiskService = selectedDiskService;
         
+        NavigateToReportsCommand = new RelayCommand(NavigateToReports);
+        
         GradeFilters = new ObservableCollection<string> { "Všechny", "A", "B", "C", "D", "E", "F" };
         StatusFilters = new ObservableCollection<string> { "Všechny", "Aktivní", "Archivované" };
     }
@@ -124,6 +126,8 @@ public partial class DiskCardsViewModel : ViewModelBase, INavigableViewModel
     public ObservableCollection<string> GradeFilters { get; }
     public ObservableCollection<string> StatusFilters { get; }
 
+    public IRelayCommand NavigateToReportsCommand { get; }
+    
     public bool HasSelectedCard => SelectedCard != null;
     public bool CanArchive => SelectedCard != null && !SelectedCard.IsArchived;
     public bool CanRestore => SelectedCard != null && SelectedCard.IsArchived;
@@ -354,6 +358,11 @@ public partial class DiskCardsViewModel : ViewModelBase, INavigableViewModel
         {
             StatusMessage = "Žádný disk s testem nenalezen";
         }
+    }
+
+    private void NavigateToReports()
+    {
+        _navigationService.NavigateTo<ReportViewModel>();
     }
 
     #endregion

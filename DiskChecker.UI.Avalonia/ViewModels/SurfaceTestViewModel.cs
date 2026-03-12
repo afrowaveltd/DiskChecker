@@ -5,6 +5,7 @@ using System.Threading.Tasks;
 using Avalonia.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using DiskChecker.Application.Services;
 using DiskChecker.Core.Interfaces;
 using DiskChecker.Core.Models;
 using DiskChecker.Infrastructure.Hardware.Sanitization;
@@ -20,6 +21,7 @@ public partial class SurfaceTestViewModel : ViewModelBase, INavigableViewModel
     private readonly ISettingsService _settingsService;
     private readonly IDiskDetectionService _diskDetectionService;
     private readonly DiskSanitizationService _sanitizationService;
+    private readonly DiskCardTestService _cardTestService;
     
     private double _writeProgress;
     private double _verifyProgress;
@@ -49,7 +51,8 @@ public partial class SurfaceTestViewModel : ViewModelBase, INavigableViewModel
         IDialogService dialogService,
         ISettingsService settingsService,
         IDiskDetectionService diskDetectionService,
-        DiskSanitizationService sanitizationService)
+        DiskSanitizationService sanitizationService,
+        DiskCardTestService cardTestService)
     {
         _navigationService = navigationService;
         _selectedDiskService = selectedDiskService;
@@ -57,6 +60,7 @@ public partial class SurfaceTestViewModel : ViewModelBase, INavigableViewModel
         _settingsService = settingsService;
         _diskDetectionService = diskDetectionService;
         _sanitizationService = sanitizationService;
+        _cardTestService = cardTestService;
         
         AvailableDrives = new ObservableCollection<CoreDriveInfo>();
         SpeedHistory = new ObservableCollection<SpeedDataPoint>();
@@ -576,6 +580,18 @@ public partial class SurfaceTestViewModel : ViewModelBase, INavigableViewModel
         if (result.Success)
         {
             StatusMessage = $"Dokončeno! Rychlost: {result.WriteSpeedMBps:F1} MB/s";
+            
+            // Save to disk card
+            try
+            {
+                var card = await _cardTestService.GetOrCreateCardAsync(SelectedDrive);
+                await _cardTestService.SaveSanitizationAsync(card, result);
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"Failed to save sanitization to disk card: {ex.Message}");
+            }
+            
             await _dialogService.ShowSuccessAsync("Sanitizace dokončena", 
                 $"Disk byl úspěšně sanitizován.\nRychlost zápisu: {result.WriteSpeedMBps:F1} MB/s");
         }

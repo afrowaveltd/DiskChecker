@@ -108,6 +108,7 @@ public partial class App : global::Avalonia.Application
         services.AddScoped<IHistoryService, HistoryServiceAdapter>();
         services.AddSingleton<SettingsService>();
         services.AddSingleton<SmartCheckService>();
+        services.AddScoped<DiskCardTestService>();
         // Infrastructure and application surface test components
         services.AddSingleton<DiskChecker.Infrastructure.Hardware.SurfaceTestExecutorFactory>();
         services.AddScoped<SurfaceTestPersistenceService>();

@@ -11,14 +11,17 @@ public class SurfaceTestPersistenceService
 {
    private const string SurfaceTestType = "SurfaceTest";
    private readonly DiskCheckerDbContext _dbContext;
+   private readonly DiskCardTestService _cardTestService;
 
    /// <summary>
    /// Initializes a new instance of the <see cref="SurfaceTestPersistenceService"/> class.
    /// </summary>
    /// <param name="dbContext">Database context for persistence.</param>
-   public SurfaceTestPersistenceService(DiskCheckerDbContext dbContext)
+   /// <param name="cardTestService">Service for saving to disk cards.</param>
+   public SurfaceTestPersistenceService(DiskCheckerDbContext dbContext, DiskCardTestService cardTestService)
    {
       _dbContext = dbContext;
+      _cardTestService = cardTestService;
    }
 
    /// <summary>
@@ -126,6 +129,18 @@ public class SurfaceTestPersistenceService
    {
       System.Diagnostics.Debug.WriteLine($"Failed to save surface test {testRecord.Id}: {ex.Message}");
       throw;
+   }
+
+   // Also save to disk card for card view
+   try
+   {
+      var card = await _cardTestService.GetOrCreateCardAsync(drive, cancellationToken);
+      await _cardTestService.SaveSurfaceTestAsync(card, result, cancellationToken);
+   }
+   catch(Exception ex)
+   {
+      // Log but don't fail - the legacy test record was saved
+      System.Diagnostics.Debug.WriteLine($"Failed to save surface test to disk card: {ex.Message}");
    }
 
    return testRecord.Id;

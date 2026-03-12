@@ -32,6 +32,17 @@
                 </StackPanel>
 
                 <StackPanel Grid.Column="1" Orientation="Horizontal">
+                    <Button Content="📊 Reporty"
+                            Command="{Binding NavigateToReportsCommand}"
+                            Background="#9B59B6" Foreground="White"
+                            FontWeight="Bold" Padding="15,8" Margin="0,0,10,0"
+                            Cursor="Hand">
+                        <Button.Styles>
+                            <Style Selector="Button">
+                                <Setter Property="BorderThickness" Value="0"/>
+                            </Style>
+                        </Button.Styles>
+                    </Button>
                     <Button Content="🔄 Obnovit"
                             Command="{Binding RefreshCommand}"
                             Background="#3498DB" Foreground="White"
