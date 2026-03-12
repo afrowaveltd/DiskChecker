@@ -1,1 +1,0 @@
-\"$c = [System.IO.File]::ReadAllLines('D:\DiskChecker\DiskChecker.UI.Avalonia\ViewModels\DiskCardDetailViewModel.cs'); Write-Host 'Line 346:' $c[345]; Write-Host 'Line 351:' $c[350]; Write-Host 'Line 369:' $c[368]\"  

@@ -184,6 +184,8 @@
                 <Grid.RowDefinitions>
                     <RowDefinition Height="Auto"/>
                     <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
                     <RowDefinition Height="*"/>
                 </Grid.RowDefinitions>
 
@@ -240,8 +242,76 @@
                     </StackPanel>
                 </Border>
 
+                <!-- SMART Functions -->
+                <Border Grid.Row="1" Background="#F0F8FF" BorderBrush="#4A90D9" 
+                        BorderThickness="1" Padding="12" Margin="0,0,0,10">
+                    <StackPanel>
+                        <TextBlock Text="🔧 SMART Funkce" FontSize="13" FontWeight="Bold" 
+                                   Foreground="#333333" Margin="0,0,0,10"/>
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+                            <ComboBox Grid.Column="0" ItemsSource="{Binding SmartFeatures}"
+                                      SelectedIndex="0"
+                                      SelectedItem="{Binding SelectedSmartFeature}"
+                                      HorizontalAlignment="Stretch"
+                                      IsEnabled="{Binding !IsSelfTestRunning}">
+                                <ComboBox.ItemTemplate>
+                                    <DataTemplate>
+                                        <TextBlock Text="{Binding}" FontSize="11"/>
+                                    </DataTemplate>
+                                </ComboBox.ItemTemplate>
+                            </ComboBox>
+                            <Button Grid.Column="1" Content="▶ Spustit"
+                                    Command="{Binding RunSmartFeatureCommand}"
+                                    IsEnabled="{Binding !IsSelfTestRunning}"
+                                    Background="#27AE60" Foreground="White"
+                                    FontWeight="Bold" Padding="10,5" Margin="8,0,0,0">
+                                <Button.Styles>
+                                    <Style Selector="Button">
+                                        <Setter Property="BorderThickness" Value="0"/>
+                                        <Setter Property="Cursor" Value="Hand"/>
+                                    </Style>
+                                </Button.Styles>
+                            </Button>
+                        </Grid>
+                        <TextBlock Text="{Binding SmartFeatureDescription}" 
+                                   FontSize="10" Foreground="#666" Margin="0,6,0,0"
+                                   TextWrapping="Wrap"/>
+                    </StackPanel>
+                </Border>
+
+                <!-- Self-Test Result -->
+                <Border Grid.Row="2" Background="#FFF8E1" BorderBrush="#FFA000" 
+                        BorderThickness="2" Padding="12" Margin="0,0,0,10"
+                        CornerRadius="8" IsVisible="{Binding HasSelfTestResult}">
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Grid.Column="0" Text="{Binding SelfTestResult}"
+                                   FontSize="13" FontWeight="Bold" 
+                                   Foreground="{Binding SelfTestResultColor}"
+                                   TextWrapping="Wrap"/>
+                        <Button Grid.Column="1" Content="✕"
+                                Command="{Binding ClearSelfTestResultCommand}"
+                                Background="Transparent" Foreground="#666"
+                                FontSize="14" Padding="5,2">
+                            <Button.Styles>
+                                <Style Selector="Button">
+                                    <Setter Property="BorderThickness" Value="0"/>
+                                    <Setter Property="Cursor" Value="Hand"/>
+                                </Style>
+                            </Button.Styles>
+                        </Button>
+                    </Grid>
+                </Border>
+
                 <!-- Health Metrics -->
-                <Border Grid.Row="1" Background="#F8F9FA" BorderBrush="#DEE2E6" 
+                <Border Grid.Row="3" Background="#F8F9FA" BorderBrush="#DEE2E6" 
                         BorderThickness="1" Padding="12" Margin="0,0,0,10">
                     <StackPanel>
                         <TextBlock Text="📊 Zdravotní metriky" FontSize="13" FontWeight="Bold" 

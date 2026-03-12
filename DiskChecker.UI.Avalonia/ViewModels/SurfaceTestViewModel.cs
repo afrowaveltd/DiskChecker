@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.ObjectModel;
 using System.Linq;
 using System.Threading.Tasks;
@@ -28,6 +28,8 @@ public partial class SurfaceTestViewModel : ViewModelBase, INavigableViewModel
     private double _maxSpeed;
     private double _avgSpeed;
     private int _currentTemperature = 35;
+    private int _minTemperature = int.MaxValue;
+    private int _maxTemperature;
     private int _errorCount;
     private string _timeRemaining = "00:00:00";
     private string _statusMessage = "Připraven k testu";
@@ -35,6 +37,11 @@ public partial class SurfaceTestViewModel : ViewModelBase, INavigableViewModel
     private CoreDriveInfo? _selectedDrive;
     private bool _isLocked;
     private bool _isLoadingDrives;
+    
+    // Graph data
+    private DateTime _testStartTime;
+    private int _selectedZoomIndex = 1; // Default 5 min
+    private int _currentPhase; // 0 = Write, 1 = Read (default is 0)
 
     public SurfaceTestViewModel(
         INavigationService navigationService,
@@ -53,6 +60,10 @@ public partial class SurfaceTestViewModel : ViewModelBase, INavigableViewModel
         
         AvailableDrives = new ObservableCollection<CoreDriveInfo>();
         SpeedHistory = new ObservableCollection<SpeedDataPoint>();
+        WriteSpeedHistory = new ObservableCollection<SurfaceTestDataPoint>();
+        ReadSpeedHistory = new ObservableCollection<SurfaceTestDataPoint>();
+        TemperatureHistory = new ObservableCollection<TemperatureDataPoint>();
+        ZoomLevels = new ObservableCollection<GraphZoomLevel>(GraphZoomLevel.DefaultZoomLevels);
         
         TestProfiles = new ObservableCollection<TestProfileItem>
         {
@@ -65,6 +76,43 @@ public partial class SurfaceTestViewModel : ViewModelBase, INavigableViewModel
 
     public ObservableCollection<CoreDriveInfo> AvailableDrives { get; }
     public ObservableCollection<TestProfileItem> TestProfiles { get; }
+    
+    // Graph data collections
+    public ObservableCollection<SurfaceTestDataPoint> WriteSpeedHistory { get; }
+    public ObservableCollection<SurfaceTestDataPoint> ReadSpeedHistory { get; }
+    public ObservableCollection<TemperatureDataPoint> TemperatureHistory { get; }
+    public ObservableCollection<GraphZoomLevel> ZoomLevels { get; }
+    
+    // Filtered collections for zoom display
+    public IEnumerable<SurfaceTestDataPoint> VisibleWriteData => GetVisibleData(WriteSpeedHistory);
+    public IEnumerable<SurfaceTestDataPoint> VisibleReadData => GetVisibleData(ReadSpeedHistory);
+    public IEnumerable<TemperatureDataPoint> VisibleTemperatureData => GetVisibleTemperatureData();
+    
+    private IEnumerable<SurfaceTestDataPoint> GetVisibleData(ObservableCollection<SurfaceTestDataPoint> source)
+    {
+        if (source.Count == 0) return source;
+        
+        var zoomDuration = SelectedZoomDuration;
+        if (zoomDuration == TimeSpan.MaxValue) return source;
+        
+        var elapsed = DateTime.UtcNow - _testStartTime;
+        var cutoff = elapsed - zoomDuration;
+        return source.Where(p => p.Elapsed >= cutoff);
+    }
+    
+    private IEnumerable<TemperatureDataPoint> GetVisibleTemperatureData()
+    {
+        if (TemperatureHistory.Count == 0) return TemperatureHistory;
+        
+        var zoomDuration = SelectedZoomDuration;
+        if (zoomDuration == TimeSpan.MaxValue) return TemperatureHistory;
+        
+        var elapsed = DateTime.UtcNow - _testStartTime;
+        var cutoff = elapsed - zoomDuration;
+        return TemperatureHistory.Where(p => p.Elapsed >= cutoff);
+    }
+    
+    // Legacy collection for compatibility
     public ObservableCollection<SpeedDataPoint> SpeedHistory { get; }
 
     public double WriteProgress { get => _writeProgress; set => SetProperty(ref _writeProgress, value); }
@@ -74,8 +122,34 @@ public partial class SurfaceTestViewModel : ViewModelBase, INavigableViewModel
     public double MaxSpeed { get => _maxSpeed; set => SetProperty(ref _maxSpeed, value); }
     public double AvgSpeed { get => _avgSpeed; set => SetProperty(ref _avgSpeed, value); }
     public int CurrentTemperature { get => _currentTemperature; set => SetProperty(ref _currentTemperature, value); }
+    public int MinTemperature => _minTemperature == int.MaxValue ? 0 : _minTemperature;
+    public int MaxTemperature => _maxTemperature;
+    public double DisplayMaxSpeed { get; private set; } = 100;
+    public double DisplayMaxTemperature { get; private set; } = 50;
     public int ErrorCount { get => _errorCount; set => SetProperty(ref _errorCount, value); }
     public string TimeRemaining { get => _timeRemaining; set => SetProperty(ref _timeRemaining, value); }
+    
+    // Zoom properties for graph
+    public int SelectedZoomIndex
+    {
+        get => _selectedZoomIndex;
+        set
+        {
+            if (SetProperty(ref _selectedZoomIndex, value))
+            {
+                OnPropertyChanged(nameof(SelectedZoomDuration));
+                UpdateGraphHeights();
+            }
+        }
+    }
+    
+    public TimeSpan SelectedZoomDuration => ZoomLevels[_selectedZoomIndex].Duration;
+    
+    public int CurrentPhase
+    {
+        get => _currentPhase;
+        set => SetProperty(ref _currentPhase, value);
+    }
     public string StatusMessage { get => _statusMessage; set => SetProperty(ref _statusMessage, value); }
     public bool IsLoadingDrives { get => _isLoadingDrives; set => SetProperty(ref _isLoadingDrives, value); }
 
@@ -102,10 +176,44 @@ public partial class SurfaceTestViewModel : ViewModelBase, INavigableViewModel
         {
             if (SetProperty(ref _selectedDrive, value))
             {
+                // Update IsLocked when disk selection changes
+                if (value != null)
+                {
+                    _ = UpdateLockStatusAsync(value);
+                }
                 OnPropertyChanged(nameof(CanStartTest));
-                if (value != null && !IsLoadingDrives)
-                    StatusMessage = $"Vybrán disk: {value.Name ?? value.Path}";
             }
+        }
+    }
+
+    private async Task UpdateLockStatusAsync(CoreDriveInfo drive)
+    {
+        try
+        {
+            var lockedDisks = await _settingsService.GetLockedDisksAsync();
+            var isLocked = lockedDisks.Any(p => IsSameDisk(p, drive.Path)) || drive.IsSystemDisk;
+            
+            await Dispatcher.UIThread.InvokeAsync(() =>
+            {
+                IsLocked = isLocked;
+                _selectedDiskService.SelectedDisk = drive;
+                _selectedDiskService.SelectedDiskDisplayName = drive.Name;
+                _selectedDiskService.IsSelectedDiskLocked = isLocked;
+                
+                if (!IsLoadingDrives)
+                {
+                    StatusMessage = isLocked 
+                        ? $"Vybrán disk: {drive.Name ?? drive.Path} ( zamknut)"
+                        : $"Vybrán disk: {drive.Name ?? drive.Path}";
+                }
+            });
+        }
+        catch (Exception ex)
+        {
+            await Dispatcher.UIThread.InvokeAsync(() =>
+            {
+                StatusMessage = $"Chyba při kontrole stavu disku: {ex.Message}";
+            });
         }
     }
 
@@ -218,27 +326,136 @@ public partial class SurfaceTestViewModel : ViewModelBase, INavigableViewModel
     {
         Dispatcher.UIThread.Post(() =>
         {
+            var elapsed = DateTime.UtcNow - _testStartTime;
+            var now = DateTime.UtcNow;
+            
+            // Add to legacy collection for compatibility
             SpeedHistory.Add(new SpeedDataPoint { Time = SpeedHistory.Count, Speed = speed });
-            while (SpeedHistory.Count > 60)
+            while (SpeedHistory.Count > 300) // Keep more history for zoom
                 SpeedHistory.RemoveAt(0);
             
-            // Update statistics
-            if (SpeedHistory.Count > 0)
+            // Add to phase-specific collection
+            var dataPoint = new SurfaceTestDataPoint(now, elapsed, speed, CurrentTemperature, _currentPhase);
+            
+            if (_currentPhase == 0)
             {
-                // First point - initialize with current speed
-                if (SpeedHistory.Count == 1)
-                {
-                    MinSpeed = speed;
-                    MaxSpeed = speed;
-                }
-                else
-                {
-                    MinSpeed = Math.Min(MinSpeed, speed);
-                    MaxSpeed = Math.Max(MaxSpeed, speed);
-                }
-                AvgSpeed = SpeedHistory.Average(s => s.Speed);
+                WriteSpeedHistory.Add(dataPoint);
+                while (WriteSpeedHistory.Count > 300)
+                    WriteSpeedHistory.RemoveAt(0);
             }
+            else
+            {
+                ReadSpeedHistory.Add(dataPoint);
+                while (ReadSpeedHistory.Count > 300)
+                    ReadSpeedHistory.RemoveAt(0);
+            }
+            
+            // Add temperature point
+            if (CurrentTemperature > 0)
+            {
+                TemperatureHistory.Add(new TemperatureDataPoint(now, elapsed, CurrentTemperature));
+                while (TemperatureHistory.Count > 300)
+                    TemperatureHistory.RemoveAt(0);
+            }
+            
+            // Update statistics with outlier removal
+            UpdateStatistics();
+            
+            // Recalculate heights for display
+            UpdateGraphHeights();
         });
+    }
+    
+    private void UpdateStatistics()
+    {
+        // Calculate speed statistics, ignoring extreme outliers (lowest and highest 1%)
+        if (SpeedHistory.Count > 2)
+        {
+            var allSpeeds = SpeedHistory.Select(s => s.Speed).OrderBy(s => s).ToList();
+            
+            // Remove top and bottom 1% as outliers (at least 1 value from each end if count > 10)
+            var outlierCount = Math.Max(1, (int)(allSpeeds.Count * 0.01));
+            var filteredSpeeds = allSpeeds.Skip(outlierCount).Take(allSpeeds.Count - 2 * outlierCount).ToList();
+            
+            if (filteredSpeeds.Count > 0)
+            {
+                // Use filtered data for display, but show actual max for reference
+                var actualMin = allSpeeds.First(); // True minimum
+                var actualMax = allSpeeds.Last();   // True maximum
+                
+                // Min shown = second lowest (to avoid 0 from test start)
+                MinSpeed = allSpeeds.Count > 2 ? allSpeeds[1] : actualMin;
+                
+                // Max shown = second highest (to avoid occasional spikes)
+                MaxSpeed = allSpeeds.Count > 2 ? allSpeeds[^2] : actualMax;
+                
+                // Average from filtered data
+                AvgSpeed = filteredSpeeds.Average();
+                
+                // Display max = actual max + 10%, rounded up to nearest 10
+                var displayMax = actualMax * 1.1;
+                DisplayMaxSpeed = Math.Max(100, Math.Ceiling(displayMax / 10) * 10);
+            }
+        }
+        else if (SpeedHistory.Count > 0)
+        {
+            // Not enough data for outlier removal
+            var speeds = SpeedHistory.Select(s => s.Speed).ToList();
+            MinSpeed = speeds.Min();
+            MaxSpeed = speeds.Max();
+            AvgSpeed = speeds.Average();
+            DisplayMaxSpeed = Math.Max(100, Math.Ceiling(MaxSpeed * 1.1 / 10) * 10);
+        }
+        
+        // Update temperature stats with outlier removal
+        if (TemperatureHistory.Count > 2)
+        {
+            var allTemps = TemperatureHistory.Select(t => (double)t.Temperature).OrderBy(t => t).ToList();
+            
+            // Remove outliers
+            var outlierCount = Math.Max(1, (int)(allTemps.Count * 0.01));
+            var filteredTemps = allTemps.Skip(outlierCount).Take(allTemps.Count - 2 * outlierCount).ToList();
+            
+            if (filteredTemps.Count > 0)
+            {
+                // Min temperature = second lowest (avoid startup artifacts)
+                _minTemperature = (int)(allTemps.Count > 2 ? allTemps[1] : allTemps.First());
+                
+                // Max temperature = second highest (avoid sensor glitches)
+                _maxTemperature = (int)(allTemps.Count > 2 ? allTemps[^2] : allTemps.Last());
+                
+                OnPropertyChanged(nameof(MinTemperature));
+                OnPropertyChanged(nameof(MaxTemperature));
+                
+                // Display max = actual max + 10%, at least 40°C, rounded to nearest 5
+                var displayMaxTemp = allTemps[^1] * 1.1;
+                DisplayMaxTemperature = Math.Max(40, Math.Ceiling(displayMaxTemp / 5) * 5);
+            }
+        }
+    }
+
+    private void UpdateGraphHeights()
+    {
+        var maxSpeedHeight = 160.0; // Max height in pixels for speed graph (60% of space)
+        var maxTempHeight = 100.0; // Max height in pixels for temperature graph (40% of space)
+        var maxSpeed = Math.Max(1, DisplayMaxSpeed); // Avoid division by zero
+        
+        foreach (var point in WriteSpeedHistory)
+            point.Height = Math.Max(2, (point.Speed / maxSpeed) * maxSpeedHeight);
+        
+        foreach (var point in ReadSpeedHistory)
+            point.Height = Math.Max(2, (point.Speed / maxSpeed) * maxSpeedHeight);
+        
+        // Temperature graph: range from 15°C to max+10%
+        var minTemp = 15.0;
+        var tempRange = Math.Max(10, DisplayMaxTemperature - minTemp); // At least 10°C range
+        
+        foreach (var point in TemperatureHistory)
+        {
+            // Calculate height relative to temperature range (15°C to max)
+            var normalizedTemp = Math.Max(0, point.Temperature - minTemp);
+            point.Height = Math.Max(2, (normalizedTemp / tempRange) * maxTempHeight);
+        }
     }
 
     private void ClearSpeedHistory()
@@ -246,9 +463,15 @@ public partial class SurfaceTestViewModel : ViewModelBase, INavigableViewModel
         Dispatcher.UIThread.Post(() => 
         {
             SpeedHistory.Clear();
+            WriteSpeedHistory.Clear();
+            ReadSpeedHistory.Clear();
+            TemperatureHistory.Clear();
             MinSpeed = 0;
             MaxSpeed = 0;
             AvgSpeed = 0;
+            _minTemperature = int.MaxValue;
+            _maxTemperature = 0;
+            DisplayMaxSpeed = 100;
         });
     }
 
@@ -307,6 +530,8 @@ public partial class SurfaceTestViewModel : ViewModelBase, INavigableViewModel
         ErrorCount = 0;
         WriteProgress = 0;
         VerifyProgress = 0;
+        _testStartTime = DateTime.UtcNow;
+        _currentPhase = 0; // Start with Write phase
         ClearSpeedHistory();
 
         try

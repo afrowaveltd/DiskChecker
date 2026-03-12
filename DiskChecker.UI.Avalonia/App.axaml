@@ -43,5 +43,8 @@
         <!-- Int to bool converter -->
         <converters:IntToBoolConverter x:Key="IntToBoolConverter"/>
         <converters:IntToBoolConverter x:Key="InvertedIntToBoolConverter" Invert="True"/>
+        <!-- Active navigation converters -->
+        <converters:ActiveNavConverter x:Key="ActiveNavConverter"/>
+        <converters:ActiveNavTextConverter x:Key="ActiveNavTextConverter"/>
     </Application.Resources>
 </Application>

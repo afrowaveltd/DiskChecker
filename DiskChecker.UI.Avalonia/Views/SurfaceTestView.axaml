@@ -123,7 +123,7 @@
                 <!-- WRITE Progress -->
                 <StackPanel Grid.Row="0" Margin="0,0,0,10">
                     <TextBlock Text="ZÁPIS DAT (0-50%)" FontSize="12" FontWeight="Bold" Foreground="#333333" Margin="0,0,0,4"/>
-                    <ProgressBar Value="{Binding WriteProgress}" Maximum="50" 
+                    <ProgressBar Value="{Binding WriteProgress}" Maximum="100" 
                                  Height="20" Background="#E6EAF0" Foreground="#27AE60"/>
                     <TextBlock Text="{Binding WriteProgress, StringFormat='{}{0:F1}%'}" 
                                HorizontalAlignment="Right" FontSize="10" Foreground="#27AE60"/>
@@ -132,7 +132,7 @@
                 <!-- VERIFY Progress -->
                 <StackPanel Grid.Row="1" Margin="0,0,0,10">
                     <TextBlock Text="OVĚŘENÍ DAT (50-100%)" FontSize="12" FontWeight="Bold" Foreground="#333333" Margin="0,0,0,4"/>
-                    <ProgressBar Value="{Binding VerifyProgress}" Maximum="50" 
+                    <ProgressBar Value="{Binding VerifyProgress}" Maximum="100" 
                                  Height="20" Background="#E6EAF0" Foreground="#F39C12"/>
                     <TextBlock Text="{Binding VerifyProgress, StringFormat='{}{0:F1}%'}" 
                                HorizontalAlignment="Right" FontSize="10" Foreground="#F39C12"/>
@@ -190,32 +190,132 @@
                                 </LinearGradientBrush>
                             </Border.Background>
                             <Grid>
-                                <!-- Speed Graph Bars -->
-                                <ItemsControl ItemsSource="{Binding SpeedHistory}" 
-                                              VerticalAlignment="Bottom"
-                                              HorizontalAlignment="Stretch">
-                                    <ItemsControl.ItemsPanel>
-                                        <ItemsPanelTemplate>
-                                            <StackPanel Orientation="Horizontal" Spacing="1" HorizontalAlignment="Left"/>
-                                        </ItemsPanelTemplate>
-                                    </ItemsControl.ItemsPanel>
-                                    <ItemsControl.ItemTemplate>
-                                        <DataTemplate>
-                                            <Border Width="3" 
-                                                    MinHeight="2"
-                                                    Height="{Binding Speed, Converter={StaticResource SpeedToHeightConverter}}"
-                                                    Background="#22C55E" 
-                                                    CornerRadius="1"
-                                                    VerticalAlignment="Bottom"/>
-                                        </DataTemplate>
-                                    </ItemsControl.ItemTemplate>
-                                </ItemsControl>
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto"/>
+                                    <RowDefinition Height="6*"/>
+                                    <RowDefinition Height="4*"/>
+                                </Grid.RowDefinitions>
                                 
-                                <!-- Empty state -->
-                                <TextBlock Text="📈 Spusťte test pro zobrazení grafu"
-                                           VerticalAlignment="Center" HorizontalAlignment="Center"
-                                           FontSize="14" Foreground="#64748B"
-                                           IsVisible="{Binding SpeedHistory.Count, Converter={StaticResource InvertedIntToBoolConverter}}"/>
+                                <!-- Zoom Controls -->
+                                <StackPanel Grid.Row="0" Orientation="Horizontal" Margin="0,0,0,8">
+                                    <TextBlock Text="Časové okno: " FontSize="11" Foreground="#94A3B8" VerticalAlignment="Center"/>
+                                    <ComboBox ItemsSource="{Binding ZoomLevels}"
+                                              SelectedIndex="{Binding SelectedZoomIndex}"
+                                              MinWidth="80" FontSize="11"/>
+                                    <TextBlock Text=" | " FontSize="11" Foreground="#64748B" Margin="8,0"/>
+                                    <TextBlock FontSize="10" Foreground="#22C55E" Text="■ Zápis" VerticalAlignment="Center"/>
+                                    <TextBlock FontSize="10" Foreground="#3B82F6" Text="  ■ Čtení" VerticalAlignment="Center" Margin="8,0,0,0"/>
+                                    <TextBlock FontSize="10" Foreground="#F97316" Text="  ■ Teplota" VerticalAlignment="Center" Margin="8,0,0,0"/>
+                                </StackPanel>
+                                
+                                <!-- Speed Graph (Write + Read) - 60% of space -->
+                                <Grid Grid.Row="1">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="Auto"/>
+                                        <ColumnDefinition Width="*"/>
+                                    </Grid.ColumnDefinitions>
+                                    
+                                    <!-- Y-Axis Labels for Speed -->
+                                    <StackPanel Grid.Column="0" Orientation="Vertical" Margin="0,0,4,0">
+                                        <TextBlock Text="{Binding DisplayMaxSpeed, StringFormat='{}{0:F0}'}" FontSize="8" Foreground="#64748B" TextAlignment="Right" Width="25"/>
+                                        <TextBlock Text="{Binding AvgSpeed, StringFormat='{}{0:F0}'}" FontSize="8" Foreground="#64748B" TextAlignment="Right" Width="25" VerticalAlignment="Center"/>
+                                        <TextBlock Text="0" FontSize="8" Foreground="#64748B" TextAlignment="Right" Width="25" VerticalAlignment="Bottom"/>
+                                    </StackPanel>
+                                    
+                                    <!-- Graph Area -->
+                                    <Grid Grid.Column="1">
+                                        <!-- Write Speed Bars (Phase 0) -->
+                                        <ItemsControl ItemsSource="{Binding VisibleWriteData}" 
+                                                      VerticalAlignment="Stretch"
+                                                      HorizontalAlignment="Stretch">
+                                            <ItemsControl.ItemsPanel>
+                                                <ItemsPanelTemplate>
+                                                    <UniformGrid Rows="1"/>
+                                                </ItemsPanelTemplate>
+                                            </ItemsControl.ItemsPanel>
+                                            <ItemsControl.ItemTemplate>
+                                                <DataTemplate>
+                                                    <Border MinHeight="2"
+                                                            Height="{Binding Height}"
+                                                            Background="#22C55E"
+                                                            CornerRadius="1,1,0,0"
+                                                            Margin="0,0,1,0"
+                                                            VerticalAlignment="Bottom"
+                                                            ToolTip.Tip="{Binding Speed, StringFormat='{}{0:F1} MB/s - Zápis'}"/>
+                                                </DataTemplate>
+                                            </ItemsControl.ItemTemplate>
+                                        </ItemsControl>
+                                        
+                                        <!-- Read Speed Bars (Phase 1) -->
+                                        <ItemsControl ItemsSource="{Binding VisibleReadData}" 
+                                                      VerticalAlignment="Stretch"
+                                                      HorizontalAlignment="Stretch">
+                                            <ItemsControl.ItemsPanel>
+                                                <ItemsPanelTemplate>
+                                                    <UniformGrid Rows="1"/>
+                                                </ItemsPanelTemplate>
+                                            </ItemsControl.ItemsPanel>
+                                            <ItemsControl.ItemTemplate>
+                                                <DataTemplate>
+                                                    <Border MinHeight="2"
+                                                            Height="{Binding Height}"
+                                                            Background="#3B82F6"
+                                                            CornerRadius="1,1,0,0"
+                                                            Margin="0,0,1,0"
+                                                            VerticalAlignment="Bottom"
+                                                            ToolTip.Tip="{Binding Speed, StringFormat='{}{0:F1} MB/s - Čtení'}"/>
+                                                </DataTemplate>
+                                            </ItemsControl.ItemTemplate>
+                                        </ItemsControl>
+                                        
+                                        <!-- Empty state -->
+                                        <TextBlock Text="📈 Spusťte test pro zobrazení grafu"
+                                                   VerticalAlignment="Center" HorizontalAlignment="Center"
+                                                   FontSize="14" Foreground="#64748B"
+                                                   IsVisible="{Binding SpeedHistory.Count, Converter={StaticResource InvertedIntToBoolConverter}}"/>
+                                    </Grid>
+                                </Grid>
+                                
+                                <!-- Temperature Graph - 40% of space -->
+                                <Grid Grid.Row="2" Margin="0,8,0,0">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="Auto"/>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="Auto"/>
+                                    </Grid.ColumnDefinitions>
+                                    
+                                    <!-- Y-Axis Labels for Temperature -->
+                                    <StackPanel Grid.Column="0" Orientation="Vertical" Margin="0,0,4,0">
+                                        <TextBlock Text="{Binding DisplayMaxTemperature, StringFormat='{}{0}°'}" FontSize="8" Foreground="#F97316" TextAlignment="Right" Width="25"/>
+                                        <TextBlock Text="15°" FontSize="8" Foreground="#64748B" TextAlignment="Right" Width="25" VerticalAlignment="Bottom"/>
+                                    </StackPanel>
+                                    
+                                    <ItemsControl Grid.Column="1" ItemsSource="{Binding VisibleTemperatureData}" 
+                                                  VerticalAlignment="Stretch"
+                                                  HorizontalAlignment="Stretch">
+                                        <ItemsControl.ItemsPanel>
+                                            <ItemsPanelTemplate>
+                                                <UniformGrid Rows="1"/>
+                                            </ItemsPanelTemplate>
+                                        </ItemsControl.ItemsPanel>
+                                        <ItemsControl.ItemTemplate>
+                                            <DataTemplate>
+                                                <Border MinHeight="2"
+                                                        Height="{Binding Height}"
+                                                        Background="#F97316"
+                                                        CornerRadius="1"
+                                                        Margin="0,0,1,0"
+                                                        VerticalAlignment="Bottom"
+                                                        ToolTip.Tip="{Binding Temperature, StringFormat='{}{0}°C'}"/>
+                                            </DataTemplate>
+                                        </ItemsControl.ItemTemplate>
+                                    </ItemsControl>
+                                    
+                                    <StackPanel Grid.Column="2" Orientation="Horizontal" Margin="8,0,0,0">
+                                        <TextBlock Text="{Binding MinTemperature, StringFormat='Min: {0}°C'}" FontSize="9" Foreground="#64748B" Margin="0,0,8,0"/>
+                                        <TextBlock Text="{Binding MaxTemperature, StringFormat='Max: {0}°C'}" FontSize="9" Foreground="#F97316"/>
+                                    </StackPanel>
+                                </Grid>
                             </Grid>
                         </Border>
                     </Grid>
