@@ -22,15 +22,15 @@ public class LinuxSmartaProvider : ISmartaProvider, IAdvancedSmartaProvider
     private static string? s_cachedSmartctlPath;
     private static readonly object s_pathLock = new();
 
-    private static readonly string[] SmartctlPaths = new[]
-    {
+    private static readonly string[] SmartctlPaths =
+    [
         "/usr/sbin/smartctl",
         "/usr/bin/smartctl",
         "/usr/local/sbin/smartctl",
         "/usr/local/bin/smartctl",
         "/sbin/smartctl",
         "/bin/smartctl"
-    };
+    ];
 
     public LinuxSmartaProvider(ILogger<LinuxSmartaProvider>? logger = null)
     {
