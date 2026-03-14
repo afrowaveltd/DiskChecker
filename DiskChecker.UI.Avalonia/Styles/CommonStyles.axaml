@@ -2,61 +2,315 @@
          xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
          xmlns:dg="clr-namespace:Avalonia.Controls;assembly=Avalonia.Controls.DataGrid">
 
-  <!-- Common button style -->
+  <Styles.Resources>
+    <ResourceDictionary>
+      <!-- Light Theme Colors (Default) -->
+      <SolidColorBrush x:Key="ThemeBackgroundBrush" Color="#FFFFFF"/>
+      <SolidColorBrush x:Key="ThemeSecondaryBackgroundBrush" Color="#F8F9FA"/>
+      <SolidColorBrush x:Key="ThemeCardBackgroundBrush" Color="#FFFFFF"/>
+      <SolidColorBrush x:Key="ThemePanelBackgroundBrush" Color="#F0F2F5"/>
+      <SolidColorBrush x:Key="ThemeBorderBrush" Color="#DEE2E6"/>
+      <SolidColorBrush x:Key="ThemeBorderLightBrush" Color="#E9ECEF"/>
+      <SolidColorBrush x:Key="ThemePrimaryBrush" Color="#004B93"/>
+      <SolidColorBrush x:Key="ThemePrimaryHoverBrush" Color="#003B7A"/>
+      <SolidColorBrush x:Key="ThemePrimaryLightBrush" Color="#E3F2FD"/>
+      <SolidColorBrush x:Key="ThemeAccentBrush" Color="#F7C600"/>
+      <SolidColorBrush x:Key="ThemeSuccessBrush" Color="#27AE60"/>
+      <SolidColorBrush x:Key="ThemeWarningBrush" Color="#F39C12"/>
+      <SolidColorBrush x:Key="ThemeDangerBrush" Color="#E74C3C"/>
+      <SolidColorBrush x:Key="ThemeInfoBrush" Color="#3498DB"/>
+      <SolidColorBrush x:Key="ThemeTextPrimaryBrush" Color="#1A1A1A"/>
+      <SolidColorBrush x:Key="ThemeTextSecondaryBrush" Color="#495057"/>
+      <SolidColorBrush x:Key="ThemeTextMutedBrush" Color="#6C757D"/>
+      <SolidColorBrush x:Key="ThemeTextInverseBrush" Color="#FFFFFF"/>
+      <SolidColorBrush x:Key="ThemeGraphBackgroundBrush" Color="#0F1F33"/>
+      <SolidColorBrush x:Key="ThemeNavActiveBrush" Color="#004B93"/>
+      <SolidColorBrush x:Key="ThemeNavInactiveBrush" Color="Transparent"/>
+      <SolidColorBrush x:Key="ThemeNavActiveTextBrush" Color="#FFFFFF"/>
+      <SolidColorBrush x:Key="ThemeNavInactiveTextBrush" Color="#495057"/>
+      <LinearGradientBrush x:Key="ThemeHeaderGradient" StartPoint="0%,0%" EndPoint="100%,0%">
+        <GradientStop Color="#1F6FEB" Offset="0"/>
+        <GradientStop Color="#238636" Offset="1"/>
+      </LinearGradientBrush>
+    </ResourceDictionary>
+    
+    <ResourceDictionary x:Key="Dark">
+      <!-- Dark Theme Colors -->
+      <SolidColorBrush x:Key="ThemeBackgroundBrush" Color="#0D1117"/>
+      <SolidColorBrush x:Key="ThemeSecondaryBackgroundBrush" Color="#161B22"/>
+      <SolidColorBrush x:Key="ThemeCardBackgroundBrush" Color="#21262D"/>
+      <SolidColorBrush x:Key="ThemePanelBackgroundBrush" Color="#161B22"/>
+      <SolidColorBrush x:Key="ThemeBorderBrush" Color="#30363D"/>
+      <SolidColorBrush x:Key="ThemeBorderLightBrush" Color="#21262D"/>
+      <SolidColorBrush x:Key="ThemePrimaryBrush" Color="#58A6FF"/>
+      <SolidColorBrush x:Key="ThemePrimaryHoverBrush" Color="#79B8FF"/>
+      <SolidColorBrush x:Key="ThemePrimaryLightBrush" Color="#388BFD20"/>
+      <SolidColorBrush x:Key="ThemeAccentBrush" Color="#F7C600"/>
+      <SolidColorBrush x:Key="ThemeSuccessBrush" Color="#3FB950"/>
+      <SolidColorBrush x:Key="ThemeWarningBrush" Color="#D29922"/>
+      <SolidColorBrush x:Key="ThemeDangerBrush" Color="#F85149"/>
+      <SolidColorBrush x:Key="ThemeInfoBrush" Color="#58A6FF"/>
+      <SolidColorBrush x:Key="ThemeTextPrimaryBrush" Color="#F0F6FC"/>
+      <SolidColorBrush x:Key="ThemeTextSecondaryBrush" Color="#C9D1D9"/>
+      <SolidColorBrush x:Key="ThemeTextMutedBrush" Color="#8B949E"/>
+      <SolidColorBrush x:Key="ThemeTextInverseBrush" Color="#0D1117"/>
+      <SolidColorBrush x:Key="ThemeGraphBackgroundBrush" Color="#0A0F18"/>
+      <SolidColorBrush x:Key="ThemeNavActiveBrush" Color="#58A6FF"/>
+      <SolidColorBrush x:Key="ThemeNavInactiveBrush" Color="Transparent"/>
+      <SolidColorBrush x:Key="ThemeNavActiveTextBrush" Color="#FFFFFF"/>
+      <SolidColorBrush x:Key="ThemeNavInactiveTextBrush" Color="#C9D1D9"/>
+      <LinearGradientBrush x:Key="ThemeHeaderGradient" StartPoint="0%,0%" EndPoint="100%,0%">
+        <GradientStop Color="#0D419D" Offset="0"/>
+        <GradientStop Color="#196C2E" Offset="1"/>
+      </LinearGradientBrush>
+    </ResourceDictionary>
+  </Styles.Resources>
+
+  <!-- ==================== BUTTONS ==================== -->
+  
   <Style Selector="Button">
-    <Setter Property="Padding" Value="10,5" />
-    <Setter Property="Margin" Value="2" />
-    <Setter Property="CornerRadius" Value="3" />
+    <Setter Property="Padding" Value="12,8"/>
+    <Setter Property="Margin" Value="2"/>
+    <Setter Property="CornerRadius" Value="6"/>
+    <Setter Property="FontWeight" Value="SemiBold"/>
+    <Setter Property="Cursor" Value="Hand"/>
+    <Setter Property="Transitions">
+      <Transitions>
+        <DoubleTransition Property="Opacity" Duration="0:0:0.15"/>
+      </Transitions>
+    </Setter>
   </Style>
 
-  <!-- Primary button style -->
   <Style Selector="Button.Primary">
-    <Setter Property="Background" Value="{DynamicResource ThemePrimaryBrush}" />
-    <Setter Property="Foreground" Value="White" />
-    <Setter Property="FontWeight" Value="Bold" />
+    <Setter Property="Background" Value="{DynamicResource ThemePrimaryBrush}"/>
+    <Setter Property="Foreground" Value="White"/>
+    <Setter Property="FontWeight" Value="Bold"/>
+    <Setter Property="CornerRadius" Value="8"/>
+    <Setter Property="Padding" Value="16,10"/>
+  </Style>
+  
+  <Style Selector="Button.Primary:pointerover">
+    <Setter Property="Opacity" Value="0.9"/>
+    <Setter Property="Background" Value="{DynamicResource ThemePrimaryHoverBrush}"/>
   </Style>
 
-  <!-- Danger button style -->
-  <Style Selector="Button.Danger">
-    <Setter Property="Background" Value="#E74C3C" />
-    <Setter Property="Foreground" Value="White" />
-    <Setter Property="FontWeight" Value="Bold" />
+  <Style Selector="Button.Secondary">
+    <Setter Property="Background" Value="{DynamicResource ThemeSecondaryBackgroundBrush}"/>
+    <Setter Property="Foreground" Value="{DynamicResource ThemeTextPrimaryBrush}"/>
+    <Setter Property="BorderBrush" Value="{DynamicResource ThemeBorderBrush}"/>
+    <Setter Property="BorderThickness" Value="1"/>
+  </Style>
+  
+  <Style Selector="Button.Secondary:pointerover">
+    <Setter Property="Opacity" Value="0.95"/>
   </Style>
 
-  <!-- Success button style -->
   <Style Selector="Button.Success">
-    <Setter Property="Background" Value="#27AE60" />
-    <Setter Property="Foreground" Value="White" />
-    <Setter Property="FontWeight" Value="Bold" />
+    <Setter Property="Background" Value="{DynamicResource ThemeSuccessBrush}"/>
+    <Setter Property="Foreground" Value="White"/>
+    <Setter Property="FontWeight" Value="Bold"/>
   </Style>
 
-  <!-- Common textblock style -->
+  <Style Selector="Button.Danger">
+    <Setter Property="Background" Value="{DynamicResource ThemeDangerBrush}"/>
+    <Setter Property="Foreground" Value="White"/>
+    <Setter Property="FontWeight" Value="Bold"/>
+  </Style>
+
+  <Style Selector="Button.Accent">
+    <Setter Property="Background" Value="{DynamicResource ThemeAccentBrush}"/>
+    <Setter Property="Foreground" Value="#1A1A1A"/>
+    <Setter Property="FontWeight" Value="Bold"/>
+  </Style>
+
+  <Style Selector="Button.Ghost">
+    <Setter Property="Background" Value="Transparent"/>
+    <Setter Property="Foreground" Value="{DynamicResource ThemeTextSecondaryBrush}"/>
+    <Setter Property="BorderThickness" Value="0"/>
+  </Style>
+
+  <!-- ==================== TEXT BLOCKS ==================== -->
+  
+  <Style Selector="TextBlock">
+    <Setter Property="Foreground" Value="{DynamicResource ThemeTextPrimaryBrush}"/>
+  </Style>
+
   <Style Selector="TextBlock.Header">
-    <Setter Property="FontSize" Value="16" />
-    <Setter Property="FontWeight" Value="Bold" />
-    <Setter Property="Foreground" Value="#1a1a1a" />
+    <Setter Property="FontSize" Value="18"/>
+    <Setter Property="FontWeight" Value="Bold"/>
+    <Setter Property="Foreground" Value="{DynamicResource ThemeTextPrimaryBrush}"/>
   </Style>
 
-  <!-- Common border style -->
+  <Style Selector="TextBlock.Title">
+    <Setter Property="FontSize" Value="24"/>
+    <Setter Property="FontWeight" Value="Bold"/>
+    <Setter Property="Foreground" Value="{DynamicResource ThemeTextPrimaryBrush}"/>
+  </Style>
+
+  <Style Selector="TextBlock.Subtitle">
+    <Setter Property="FontSize" Value="14"/>
+    <Setter Property="Foreground" Value="{DynamicResource ThemeTextSecondaryBrush}"/>
+  </Style>
+
+  <Style Selector="TextBlock.Muted">
+    <Setter Property="FontSize" Value="11"/>
+    <Setter Property="Foreground" Value="{DynamicResource ThemeTextMutedBrush}"/>
+  </Style>
+
+  <!-- ==================== BORDERS ==================== -->
+  
   <Style Selector="Border.Card">
-    <Setter Property="Background" Value="{DynamicResource ThemeCardBrush}" />
-    <Setter Property="BorderBrush" Value="{DynamicResource ThemeBorderBrush}" />
-    <Setter Property="BorderThickness" Value="1" />
-    <Setter Property="Padding" Value="15" />
-    <Setter Property="Margin" Value="0,0,0,10" />
+    <Setter Property="Background" Value="{DynamicResource ThemeCardBackgroundBrush}"/>
+    <Setter Property="BorderBrush" Value="{DynamicResource ThemeBorderBrush}"/>
+    <Setter Property="BorderThickness" Value="1"/>
+    <Setter Property="CornerRadius" Value="8"/>
+    <Setter Property="Padding" Value="16"/>
+    <Setter Property="Margin" Value="0,0,0,12"/>
+    <Setter Property="BoxShadow" Value="0 2 8 0 #15000000"/>
   </Style>
 
-  <!-- Common progress bar style -->
+  <Style Selector="Border.Panel">
+    <Setter Property="Background" Value="{DynamicResource ThemePanelBackgroundBrush}"/>
+    <Setter Property="BorderBrush" Value="{DynamicResource ThemeBorderBrush}"/>
+    <Setter Property="BorderThickness" Value="1"/>
+    <Setter Property="CornerRadius" Value="8"/>
+    <Setter Property="Padding" Value="12"/>
+  </Style>
+
+  <Style Selector="Border.Elevated">
+    <Setter Property="Background" Value="{DynamicResource ThemeCardBackgroundBrush}"/>
+    <Setter Property="BorderBrush" Value="{DynamicResource ThemeBorderLightBrush}"/>
+    <Setter Property="BorderThickness" Value="1"/>
+    <Setter Property="CornerRadius" Value="12"/>
+    <Setter Property="Padding" Value="20"/>
+    <Setter Property="BoxShadow" Value="0 4 16 0 #20000000"/>
+  </Style>
+
+  <!-- ==================== INPUT CONTROLS ==================== -->
+  
+  <Style Selector="TextBox">
+    <Setter Property="Background" Value="{DynamicResource ThemeCardBackgroundBrush}"/>
+    <Setter Property="BorderBrush" Value="{DynamicResource ThemeBorderBrush}"/>
+    <Setter Property="Foreground" Value="{DynamicResource ThemeTextPrimaryBrush}"/>
+    <Setter Property="CornerRadius" Value="6"/>
+    <Setter Property="Padding" Value="10,8"/>
+  </Style>
+
+  <Style Selector="ComboBox">
+    <Setter Property="Background" Value="{DynamicResource ThemeCardBackgroundBrush}"/>
+    <Setter Property="BorderBrush" Value="{DynamicResource ThemeBorderBrush}"/>
+    <Setter Property="Foreground" Value="{DynamicResource ThemeTextPrimaryBrush}"/>
+    <Setter Property="CornerRadius" Value="6"/>
+    <Setter Property="Padding" Value="10,8"/>
+  </Style>
+
+  <!-- ==================== PROGRESS BAR ==================== -->
+  
   <Style Selector="ProgressBar">
-    <Setter Property="Height" Value="20" />
-    <Setter Property="Margin" Value="0,5" />
+    <Setter Property="Height" Value="16"/>
+    <Setter Property="Margin" Value="0,4"/>
+    <Setter Property="CornerRadius" Value="8"/>
+    <Setter Property="Foreground" Value="{DynamicResource ThemePrimaryBrush}"/>
+    <Setter Property="Background" Value="{DynamicResource ThemeBorderLightBrush}"/>
   </Style>
 
-  <!-- Common data grid style -->
+  <Style Selector="ProgressBar.Success">
+    <Setter Property="Foreground" Value="{DynamicResource ThemeSuccessBrush}"/>
+  </Style>
+
+  <Style Selector="ProgressBar.Warning">
+    <Setter Property="Foreground" Value="{DynamicResource ThemeWarningBrush}"/>
+  </Style>
+
+  <Style Selector="ProgressBar.Danger">
+    <Setter Property="Foreground" Value="{DynamicResource ThemeDangerBrush}"/>
+  </Style>
+
+  <!-- ==================== DATA GRID ==================== -->
+  
   <Style Selector="dg|DataGrid">
-    <Setter Property="HeadersVisibility" Value="Column" />
-    <Setter Property="IsReadOnly" Value="True" />
-    <Setter Property="AutoGenerateColumns" Value="False" />
+    <Setter Property="HeadersVisibility" Value="Column"/>
+    <Setter Property="IsReadOnly" Value="True"/>
+    <Setter Property="AutoGenerateColumns" Value="False"/>
+    <Setter Property="Background" Value="{DynamicResource ThemeCardBackgroundBrush}"/>
+    <Setter Property="BorderBrush" Value="{DynamicResource ThemeBorderBrush}"/>
+    <Setter Property="BorderThickness" Value="1"/>
+    <Setter Property="GridLinesVisibility" Value="Horizontal"/>
+    <Setter Property="RowBackground" Value="{DynamicResource ThemeCardBackgroundBrush}"/>
+  </Style>
+
+  <Style Selector="dg|DataGridColumnHeader">
+    <Setter Property="Background" Value="{DynamicResource ThemePanelBackgroundBrush}"/>
+    <Setter Property="Foreground" Value="{DynamicResource ThemeTextPrimaryBrush}"/>
+    <Setter Property="FontWeight" Value="SemiBold"/>
+    <Setter Property="Padding" Value="12,8"/>
+    <Setter Property="HorizontalContentAlignment" Value="Left"/>
+  </Style>
+
+  <Style Selector="dg|DataGridRow">
+    <Setter Property="Foreground" Value="{DynamicResource ThemeTextPrimaryBrush}"/>
+    <Setter Property="Height" Value="32"/>
+  </Style>
+
+  <!-- ==================== SCROLL VIEWER ==================== -->
+  
+  <Style Selector="ScrollViewer">
+    <Setter Property="Background" Value="Transparent"/>
+  </Style>
+
+  <!-- ==================== LIST BOX ==================== -->
+  
+  <Style Selector="ListBox">
+    <Setter Property="Background" Value="Transparent"/>
+    <Setter Property="BorderThickness" Value="0"/>
+  </Style>
+
+  <Style Selector="ListBoxItem">
+    <Setter Property="Padding" Value="8,6"/>
+    <Setter Property="CornerRadius" Value="4"/>
+    <Setter Property="Transitions">
+      <Transitions>
+        <DoubleTransition Property="Opacity" Duration="0:0:0.1"/>
+      </Transitions>
+    </Setter>
+  </Style>
+
+  <Style Selector="ListBoxItem:pointerover /template/ Border">
+    <Setter Property="Background" Value="{DynamicResource ThemePanelBackgroundBrush}"/>
+  </Style>
+
+  <Style Selector="ListBoxItem:selected /template/ Border">
+    <Setter Property="Background" Value="{DynamicResource ThemePrimaryLightBrush}"/>
+  </Style>
+
+  <!-- ==================== TABS ==================== -->
+  
+  <Style Selector="TabItem">
+    <Setter Property="FontSize" Value="13"/>
+    <Setter Property="FontWeight" Value="SemiBold"/>
+    <Setter Property="Padding" Value="16,10"/>
+    <Setter Property="Foreground" Value="{DynamicResource ThemeTextSecondaryBrush}"/>
+  </Style>
+
+  <Style Selector="TabItem:selected">
+    <Setter Property="Foreground" Value="{DynamicResource ThemePrimaryBrush}"/>
+  </Style>
+
+  <!-- ==================== CHECK BOX ==================== -->
+  
+  <Style Selector="CheckBox">
+    <Setter Property="Foreground" Value="{DynamicResource ThemeTextPrimaryBrush}"/>
+  </Style>
+
+  <!-- ==================== TOOLTIP ==================== -->
+  
+  <Style Selector="ToolTip">
+    <Setter Property="Background" Value="{DynamicResource ThemeCardBackgroundBrush}"/>
+    <Setter Property="BorderBrush" Value="{DynamicResource ThemeBorderBrush}"/>
+    <Setter Property="BorderThickness" Value="1"/>
+    <Setter Property="CornerRadius" Value="4"/>
+    <Setter Property="Padding" Value="8,4"/>
+    <Setter Property="FontSize" Value="12"/>
   </Style>
 
 </Styles>

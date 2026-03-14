@@ -61,4 +61,19 @@ public class HistoricalTest
     /// Total bytes tested.
     /// </summary>
     public long TotalBytesTested { get; set; }
+    
+    /// <summary>
+    /// Health assessment status (e.g., "Healthy", "Warning", "Critical").
+    /// </summary>
+    public string HealthAssessment { get; set; } = "Unknown";
+    
+    /// <summary>
+    /// Duration of the test in seconds.
+    /// </summary>
+    public double Duration { get; set; }
+    
+    /// <summary>
+    /// Additional notes or comments about the test.
+    /// </summary>
+    public string? Notes { get; set; }
 }

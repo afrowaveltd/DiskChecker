@@ -11,124 +11,218 @@
         </Grid.RowDefinitions>
 
         <!-- ========== HEADER ========== -->
-        <Border Grid.Row="0" Background="{DynamicResource ThemePanelBrush}" BorderBrush="{DynamicResource ThemeBorderBrush}" BorderThickness="0,0,0,1" Padding="20">
-            <Grid>
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="*"/>
-                    <ColumnDefinition Width="Auto"/>
-                </Grid.ColumnDefinitions>
-
-                <StackPanel Grid.Column="0">
-                    <TextBlock Text="🔬 Analýza povrchu" 
-                               FontSize="28" FontWeight="Bold" Foreground="#1a1a1a" Margin="0,0,0,5"/>
+        <Border Grid.Row="0" 
+                Background="{DynamicResource ThemeSecondaryBackgroundBrush}" 
+                BorderBrush="{DynamicResource ThemeBorderBrush}" 
+                BorderThickness="0,0,0,1" 
+                Padding="20,16" Height="80">
+            <Grid ColumnDefinitions="*,Auto">
+                <StackPanel Margin="0,-4">
+                    <TextBlock Text="🔬 Analýza povrchu disku" 
+                               FontSize="26" FontWeight="Bold" 
+                               Foreground="{DynamicResource ThemeTextPrimaryBrush}"
+                               Margin="0,0,0,4"/>
                     <TextBlock Text="Komplexní kontrola fyzického stavu disku" 
-                               FontSize="13" Foreground="#444444"/>
-                    <TextBlock Text="{Binding StatusMessage}" FontSize="11" Foreground="#333333" Margin="0,4,0,0"/>
+                               FontSize="12"
+                               Foreground="{DynamicResource ThemeTextSecondaryBrush}"/>
+                    <TextBlock Text="{Binding StatusMessage}" 
+                               FontSize="10"
+                               Foreground="{DynamicResource ThemeTextMutedBrush}"
+                               Margin="0,2,0,0"/>
                 </StackPanel>
-
                 <Button Grid.Column="1"
-                        Content="🏠 Zpět"
+                        Content="← Zpět"
                         Command="{Binding $parent[UserControl].DataContext.NavigationService.NavigateToDiskSelectionCommand}"
-                        Background="#666666"
-                        Foreground="White"
-                        VerticalAlignment="Center"/>
+                        Background="{DynamicResource ThemeSecondaryBackgroundBrush}"
+                        Foreground="{DynamicResource ThemeTextPrimaryBrush}"
+                        BorderBrush="{DynamicResource ThemeBorderBrush}"
+                        VerticalAlignment="Center"
+                        CornerRadius="6"
+                        Padding="14,8"
+                        FontWeight="SemiBold"/>
             </Grid>
         </Border>
 
         <!-- ========== MAIN CONTENT ========== -->
-        <Grid Grid.Row="1" Margin="20">
-            <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="1*"/>
-                <ColumnDefinition Width="2*"/>
-            </Grid.ColumnDefinitions>
+        <Grid Grid.Row="1" Margin="16" ColumnDefinitions="1*,2*">
+            
+            <!-- ========== CONTROLS PANEL ========== -->
+            <Border Grid.Column="0" 
+                   Background="{DynamicResource ThemeCardBackgroundBrush}"
+                   BorderBrush="{DynamicResource ThemeBorderBrush}"
+                   BorderThickness="1"
+                   CornerRadius="8"
+                   Padding="16"
+                   Margin="0,0,8,0">
+                <StackPanel Spacing="12">
+                    <TextBlock Text="⚙️ Nastavení testu" 
+                              FontSize="14" FontWeight="Bold" 
+                              Foreground="{DynamicResource ThemeTextPrimaryBrush}"
+                              Margin="0,0,0,8"/>
 
-            <!-- ========== CONTROLS ========== -->
-            <Border Grid.Column="0" Background="{DynamicResource ThemePanelBrush}" BorderBrush="{DynamicResource ThemeBorderBrush}" BorderThickness="1" Margin="0,0,10,0" Padding="15">
-                <StackPanel>
-                    <TextBlock Text="⚙️ Nastavení testu" FontSize="16" FontWeight="Bold" Foreground="#1a1a1a" Margin="0,0,0,15"/>
+                    <Border Background="{DynamicResource ThemePanelBackgroundBrush}" 
+                           CornerRadius="6" Padding="10">
+                        <StackPanel Spacing="8">
+                            <CheckBox Content="Rychlý test (jen důležité sektory)" 
+                                      IsChecked="True"
+                                      FontSize="11"/>
+                            <CheckBox Content="Detailní analýza (všechny sektory)" 
+                                      IsChecked="False"
+                                      FontSize="11"/>
+                            <CheckBox Content="Automatické opravy chyb" 
+                                      IsChecked="False"
+                                      FontSize="11"/>
+                        </StackPanel>
+                    </Border>
 
-                    <CheckBox Content="Rychlý test (pouze důležité sektory)" IsChecked="True" Margin="0,0,0,10"/>
-                    <CheckBox Content="Detailní analýza (všechny sektory)" IsChecked="False" Margin="0,0,0,10"/>
-                    <CheckBox Content="Automatické opravy chyb" IsChecked="False" Margin="0,0,0,20"/>
-
-                    <TextBlock Text="📊 Priorita testu" FontSize="14" FontWeight="Bold" Foreground="#1a1a1a" Margin="0,0,0,10"/>
-                    <ComboBox SelectedIndex="1" Margin="0,0,0,20">
-                        <ComboBoxItem Content="Nízká (běží na pozadí)"/>
-                        <ComboBoxItem Content="Normální"/>
-                        <ComboBoxItem Content="Vysoká (může zpomalit systém)"/>
+                    <TextBlock Text="📊 Priorita testu" 
+                              FontSize="12" FontWeight="SemiBold"
+                              Foreground="{DynamicResource ThemeTextPrimaryBrush}"
+                              Margin="0,8,0,4"/>
+                    
+                    <ComboBox SelectedIndex="1" 
+                              HorizontalAlignment="Stretch"
+                              Background="{DynamicResource ThemeCardBackgroundBrush}"
+                              BorderBrush="{DynamicResource ThemeBorderBrush}"
+                              Padding="10,6">
+                        <ComboBoxItem Content="🔋 Nízká (na pozadí)"/>
+                        <ComboBoxItem Content="⚡ Normální"/>
+                        <ComboBoxItem Content="🔥 Vysoká (může zpomalit)"/>
                     </ComboBox>
 
-                    <Button Content="{Binding IsAnalyzing, StringFormat='{}{0:#,#} Analyzovat disk'}"
-                            Command="{Binding StartAnalysisCommand}"
-                            IsEnabled="{Binding IsAnalyzing, Converter={StaticResource InverseBooleanConverter}}"
-                            Background="#27AE60" Foreground="White" 
-                            Padding="15,10" Margin="0,0,0,10">
-                        <Button.Styles>
-                            <Style Selector="Button">
-                                <Setter Property="BorderThickness" Value="0"/>
-                                <Setter Property="FontWeight" Value="Bold"/>
-                                <Setter Property="Cursor" Value="Hand"/>
-                            </Style>
-                        </Button.Styles>
-                    </Button>
+                    <Border Height="1" Background="{DynamicResource ThemeBorderBrush}" Margin="0,8"/>
 
-                    <Button Content="⏹️ Zastavit analýzu"
-                            Command="{Binding CancelAnalysisCommand}"
-                            IsEnabled="{Binding IsAnalyzing}"
-                            Background="#E74C3C" Foreground="White" 
-                            Padding="15,10">
-                        <Button.Styles>
-                            <Style Selector="Button">
-                                <Setter Property="BorderThickness" Value="0"/>
-                                <Setter Property="FontWeight" Value="Bold"/>
-                                <Setter Property="Cursor" Value="Hand"/>
-                            </Style>
-                        </Button.Styles>
-                    </Button>
+                    <StackPanel Spacing="8">
+                        <Button Content="▶️ Spustit analýzu"
+                                Command="{Binding StartAnalysisCommand}"
+                                IsEnabled="{Binding IsAnalyzing, Converter={StaticResource InverseBooleanConverter}}"
+                                Background="{DynamicResource ThemeSuccessBrush}"
+                                Foreground="White"
+                                FontWeight="SemiBold"
+                                HorizontalAlignment="Stretch"
+                                CornerRadius="6"
+                                Padding="12,10">
+                            <Button.Styles>
+                                <Style Selector="Button:pointerover">
+                                    <Setter Property="Opacity" Value="0.9"/>
+                                </Style>
+                            </Button.Styles>
+                        </Button>
+
+                        <Button Content="⏹️ Zastavit analýzu"
+                                Command="{Binding CancelAnalysisCommand}"
+                                IsEnabled="{Binding IsAnalyzing}"
+                                Background="{DynamicResource ThemeDangerBrush}"
+                                Foreground="White"
+                                FontWeight="SemiBold"
+                                HorizontalAlignment="Stretch"
+                                CornerRadius="6"
+                                Padding="12,10">
+                            <Button.Styles>
+                                <Style Selector="Button:pointerover">
+                                    <Setter Property="Opacity" Value="0.9"/>
+                                </Style>
+                            </Button.Styles>
+                        </Button>
+                    </StackPanel>
+
+                    <!-- Quick Stats -->
+                    <Border Background="{DynamicResource ThemePanelBackgroundBrush}" 
+                           CornerRadius="6" Padding="10" Margin="0,8,0,0">
+                        <StackPanel>
+                            <TextBlock Text="📊 Rychlé statistiky" 
+                                      FontSize="11" FontWeight="SemiBold"
+                                      Foreground="{DynamicResource ThemeTextPrimaryBrush}"
+                                      Margin="0,0,0,6"/>
+                            <Grid ColumnDefinitions="*,*">
+                                <StackPanel>
+                                    <TextBlock Text="Testů" FontSize="9" Foreground="{DynamicResource ThemeTextMutedBrush}"/>
+                                    <TextBlock Text="0" FontSize="16" FontWeight="Bold" Foreground="{DynamicResource ThemePrimaryBrush}"/>
+                                </StackPanel>
+                                <StackPanel Grid.Column="1">
+                                    <TextBlock Text="Chyb" FontSize="9" Foreground="{DynamicResource ThemeTextMutedBrush}"/>
+                                    <TextBlock Text="0" FontSize="16" FontWeight="Bold" Foreground="{DynamicResource ThemeSuccessBrush}"/>
+                                </StackPanel>
+                            </Grid>
+                        </StackPanel>
+                    </Border>
                 </StackPanel>
             </Border>
 
             <!-- ========== PROGRESS AND RESULTS ========== -->
-            <Grid Grid.Column="1" Margin="10,0,0,0">
-                <Grid.RowDefinitions>
-                    <RowDefinition Height="Auto"/>
-                    <RowDefinition Height="*"/>
-                </Grid.RowDefinitions>
-
-                <!-- ========== PROGRESS ========== -->
-                <Border Grid.Row="0" Background="{DynamicResource ThemePanelBrush}" BorderBrush="{DynamicResource ThemeBorderBrush}" BorderThickness="1" Margin="0,0,0,10" Padding="15">
-                    <StackPanel>
-                        <TextBlock Text="📈 Průběh analýzy" FontSize="16" FontWeight="Bold" Foreground="#1a1a1a" Margin="0,0,0,10"/>
-                        <ProgressBar Value="{Binding ProgressPercentage}" Minimum="0" Maximum="100" Height="20" Margin="0,0,0,10"/>
-                        <TextBlock Text="{Binding ProgressPercentage, StringFormat='{}{0}% dokončeno'}" 
-                                   HorizontalAlignment="Center" FontSize="12" FontWeight="Bold"/>
+            <Grid Grid.Column="1" Margin="8,0,0,0" RowDefinitions="Auto,*">
+                
+                <!-- Progress Section -->
+                <Border Grid.Row="0" 
+                       Background="{DynamicResource ThemeCardBackgroundBrush}"
+                       BorderBrush="{DynamicResource ThemeBorderBrush}"
+                       BorderThickness="1"
+                       CornerRadius="8"
+                       Padding="16"
+                       Margin="0,0,0,8">
+                    <StackPanel Spacing="8">
+                        <Grid ColumnDefinitions="*,Auto">
+                            <TextBlock Grid.Column="0" Text="📈 Průběh analýzy" 
+                                      FontSize="14" FontWeight="Bold"
+                                      Foreground="{DynamicResource ThemeTextPrimaryBrush}"/>
+                            <TextBlock Grid.Column="1" 
+                                      Text="{Binding ProgressPercentage, StringFormat='{}{0}%'}"
+                                      FontSize="14" FontWeight="Bold"
+                                      Foreground="{DynamicResource ThemePrimaryBrush}"/>
+                        </Grid>
+                        
+                        <ProgressBar Value="{Binding ProgressPercentage}" 
+                                    Minimum="0" Maximum="100" 
+                                    Height="10"
+                                    CornerRadius="5"
+                                    Background="{DynamicResource ThemeBorderLightBrush}"
+                                    Foreground="{DynamicResource ThemePrimaryBrush}"/>
+                        
+                        <TextBlock Text="{Binding ProgressPercentage, StringFormat='{}{0}% dokončeno'}"
+                                  HorizontalAlignment="Center" FontSize="10"
+                                  Foreground="{DynamicResource ThemeTextMutedBrush}"/>
                     </StackPanel>
                 </Border>
 
-                <!-- ========== RESULTS ========== -->
-                <Border Grid.Row="1" Background="{DynamicResource ThemePanelBrush}" BorderBrush="{DynamicResource ThemeBorderBrush}" BorderThickness="1" Padding="15">
-                    <Grid>
-                        <Grid.RowDefinitions>
-                            <RowDefinition Height="Auto"/>
-                            <RowDefinition Height="*"/>
-                        </Grid.RowDefinitions>
-
-                        <TextBlock Grid.Row="0" Text="📋 Výsledky testu" FontSize="16" FontWeight="Bold" Foreground="#1a1a1a" Margin="0,0,0,10"/>
+                <!-- Results Section -->
+                <Border Grid.Row="1" 
+                       Background="{DynamicResource ThemeCardBackgroundBrush}"
+                       BorderBrush="{DynamicResource ThemeBorderBrush}"
+                       BorderThickness="1"
+                       CornerRadius="8"
+                       Padding="16">
+                    <Grid RowDefinitions="Auto,*">
+                        <TextBlock Grid.Row="0" Text="📋 Výsledky testu" 
+                                  FontSize="14" FontWeight="Bold"
+                                  Foreground="{DynamicResource ThemeTextPrimaryBrush}"
+                                  Margin="0,0,0,10"/>
 
                         <ScrollViewer Grid.Row="1">
                             <ItemsControl ItemsSource="{Binding TestResults}">
                                 <ItemsControl.ItemTemplate>
                                     <DataTemplate>
-                                        <Border BorderBrush="#d9cba6" BorderThickness="0,0,0,1" Padding="0,10">
-                                        <Grid>
-                                            <Grid.ColumnDefinitions>
-                                                <ColumnDefinition Width="*"/>
-                                                <ColumnDefinition Width="Auto"/>
-                                            </Grid.ColumnDefinitions>
-                                            <TextBlock Grid.Column="0" Text="{Binding TestId}" FontWeight="Bold" VerticalAlignment="Center" Margin="0,0,10,0"/>
-                                            <TextBlock Grid.Column="1" Text="{Binding ErrorCount, StringFormat='Chyby: {0}'}" Foreground="#666666" FontSize="11" VerticalAlignment="Center"/>
-                                            <TextBlock Grid.Row="0" Grid.ColumnSpan="2" Text="{Binding Notes}" FontSize="11" Foreground="#333333" TextWrapping="Wrap" Margin="0,4,0,0"/>
-                                        </Grid>
+                                        <Border Background="{DynamicResource ThemePanelBackgroundBrush}"
+                                               CornerRadius="6"
+                                               Padding="12"
+                                               Margin="0,0,0,8">
+                                            <Grid RowDefinitions="Auto,Auto">
+                                                <Grid Grid.Row="0" ColumnDefinitions="*,Auto">
+                                                    <TextBlock Grid.Column="0" 
+                                                              Text="{Binding TestId}" 
+                                                              FontWeight="SemiBold"
+                                                              FontSize="11"/>
+                                                    <TextBlock Grid.Column="1" 
+                                                              Text="{Binding ErrorCount, StringFormat='Chyby: {0}'}" 
+                                                              Foreground="{DynamicResource ThemeTextMutedBrush}"
+                                                              FontSize="10"/>
+                                                </Grid>
+                                                <TextBlock Grid.Row="1" 
+                                                          Text="{Binding Notes}" 
+                                                          FontSize="10"
+                                                          Foreground="{DynamicResource ThemeTextSecondaryBrush}"
+                                                          TextWrapping="Wrap"
+                                                          Margin="0,4,0,0"/>
+                                            </Grid>
                                         </Border>
                                     </DataTemplate>
                                 </ItemsControl.ItemTemplate>
@@ -140,9 +234,16 @@
         </Grid>
 
         <!-- ========== STATUS BAR ========== -->
-        <TextBlock Grid.Row="2" Text="{Binding StatusMessage}" 
-                   Background="#F0F0F0" Padding="20,8" 
-                   FontSize="11" Foreground="#333333"
-                   TextTrimming="CharacterEllipsis"/>
+        <Border Grid.Row="2" 
+               Background="{DynamicResource ThemePanelBackgroundBrush}"
+               BorderBrush="{DynamicResource ThemeBorderBrush}"
+               BorderThickness="0,1,0,0"
+               Height="28">
+            <TextBlock Text="{Binding StatusMessage}" 
+                      Foreground="{DynamicResource ThemeTextSecondaryBrush}"
+                      FontSize="10"
+                      VerticalAlignment="Center"
+                      Margin="16,0"/>
+        </Border>
     </Grid>
 </UserControl>

@@ -1,179 +1,181 @@
-using CommunityToolkit.Mvvm.ComponentModel;
 using DiskChecker.Core.Models;
 
 namespace DiskChecker.UI.Avalonia.ViewModels;
 
 /// <summary>
-/// Represents a disk status card item for display in the UI.
+/// Represents a disk card item for display in the UI.
 /// </summary>
-public class DiskStatusCardItem : ObservableObject
+public partial class DiskStatusCardItem : ViewModelBase
 {
-        private bool _isLoading;
-        private string? _errorMessage;
     private bool _isSelected;
     private bool _isLocked;
-    private CoreDriveInfo? _drive;
-    private SmartaData? _smartData;
-    private QualityRating? _quality;
-
+    private bool _isLoading;
+    private string _errorMessage = string.Empty;
+    
     /// <summary>
-    /// Display name of the disk (model or generic name).
+    /// The underlying drive information.
+    /// </summary>
+    public CoreDriveInfo Drive { get; set; } = null!;
+    
+    /// <summary>
+    /// Display name for the disk (model name).
     /// </summary>
     public string DisplayName { get; set; } = string.Empty;
-
+    
     /// <summary>
-    /// Path to the disk device.
+    /// Display path (/dev/sda or \\.\PhysicalDrive0).
     /// </summary>
     public string DisplayPath { get; set; } = string.Empty;
-
+    
     /// <summary>
     /// Formatted capacity text (e.g., "500 GB").
     /// </summary>
     public string CapacityText { get; set; } = string.Empty;
-
+    
     /// <summary>
-    /// Quality grade text (A-F).
+    /// SMART grade letter (A-F).
     /// </summary>
-    public string GradeText { get; set; } = string.Empty;
-
+    public string GradeText { get; set; } = "?";
+    
     /// <summary>
-    /// Formatted temperature text (e.g., "42°C").
+    /// Formatted temperature text (e.g., "45°C").
     /// </summary>
-    public string TemperatureText { get; set; } = string.Empty;
-
+    public string TemperatureText { get; set; } = "N/A";
+    
     /// <summary>
-    /// Whether this is the system disk.
+    /// SMART data for this disk.
+    /// </summary>
+    public SmartaData? SmartData { get; set; }
+    
+    /// <summary>
+    /// Quality rating calculated from SMART data.
+    /// </summary>
+    public QualityRating Quality { get; set; } = new QualityRating(QualityGrade.F, 0);
+    
+    /// <summary>
+    /// Whether this disk is the system disk.
     /// </summary>
     public bool IsSystemDisk { get; set; }
-
+    
     /// <summary>
-    /// Label for system disk (e.g., "Systémový disk").
+    /// System disk label text.
     /// </summary>
     public string IsSystemDiskLabel { get; set; } = string.Empty;
-
+    
     /// <summary>
-    /// Lock symbol to display (🔒 if locked, empty if not).
-    /// </summary>
-    public string LockSymbol => IsLocked ? "🔒" : "";
-
-    /// <summary>
-    /// Status text for locked disk.
-    /// </summary>
-    public string LockStatusText => IsLocked ? "Zamčeno - destruktivní operace blokovány" : "";
-
-    /// <summary>
-    /// Whether this card is currently selected.
+    /// Whether this disk card is selected.
     /// </summary>
     public bool IsSelected
     {
         get => _isSelected;
         set => SetProperty(ref _isSelected, value);
     }
-
+    
     /// <summary>
-    /// Whether this card is currently loading SMART data.
+    /// Whether this disk is locked (cannot be tested).
+    /// </summary>
+    public bool IsLocked
+    {
+        get => _isLocked;
+        set => SetProperty(ref _isLocked, value);
+    }
+    
+    /// <summary>
+    /// Lock status explanation text.
+    /// </summary>
+    public string LockStatusText { get; set; } = string.Empty;
+    
+    /// <summary>
+    /// Serial number of the disk.
+    /// </summary>
+    public string? SerialNumber { get; set; }
+    
+    /// <summary>
+    /// Interface type (SATA, NVMe, USB).
+    /// </summary>
+    public string Interface { get; set; } = string.Empty;
+    
+    /// <summary>
+    /// Formatted list of partitions/volumes for display.
+    /// </summary>
+    public string PartitionsDisplay { get; set; } = string.Empty;
+    
+    /// <summary>
+    /// Number of partitions.
+    /// </summary>
+    public int PartitionCount { get; set; }
+    
+    /// <summary>
+    /// Whether the disk has any mounted partitions.
+    /// </summary>
+    public bool HasMountPoints => !string.IsNullOrEmpty(PartitionsDisplay);
+    
+    /// <summary>
+    /// Health status summary (OK, Warning, Critical).
+    /// </summary>
+    public string HealthStatus { get; set; } = "Unknown";
+    
+    /// <summary>
+    /// Health status color for UI.
+    /// </summary>
+    public string HealthStatusColor
+    {
+        get
+        {
+            return HealthStatus switch
+            {
+                "OK" => "#27AE60",
+                "Warning" => "#F39C12",
+                "Critical" => "#E74C3C",
+                _ => "#6C757D"
+            };
+        }
+    }
+    
+    /// <summary>
+    /// Whether the disk is currently loading data.
     /// </summary>
     public bool IsLoading
     {
         get => _isLoading;
         set => SetProperty(ref _isLoading, value);
     }
-
+    
     /// <summary>
-    /// Error message if SMART probe failed for this device.
+    /// Error message if loading failed.
     /// </summary>
-    public string? ErrorMessage
+    public string ErrorMessage
     {
         get => _errorMessage;
         set => SetProperty(ref _errorMessage, value);
     }
-
+    
     /// <summary>
-    /// Whether this disk is locked (protected from destructive operations).
+    /// Bus type display text.
     /// </summary>
-    public bool IsLocked
+    public string BusTypeDisplay
     {
-        get => _isLocked;
-        set
+        get
         {
-            if (SetProperty(ref _isLocked, value))
+            if (SmartData != null && !string.IsNullOrEmpty(SmartData.DeviceModel))
             {
-                OnPropertyChanged(nameof(LockSymbol));
-                OnPropertyChanged(nameof(LockStatusText));
+                // Detect from device model
+                var model = SmartData.DeviceModel.ToLowerInvariant();
+                if (model.Contains("nvme")) return "NVMe";
+                if (model.Contains("usb")) return "USB";
             }
-        }
-    }
-
-    /// <summary>
-    /// The drive information.
-    /// </summary>
-    public CoreDriveInfo? Drive
-    {
-        get => _drive;
-        set
-        {
-            if (SetProperty(ref _drive, value))
+            
+            return Drive?.BusType switch
             {
-                // Update derived volume properties when drive changes
-                if (_drive != null && _drive.Volumes != null && _drive.Volumes.Count > 0)
-                {
-                    VolumesCount = _drive.Volumes.Count;
-                    VolumesSummary = string.Join(", ", _drive.Volumes.Select(v =>
-                        {
-                            var name = string.IsNullOrEmpty(v.Name) ? v.Path : v.Name;
-                            // prefer drive letter if available
-                            if (!string.IsNullOrEmpty(v.Path) && v.Path.Length >= 2 && v.Path[1] == ':')
-                                return v.Path.TrimEnd('\\');
-                            return name;
-                        })) ;
-                }
-                else
-                {
-                    VolumesCount = 0;
-                    VolumesSummary = string.Empty;
-                }
-                OnPropertyChanged(nameof(VolumesCount));
-                OnPropertyChanged(nameof(VolumesSummary));
-            }
+                CoreBusType.Nvme => "NVMe",
+                CoreBusType.Sata => "SATA",
+                CoreBusType.Usb => "USB",
+                CoreBusType.Sas => "SAS",
+                CoreBusType.Ide => "IDE",
+                CoreBusType.Scsi => "SCSI",
+                CoreBusType.Virtual => "Virtual",
+                _ => "SATA"
+            };
         }
-    }
-
-    private int _volumesCount;
-    private string _volumesSummary = string.Empty;
-
-    /// <summary>
-    /// Number of logical volumes associated with this drive.
-    /// </summary>
-    public int VolumesCount
-    {
-        get => _volumesCount;
-        set => SetProperty(ref _volumesCount, value);
-    }
-
-    /// <summary>
-    /// Short summary of logical volumes (e.g., "C:\, D:\").
-    /// </summary>
-    public string VolumesSummary
-    {
-        get => _volumesSummary;
-        set => SetProperty(ref _volumesSummary, value);
-    }
-
-    /// <summary>
-    /// SMART data for the drive.
-    /// </summary>
-    public SmartaData? SmartData
-    {
-        get => _smartData;
-        set => SetProperty(ref _smartData, value);
-    }
-
-    /// <summary>
-    /// Quality rating based on SMART data.
-    /// </summary>
-    public QualityRating? Quality
-    {
-        get => _quality;
-        set => SetProperty(ref _quality, value);
     }
 }

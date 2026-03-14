@@ -113,22 +113,30 @@ public class DiskCheckerDbContext : DbContext
             entity.OwnsMany(e => e.TemperatureSamples, samples =>
             {
                 samples.WithOwner().HasForeignKey("TestSessionId");
+                samples.Property<int>("Id").ValueGeneratedOnAdd();
+                samples.HasKey("Id");
                 samples.Property(s => s.Phase).HasMaxLength(32);
             });
 
             entity.OwnsMany(e => e.WriteSamples, samples =>
             {
                 samples.WithOwner().HasForeignKey("TestSessionId");
+                samples.Property<int>("Id").ValueGeneratedOnAdd();
+                samples.HasKey("Id");
             });
 
             entity.OwnsMany(e => e.ReadSamples, samples =>
             {
                 samples.WithOwner().HasForeignKey("TestSessionId");
+                samples.Property<int>("Id").ValueGeneratedOnAdd();
+                samples.HasKey("Id");
             });
 
             entity.OwnsMany(e => e.SmartChanges, changes =>
             {
                 changes.WithOwner().HasForeignKey("TestSessionId");
+                changes.Property<int>("Id").ValueGeneratedOnAdd();
+                changes.HasKey("Id");
                 changes.Property(c => c.AttributeName).HasMaxLength(128);
                 changes.Property(c => c.Warning).HasMaxLength(512);
             });
@@ -136,6 +144,8 @@ public class DiskCheckerDbContext : DbContext
             entity.OwnsMany(e => e.Errors, errors =>
             {
                 errors.WithOwner().HasForeignKey("TestSessionId");
+                errors.Property<int>("Id").ValueGeneratedOnAdd();
+                errors.HasKey("Id");
                 errors.Property(e => e.ErrorCode).HasMaxLength(32);
                 errors.Property(e => e.Message).HasMaxLength(1024);
                 errors.Property(e => e.Phase).HasMaxLength(32);
@@ -176,6 +186,8 @@ public class DiskCheckerDbContext : DbContext
             entity.OwnsMany(e => e.SmartAttributes, attrs =>
             {
                 attrs.WithOwner().HasForeignKey("DiskCertificateId");
+                attrs.Property<int>("Id").ValueGeneratedOnAdd();
+                attrs.HasKey("Id");
                 attrs.Property(a => a.Name).HasMaxLength(128);
                 attrs.Property(a => a.Value).HasMaxLength(64);
                 attrs.Property(a => a.Status).HasMaxLength(32);

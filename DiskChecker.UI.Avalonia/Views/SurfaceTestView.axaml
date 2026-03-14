@@ -7,227 +7,258 @@
     <Grid>
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto"/>
-            <RowDefinition Height="Auto"/>
-            <RowDefinition Height="Auto"/>
-            <RowDefinition Height="*"/>
+            <RowDefinition Height="2*"/>
+            <RowDefinition Height="6*"/>
             <RowDefinition Height="Auto"/>
         </Grid.RowDefinitions>
 
         <!-- ========== HEADER ========== -->
-        <Border Grid.Row="0" Background="{DynamicResource ThemePanelBrush}" BorderBrush="{DynamicResource ThemeBorderBrush}" BorderThickness="0,0,0,1" Padding="20">
-            <Grid>
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="*"/>
-                    <ColumnDefinition Width="Auto"/>
-                </Grid.ColumnDefinitions>
-
-                <StackPanel Grid.Column="0">
-                    <TextBlock Text="Test Povrchu Disku" 
-                               FontSize="28" FontWeight="Bold" Foreground="#1a1a1a" Margin="0,0,0,5"/>
+        <Border Grid.Row="0" 
+                Background="{DynamicResource ThemeSecondaryBackgroundBrush}" 
+                Padding="20,16" Height="80"
+                BorderBrush="{DynamicResource ThemeBorderBrush}"
+                BorderThickness="0,0,0,1">
+            <Grid ColumnDefinitions="*,Auto">
+                <StackPanel Margin="0,-4">
+                    <TextBlock Text="🧪 Test Povrchu Disku" 
+                               FontSize="26" FontWeight="Bold" 
+                               Foreground="{DynamicResource ThemeTextPrimaryBrush}"
+                               Margin="0,0,0,4"/>
                     <TextBlock Text="Kompletní zápis a ověření celého povrchu disku" 
-                               FontSize="13" Foreground="#444444"/>
-                    <TextBlock Text="{Binding StatusMessage}" FontSize="11" Foreground="#333333" Margin="0,4,0,0"/>
+                               FontSize="12"
+                               Foreground="{DynamicResource ThemeTextSecondaryBrush}"/>
+                    <TextBlock Text="{Binding StatusMessage}" 
+                               FontSize="10"
+                               Foreground="{DynamicResource ThemeTextMutedBrush}"
+                               Margin="0,2,0,0"/>
                 </StackPanel>
-
                 <Button Grid.Column="1"
-                        Content="← Zpět"
+                        Content="← Zpět na přehled"
                         Command="{Binding GoBackCommand}"
-                        Background="#666666"
-                        Foreground="White"
+                        Background="{DynamicResource ThemeSecondaryBackgroundBrush}"
+                        Foreground="{DynamicResource ThemeTextPrimaryBrush}"
+                        BorderBrush="{DynamicResource ThemeBorderBrush}"
                         VerticalAlignment="Center"
-                        Padding="15,8"/>
+                        CornerRadius="6"
+                        Padding="14,8"
+                        FontWeight="SemiBold"/>
             </Grid>
         </Border>
 
         <!-- ========== DISK SELECTION ========== -->
-        <Border Grid.Row="1" Background="{DynamicResource ThemePanelBrush}" BorderBrush="{DynamicResource ThemeBorderBrush}" BorderThickness="1" Margin="20,12,20,0" Padding="15">
-            <Grid>
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="Auto"/>
-                    <ColumnDefinition Width="*"/>
-                    <ColumnDefinition Width="Auto"/>
-                </Grid.ColumnDefinitions>
+        <Border Grid.Row="1" Padding="16,8">
+            <Grid ColumnDefinitions="*,Auto,Auto">
+                <!-- Disk Selection Card -->
+                <Border Background="{DynamicResource ThemeCardBackgroundBrush}" 
+                        BorderBrush="{DynamicResource ThemeBorderBrush}"
+                        CornerRadius="8" Padding="12">
+                    <Grid ColumnDefinitions="Auto,*,Auto">
+                        <TextBlock Text="💿" FontSize="24" Margin="0,0,12,0" VerticalAlignment="Center"/>
+                        <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                            <TextBlock Text="Vybraný disk" FontSize="10" Foreground="{DynamicResource ThemeTextMutedBrush}"/>
+                            <ComboBox ItemsSource="{Binding AvailableDrives}"
+                                     SelectedItem="{Binding SelectedDrive}"
+                                     IsEnabled="{Binding CanChangeDisk}"
+                                     HorizontalAlignment="Stretch"
+                                     Padding="8,4"
+                                     FontSize="12">
+                                <ComboBox.ItemTemplate>
+                                    <DataTemplate>
+                                        <StackPanel Orientation="Horizontal" Spacing="6">
+                                            <TextBlock Text="{Binding Name}" FontWeight="SemiBold"/>
+                                            <TextBlock Text="(" Foreground="{DynamicResource ThemeTextMutedBrush}"/>
+                                            <TextBlock Text="{Binding Path}" Foreground="{DynamicResource ThemeTextMutedBrush}"/>
+                                            <TextBlock Text=")" Foreground="{DynamicResource ThemeTextMutedBrush}"/>
+                                        </StackPanel>
+                                    </DataTemplate>
+                                </ComboBox.ItemTemplate>
+                            </ComboBox>
+                        </StackPanel>
+                    </Grid>
+                </Border>
 
-                <TextBlock Grid.Column="0" Text="Vybraný disk:" 
-                           FontSize="14" FontWeight="Bold" Foreground="#1A1A1A" 
-                           VerticalAlignment="Center" Margin="0,0,15,0"/>
+                <!-- Temperature & Lock Status -->
+                <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="12" Margin="12,0">
+                    <Border Background="#FFF8E1" CornerRadius="6" Padding="10,6">
+                        <StackPanel Orientation="Horizontal" Spacing="4">
+                            <TextBlock Text="🌡" FontSize="14"/>
+                            <TextBlock Text="{Binding CurrentTemperature, StringFormat='{}{0}°C'}" FontSize="14" FontWeight="Bold" Foreground="#D32F2F"/>
+                        </StackPanel>
+                    </Border>
+                    <Border Background="#FFEBEE" CornerRadius="6" Padding="10,6"
+                           IsVisible="{Binding IsLocked}">
+                        <TextBlock Text="{Binding LockWarningText}" FontSize="11" FontWeight="Bold" Foreground="#C62828"/>
+                    </Border>
+                </StackPanel>
 
-                <ComboBox Grid.Column="1" 
-                          ItemsSource="{Binding AvailableDrives}"
-                          SelectedItem="{Binding SelectedDrive}"
-                          IsEnabled="{Binding CanChangeDisk}"
-                          HorizontalAlignment="Stretch"
-                          Padding="8,6">
-                    <ComboBox.ItemTemplate>
-                        <DataTemplate>
-                            <StackPanel Orientation="Horizontal" Spacing="8">
-                                <TextBlock Text="{Binding Name}" FontWeight="Bold" FontSize="12"/>
-                                <TextBlock Text="(" FontSize="12"/>
-                                <TextBlock Text="{Binding Path}" FontSize="12" Foreground="#666666"/>
-                                <TextBlock Text=")" FontSize="12"/>
+                <!-- Error Count -->
+                <Border Grid.Column="2" 
+                        Background="{DynamicResource ThemeCardBackgroundBrush}"
+                        BorderBrush="{DynamicResource ThemeDangerBrush}"
+                        BorderThickness="1"
+                        CornerRadius="6" 
+                        Padding="12,6">
+                    <StackPanel Orientation="Horizontal" Spacing="6">
+                        <TextBlock Text="⚠ Chyby：" FontSize="11" Foreground="{DynamicResource ThemeTextSecondaryBrush}"/>
+                        <TextBlock Text="{Binding ErrorCount}" FontSize="14" FontWeight="Bold" Foreground="{DynamicResource ThemeDangerBrush}"/>
+                    </StackPanel>
+                </Border>
+            </Grid>
+        </Border>
+
+        <!-- ========== MAIN TEST AREA ========== -->
+        <Border Grid.Row="2" Margin="16,0,16,8">
+            <Grid ColumnDefinitions="3*,2*">
+                <!-- Graph & Progress -->
+                <Border Grid.Column="0" 
+                        Background="{DynamicResource ThemeCardBackgroundBrush}"
+                        BorderBrush="{DynamicResource ThemeBorderBrush}"
+                        CornerRadius="8" Padding="14,10">
+                    <Grid RowDefinitions="Auto,Auto,4*">
+                        
+                        <!-- Progress Headers -->
+                        <Grid Grid.Row="0" ColumnDefinitions="*,*" Margin="0,0,0,8">
+                            <StackPanel Grid.Column="0" Margin="0,0,8,0">
+                                <StackPanel Orientation="Horizontal" Spacing="6">
+                                    <Ellipse Width="8" Height="8" Fill="{DynamicResource ThemeSuccessBrush}"/>
+                                    <TextBlock Text="ZÁPIS DAT (0-50%)" FontSize="11" FontWeight="Bold" Foreground="{DynamicResource ThemeTextPrimaryBrush}"/>
+                                </StackPanel>
+                                <ProgressBar Value="{Binding WriteProgress}" Maximum="100" Height="10"
+                                           Background="{DynamicResource ThemeBorderLightBrush}"
+                                           Foreground="{DynamicResource ThemeSuccessBrush}"
+                                           CornerRadius="5" Margin="0,4,0,2"/>
+                                <TextBlock Text="{Binding WriteProgress, StringFormat='{}{0:F1}%'}" 
+                                          FontSize="10" Foreground="{DynamicResource ThemeSuccessBrush}"
+                                          HorizontalAlignment="Right"/>
                             </StackPanel>
-                        </DataTemplate>
-                    </ComboBox.ItemTemplate>
-                </ComboBox>
-
-                <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="10" Margin="15,0,0,0">
-                    <TextBlock Text="{Binding LockWarningText}" 
-                               FontSize="11" Foreground="#D32F2F" FontWeight="Bold"
-                               VerticalAlignment="Center"/>
-                    <TextBlock Text="{Binding CurrentTemperature, StringFormat='🌡 {0}°C'}" 
-                               FontSize="14" FontWeight="Bold" Foreground="#D32F2F" 
-                               VerticalAlignment="Center"/>
-                </StackPanel>
-            </Grid>
-        </Border>
-
-        <!-- ========== DISK INFO ========== -->
-        <Border Grid.Row="2" Background="{DynamicResource ThemePanelBrush}" BorderBrush="{DynamicResource ThemeBorderBrush}" BorderThickness="1" Margin="20,8,20,0" Padding="15">
-            <Grid>
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="2*"/>
-                    <ColumnDefinition Width="1*"/>
-                </Grid.ColumnDefinitions>
-
-                <StackPanel Grid.Column="0">
-                    <TextBlock Text="{Binding SelectedDrive.Name}" 
-                               FontSize="16" FontWeight="Bold" Foreground="#1A1A1A" Margin="0,0,0,4"/>
-                    <TextBlock Text="{Binding SelectedDrive.Path}" 
-                               FontSize="12" Foreground="#555555" Margin="0,0,0,4"/>
-                    <TextBlock Text="{Binding SelectedDrive.TotalSize, StringFormat='Kapacita: {0:N0} GB'}" 
-                               FontSize="12" Foreground="#333333"/>
-                </StackPanel>
-
-                <StackPanel Grid.Column="1" HorizontalAlignment="Right">
-                    <TextBlock Text="{Binding ErrorCount, StringFormat='⚠ Chyby: {0}'}" 
-                               FontSize="14" FontWeight="Bold" Foreground="#E74C3C"/>
-                </StackPanel>
-            </Grid>
-        </Border>
-
-        <!-- ========== PROGRESS SECTION ========== -->
-        <Grid Grid.Row="3" Margin="20,12,20,12">
-            <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="2*"/>
-                <ColumnDefinition Width="1*"/>
-            </Grid.ColumnDefinitions>
-
-            <!-- Progress & Graphs -->
-            <Grid Grid.Column="0" Margin="0,0,10,0">
-                <Grid.RowDefinitions>
-                    <RowDefinition Height="Auto"/>
-                    <RowDefinition Height="Auto"/>
-                    <RowDefinition Height="*"/>
-                </Grid.RowDefinitions>
-
-                <!-- WRITE Progress -->
-                <StackPanel Grid.Row="0" Margin="0,0,0,10">
-                    <TextBlock Text="ZÁPIS DAT (0-50%)" FontSize="12" FontWeight="Bold" Foreground="#333333" Margin="0,0,0,4"/>
-                    <ProgressBar Value="{Binding WriteProgress}" Maximum="100" 
-                                 Height="20" Background="#E6EAF0" Foreground="#27AE60"/>
-                    <TextBlock Text="{Binding WriteProgress, StringFormat='{}{0:F1}%'}" 
-                               HorizontalAlignment="Right" FontSize="10" Foreground="#27AE60"/>
-                </StackPanel>
-
-                <!-- VERIFY Progress -->
-                <StackPanel Grid.Row="1" Margin="0,0,0,10">
-                    <TextBlock Text="OVĚŘENÍ DAT (50-100%)" FontSize="12" FontWeight="Bold" Foreground="#333333" Margin="0,0,0,4"/>
-                    <ProgressBar Value="{Binding VerifyProgress}" Maximum="100" 
-                                 Height="20" Background="#E6EAF0" Foreground="#F39C12"/>
-                    <TextBlock Text="{Binding VerifyProgress, StringFormat='{}{0:F1}%'}" 
-                               HorizontalAlignment="Right" FontSize="10" Foreground="#F39C12"/>
-                </StackPanel>
-
-                <!-- Speed Graph -->
-                <Border Grid.Row="2" Background="{DynamicResource ThemePanelBrush}" BorderBrush="{DynamicResource ThemeBorderBrush}" BorderThickness="1" Padding="10">
-                    <Grid>
-                        <Grid.RowDefinitions>
-                            <RowDefinition Height="Auto"/>
-                            <RowDefinition Height="Auto"/>
-                            <RowDefinition Height="*"/>
-                        </Grid.RowDefinitions>
-                        
-                        <TextBlock Grid.Row="0" Text="📊 Průběh rychlosti v čase" FontSize="12" FontWeight="Bold" Foreground="#333333" Margin="0,0,0,8"/>
-                        
-                        <!-- Speed Statistics -->
-                        <Border Grid.Row="1" Background="#F0F9FF" CornerRadius="6" Padding="10" Margin="0,0,0,10">
-                            <Grid>
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="*"/>
-                                    <ColumnDefinition Width="*"/>
-                                    <ColumnDefinition Width="*"/>
-                                    <ColumnDefinition Width="*"/>
-                                </Grid.ColumnDefinitions>
-                                
-                                <StackPanel Grid.Column="0" HorizontalAlignment="Center">
-                                    <TextBlock Text="Aktuální" FontSize="10" Foreground="#666" HorizontalAlignment="Center"/>
-                                    <TextBlock Text="{Binding CurrentSpeed, StringFormat='{}{0:F1} MB/s'}" FontSize="16" FontWeight="Bold" Foreground="#2563EB" HorizontalAlignment="Center"/>
+                            <StackPanel Grid.Column="1">
+                                <StackPanel Orientation="Horizontal" Spacing="6">
+                                    <Ellipse Width="8" Height="8" Fill="{DynamicResource ThemeWarningBrush}"/>
+                                    <TextBlock Text="OVĚŘENÍ DAT (50-100%)" FontSize="11" FontWeight="Bold" Foreground="{DynamicResource ThemeTextPrimaryBrush}"/>
                                 </StackPanel>
+                                <ProgressBar Value="{Binding VerifyProgress}" Maximum="100" Height="10"
+                                           Background="{DynamicResource ThemeBorderLightBrush}"
+                                           Foreground="{DynamicResource ThemeWarningBrush}"
+                                           CornerRadius="5" Margin="0,4,0,2"/>
+                                <TextBlock Text="{Binding VerifyProgress, StringFormat='{}{0:F1}%'}" 
+                                          FontSize="10" Foreground="{DynamicResource ThemeWarningBrush}"
+                                          HorizontalAlignment="Right"/>
+                            </StackPanel>
+                        </Grid>
+
+                        <!-- Speed Statistics - Write and Read separated -->
+                        <Border Grid.Row="1" Background="{DynamicResource ThemePanelBackgroundBrush}" CornerRadius="6" Padding="8" Margin="0,0,0,8">
+                            <Grid RowDefinitions="Auto,4,Auto">
+                                <!-- Write Phase Statistics -->
+                                <Border Grid.Row="0" Background="#1A22C55E" CornerRadius="4" Padding="6,4">
+                                    <Grid ColumnDefinitions="Auto,*,*,*,*">
+                                        <StackPanel Grid.Column="0" Orientation="Horizontal" Margin="0,0,8,0">
+                                            <Ellipse Width="8" Height="8" Fill="#22C55E" Margin="0,0,4,0"/>
+                                            <TextBlock Text="ZÁPIS" FontSize="10" FontWeight="Bold" Foreground="#22C55E" VerticalAlignment="Center"/>
+                                        </StackPanel>
+                                        <StackPanel Grid.Column="1" HorizontalAlignment="Center">
+                                            <TextBlock Text="Akt" FontSize="8" Foreground="{DynamicResource ThemeTextMutedBrush}" HorizontalAlignment="Center"/>
+                                            <TextBlock Text="{Binding WriteCurrentSpeed, StringFormat='{}{0:F0}'}" FontSize="14" FontWeight="Bold" Foreground="#22C55E" HorizontalAlignment="Center"/>
+                                        </StackPanel>
+                                        <StackPanel Grid.Column="2" HorizontalAlignment="Center">
+                                            <TextBlock Text="Min" FontSize="8" Foreground="{DynamicResource ThemeTextMutedBrush}" HorizontalAlignment="Center"/>
+                                            <TextBlock Text="{Binding WriteMinSpeed, StringFormat='{}{0:F0}'}" FontSize="14" FontWeight="Bold" Foreground="#4ADE80" HorizontalAlignment="Center"/>
+                                        </StackPanel>
+                                        <StackPanel Grid.Column="3" HorizontalAlignment="Center">
+                                            <TextBlock Text="Max" FontSize="8" Foreground="{DynamicResource ThemeTextMutedBrush}" HorizontalAlignment="Center"/>
+                                            <TextBlock Text="{Binding WriteMaxSpeed, StringFormat='{}{0:F0}'}" FontSize="14" FontWeight="Bold" Foreground="#16A34A" HorizontalAlignment="Center"/>
+                                        </StackPanel>
+                                        <StackPanel Grid.Column="4" HorizontalAlignment="Center">
+                                            <TextBlock Text="Prům" FontSize="8" Foreground="{DynamicResource ThemeTextMutedBrush}" HorizontalAlignment="Center"/>
+                                            <TextBlock Text="{Binding WriteAvgSpeed, StringFormat='{}{0:F0}'}" FontSize="14" FontWeight="Bold" Foreground="#15803D" HorizontalAlignment="Center"/>
+                                        </StackPanel>
+                                    </Grid>
+                                </Border>
                                 
-                                <StackPanel Grid.Column="1" HorizontalAlignment="Center">
-                                    <TextBlock Text="Min" FontSize="10" Foreground="#666" HorizontalAlignment="Center"/>
-                                    <TextBlock Text="{Binding MinSpeed, StringFormat='{}{0:F1} MB/s'}" FontSize="16" FontWeight="Bold" Foreground="#059669" HorizontalAlignment="Center"/>
-                                </StackPanel>
-                                
-                                <StackPanel Grid.Column="2" HorizontalAlignment="Center">
-                                    <TextBlock Text="Max" FontSize="10" Foreground="#666" HorizontalAlignment="Center"/>
-                                    <TextBlock Text="{Binding MaxSpeed, StringFormat='{}{0:F1} MB/s'}" FontSize="16" FontWeight="Bold" Foreground="#DC2626" HorizontalAlignment="Center"/>
-                                </StackPanel>
-                                
-                                <StackPanel Grid.Column="3" HorizontalAlignment="Center">
-                                    <TextBlock Text="Průměr" FontSize="10" Foreground="#666" HorizontalAlignment="Center"/>
-                                    <TextBlock Text="{Binding AvgSpeed, StringFormat='{}{0:F1} MB/s'}" FontSize="16" FontWeight="Bold" Foreground="#7C3AED" HorizontalAlignment="Center"/>
-                                </StackPanel>
+                                <!-- Read Phase Statistics -->
+                                <Border Grid.Row="2" Background="#1A3B82F6" CornerRadius="4" Padding="6,4">
+                                    <Grid ColumnDefinitions="Auto,*,*,*,*">
+                                        <StackPanel Grid.Column="0" Orientation="Horizontal" Margin="0,0,8,0">
+                                            <Ellipse Width="8" Height="8" Fill="#3B82F6" Margin="0,0,4,0"/>
+                                            <TextBlock Text="ČTENÍ" FontSize="10" FontWeight="Bold" Foreground="#3B82F6" VerticalAlignment="Center"/>
+                                        </StackPanel>
+                                        <StackPanel Grid.Column="1" HorizontalAlignment="Center">
+                                            <TextBlock Text="Akt" FontSize="8" Foreground="{DynamicResource ThemeTextMutedBrush}" HorizontalAlignment="Center"/>
+                                            <TextBlock Text="{Binding ReadCurrentSpeed, StringFormat='{}{0:F0}'}" FontSize="14" FontWeight="Bold" Foreground="#3B82F6" HorizontalAlignment="Center"/>
+                                        </StackPanel>
+                                        <StackPanel Grid.Column="2" HorizontalAlignment="Center">
+                                            <TextBlock Text="Min" FontSize="8" Foreground="{DynamicResource ThemeTextMutedBrush}" HorizontalAlignment="Center"/>
+                                            <TextBlock Text="{Binding ReadMinSpeed, StringFormat='{}{0:F0}'}" FontSize="14" FontWeight="Bold" Foreground="#60A5FA" HorizontalAlignment="Center"/>
+                                        </StackPanel>
+                                        <StackPanel Grid.Column="3" HorizontalAlignment="Center">
+                                            <TextBlock Text="Max" FontSize="8" Foreground="{DynamicResource ThemeTextMutedBrush}" HorizontalAlignment="Center"/>
+                                            <TextBlock Text="{Binding ReadMaxSpeed, StringFormat='{}{0:F0}'}" FontSize="14" FontWeight="Bold" Foreground="#2563EB" HorizontalAlignment="Center"/>
+                                        </StackPanel>
+                                        <StackPanel Grid.Column="4" HorizontalAlignment="Center">
+                                            <TextBlock Text="Prům" FontSize="8" Foreground="{DynamicResource ThemeTextMutedBrush}" HorizontalAlignment="Center"/>
+                                            <TextBlock Text="{Binding ReadAvgSpeed, StringFormat='{}{0:F0}'}" FontSize="14" FontWeight="Bold" Foreground="#1D4ED8" HorizontalAlignment="Center"/>
+                                        </StackPanel>
+                                    </Grid>
+                                </Border>
                             </Grid>
                         </Border>
-                        
+
                         <!-- Graph Area -->
-                        <Border Grid.Row="2" CornerRadius="8" Padding="10">
-                            <Border.Background>
-                                <LinearGradientBrush StartPoint="0%,0%" EndPoint="0%,100%">
-                                    <GradientStop Color="#1E3A5F" Offset="0"/>
-                                    <GradientStop Color="#0F1F33" Offset="1"/>
-                                </LinearGradientBrush>
-                            </Border.Background>
-                            <Grid>
-                                <Grid.RowDefinitions>
-                                    <RowDefinition Height="Auto"/>
-                                    <RowDefinition Height="6*"/>
-                                    <RowDefinition Height="4*"/>
-                                </Grid.RowDefinitions>
-                                
-                                <!-- Zoom Controls -->
-                                <StackPanel Grid.Row="0" Orientation="Horizontal" Margin="0,0,0,8">
-                                    <TextBlock Text="Časové okno: " FontSize="11" Foreground="#94A3B8" VerticalAlignment="Center"/>
-                                    <ComboBox ItemsSource="{Binding ZoomLevels}"
-                                              SelectedIndex="{Binding SelectedZoomIndex}"
-                                              MinWidth="80" FontSize="11"/>
-                                    <TextBlock Text=" | " FontSize="11" Foreground="#64748B" Margin="8,0"/>
-                                    <TextBlock FontSize="10" Foreground="#22C55E" Text="■ Zápis" VerticalAlignment="Center"/>
-                                    <TextBlock FontSize="10" Foreground="#3B82F6" Text="  ■ Čtení" VerticalAlignment="Center" Margin="8,0,0,0"/>
-                                    <TextBlock FontSize="10" Foreground="#F97316" Text="  ■ Teplota" VerticalAlignment="Center" Margin="8,0,0,0"/>
+                        <Border Grid.Row="2" Background="{DynamicResource ThemeGraphBackgroundBrush}" CornerRadius="8" Padding="10">
+                            <Grid RowDefinitions="Auto,Auto,*">
+                                <!-- Legend -->
+                                <StackPanel Grid.Row="0" Orientation="Horizontal" Spacing="12" Margin="0,0,0,8">
+                                    <Border Background="#22C55E" Width="10" Height="10" CornerRadius="2"/>
+                                    <TextBlock Text="Zápis" FontSize="10" Foreground="#94A3B8" VerticalAlignment="Center"/>
+                                    <Border Background="#3B82F6" Width="10" Height="10" CornerRadius="2" Margin="8,0,0,0"/>
+                                    <TextBlock Text="Čtení" FontSize="10" Foreground="#94A3B8" VerticalAlignment="Center" Margin="4,0,0,0"/>
+                                    
+                                    <Border Background="#EF4444" Width="20" Height="2" Margin="12,0,0,0" Opacity="0.7"/>
+                                    <TextBlock Text="Max" FontSize="9" Foreground="#94A3B8" VerticalAlignment="Center" Margin="4,0,0,0"/>
+                                    <Border Background="#22C55E" Width="20" Height="2" Margin="8,0,0,0" Opacity="0.7"/>
+                                    <TextBlock Text="Min" FontSize="9" Foreground="#94A3B8" VerticalAlignment="Center" Margin="4,0,0,0"/>
+                                    <Border Background="#F59E0B" Width="20" Height="2" Margin="8,0,0,0" Opacity="0.7"/>
+                                    <TextBlock Text="Avg" FontSize="9" Foreground="#94A3B8" VerticalAlignment="Center" Margin="4,0,0,0"/>
                                 </StackPanel>
-                                
-                                <!-- Speed Graph (Write + Read) - 60% of space -->
-                                <Grid Grid.Row="1">
+
+                                <!-- Stats Line -->
+                                <Border Grid.Row="1" Background="#1A1A2E" CornerRadius="4" Padding="8,4" Margin="0,0,0,8">
+                                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" Spacing="24">
+                                        <StackPanel Orientation="Horizontal" Spacing="4">
+                                            <TextBlock Text="Y-osa:" FontSize="10" Foreground="#64748B"/>
+                                            <TextBlock Text="{Binding DisplayMaxSpeed, StringFormat='0 - {0:F0} MB/s'}" FontSize="10" Foreground="#94A3B8" FontWeight="SemiBold"/>
+                                        </StackPanel>
+                                        <StackPanel Orientation="Horizontal" Spacing="4">
+                                            <TextBlock Text="Bodů:" FontSize="10" Foreground="#64748B"/>
+                                            <TextBlock Text="{Binding SpeedHistory.Count}" FontSize="10" Foreground="#94A3B8" FontWeight="SemiBold"/>
+                                        </StackPanel>
+                                    </StackPanel>
+                                </Border>
+
+                                <!-- Speed Graph with reference lines -->
+                                <Grid Grid.Row="2">
                                     <Grid.ColumnDefinitions>
                                         <ColumnDefinition Width="Auto"/>
                                         <ColumnDefinition Width="*"/>
                                     </Grid.ColumnDefinitions>
                                     
-                                    <!-- Y-Axis Labels for Speed -->
-                                    <StackPanel Grid.Column="0" Orientation="Vertical" Margin="0,0,4,0">
-                                        <TextBlock Text="{Binding DisplayMaxSpeed, StringFormat='{}{0:F0}'}" FontSize="8" Foreground="#64748B" TextAlignment="Right" Width="25"/>
-                                        <TextBlock Text="{Binding AvgSpeed, StringFormat='{}{0:F0}'}" FontSize="8" Foreground="#64748B" TextAlignment="Right" Width="25" VerticalAlignment="Center"/>
-                                        <TextBlock Text="0" FontSize="8" Foreground="#64748B" TextAlignment="Right" Width="25" VerticalAlignment="Bottom"/>
+                                    <!-- Y-Axis Labels -->
+                                    <StackPanel Grid.Column="0" Orientation="Vertical" Margin="0,0,4,0" Width="28">
+                                        <TextBlock Text="{Binding DisplayMaxSpeed, StringFormat='{}{0:F0}'}" FontSize="7" Foreground="#64748B" TextAlignment="Right"/>
+                                        <TextBlock Text="0" FontSize="7" Foreground="#64748B" TextAlignment="Right" VerticalAlignment="Bottom"/>
                                     </StackPanel>
                                     
-                                    <!-- Graph Area -->
+                                    <!-- Graph Canvas -->
                                     <Grid Grid.Column="1">
-                                        <!-- Write Speed Bars (Phase 0) -->
-                                        <ItemsControl ItemsSource="{Binding VisibleWriteData}" 
-                                                      VerticalAlignment="Stretch"
-                                                      HorizontalAlignment="Stretch">
+                                        <!-- Reference Lines Canvas -->
+                                        <Canvas IsHitTestVisible="False" ZIndex="5">
+                                            <!-- Max speed reference line -->
+                                            <Rectangle Canvas.Top="0" Width="10000" Height="1" Fill="#EF4444" Opacity="0.5"
+                                                       IsVisible="{Binding SpeedHistory.Count, Converter={StaticResource IntToBoolConverter}}"/>
+                                        </Canvas>
+                                        
+                                        <!-- Write Speed Bars -->
+                                        <ItemsControl ItemsSource="{Binding VisibleWriteData}" VerticalAlignment="Stretch" HorizontalAlignment="Stretch">
                                             <ItemsControl.ItemsPanel>
                                                 <ItemsPanelTemplate>
                                                     <UniformGrid Rows="1"/>
@@ -235,21 +266,14 @@
                                             </ItemsControl.ItemsPanel>
                                             <ItemsControl.ItemTemplate>
                                                 <DataTemplate>
-                                                    <Border MinHeight="2"
-                                                            Height="{Binding Height}"
-                                                            Background="#22C55E"
-                                                            CornerRadius="1,1,0,0"
-                                                            Margin="0,0,1,0"
-                                                            VerticalAlignment="Bottom"
+                                                    <Border MinHeight="2" Height="{Binding Height}" Background="#22C55E" CornerRadius="1,1,0,0" Margin="0,0,1,0" VerticalAlignment="Bottom"
                                                             ToolTip.Tip="{Binding Speed, StringFormat='{}{0:F1} MB/s - Zápis'}"/>
                                                 </DataTemplate>
                                             </ItemsControl.ItemTemplate>
                                         </ItemsControl>
                                         
-                                        <!-- Read Speed Bars (Phase 1) -->
-                                        <ItemsControl ItemsSource="{Binding VisibleReadData}" 
-                                                      VerticalAlignment="Stretch"
-                                                      HorizontalAlignment="Stretch">
+                                        <!-- Read Speed Bars -->
+                                        <ItemsControl ItemsSource="{Binding VisibleReadData}" VerticalAlignment="Stretch" HorizontalAlignment="Stretch">
                                             <ItemsControl.ItemsPanel>
                                                 <ItemsPanelTemplate>
                                                     <UniformGrid Rows="1"/>
@@ -257,184 +281,181 @@
                                             </ItemsControl.ItemsPanel>
                                             <ItemsControl.ItemTemplate>
                                                 <DataTemplate>
-                                                    <Border MinHeight="2"
-                                                            Height="{Binding Height}"
-                                                            Background="#3B82F6"
-                                                            CornerRadius="1,1,0,0"
-                                                            Margin="0,0,1,0"
-                                                            VerticalAlignment="Bottom"
+                                                    <Border MinHeight="2" Height="{Binding Height}" Background="#3B82F6" CornerRadius="1,1,0,0" Margin="0,0,1,0" VerticalAlignment="Bottom" Opacity="0.7"
                                                             ToolTip.Tip="{Binding Speed, StringFormat='{}{0:F1} MB/s - Čtení'}"/>
                                                 </DataTemplate>
                                             </ItemsControl.ItemTemplate>
                                         </ItemsControl>
                                         
-                                        <!-- Empty state -->
                                         <TextBlock Text="📈 Spusťte test pro zobrazení grafu"
-                                                   VerticalAlignment="Center" HorizontalAlignment="Center"
-                                                   FontSize="14" Foreground="#64748B"
-                                                   IsVisible="{Binding SpeedHistory.Count, Converter={StaticResource InvertedIntToBoolConverter}}"/>
+                                                VerticalAlignment="Center" HorizontalAlignment="Center"
+                                                FontSize="12" Foreground="#64748B"
+                                                IsVisible="{Binding SpeedHistory.Count, Converter={StaticResource InvertedIntToBoolConverter}}"/>
                                     </Grid>
-                                </Grid>
-                                
-                                <!-- Temperature Graph - 40% of space -->
-                                <Grid Grid.Row="2" Margin="0,8,0,0">
-                                    <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="Auto"/>
-                                        <ColumnDefinition Width="*"/>
-                                        <ColumnDefinition Width="Auto"/>
-                                    </Grid.ColumnDefinitions>
-                                    
-                                    <!-- Y-Axis Labels for Temperature -->
-                                    <StackPanel Grid.Column="0" Orientation="Vertical" Margin="0,0,4,0">
-                                        <TextBlock Text="{Binding DisplayMaxTemperature, StringFormat='{}{0}°'}" FontSize="8" Foreground="#F97316" TextAlignment="Right" Width="25"/>
-                                        <TextBlock Text="15°" FontSize="8" Foreground="#64748B" TextAlignment="Right" Width="25" VerticalAlignment="Bottom"/>
-                                    </StackPanel>
-                                    
-                                    <ItemsControl Grid.Column="1" ItemsSource="{Binding VisibleTemperatureData}" 
-                                                  VerticalAlignment="Stretch"
-                                                  HorizontalAlignment="Stretch">
-                                        <ItemsControl.ItemsPanel>
-                                            <ItemsPanelTemplate>
-                                                <UniformGrid Rows="1"/>
-                                            </ItemsPanelTemplate>
-                                        </ItemsControl.ItemsPanel>
-                                        <ItemsControl.ItemTemplate>
-                                            <DataTemplate>
-                                                <Border MinHeight="2"
-                                                        Height="{Binding Height}"
-                                                        Background="#F97316"
-                                                        CornerRadius="1"
-                                                        Margin="0,0,1,0"
-                                                        VerticalAlignment="Bottom"
-                                                        ToolTip.Tip="{Binding Temperature, StringFormat='{}{0}°C'}"/>
-                                            </DataTemplate>
-                                        </ItemsControl.ItemTemplate>
-                                    </ItemsControl>
-                                    
-                                    <StackPanel Grid.Column="2" Orientation="Horizontal" Margin="8,0,0,0">
-                                        <TextBlock Text="{Binding MinTemperature, StringFormat='Min: {0}°C'}" FontSize="9" Foreground="#64748B" Margin="0,0,8,0"/>
-                                        <TextBlock Text="{Binding MaxTemperature, StringFormat='Max: {0}°C'}" FontSize="9" Foreground="#F97316"/>
-                                    </StackPanel>
                                 </Grid>
                             </Grid>
                         </Border>
                     </Grid>
                 </Border>
-            </Grid>
 
-            <!-- Test Profiles & Controls -->
-            <Grid Grid.Column="1" Margin="10,0,0,0">
-                <Grid.RowDefinitions>
-                    <RowDefinition Height="Auto"/>
-                    <RowDefinition Height="*"/>
-                    <RowDefinition Height="Auto"/>
-                </Grid.RowDefinitions>
+                <!-- Test Profiles & Controls -->
+                <Border Grid.Column="1" 
+                        Background="{DynamicResource ThemeCardBackgroundBrush}"
+                        BorderBrush="{DynamicResource ThemeBorderBrush}"
+                        CornerRadius="8" 
+                        Margin="8,0,0,0"
+                        Padding="14">
+                    <Grid RowDefinitions="Auto,*,Auto">
+                        <!-- Test Profiles -->
+                        <StackPanel Grid.Row="0">
+                            <TextBlock Text="📋 Profily testů" FontSize="12" FontWeight="Bold" 
+                                      Foreground="{DynamicResource ThemeTextPrimaryBrush}" Margin="0,0,0,10"/>
+                            <ItemsControl ItemsSource="{Binding TestProfiles}">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate>
+                                        <Button Command="{Binding $parent[ItemsControl].DataContext.SelectProfileCommand}"
+                                               CommandParameter="{Binding}"
+                                               Background="Transparent" BorderThickness="0"
+                                               HorizontalAlignment="Stretch"
+                                               HorizontalContentAlignment="Stretch"
+                                               Padding="0"
+                                               Cursor="Hand">
+                                            <Border Background="{Binding IsSelected, Converter={StaticResource BooleanToBrushConverter}, ConverterParameter=Selected:#E3F2FD;Normal:#FAFAFA}"
+                                                   BorderBrush="{Binding IsSelected, Converter={StaticResource BooleanToBrushConverter}, ConverterParameter=Selected:{DynamicResource ThemePrimaryBrush};Normal:{DynamicResource ThemeBorderBrush}}"
+                                                   BorderThickness="2"
+                                                   CornerRadius="8"
+                                                   Padding="12"
+                                                   Margin="0,0,0,6">
+                                                <Grid ColumnDefinitions="Auto,*">
+                                                    <TextBlock Grid.Column="0" Text="{Binding Name}" FontSize="11" FontWeight="SemiBold"
+                                                             Foreground="{DynamicResource ThemeTextPrimaryBrush}"/>
+                                                    <TextBlock Grid.Column="1" Text="{Binding Description}" FontSize="9"
+                                                             Foreground="{DynamicResource ThemeTextMutedBrush}"/>
+                                                </Grid>
+                                            </Border>
+                                        </Button>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                        </StackPanel>
 
-                <!-- Test Profiles -->
-                <Border Grid.Row="0" Background="{DynamicResource ThemePanelBrush}" BorderBrush="{DynamicResource ThemeBorderBrush}" BorderThickness="1" Padding="10" Margin="0,0,0,10">
-                    <StackPanel>
-                        <TextBlock Text="Profily testů" FontSize="12" FontWeight="Bold" Foreground="#333333" Margin="0,0,0,8"/>
-                        <ItemsControl ItemsSource="{Binding TestProfiles}">
-                            <ItemsControl.ItemTemplate>
-                                <DataTemplate>
-                                    <Button Command="{Binding $parent[ItemsControl].DataContext.SelectProfileCommand}"
-                                             CommandParameter="{Binding}"
-                                             Background="Transparent"
-                                             HorizontalAlignment="Stretch"
-                                             HorizontalContentAlignment="Stretch"
-                                             Padding="0"
-                                             BorderThickness="0">
-                                        <Button.Styles>
-                                            <Style Selector="Button">
-                                                <Setter Property="Cursor" Value="Hand"/>
-                                            </Style>
-                                        </Button.Styles>
-                                        <Border Background="{Binding IsSelected, Converter={StaticResource BooleanToBrushConverter}, ConverterParameter=Selected:#E3F2FD;Normal:#FFFFFF}"
-                                                BorderBrush="{Binding IsSelected, Converter={StaticResource BooleanToBrushConverter}, ConverterParameter=Selected:#004B93;Normal:#CCCCCC}"
-                                                BorderThickness="1"
-                                                CornerRadius="4"
-                                                Padding="10"
-                                                Margin="0,0,0,5">
-                                            <StackPanel>
-                                                <TextBlock Text="{Binding Name}" FontWeight="Bold" FontSize="11" Foreground="#1A1A1A"/>
-                                                <TextBlock Text="{Binding Description}" FontSize="10" Foreground="#666666" TextWrapping="Wrap"/>
-                                            </StackPanel>
-                                        </Border>
-                                    </Button>
-                                </DataTemplate>
-                            </ItemsControl.ItemTemplate>
-                        </ItemsControl>
-                    </StackPanel>
+                        <!-- Statistics -->
+                        <Border Grid.Row="1" 
+                               Background="{DynamicResource ThemePanelBackgroundBrush}"
+                               CornerRadius="6" 
+                               Padding="10" 
+                               Margin="0,12,0,0">
+                            <StackPanel Spacing="6">
+                                <TextBlock Text="📊 Statistiky" FontSize="11" FontWeight="Bold"
+                                          Foreground="{DynamicResource ThemeTextPrimaryBrush}"/>
+                                
+                                <!-- Write Phase Stats -->
+                                <Border Background="#1A22C55E" CornerRadius="4" Padding="6,4">
+                                    <StackPanel Spacing="2">
+                                        <StackPanel Orientation="Horizontal" Margin="0,0,0,2">
+                                            <Ellipse Width="6" Height="6" Fill="#22C55E" Margin="0,0,4,0"/>
+                                            <TextBlock Text="Zápis" FontSize="9" FontWeight="Bold" Foreground="#22C55E"/>
+                                        </StackPanel>
+                                        <Grid ColumnDefinitions="*,Auto" Margin="0,1">
+                                            <TextBlock Text="Min:" FontSize="9" Foreground="{DynamicResource ThemeTextSecondaryBrush}"/>
+                                            <TextBlock Grid.Column="1" Text="{Binding WriteMinSpeed, StringFormat='{}{0:F0} MB/s'}" FontSize="9" FontWeight="Bold" Foreground="#22C55E"/>
+                                        </Grid>
+                                        <Grid ColumnDefinitions="*,Auto" Margin="0,1">
+                                            <TextBlock Text="Max:" FontSize="9" Foreground="{DynamicResource ThemeTextSecondaryBrush}"/>
+                                            <TextBlock Grid.Column="1" Text="{Binding WriteMaxSpeed, StringFormat='{}{0:F0} MB/s'}" FontSize="9" FontWeight="Bold" Foreground="#16A34A"/>
+                                        </Grid>
+                                        <Grid ColumnDefinitions="*,Auto" Margin="0,1">
+                                            <TextBlock Text="Průměr:" FontSize="9" Foreground="{DynamicResource ThemeTextSecondaryBrush}"/>
+                                            <TextBlock Grid.Column="1" Text="{Binding WriteAvgSpeed, StringFormat='{}{0:F0} MB/s'}" FontSize="9" FontWeight="Bold" Foreground="#15803D"/>
+                                        </Grid>
+                                    </StackPanel>
+                                </Border>
+                                
+                                <!-- Read Phase Stats -->
+                                <Border Background="#1A3B82F6" CornerRadius="4" Padding="6,4">
+                                    <StackPanel Spacing="2">
+                                        <StackPanel Orientation="Horizontal" Margin="0,0,0,2">
+                                            <Ellipse Width="6" Height="6" Fill="#3B82F6" Margin="0,0,4,0"/>
+                                            <TextBlock Text="Čtení" FontSize="9" FontWeight="Bold" Foreground="#3B82F6"/>
+                                        </StackPanel>
+                                        <Grid ColumnDefinitions="*,Auto" Margin="0,1">
+                                            <TextBlock Text="Min:" FontSize="9" Foreground="{DynamicResource ThemeTextSecondaryBrush}"/>
+                                            <TextBlock Grid.Column="1" Text="{Binding ReadMinSpeed, StringFormat='{}{0:F0} MB/s'}" FontSize="9" FontWeight="Bold" Foreground="#3B82F6"/>
+                                        </Grid>
+                                        <Grid ColumnDefinitions="*,Auto" Margin="0,1">
+                                            <TextBlock Text="Max:" FontSize="9" Foreground="{DynamicResource ThemeTextSecondaryBrush}"/>
+                                            <TextBlock Grid.Column="1" Text="{Binding ReadMaxSpeed, StringFormat='{}{0:F0} MB/s'}" FontSize="9" FontWeight="Bold" Foreground="#2563EB"/>
+                                        </Grid>
+                                        <Grid ColumnDefinitions="*,Auto" Margin="0,1">
+                                            <TextBlock Text="Průměr:" FontSize="9" Foreground="{DynamicResource ThemeTextSecondaryBrush}"/>
+                                            <TextBlock Grid.Column="1" Text="{Binding ReadAvgSpeed, StringFormat='{}{0:F0} MB/s'}" FontSize="9" FontWeight="Bold" Foreground="#1D4ED8"/>
+                                        </Grid>
+                                    </StackPanel>
+                                </Border>
+                                
+                                <!-- Time & Errors -->
+                                <Grid ColumnDefinitions="*,Auto" Margin="0,4">
+                                    <TextBlock Text="Zbývající čas:" FontSize="10" Foreground="{DynamicResource ThemeTextSecondaryBrush}"/>
+                                    <TextBlock Grid.Column="1" Text="{Binding TimeRemaining}" FontSize="10" FontWeight="Bold" Foreground="{DynamicResource ThemeTextPrimaryBrush}" Margin="8,0,0,0"/>
+                                </Grid>
+                                <Grid ColumnDefinitions="*,Auto" Margin="0,4">
+                                    <TextBlock Text="Chyby:" FontSize="10" Foreground="{DynamicResource ThemeTextSecondaryBrush}"/>
+                                    <TextBlock Grid.Column="1" Text="{Binding ErrorCount}" FontSize="10" FontWeight="Bold" Foreground="{DynamicResource ThemeDangerBrush}" Margin="8,0,0,0"/>
+                                </Grid>
+                            </StackPanel>
+                        </Border>
+
+                        <!-- Action Buttons -->
+                        <StackPanel Grid.Row="2" Spacing="6" Margin="0,14,0,0">
+                            <Button Content="▶ Spustit Test"
+                                   Command="{Binding StartTestCommand}"
+                                   IsEnabled="{Binding CanStartTest}"
+                                   Background="{DynamicResource ThemeSuccessBrush}"
+                                   Foreground="White"
+                                   FontWeight="Bold"
+                                   FontSize="12"
+                                   HorizontalAlignment="Stretch"
+                                   CornerRadius="8"
+                                   Padding="14,12">
+                                <Button.Styles>
+                                    <Style Selector="Button:pointerover">
+                                        <Setter Property="Opacity" Value="0.9"/>
+                                    </Style>
+                                </Button.Styles>
+                            </Button>
+                            <Button Content="■ Zrušit Test"
+                                   Command="{Binding CancelTestCommand}"
+                                   IsEnabled="{Binding IsTesting}"
+                                   Background="{DynamicResource ThemeDangerBrush}"
+                                   Foreground="White"
+                                   FontWeight="Bold"
+                                   FontSize="12"
+                                   HorizontalAlignment="Stretch"
+                                   CornerRadius="8"
+                                   Padding="14,12">
+                                <Button.Styles>
+                                    <Style Selector="Button:pointerover">
+                                        <Setter Property="Opacity" Value="0.9"/>
+                                    </Style>
+                                </Button.Styles>
+                            </Button>
+                        </StackPanel>
+                    </Grid>
                 </Border>
-
-                <!-- Statistics -->
-                <Border Grid.Row="1" Background="{DynamicResource ThemePanelBrush}" BorderBrush="{DynamicResource ThemeBorderBrush}" BorderThickness="1" Padding="10" Margin="0,0,0,10">
-                    <StackPanel>
-                        <TextBlock Text="Statistiky" FontSize="12" FontWeight="Bold" Foreground="#333333" Margin="0,0,0,8"/>
-                        <Grid Margin="0,0,0,4">
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="Auto"/>
-                                <ColumnDefinition Width="*"/>
-                            </Grid.ColumnDefinitions>
-                            <TextBlock Grid.Column="0" Text="Aktuální rychlost:" FontSize="11" Foreground="#444444"/>
-                            <TextBlock Grid.Column="1" Text="{Binding CurrentSpeed, StringFormat='{}{0:F1} MB/s'}" FontSize="11" FontWeight="Bold" HorizontalAlignment="Right"/>
-                        </Grid>
-                        <Grid Margin="0,0,0,4">
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="Auto"/>
-                                <ColumnDefinition Width="*"/>
-                            </Grid.ColumnDefinitions>
-                            <TextBlock Grid.Column="0" Text="Zbývající čas:" FontSize="11" Foreground="#444444"/>
-                            <TextBlock Grid.Column="1" Text="{Binding TimeRemaining}" FontSize="11" FontWeight="Bold" HorizontalAlignment="Right"/>
-                        </Grid>
-                        <Grid Margin="0,0,0,4">
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="Auto"/>
-                                <ColumnDefinition Width="*"/>
-                            </Grid.ColumnDefinitions>
-                            <TextBlock Grid.Column="0" Text="Chyby:" FontSize="11" Foreground="#444444"/>
-                            <TextBlock Grid.Column="1" Text="{Binding ErrorCount}" FontSize="11" FontWeight="Bold" HorizontalAlignment="Right"/>
-                        </Grid>
-                    </StackPanel>
-                </Border>
-
-                <!-- Test Controls -->
-                <StackPanel Grid.Row="2" Orientation="Vertical">
-                    <Button Content="▶ Spustit Test" 
-                            Command="{Binding StartTestCommand}"
-                            IsEnabled="{Binding CanStartTest}"
-                            Background="#27AE60" Foreground="White" 
-                            Padding="15,12" Margin="0,0,0,5">
-                        <Button.Styles>
-                            <Style Selector="Button">
-                                <Setter Property="BorderThickness" Value="0"/>
-                                <Setter Property="FontWeight" Value="Bold"/>
-                                <Setter Property="Cursor" Value="Hand"/>
-                            </Style>
-                        </Button.Styles>
-                    </Button>
-                    
-                    <Button Content="■ Zrušit Test" 
-                            Command="{Binding CancelTestCommand}"
-                            IsEnabled="{Binding IsTesting}"
-                            Background="#E74C3C" Foreground="White" 
-                            Padding="15,12">
-                        <Button.Styles>
-                            <Style Selector="Button">
-                                <Setter Property="BorderThickness" Value="0"/>
-                                <Setter Property="FontWeight" Value="Bold"/>
-                                <Setter Property="Cursor" Value="Hand"/>
-                            </Style>
-                        </Button.Styles>
-                    </Button>
-                </StackPanel>
             </Grid>
-        </Grid>
+        </Border>
 
         <!-- ========== STATUS BAR ========== -->
-        <TextBlock Grid.Row="4" Text="{Binding StatusMessage}" 
-                   Background="#F0F0F0" Padding="20,8" 
-                   FontSize="11" Foreground="#333333"
-                   TextTrimming="CharacterEllipsis"/>
+        <Border Grid.Row="3" 
+                Background="{DynamicResource ThemePanelBackgroundBrush}"
+                BorderBrush="{DynamicResource ThemeBorderBrush}"
+                BorderThickness="0,1,0,0"
+                Height="28">
+            <TextBlock Text="{Binding StatusMessage}" 
+                      Foreground="{DynamicResource ThemeTextSecondaryBrush}"
+                      FontSize="10"
+                      VerticalAlignment="Center"
+                      Margin="16,0"/>
+        </Border>
     </Grid>
 </UserControl>

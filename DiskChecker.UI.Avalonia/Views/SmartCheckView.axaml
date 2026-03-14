@@ -1,14 +1,14 @@
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:vm="using:DiskChecker.UI.Avalonia.ViewModels"
-             xmlns:dg="clr-namespace:Avalonia.Controls;assembly=Avalonia.Controls.DataGrid"
+             xmlns:dg="clr-namespace:Avalonia.Controls;assembly:Avalonia.Controls.DataGrid"
              xmlns:converters="using:DiskChecker.UI.Avalonia.Converters"
              x:Class="DiskChecker.UI.Avalonia.Views.SmartCheckView"
              Background="{DynamicResource ThemeBackgroundBrush}">
     
     <UserControl.Resources>
-        <converters:FileSystemToBrushConverter x:Key="FileSystemToBrushConverter" />
-        <converters:BytesToHumanReadableConverter x:Key="BytesToHumanReadableConverter" />
+        <converters:FileSystemToBrushConverter x:Key="FileSystemToBrushConverter"/>
+        <converters:BytesToHumanReadableConverter x:Key="BytesToHumanReadableConverter"/>
     </UserControl.Resources>
 
     <Grid>
@@ -20,167 +20,110 @@
         </Grid.RowDefinitions>
 
         <!-- ========== HEADER ========== -->
-        <Border Grid.Row="0" Background="{DynamicResource ThemePanelBrush}" 
+        <Border Grid.Row="0" 
+                Background="{DynamicResource ThemeSecondaryBackgroundBrush}" 
+                Padding="20,16" Height="80"
                 BorderBrush="{DynamicResource ThemeBorderBrush}" 
-                BorderThickness="0,0,0,1" Padding="20">
-            <Grid>
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="*"/>
-                    <ColumnDefinition Width="Auto"/>
-                </Grid.ColumnDefinitions>
-
-                <StackPanel Grid.Column="0">
-                    <TextBlock Text="🔍 SMART Kontrola" 
-                               FontSize="28" FontWeight="Bold" 
-                               Foreground="#1a1a1a" Margin="0,0,0,5"/>
+                BorderThickness="0,0,0,1">
+            <Grid ColumnDefinitions="*,Auto">
+                <StackPanel Margin="0,-4">
+                    <TextBlock Text="🔧 SMART Kontrola" 
+                               FontSize="26" FontWeight="Bold" 
+                               Foreground="{DynamicResource ThemeTextPrimaryBrush}"
+                               Margin="0,0,0,4"/>
                     <TextBlock Text="Komplexní přehled zdraví a parametrů disku" 
-                               FontSize="13" Foreground="#444444"/>
+                               FontSize="12"
+                               Foreground="{DynamicResource ThemeTextSecondaryBrush}"/>
                     <TextBlock Text="{Binding StatusMessage}" 
-                               FontSize="11" Foreground="#333333" Margin="0,4,0,0"/>
+                               FontSize="10"
+                               Foreground="{DynamicResource ThemeTextMutedBrush}"
+                               Margin="0,2,0,0"/>
                 </StackPanel>
-
                 <Button Grid.Column="1"
-                        Content="🏠 Zpět"
+                        Content="← Zpět"
                         Command="{Binding $parent[UserControl].DataContext.NavigationService.NavigateToDiskSelectionCommand}"
-                        Background="#666666"
-                        Foreground="White"
-                        FontWeight="Bold"
+                        Background="{DynamicResource ThemeSecondaryBackgroundBrush}"
+                        Foreground="{DynamicResource ThemeTextPrimaryBrush}"
+                        BorderBrush="{DynamicResource ThemeBorderBrush}"
                         VerticalAlignment="Center"
-                        Padding="15,8"/>
+                        CornerRadius="6"
+                        Padding="14,8"
+                        FontWeight="SemiBold"/>
             </Grid>
         </Border>
 
         <!-- ========== DISK SELECTION ========== -->
-        <Border Grid.Row="1" Background="{DynamicResource ThemePanelBrush}" 
-                BorderBrush="{DynamicResource ThemeBorderBrush}" 
-                BorderThickness="1" Margin="20,12,20,0" Padding="15">
-            <Grid>
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="*"/>
-                    <ColumnDefinition Width="Auto"/>
-                    <ColumnDefinition Width="Auto"/>
-                </Grid.ColumnDefinitions>
-
+        <Border Grid.Row="1" Padding="16,8">
+            <Grid ColumnDefinitions="*,Auto,Auto">
                 <!-- Disk Selection -->
-                <StackPanel Grid.Column="0">
-                    <TextBlock Text="Vyberte disk:" FontSize="11" Foreground="#444444" Margin="0,0,0,5"/>
+                <StackPanel>
+                    <TextBlock Text="Vyberte disk:" FontSize="10" Foreground="{DynamicResource ThemeTextMutedBrush}" Margin="0,0,0,4"/>
                     <ComboBox ItemsSource="{Binding Disks}" 
                               SelectedItem="{Binding SelectedDisk}"
                               Width="500" HorizontalAlignment="Left"
-                              IsEnabled="{Binding !IsChecking}">
+                              IsEnabled="{Binding !IsChecking}"
+                              Padding="10,6"
+                              Background="{DynamicResource ThemeCardBackgroundBrush}"
+                              BorderBrush="{DynamicResource ThemeBorderBrush}">
                         <ComboBox.ItemTemplate>
                             <DataTemplate>
-                                <Border Background="{Binding Drive.FileSystem, Converter={StaticResource FileSystemToBrushConverter}}" CornerRadius="6" Padding="6" Margin="2">
-                                    <Grid ColumnDefinitions="Auto,Auto,*,Auto" VerticalAlignment="Center">
-                                        <StackPanel Grid.Column="0" Orientation="Horizontal">
-                                            <TextBlock Text="{Binding DisplayName}" FontWeight="Bold"/>
-                                            <TextBlock Text=" (" Foreground="#888888"/>
-                                            <TextBlock Text="{Binding CapacityText}" Foreground="#666666"/>
-                                            <TextBlock Text=") - " Foreground="#888888"/>
-                                        </StackPanel>
-                                        <TextBlock Grid.Column="1" Text="{Binding GradeText}" Foreground="#27AE60" FontWeight="Bold" Margin="6,0"/>
-                                        <StackPanel Grid.Column="2" Orientation="Vertical" Margin="12,0,0,0">
-                                            <TextBlock Text="{Binding IsSystemDiskLabel}" Foreground="#E74C3C" />
-                                            <TextBlock Text="{Binding VolumesSummary}" Foreground="#444" FontSize="11" />
-                                            <!-- Expandable list of volumes -->
-                                            <ItemsControl ItemsSource="{Binding Drive.Volumes}" Margin="0,6,0,0">
-                                                <ItemsControl.ItemTemplate>
-                                                    <DataTemplate>
-                                                        <Border Background="{Binding FileSystem, Converter={StaticResource FileSystemToBrushConverter}}" CornerRadius="4" Padding="6" Margin="0,3">
-                                                            <Grid ColumnDefinitions="Auto,*,Auto" VerticalAlignment="Center">
-                                                                <StackPanel Grid.Column="0" Orientation="Vertical">
-                                                                    <TextBlock Text="{Binding Path}" FontWeight="Bold" FontSize="12"/>
-                                                                    <TextBlock Text="{Binding Name}" FontSize="11" Foreground="#666"/>
-                                                                </StackPanel>
-                                                                <TextBlock Grid.Column="1" Text="{Binding FileSystem}" HorizontalAlignment="Center" VerticalAlignment="Center"/>
-                                                                <StackPanel Grid.Column="2" Orientation="Horizontal">
-                                                                    <TextBlock Text="{Binding TotalSize, Converter={StaticResource BytesToHumanReadableConverter}}" Margin="0,0,6,0"/>
-                                                                    <Button Content="Vybrat" Command="{Binding DataContext.SelectVolumeCommand, RelativeSource={RelativeSource AncestorType=UserControl}}" CommandParameter="{Binding}" FontSize="11"/>
-                                                                </StackPanel>
-                                                            </Grid>
-                                                        </Border>
-                                                    </DataTemplate>
-                                                </ItemsControl.ItemTemplate>
-                                            </ItemsControl>
-                                        </StackPanel>
-                                        <!-- Spinner / error indicator -->
-                                        <StackPanel Grid.Column="3" Orientation="Horizontal" HorizontalAlignment="Right">
-                                            <Border Background="Transparent" Padding="4" IsVisible="{Binding IsLoading}">
-                                                <ProgressBar Width="60" Height="8" IsVisible="{Binding IsLoading}" IsIndeterminate="True"/>
-                                            </Border>
-                                            <Border Background="Transparent" Padding="4" IsVisible="{Binding ErrorMessage}">
-                                                <TextBlock Text="⚠️" Foreground="#E74C3C" ToolTip.Tip="{Binding ErrorMessage}"/>
-                                            </Border>
-                                        </StackPanel>
-                                    </Grid>
-                                </Border>
+                                <StackPanel Orientation="Horizontal" Spacing="8">
+                                    <TextBlock Text="{Binding DisplayName}" FontWeight="SemiBold"/>
+                                    <TextBlock Text="(" Foreground="{DynamicResource ThemeTextMutedBrush}"/>
+                                    <TextBlock Text="{Binding CapacityText}" Foreground="{DynamicResource ThemeTextSecondaryBrush}"/>
+                                    <TextBlock Text=")" Foreground="{DynamicResource ThemeTextMutedBrush}"/>
+                                </StackPanel>
                             </DataTemplate>
                         </ComboBox.ItemTemplate>
                     </ComboBox>
-                    <StackPanel Orientation="Horizontal" Margin="0,8,0,0" Spacing="6">
-                        <Button Content="🧹 Vymazat cache (disk)"
-                                Command="{Binding ClearCacheForSelectedCommand}"
-                                IsEnabled="{Binding SelectedDisk}"
-                                FontSize="12" Padding="8,4"/>
-                        <Button Content="🧰 Vymazat cache (vše)"
-                                Command="{Binding ClearAllSmartCacheCommand}"
-                                FontSize="12" Padding="8,4"/>
-                        <TextBlock Text="{Binding SmartCacheInfo}" FontSize="11" Foreground="#666" Margin="12,4,0,0"/>
-                        <TextBlock Text="{Binding SmartCacheStats}" FontSize="11" Foreground="#666" Margin="12,4,0,0"/>
-                        <StackPanel Orientation="Horizontal" Margin="12,0,0,0" Spacing="4">
-                            <TextBlock Text="TTL (min):" VerticalAlignment="Center" FontSize="11" Foreground="#666"/>
-                            <TextBox Width="60" Watermark="10" Text="10" Name="CacheTtlBox"/>
-                            <Button Content="Nastavit" Command="{Binding SetCacheTtlCommand}" CommandParameter="{Binding Text, ElementName=CacheTtlBox}" FontSize="11" Padding="6,2"/>
-                        </StackPanel>
-                        <StackPanel Orientation="Horizontal" Margin="12,6,0,0" Spacing="4">
-                            <TextBlock Text="Timeout (s):" VerticalAlignment="Center" FontSize="11" Foreground="#666"/>
-                            <TextBox Width="60" Watermark="4" Text="4" Name="ProbeTimeoutBox"/>
-                            <Button Content="Nastavit" Command="{Binding SetProbeTimeoutCommand}" CommandParameter="{Binding Text, ElementName=ProbeTimeoutBox}" FontSize="11" Padding="6,2"/>
-                        </StackPanel>
-                        <StackPanel Orientation="Horizontal" Margin="12,6,0,0" Spacing="4">
-                            <TextBlock Text="Paralelismus:" VerticalAlignment="Center" FontSize="11" Foreground="#666"/>
-                            <TextBox Width="60" Watermark="0 (auto)" Text="0" Name="ProbeParallelBox"/>
-                            <Button Content="Nastavit" Command="{Binding SetProbeParallelismCommand}" CommandParameter="{Binding Text, ElementName=ProbeParallelBox}" FontSize="11" Padding="6,2"/>
-                        </StackPanel>
-                        <!-- Spinner and error indicator are shown per-disk in item template -->
-                    </StackPanel>
                 </StackPanel>
 
                 <!-- Grade Display -->
-                <Border Grid.Column="1" Background="#F8F9FA" CornerRadius="8" Padding="15,8" Margin="15,0,0,0">
+                <Border Background="{DynamicResource ThemeCardBackgroundBrush}" 
+                        BorderBrush="{DynamicResource ThemeSuccessBrush}"
+                        BorderThickness="2"
+                        CornerRadius="8" Padding="16,8" Margin="12,0">
                     <StackPanel>
-                        <TextBlock Text="Celkové hodnocení" FontSize="10" Foreground="#666666" HorizontalAlignment="Center"/>
-                        <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" Margin="0,4,0,0">
-                            <TextBlock Text="{Binding Grade}" FontSize="32" FontWeight="Bold"
-                                       Foreground="{Binding GradeColor}"/>
-                            <TextBlock Text=" (" FontSize="16" VerticalAlignment="Center"/>
-                            <TextBlock Text="{Binding Score}" FontSize="16" FontWeight="Bold"
+                        <TextBlock Text="Celkové hodnocení" FontSize="9" 
+                                  Foreground="{DynamicResource ThemeTextMutedBrush}" 
+                                  HorizontalAlignment="Center"/>
+                        <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" Margin="0,2,0,0">
+                            <TextBlock Text="{Binding Grade}" FontSize="28" FontWeight="Bold"
+                                      Foreground="{DynamicResource ThemeSuccessBrush}"/>
+                            <TextBlock Text=" (" FontSize="14" VerticalAlignment="Center"/>
+                            <TextBlock Text="{Binding Score}" FontSize="14" FontWeight="Bold"
                                        VerticalAlignment="Center"/>
-                            <TextBlock Text="%)" FontSize="16" VerticalAlignment="Center"/>
+                            <TextBlock Text="%)" FontSize="14" VerticalAlignment="Center"/>
                         </StackPanel>
                     </StackPanel>
                 </Border>
 
                 <!-- Health Status -->
-                <Border Grid.Column="2" Background="#F0F0F0" CornerRadius="8" Padding="15,8" Margin="10,0,0,0">
+                <Border Background="{DynamicResource ThemePanelBackgroundBrush}" 
+                        BorderBrush="{DynamicResource ThemeBorderBrush}"
+                        BorderThickness="1"
+                        CornerRadius="8" Padding="12,8" Margin="8,0">
                     <StackPanel>
-                        <TextBlock Text="Stav disku" FontSize="10" Foreground="#666666" HorizontalAlignment="Center"/>
-                        <TextBlock Text="{Binding HealthStatus}" FontSize="14" FontWeight="Bold"
-                                   Foreground="{Binding GradeColor}" Margin="0,8,0,0"/>
+                        <TextBlock Text="Stav disku" FontSize="9" 
+                                  Foreground="{DynamicResource ThemeTextMutedBrush}" 
+                                  HorizontalAlignment="Center"/>
+                        <TextBlock Text="{Binding HealthStatus}" FontSize="13" FontWeight="Bold"
+                                  Foreground="{DynamicResource ThemeSuccessBrush}"
+                                  HorizontalAlignment="Center" Margin="0,4,0,0"/>
                     </StackPanel>
                 </Border>
             </Grid>
         </Border>
 
         <!-- ========== MAIN CONTENT ========== -->
-        <Grid Grid.Row="2" Margin="20,12,20,12">
+        <Grid Grid.Row="2" Margin="16,0,16,8">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="1.2*"/>
                 <ColumnDefinition Width="1.8*"/>
             </Grid.ColumnDefinitions>
 
             <!-- LEFT COLUMN: Drive Info & Critical Attributes -->
-            <Grid Grid.Column="0" Margin="0,0,10,0">
+            <Grid Grid.Column="0" Margin="0,0,8,0">
                 <Grid.RowDefinitions>
                     <RowDefinition Height="Auto"/>
                     <RowDefinition Height="Auto"/>
@@ -190,392 +133,389 @@
                 </Grid.RowDefinitions>
 
                 <!-- Drive Information -->
-                <Border Grid.Row="0" Background="#F8F9FA" BorderBrush="#DEE2E6" 
-                        BorderThickness="1" Padding="12" Margin="0,0,0,10">
+                <Border Grid.Row="0" 
+                       Background="{DynamicResource ThemeCardBackgroundBrush}"
+                       BorderBrush="{DynamicResource ThemeBorderBrush}"
+                       BorderThickness="1"
+                       CornerRadius="8"
+                       Padding="14"
+                       Margin="0,0,0,8">
                     <StackPanel>
-                        <TextBlock Text="📋 Informace o disku" FontSize="13" FontWeight="Bold" 
-                                   Foreground="#333333" Margin="0,0,0,10"/>
+                        <TextBlock Text="📋 Informace o disku" FontSize="12" FontWeight="Bold" 
+                                  Foreground="{DynamicResource ThemeTextPrimaryBrush}" Margin="0,0,0,8"/>
                         
                         <Grid Margin="0,2">
                             <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="100"/>
+                                <ColumnDefinition Width="90"/>
                                 <ColumnDefinition Width="*"/>
                             </Grid.ColumnDefinitions>
-                            <TextBlock Grid.Column="0" Text="Model:" FontSize="11" Foreground="#555"/>
-                            <TextBlock Grid.Column="1" Text="{Binding DeviceModel}" FontSize="11" 
-                                       FontWeight="Bold" TextWrapping="Wrap"/>
+                            <TextBlock Grid.Column="0" Text="Model:" FontSize="10" Foreground="{DynamicResource ThemeTextMutedBrush}"/>
+                            <TextBlock Grid.Column="1" Text="{Binding DeviceModel}" FontSize="11" FontWeight="SemiBold" TextWrapping="Wrap"/>
                         </Grid>
                         <Grid Margin="0,2">
                             <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="100"/>
+                                <ColumnDefinition Width="90"/>
                                 <ColumnDefinition Width="*"/>
                             </Grid.ColumnDefinitions>
-                            <TextBlock Grid.Column="0" Text="Sériové č.:" FontSize="11" Foreground="#555"/>
-                            <TextBlock Grid.Column="1" Text="{Binding SerialNumber}" FontSize="11" 
-                                       FontWeight="Bold" FontFamily="Consolas"/>
+                            <TextBlock Grid.Column="0" Text="Sériové č.:" FontSize="10" Foreground="{DynamicResource ThemeTextMutedBrush}"/>
+                            <TextBlock Grid.Column="1" Text="{Binding SerialNumber}" FontSize="11" FontFamily="Consolas"/>
                         </Grid>
                         <Grid Margin="0,2">
                             <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="100"/>
+                                <ColumnDefinition Width="90"/>
                                 <ColumnDefinition Width="*"/>
                             </Grid.ColumnDefinitions>
-                            <TextBlock Grid.Column="0" Text="Firmware:" FontSize="11" Foreground="#555"/>
+                            <TextBlock Grid.Column="0" Text="Firmware:" FontSize="10" Foreground="{DynamicResource ThemeTextMutedBrush}"/>
                             <TextBlock Grid.Column="1" Text="{Binding FirmwareVersion}" FontSize="11"/>
                         </Grid>
                         <Grid Margin="0,2">
                             <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="100"/>
+                                <ColumnDefinition Width="90"/>
                                 <ColumnDefinition Width="*"/>
                             </Grid.ColumnDefinitions>
-                            <TextBlock Grid.Column="0" Text="Typ:" FontSize="11" Foreground="#555"/>
+                            <TextBlock Grid.Column="0" Text="Typ:" FontSize="10" Foreground="{DynamicResource ThemeTextMutedBrush}"/>
                             <TextBlock Grid.Column="1" Text="{Binding DeviceType}" FontSize="11"/>
                         </Grid>
                         <Grid Margin="0,2">
                             <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="100"/>
+                                <ColumnDefinition Width="90"/>
                                 <ColumnDefinition Width="*"/>
                             </Grid.ColumnDefinitions>
-                            <TextBlock Grid.Column="0" Text="Cesta:" FontSize="11" Foreground="#555"/>
-                            <TextBlock Grid.Column="1" Text="{Binding DiskPath}" FontSize="10" 
-                                       FontFamily="Consolas" Foreground="#666"/>
+                            <TextBlock Grid.Column="0" Text="Cesta:" FontSize="10" Foreground="{DynamicResource ThemeTextMutedBrush}"/>
+                            <TextBlock Grid.Column="1" Text="{Binding DiskPath}" FontSize="10" FontFamily="Consolas" Foreground="{DynamicResource ThemeTextMutedBrush}"/>
                         </Grid>
                     </StackPanel>
                 </Border>
 
                 <!-- SMART Functions -->
-                <Border Grid.Row="1" Background="#F0F8FF" BorderBrush="#4A90D9" 
-                        BorderThickness="1" Padding="12" Margin="0,0,0,10">
-                    <StackPanel>
-                        <TextBlock Text="🔧 SMART Funkce" FontSize="13" FontWeight="Bold" 
-                                   Foreground="#333333" Margin="0,0,0,10"/>
-                        <Grid>
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="*"/>
-                                <ColumnDefinition Width="Auto"/>
-                            </Grid.ColumnDefinitions>
-                            <ComboBox Grid.Column="0" ItemsSource="{Binding SmartFeatures}"
+                <Border Grid.Row="1" 
+                       Background="#1E3A5F"
+                       BorderBrush="{DynamicResource ThemePrimaryBrush}"
+                       BorderThickness="1"
+                       CornerRadius="8"
+                       Padding="14"
+                       Margin="0,0,0,8">
+                    <StackPanel Spacing="8">
+                        <TextBlock Text="🔧 SMART Funkce" FontSize="12" FontWeight="Bold" 
+                                  Foreground="White" Margin="0,0,0,6"/>
+                        <Grid ColumnDefinitions="*,Auto">
+                            <ComboBox ItemsSource="{Binding SmartFeatures}"
                                       SelectedIndex="0"
                                       SelectedItem="{Binding SelectedSmartFeature}"
                                       HorizontalAlignment="Stretch"
-                                      IsEnabled="{Binding !IsSelfTestRunning}">
-                                <ComboBox.ItemTemplate>
-                                    <DataTemplate>
-                                        <TextBlock Text="{Binding}" FontSize="11"/>
-                                    </DataTemplate>
-                                </ComboBox.ItemTemplate>
-                            </ComboBox>
+                                      IsEnabled="{Binding !IsSelfTestRunning}"
+                                      Background="#2A4A6F"
+                                      Foreground="White"
+                                      BorderBrush="{DynamicResource ThemePrimaryBrush}"
+                                      Padding="10,6"/>
                             <Button Grid.Column="1" Content="▶ Spustit"
                                     Command="{Binding RunSmartFeatureCommand}"
                                     IsEnabled="{Binding !IsSelfTestRunning}"
-                                    Background="#27AE60" Foreground="White"
-                                    FontWeight="Bold" Padding="10,5" Margin="8,0,0,0">
+                                    Background="{DynamicResource ThemeSuccessBrush}" 
+                                    Foreground="White"
+                                    FontWeight="SemiBold" 
+                                    Padding="12,6" Margin="8,0,0,0"
+                                    CornerRadius="6">
                                 <Button.Styles>
-                                    <Style Selector="Button">
-                                        <Setter Property="BorderThickness" Value="0"/>
-                                        <Setter Property="Cursor" Value="Hand"/>
+                                    <Style Selector="Button:pointerover">
+                                        <Setter Property="Opacity" Value="0.9"/>
                                     </Style>
                                 </Button.Styles>
                             </Button>
                         </Grid>
                         <TextBlock Text="{Binding SmartFeatureDescription}" 
-                                   FontSize="10" Foreground="#666" Margin="0,6,0,0"
-                                   TextWrapping="Wrap"/>
+                                  FontSize="9" Foreground="#B0C4DE"
+                                  TextWrapping="Wrap"/>
                     </StackPanel>
                 </Border>
 
                 <!-- Self-Test Result -->
-                <Border Grid.Row="2" Background="#FFF8E1" BorderBrush="#FFA000" 
-                        BorderThickness="2" Padding="12" Margin="0,0,0,10"
-                        CornerRadius="8" IsVisible="{Binding HasSelfTestResult}">
-                    <Grid>
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="*"/>
-                            <ColumnDefinition Width="Auto"/>
-                        </Grid.ColumnDefinitions>
-                        <TextBlock Grid.Column="0" Text="{Binding SelfTestResult}"
-                                   FontSize="13" FontWeight="Bold" 
-                                   Foreground="{Binding SelfTestResultColor}"
-                                   TextWrapping="Wrap"/>
+                <Border Grid.Row="2" 
+                       Background="#FFF8E1"
+                       BorderBrush="#FFA000"
+                       BorderThickness="2"
+                       CornerRadius="8"
+                       Padding="12"
+                       Margin="0,0,0,8"
+                       IsVisible="{Binding HasSelfTestResult}">
+                    <Grid ColumnDefinitions="*,Auto">
+                        <TextBlock Text="{Binding SelfTestResult}"
+                                  FontSize="12" FontWeight="Bold" 
+                                  Foreground="{Binding SelfTestResultColor}"
+                                  TextWrapping="Wrap"
+                                  VerticalAlignment="Center"/>
                         <Button Grid.Column="1" Content="✕"
                                 Command="{Binding ClearSelfTestResultCommand}"
                                 Background="Transparent" Foreground="#666"
-                                FontSize="14" Padding="5,2">
-                            <Button.Styles>
-                                <Style Selector="Button">
-                                    <Setter Property="BorderThickness" Value="0"/>
-                                    <Setter Property="Cursor" Value="Hand"/>
-                                </Style>
-                            </Button.Styles>
-                        </Button>
+                                FontSize="12" Padding="4"
+                                BorderThickness="0"/>
                     </Grid>
                 </Border>
 
                 <!-- Health Metrics -->
-                <Border Grid.Row="3" Background="#F8F9FA" BorderBrush="#DEE2E6" 
-                        BorderThickness="1" Padding="12" Margin="0,0,0,10">
-                    <StackPanel>
-                        <TextBlock Text="📊 Zdravotní metriky" FontSize="13" FontWeight="Bold" 
-                                   Foreground="#333333" Margin="0,0,0,10"/>
+                <Border Grid.Row="3" 
+                       Background="{DynamicResource ThemeCardBackgroundBrush}"
+                       BorderBrush="{DynamicResource ThemeBorderBrush}"
+                       BorderThickness="1"
+                       CornerRadius="8"
+                       Padding="14"
+                       Margin="0,0,0,8">
+                    <StackPanel Spacing="6">
+                        <TextBlock Text="📊 Zdravotní metriky" FontSize="12" FontWeight="Bold" 
+                                  Foreground="{DynamicResource ThemeTextPrimaryBrush}" Margin="0,0,0,8"/>
                         
                         <!-- Temperature -->
-                        <Grid Margin="0,3">
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="100"/>
-                                <ColumnDefinition Width="*"/>
-                                <ColumnDefinition Width="Auto"/>
-                            </Grid.ColumnDefinitions>
-                            <TextBlock Grid.Column="0" Text="🌡️ Teplota:" FontSize="11" Foreground="#555"/>
-                            <TextBlock Grid.Column="1" Text="{Binding Temperature}" FontSize="12" FontWeight="Bold"/>
-                            <TextBlock Grid.Column="2" Text="{Binding TemperatureStatus}" FontSize="10" 
-                                       Foreground="{Binding TempColor}"/>
+                        <Grid ColumnDefinitions="90,*,Auto" Margin="0,2">
+                            <TextBlock Grid.Column="0" Text="🌡️ Teplota:" FontSize="10" Foreground="{DynamicResource ThemeTextMutedBrush}"/>
+                            <TextBlock Grid.Column="1" Text="{Binding Temperature}" FontSize="11" FontWeight="SemiBold"/>
+                            <TextBlock Grid.Column="2" Text="{Binding TemperatureStatus}" FontSize="9" Foreground="{Binding TempColor}"/>
                         </Grid>
                         
                         <!-- Power On Hours -->
-                        <Grid Margin="0,3">
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="100"/>
-                                <ColumnDefinition Width="*"/>
-                                <ColumnDefinition Width="Auto"/>
-                            </Grid.ColumnDefinitions>
-                            <TextBlock Grid.Column="0" Text="⏱️ Provozní hodiny:" FontSize="11" Foreground="#555"/>
-                            <TextBlock Grid.Column="1" Text="{Binding PowerOnHours}" FontSize="12" FontWeight="Bold"/>
-                            <TextBlock Grid.Column="2" Text="{Binding LifetimeStatus}" FontSize="10" Foreground="#666"/>
+                        <Grid ColumnDefinitions="90,*,Auto" Margin="0,2">
+                            <TextBlock Grid.Column="0" Text="⏱️ Provozní hod:" FontSize="10" Foreground="{DynamicResource ThemeTextMutedBrush}"/>
+                            <TextBlock Grid.Column="1" Text="{Binding PowerOnHours}" FontSize="11" FontWeight="SemiBold"/>
+                            <TextBlock Grid.Column="2" Text="{Binding LifetimeStatus}" FontSize="9" Foreground="{DynamicResource ThemeTextMutedBrush}"/>
                         </Grid>
                         
                         <!-- Power Cycles -->
-                        <Grid Margin="0,3">
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="100"/>
-                                <ColumnDefinition Width="*"/>
-                            </Grid.ColumnDefinitions>
-                            <TextBlock Grid.Column="0" Text="🔄 Cykly:" FontSize="11" Foreground="#555"/>
-                            <TextBlock Grid.Column="1" Text="{Binding PowerCycles}" FontSize="12"/>
+                        <Grid ColumnDefinitions="90,*" Margin="0,2">
+                            <TextBlock Grid.Column="0" Text="🔄 Cykly:" FontSize="10" Foreground="{DynamicResource ThemeTextMutedBrush}"/>
+                            <TextBlock Grid.Column="1" Text="{Binding PowerCycles}" FontSize="11"/>
                         </Grid>
                         
-                        <Separator Margin="0,8"/>
+                        <Border Height="1" Background="{DynamicResource ThemeBorderBrush}" Margin="0,6"/>
                         
                         <!-- Critical sectors -->
-                        <TextBlock Text="⚠️ Kritické atributy:" FontSize="11" FontWeight="Bold" Margin="0,4,0,6"/>
+                        <TextBlock Text="⚠️ Kritické atributy:" FontSize="10" FontWeight="SemiBold" Margin="0,4,0,4"/>
                         
-                        <Grid Margin="0,2">
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="140"/>
-                                <ColumnDefinition Width="*"/>
-                            </Grid.ColumnDefinitions>
-                            <TextBlock Grid.Column="0" Text="Přemapované sektory:" FontSize="10" Foreground="#555"/>
-                            <TextBlock Grid.Column="1" Text="{Binding ReallocatedSectors}" FontSize="10" FontWeight="Bold"/>
+                        <Grid ColumnDefinitions="130,*" Margin="0,2">
+                            <TextBlock Grid.Column="0" Text="Přemapované sektory:" FontSize="9" Foreground="{DynamicResource ThemeTextMutedBrush}"/>
+                            <TextBlock Grid.Column="1" Text="{Binding ReallocatedSectors}" FontSize="9" FontWeight="SemiBold"/>
                         </Grid>
-                        <Grid Margin="0,2">
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="140"/>
-                                <ColumnDefinition Width="*"/>
-                            </Grid.ColumnDefinitions>
-                            <TextBlock Grid.Column="0" Text="Čekající sektory:" FontSize="10" Foreground="#555"/>
-                            <TextBlock Grid.Column="1" Text="{Binding PendingSectors}" FontSize="10" FontWeight="Bold"/>
+                        <Grid ColumnDefinitions="130,*" Margin="0,2">
+                            <TextBlock Grid.Column="0" Text="Čekající sektory:" FontSize="9" Foreground="{DynamicResource ThemeTextMutedBrush}"/>
+                            <TextBlock Grid.Column="1" Text="{Binding PendingSectors}" FontSize="9" FontWeight="SemiBold"/>
                         </Grid>
-                        <Grid Margin="0,2">
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="140"/>
-                                <ColumnDefinition Width="*"/>
-                            </Grid.ColumnDefinitions>
-                            <TextBlock Grid.Column="0" Text="Neopravitelné chyby:" FontSize="10" Foreground="#555"/>
-                            <TextBlock Grid.Column="1" Text="{Binding UncorrectableErrors}" FontSize="10" FontWeight="Bold"/>
+                        <Grid ColumnDefinitions="130,*" Margin="0,2">
+                            <TextBlock Grid.Column="0" Text="Neopravitelné chyby:" FontSize="9" Foreground="{DynamicResource ThemeTextMutedBrush}"/>
+                            <TextBlock Grid.Column="1" Text="{Binding UncorrectableErrors}" FontSize="9" FontWeight="SemiBold"/>
                         </Grid>
-                        
-                        <!-- NVMe specific -->
-                        <Panel IsVisible="{Binding IsNvMe}" Margin="0,10,0,0">
-                            <StackPanel>
-                                <TextBlock Text="💎 NVMe specifické:" FontSize="11" FontWeight="Bold" Margin="0,0,0,6"/>
-                                <Grid Margin="0,2">
-                                    <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="120"/>
-                                        <ColumnDefinition Width="*"/>
-                                    </Grid.ColumnDefinitions>
-                                    <TextBlock Grid.Column="0" Text="Využití životnosti:" FontSize="10" Foreground="#555"/>
-                                    <TextBlock Grid.Column="1" Text="{Binding NvMePercentageUsed}" FontSize="10"/>
-                                </Grid>
-                                <Grid Margin="0,2">
-                                    <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="120"/>
-                                        <ColumnDefinition Width="*"/>
-                                    </Grid.ColumnDefinitions>
-                                    <TextBlock Grid.Column="0" Text="Media chyby:" FontSize="10" Foreground="#555"/>
-                                    <TextBlock Grid.Column="1" Text="{Binding NvMeMediaErrors}" FontSize="10"/>
-                                </Grid>
-                                <Grid Margin="0,2">
-                                    <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="120"/>
-                                        <ColumnDefinition Width="*"/>
-                                    </Grid.ColumnDefinitions>
-                                    <TextBlock Grid.Column="0" Text="Nebezpečné vyp:" FontSize="10" Foreground="#555"/>
-                                    <TextBlock Grid.Column="1" Text="{Binding NvMeUnsafeShutdowns}" FontSize="10"/>
-                                </Grid>
-                            </StackPanel>
-                        </Panel>
                     </StackPanel>
                 </Border>
 
-                <!-- Critical Attributes Table -->
+                <!-- Cache Controls -->
+                <Border Grid.Row="4"
+                       Background="{DynamicResource ThemePanelBackgroundBrush}"
+                       BorderBrush="{DynamicResource ThemeBorderBrush}"
+                       BorderThickness="1"
+                       CornerRadius="8"
+                       Padding="10">
+                    <StackPanel Spacing="6">
+                        <TextBlock Text="⚙️ Nastavení cache" FontSize="10" FontWeight="Bold"
+                                  Foreground="{DynamicResource ThemeTextPrimaryBrush}" Margin="0,0,0,4"/>
+                        <WrapPanel Orientation="Horizontal">
+                            <Button Content="🧹 Vymazat disk"
+                                    Command="{Binding ClearCacheForSelectedCommand}"
+                                    IsEnabled="{Binding SelectedDisk}"
+                                    FontSize="9" Padding="6,3"
+                                    Background="{DynamicResource ThemeSecondaryBackgroundBrush}"
+                                    Foreground="{DynamicResource ThemeTextPrimaryBrush}"
+                                    BorderBrush="{DynamicResource ThemeBorderBrush}"/>
+                            <Button Content="🧰 Vymazat vše"
+                                    Command="{Binding ClearAllSmartCacheCommand}"
+                                    FontSize="9" Padding="6,3"
+                                    Background="{DynamicResource ThemeSecondaryBackgroundBrush}"
+                                    Foreground="{DynamicResource ThemeTextPrimaryBrush}"
+                                    BorderBrush="{DynamicResource ThemeBorderBrush}"/>
+                        </WrapPanel>
+                        <TextBlock Text="{Binding SmartCacheInfo}" FontSize="8" Foreground="{DynamicResource ThemeTextMutedBrush}"/>
+                    </StackPanel>
+                </Border>
             </Grid>
 
-                        <!-- RIGHT COLUMN: SMART Output & Self-Tests -->
-            <Grid Grid.Column="1" Margin="10,0,0,0">
+            <!-- RIGHT COLUMN: SMART Output & Self-Tests -->
+            <Grid Grid.Column="1" Margin="8,0,0,0">
                 <Grid.RowDefinitions>
                     <RowDefinition Height="*"/>
                     <RowDefinition Height="Auto"/>
                 </Grid.RowDefinitions>
 
                 <!-- SMART Data Output -->
-                <Border Grid.Row="0" Background="{DynamicResource ThemePanelBrush}" 
-                        BorderBrush="{DynamicResource ThemeBorderBrush}" 
-                        BorderThickness="1" Padding="10">
-                    <Grid>
-                        <Grid.RowDefinitions>
-                            <RowDefinition Height="Auto"/>
-                            <RowDefinition Height="*"/>
-                        </Grid.RowDefinitions>
-                        
-                        <StackPanel Grid.Row="0" Orientation="Horizontal" Margin="0,0,0,8">
-                            <TextBlock Text="📊 SMART Data Output" FontSize="12" FontWeight="Bold" Foreground="#333"/>
+                <Border Grid.Row="0" 
+                       Background="{DynamicResource ThemeCardBackgroundBrush}"
+                       BorderBrush="{DynamicResource ThemeBorderBrush}"
+                       BorderThickness="1"
+                       CornerRadius="8"
+                       Padding="10">
+                    <Grid RowDefinitions="Auto,*">
+                        <StackPanel Grid.Row="0" Orientation="Horizontal" Margin="0,0,0,6">
+                            <TextBlock Text="📊 SMART Data Output" FontSize="11" FontWeight="Bold"
+                                      Foreground="{DynamicResource ThemeTextPrimaryBrush}"/>
                             <Button Content="🔄 Obnovit" 
                                     Command="{Binding RefreshRawOutputCommand}"
-                                    FontSize="10" Padding="6,2" Margin="10,0,0,0"
-                                    Background="#3498DB" Foreground="White">
+                                    FontSize="9" Padding="6,2" Margin="10,0,0,0"
+                                    Background="{DynamicResource ThemeInfoBrush}" 
+                                    Foreground="White"
+                                    CornerRadius="4">
                                 <Button.Styles>
-                                    <Style Selector="Button">
-                                        <Setter Property="BorderThickness" Value="0"/>
-                                        <Setter Property="Cursor" Value="Hand"/>
+                                    <Style Selector="Button:pointerover">
+                                        <Setter Property="Opacity" Value="0.9"/>
                                     </Style>
                                 </Button.Styles>
                             </Button>
                         </StackPanel>
                         
-                        <ScrollViewer Grid.Row="1">
-                            <TextBox Text="{Binding RawSmartOutput}" 
-                                     IsReadOnly="True"
-                                     AcceptsReturn="True"
-                                     TextWrapping="NoWrap"
-                                     FontFamily="Consolas"
-                                     FontSize="11"
-                                     Background="#1E1E1E"
-                                     Foreground="#DCDCDC"
-                                     BorderThickness="0"
-                                     Padding="10"
-                                     MinHeight="200"/>
-                        </ScrollViewer>
+                        <Border Grid.Row="1" Background="#1E1E1E" CornerRadius="6" Padding="10">
+                            <ScrollViewer>
+                                <TextBox Text="{Binding RawSmartOutput}" 
+                                         IsReadOnly="True"
+                                         AcceptsReturn="True"
+                                         TextWrapping="NoWrap"
+                                         FontFamily="Consolas"
+                                         FontSize="10"
+                                         Background="Transparent"
+                                         Foreground="#DCDCDC"
+                                         BorderThickness="0"
+                                         MinHeight="180"/>
+                            </ScrollViewer>
+                        </Border>
                     </Grid>
                 </Border>
 
                 <!-- Self-Tests -->
-                <Border Grid.Row="1" Background="{DynamicResource ThemePanelBrush}" 
-                        BorderBrush="{DynamicResource ThemeBorderBrush}" 
-                        BorderThickness="1" Padding="10" Margin="0,10,0,0">
-                    <Grid>
-                        <Grid.RowDefinitions>
-                            <RowDefinition Height="Auto"/>
-                            <RowDefinition Height="Auto"/>
-                            <RowDefinition Height="Auto"/>
-                            <RowDefinition Height="Auto"/>
-                        </Grid.RowDefinitions>
-                        
+                <Border Grid.Row="1" 
+                       Background="{DynamicResource ThemeCardBackgroundBrush}"
+                       BorderBrush="{DynamicResource ThemeBorderBrush}"
+                       BorderThickness="1"
+                       CornerRadius="8"
+                       Padding="10"
+                       Margin="0,8,0,0">
+                    <Grid RowDefinitions="Auto,Auto,Auto,*,Auto">
                         <TextBlock Grid.Row="0" Text="🔧 Self-testy" 
-                                   FontSize="12" FontWeight="Bold" Foreground="#333" Margin="0,0,0,8"/>
+                                  FontSize="11" FontWeight="Bold"
+                                  Foreground="{DynamicResource ThemeTextPrimaryBrush}" Margin="0,0,0,6"/>
                         
                         <!-- Test buttons -->
-                        <StackPanel Grid.Row="1" Orientation="Horizontal" Margin="0,0,0,10">
+                        <WrapPanel Grid.Row="1" Orientation="Horizontal" Margin="0,0,0,8">
                             <Button Content="▶️ Krátký test" 
                                     Command="{Binding RunShortTestCommand}"
                                     IsEnabled="{Binding CanRunSelfTest}"
-                                    Background="#27AE60" Foreground="White" 
-                                    FontWeight="Bold" Padding="12,6" Margin="0,0,8,0">
-                                <Button.Styles>
-                                    <Style Selector="Button">
-                                        <Setter Property="BorderThickness" Value="0"/>
-                                        <Setter Property="Cursor" Value="Hand"/>
-                                    </Style>
-                                </Button.Styles>
-                            </Button>
+                                    Background="{DynamicResource ThemeSuccessBrush}" 
+                                    Foreground="White" 
+                                    FontWeight="SemiBold" 
+                                    Padding="10,6"
+                                    CornerRadius="6"/>
                             <Button Content="🔍 Rozšířený test" 
                                     Command="{Binding RunLongTestCommand}"
                                     IsEnabled="{Binding CanRunSelfTest}"
-                                    Background="#3498DB" Foreground="White" 
-                                    FontWeight="Bold" Padding="12,6" Margin="0,0,8,0">
-                                <Button.Styles>
-                                    <Style Selector="Button">
-                                        <Setter Property="BorderThickness" Value="0"/>
-                                        <Setter Property="Cursor" Value="Hand"/>
-                                    </Style>
-                                </Button.Styles>
-                            </Button>
+                                    Background="{DynamicResource ThemeInfoBrush}" 
+                                    Foreground="White" 
+                                    FontWeight="SemiBold" 
+                                    Padding="10,6"
+                                    CornerRadius="6"/>
                             <Button Content="⏹️ Přerušit" 
                                     Command="{Binding AbortTestCommand}"
                                     IsEnabled="{Binding IsSelfTestRunning}"
-                                    Background="#E74C3C" Foreground="White" 
-                                    FontWeight="Bold" Padding="12,6" Margin="0,0,8,0">
-                                <Button.Styles>
-                                    <Style Selector="Button">
-                                        <Setter Property="BorderThickness" Value="0"/>
-                                        <Setter Property="Cursor" Value="Hand"/>
-                                    </Style>
-                                </Button.Styles>
-                            </Button>
+                                    Background="{DynamicResource ThemeDangerBrush}" 
+                                    Foreground="White" 
+                                    FontWeight="SemiBold" 
+                                    Padding="10,6"
+                                    CornerRadius="6"/>
                             <Button Content="🔁 Obnovit" 
                                     Command="{Binding RefreshCommand}"
                                     IsEnabled="{Binding !IsChecking}"
-                                    Background="#666666" Foreground="White" 
-                                    FontWeight="Bold" Padding="12,6">
-                                <Button.Styles>
-                                    <Style Selector="Button">
-                                        <Setter Property="BorderThickness" Value="0"/>
-                                        <Setter Property="Cursor" Value="Hand"/>
-                                    </Style>
-                                </Button.Styles>
-                            </Button>
-                        </StackPanel>
+                                    Background="{DynamicResource ThemeSecondaryBackgroundBrush}"
+                                    Foreground="{DynamicResource ThemeTextPrimaryBrush}"
+                                    BorderBrush="{DynamicResource ThemeBorderBrush}"
+                                    FontWeight="SemiBold" 
+                                    Padding="10,6"
+                                    CornerRadius="6"/>
+                        </WrapPanel>
                         
-                        <!-- Self-test progress indicator -->
-                        <Border Grid.Row="2" Background="#E8F5E9" BorderBrush="#4CAF50" BorderThickness="1" 
-                                CornerRadius="6" Padding="10" Margin="0,0,0,10"
-                                IsVisible="{Binding IsSelfTestRunning}">
+                        <!-- Self-test progress -->
+                        <Border Grid.Row="2" 
+                               Background="#E8F5E9" 
+                               BorderBrush="{DynamicResource ThemeSuccessBrush}"
+                               BorderThickness="1"
+                               CornerRadius="6" 
+                               Padding="10"
+                               Margin="0,0,0,8"
+                               IsVisible="{Binding IsSelfTestRunning}">
                             <StackPanel>
-                                <TextBlock Text="{Binding SelfTestTypeText}" FontSize="12" FontWeight="Bold" Foreground="#2E7D32"/>
-                                <TextBlock Text="{Binding SelfTestProgressText}" FontSize="11" Foreground="#388E3C" Margin="0,4,0,8"/>
-                                <ProgressBar Value="{Binding SelfTestProgress}" Maximum="100" Height="6" 
-                                             Background="#C8E6C9" Foreground="#4CAF50"/>
+                                <TextBlock Text="{Binding SelfTestTypeText}" FontSize="11" FontWeight="Bold"
+                                          Foreground="#2E7D32"/>
+                                <TextBlock Text="{Binding SelfTestProgressText}" FontSize="10" Foreground="#388E3C" Margin="0,2,0,6"/>
+                                <ProgressBar Value="{Binding SelfTestProgress}" Maximum="100" Height="6"
+                                           Background="#C8E6C9" Foreground="{DynamicResource ThemeSuccessBrush}"/>
                             </StackPanel>
                         </Border>
                         
+                        <!-- NVMe specific -->
+                        <Panel Grid.Row="3" IsVisible="{Binding IsNvMe}" Margin="0,0,0,8">
+                            <StackPanel Spacing="4">
+                                <TextBlock Text="💎 NVMe specifické:" FontSize="10" FontWeight="SemiBold"
+                                          Foreground="{DynamicResource ThemeTextPrimaryBrush}"/>
+                                <Grid ColumnDefinitions="100,*" Margin="0,2">
+                                    <TextBlock Grid.Column="0" Text="Využití životnosti:" FontSize="9" Foreground="{DynamicResource ThemeTextMutedBrush}"/>
+                                    <TextBlock Grid.Column="1" Text="{Binding NvMePercentageUsed}" FontSize="9"/>
+                                </Grid>
+                                <Grid ColumnDefinitions="100,*" Margin="0,2">
+                                    <TextBlock Grid.Column="0" Text="Media chyby:" FontSize="9" Foreground="{DynamicResource ThemeTextMutedBrush}"/>
+                                    <TextBlock Grid.Column="1" Text="{Binding NvMeMediaErrors}" FontSize="9"/>
+                                </Grid>
+                                <Grid ColumnDefinitions="100,*" Margin="0,2">
+                                    <TextBlock Grid.Column="0" Text="Nebezpečné vyp:" FontSize="9" Foreground="{DynamicResource ThemeTextMutedBrush}"/>
+                                    <TextBlock Grid.Column="1" Text="{Binding NvMeUnsafeShutdowns}" FontSize="9"/>
+                                </Grid>
+                            </StackPanel>
+                        </Panel>
+                        
                         <!-- Self-test log -->
-                        <dg:DataGrid Grid.Row="3" 
+                        <DataGrid Grid.Row="4"
                                      ItemsSource="{Binding SelfTestLog}" 
                                      IsReadOnly="True" 
                                      HeadersVisibility="Column"
                                      AutoGenerateColumns="False"
-                                     MaxHeight="150"
-                                     GridLinesVisibility="Horizontal">
-                            <dg:DataGrid.Columns>
-                                <dg:DataGridTextColumn Header="#" Binding="{Binding Number}" Width="25"/>
-                                <dg:DataGridTextColumn Header="Typ" Binding="{Binding TestTypeName}" Width="80"/>
-                                <dg:DataGridTextColumn Header="Stav" Binding="{Binding StatusName}" Width="*"/>
-                                <dg:DataGridTextColumn Header="Hod." Binding="{Binding FormattedHours}" Width="60"/>
-                                <dg:DataGridTextColumn Header="Progress" Binding="{Binding FormattedProgress}" Width="60"/>
-                            </dg:DataGrid.Columns>
-                        </dg:DataGrid>
+                                     MaxHeight="120"
+                                     GridLinesVisibility="Horizontal"
+                                     Background="{DynamicResource ThemeCardBackgroundBrush}"
+                                     BorderBrush="{DynamicResource ThemeBorderBrush}"
+                                     BorderThickness="1">
+                            <DataGrid.Columns>
+                                <DataGridTextColumn Header="#" Binding="{Binding Number}" Width="25"/>
+                                <DataGridTextColumn Header="Typ" Binding="{Binding TestTypeName}" Width="80"/>
+                                <DataGridTextColumn Header="Stav" Binding="{Binding StatusName}" Width="*"/>
+                                <DataGridTextColumn Header="Hod." Binding="{Binding FormattedHours}" Width="50"/>
+                                <DataGridTextColumn Header="Progress" Binding="{Binding FormattedProgress}" Width="55"/>
+                            </DataGrid.Columns>
+                        </DataGrid>
                     </Grid>
                 </Border>
             </Grid>
         </Grid>
 
         <!-- ========== STATUS BAR ========== -->
-        <Border Grid.Row="3" Background="#F0F0F0" Padding="20,10">
-            <StackPanel Orientation="Horizontal">
-                <TextBlock Text="{Binding StatusMessage}" FontSize="11" Foreground="#333"/>
-                <TextBlock Text=" | " Foreground="#888" Margin="10,0"/>
-                <TextBlock Text="Počet disků: " FontSize="11" Foreground="#555"/>
-                <TextBlock Text="{Binding Disks.Count}" FontSize="11" FontWeight="Bold"/>
-                <TextBlock Text=" | " Foreground="#888" Margin="10,0"/>
+        <Border Grid.Row="3" 
+               Background="{DynamicResource ThemePanelBackgroundBrush}"
+               BorderBrush="{DynamicResource ThemeBorderBrush}"
+               BorderThickness="0,1,0,0"
+               Height="28">
+            <StackPanel Orientation="Horizontal" Margin="16,0" Spacing="8">
+                <TextBlock Text="{Binding StatusMessage}" FontSize="10"
+                          Foreground="{DynamicResource ThemeTextSecondaryBrush}"
+                          VerticalAlignment="Center"/>
+                <TextBlock Text="|" Foreground="{DynamicResource ThemeTextMutedBrush}" VerticalAlignment="Center"/>
+                <TextBlock Text="Počet disků: " FontSize="10" Foreground="{DynamicResource ThemeTextMutedBrush}" VerticalAlignment="Center"/>
+                <TextBlock Text="{Binding Disks.Count}" FontSize="10" FontWeight="Bold"
+                          Foreground="{DynamicResource ThemeTextPrimaryBrush}" VerticalAlignment="Center"/>
                 <Panel IsVisible="{Binding IsChecking}">
-                    <TextBlock Text="⏳ Načítám..." FontSize="11" Foreground="#E67E22"/>
+                    <StackPanel Orientation="Horizontal" Spacing="4">
+                        <ProgressBar Width="50" Height="3" IsIndeterminate="True" VerticalAlignment="Center"
+                                   Background="{DynamicResource ThemeBorderLightBrush}"
+                                   Foreground="{DynamicResource ThemePrimaryBrush}"/>
+                        <TextBlock Text="Načítám..." FontSize="10" Foreground="{DynamicResource ThemeWarningBrush}" VerticalAlignment="Center"/>
+                    </StackPanel>
                 </Panel>
             </StackPanel>
         </Border>

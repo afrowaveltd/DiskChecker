@@ -3,137 +3,206 @@
         xmlns:vm="using:DiskChecker.UI.Avalonia.ViewModels"
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
-        mc:Ignorable="d" d:DesignWidth="1300" d:DesignHeight="700"
+        mc:Ignorable="d" d:DesignWidth="1400" d:DesignHeight="850"
         x:Class="DiskChecker.UI.Avalonia.Views.MainWindow"
-        Title="DiskChecker - Diagnóza Disků 🖴" 
-        Height="700" 
+        Title="DiskChecker - Profesionální Diagnóza Disků"
+        Height="700"
         Width="1300"
+        MinWidth="1000"
+        MinHeight="600"
         WindowStartupLocation="CenterScreen"
-        Background="#FFFFFF"
-        Icon="/Assets/icon.ico">
+        Background="{DynamicResource ThemeBackgroundBrush}"
+        Icon="/Assets/icon.ico"
+        TransparencyLevelHint="AcrylicBlur">
     <Grid>
         <Grid.RowDefinitions>
-            <RowDefinition Height="64"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
             <RowDefinition Height="*"/>
-            <RowDefinition Height="35"/>
+            <RowDefinition Height="Auto"/>
         </Grid.RowDefinitions>
 
         <!-- ========== HEADER/TOOLBAR ========== -->
-        <Border Grid.Row="0" Background="#F8F9FA" BorderBrush="#DEE2E6" BorderThickness="0,0,0,1">
-            <Grid>
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="*"/>
-                    <ColumnDefinition Width="Auto"/>
-                </Grid.ColumnDefinitions>
-
+        <Border Grid.Row="0" 
+                Background="{DynamicResource ThemeHeaderGradient}"
+                Padding="0" Height="56">
+            <Grid ColumnDefinitions="Auto,*,Auto" HorizontalAlignment="Stretch">
+                
                 <!-- Logo Area -->
-                <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center" Margin="20,0">
-                    <TextBlock Text="🖴" FontSize="30" Margin="0,0,10,0" VerticalAlignment="Center" Foreground="#004B93"/>
+                <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center" Margin="16,0">
+                    <Border Width="40" Height="40" CornerRadius="10" Background="#30FFFFFF" Margin="0,0,12,0">
+                        <TextBlock Text="💾" FontSize="22" HorizontalAlignment="Center" VerticalAlignment="Center" Foreground="White"/>
+                    </Border>
                     <StackPanel VerticalAlignment="Center">
-                        <TextBlock Text="DiskChecker" FontSize="19" FontWeight="Bold" Foreground="#004B93"/>
-                        <TextBlock Text="Profesionální Diagnóza Disků" FontSize="10" Foreground="#6C757D" Margin="0,-3,0,0"/>
+                        <TextBlock Text="DiskChecker" FontSize="18" FontWeight="Bold" Foreground="White"/>
+                        <TextBlock Text="Profesionální Diagnóza Disků" FontSize="10" Foreground="#CCFFFFFF" Margin="0,-2,0,0"/>
                     </StackPanel>
                 </StackPanel>
 
                 <!-- Navigation Menu -->
-                <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center" Margin="0,0,20,0">
-                    <Button Content="🏠 Přehled" 
+                <StackPanel Grid.Column="1" Orientation="Horizontal" HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="2">
+                    <!-- Navigation buttons -->
+                    <Button Content="📊 Přehled"
                             Command="{Binding NavigateToDiskSelectionCommand}"
                             Background="{Binding IsOnDiskSelection, Converter={StaticResource ActiveNavConverter}}"
                             Foreground="{Binding IsOnDiskSelection, Converter={StaticResource ActiveNavTextConverter}}"
-                            Padding="15,20" BorderThickness="0"
-                            FontSize="12" FontWeight="SemiBold" Cursor="Hand"
-                            ToolTip.Tip="Vrátit se na přehled disků" />
+                            Padding="10,6" Height="32" MinWidth="70" Margin="2"
+                            FontSize="11" FontWeight="SemiBold" Cursor="Hand" CornerRadius="8"/>
                     
-                    <Button Content="📚 Karty disků" 
+                    <Button Content="🗃 Karty"
                             Command="{Binding NavigateToDiskCardsCommand}"
                             Background="{Binding IsOnDiskCards, Converter={StaticResource ActiveNavConverter}}"
                             Foreground="{Binding IsOnDiskCards, Converter={StaticResource ActiveNavTextConverter}}"
-                            Padding="15,20" BorderThickness="0"
-                            FontSize="12" FontWeight="SemiBold" Cursor="Hand"
-                            ToolTip.Tip="Karty disků s historií" />
+                            Padding="10,6" Height="32" MinWidth="60" Margin="2"
+                            FontSize="11" FontWeight="SemiBold" Cursor="Hand"/>
                     
-                    <Button Content="🧪 Test povrchu" 
+                    <Button Content="🧪 Test"
                             Command="{Binding NavigateToSurfaceTestCommand}"
                             Background="{Binding IsOnSurfaceTest, Converter={StaticResource ActiveNavConverter}}"
                             Foreground="{Binding IsOnSurfaceTest, Converter={StaticResource ActiveNavTextConverter}}"
-                            Padding="15,20" BorderThickness="0"
-                            FontSize="12" FontWeight="SemiBold" Cursor="Hand"
-                            ToolTip.Tip="Spustit test povrchu disku" />
+                            Padding="10,6" Height="32" MinWidth="60" Margin="2"
+                            FontSize="11" FontWeight="SemiBold" Cursor="Hand"/>
                     
-                    <Button Content="🔧 SMART kontrola" 
+                    <Button Content="🔧 SMART"
                             Command="{Binding NavigateToSmartCheckCommand}"
                             Background="{Binding IsOnSmartCheck, Converter={StaticResource ActiveNavConverter}}"
                             Foreground="{Binding IsOnSmartCheck, Converter={StaticResource ActiveNavTextConverter}}"
-                            Padding="15,20" BorderThickness="0"
-                            FontSize="12" FontWeight="SemiBold" Cursor="Hand"
-                            ToolTip.Tip="Zobrazit SMART data" />
-
-                    <Button Content="📈 Analýza" 
+                            Padding="10,6" Height="32" MinWidth="66" Margin="2"
+                            FontSize="11" FontWeight="SemiBold" Cursor="Hand"/>
+                    
+                    <Button Content="📈 Analýza"
                             Command="{Binding NavigateToAnalysisCommand}"
                             Background="{Binding IsOnAnalysis, Converter={StaticResource ActiveNavConverter}}"
                             Foreground="{Binding IsOnAnalysis, Converter={StaticResource ActiveNavTextConverter}}"
-                            Padding="15,20" BorderThickness="0"
-                            FontSize="12" FontWeight="SemiBold" Cursor="Hand"
-                            ToolTip.Tip="Trend disku v čase" />
+                            Padding="10,6" Height="32" MinWidth="75" Margin="2"
+                            FontSize="11" FontWeight="SemiBold" Cursor="Hand"/>
                     
-                    <Button Content="⚖️ Porovnání" 
+                    <Button Content="⚖️ Porovnat"
                             Command="{Binding NavigateToDiskComparisonCommand}"
                             Background="{Binding IsOnDiskComparison, Converter={StaticResource ActiveNavConverter}}"
                             Foreground="{Binding IsOnDiskComparison, Converter={StaticResource ActiveNavTextConverter}}"
-                            Padding="15,20" BorderThickness="0"
-                            FontSize="12" FontWeight="SemiBold" Cursor="Hand"
-                            ToolTip.Tip="Porovnat disky" />
+                            Padding="10,6" Height="32" MinWidth="80" Margin="2"
+                            FontSize="11" FontWeight="SemiBold" Cursor="Hand"/>
                     
-                    <Button Content="📄 Reporty" 
+                    <Button Content="📄 Reporty"
                             Command="{Binding NavigateToReportCommand}"
                             Background="{Binding IsOnReport, Converter={StaticResource ActiveNavConverter}}"
                             Foreground="{Binding IsOnReport, Converter={StaticResource ActiveNavTextConverter}}"
-                            Padding="15,20" BorderThickness="0"
-                            FontSize="12" FontWeight="SemiBold" Cursor="Hand"
-                            ToolTip.Tip="Zobrazit reporty" />
+                            Padding="10,6" Height="32" MinWidth="75" Margin="2"
+                            FontSize="11" FontWeight="SemiBold" Cursor="Hand"/>
                     
-                    <Button Content="📚 Historie" 
+                    <Button Content="📜 Historie"
                             Command="{Binding NavigateToHistoryCommand}"
                             Background="{Binding IsOnHistory, Converter={StaticResource ActiveNavConverter}}"
                             Foreground="{Binding IsOnHistory, Converter={StaticResource ActiveNavTextConverter}}"
-                            Padding="15,20" BorderThickness="0"
-                            FontSize="12" FontWeight="SemiBold" Cursor="Hand"
-                            ToolTip.Tip="Historie testů" />
+                            Padding="10,6" Height="32" MinWidth="80" Margin="2"
+                            FontSize="11" FontWeight="SemiBold" Cursor="Hand"/>
+                </StackPanel>
+
+                <!-- System menu -->
+                <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="2" Margin="16,0">
+                    <!-- Theme Toggle Button -->
+                    <Button Command="{Binding ToggleThemeCommand}"
+                            Background="Transparent"
+                            BorderBrush="#40FFFFFF"
+                            BorderThickness="1"
+                            CornerRadius="6"
+                            Padding="8,5"
+                            Height="28"
+                            VerticalAlignment="Center"
+                            Cursor="Hand"
+                            ToolTip.Tip="Přepnout tmavý/světlý motiv">
+                        <StackPanel Orientation="Horizontal" Spacing="4">
+                            <TextBlock Text="☀️" FontSize="11" VerticalAlignment="Center" IsVisible="{Binding IsLightTheme}"/>
+                            <TextBlock Text="🌙" FontSize="11" VerticalAlignment="Center" IsVisible="{Binding IsDarkTheme}"/>
+                        </StackPanel>
+                    </Button>
                     
-                    <Separator Background="#DEE2E6" Width="1" Margin="5,10"/>
-                    
-                    <Button Content="⚙️ Nastavení" 
+                    <Button Content="⚙️"
                             Command="{Binding NavigateToSettingsCommand}"
                             Background="{Binding IsOnSettings, Converter={StaticResource ActiveNavConverter}}"
                             Foreground="{Binding IsOnSettings, Converter={StaticResource ActiveNavTextConverter}}"
-                            Padding="15,20" BorderThickness="0"
-                            FontSize="12" FontWeight="SemiBold" Cursor="Hand"
-                            ToolTip.Tip="Nastavení aplikace" />
+                            Width="36" Height="32" Margin="2"
+                            FontSize="14" Cursor="Hand"
+                            ToolTip.Tip="Nastavení aplikace"/>
+                </StackPanel>
+            </Grid>
+        </Border>
+
+        <!-- ========== SYSTEM INFO BAR ========== -->
+        <Border Grid.Row="1" 
+                Background="{DynamicResource ThemePanelBackgroundBrush}"
+                BorderBrush="{DynamicResource ThemeBorderBrush}"
+                BorderThickness="0,0,0,1"
+                Padding="16,6">
+            <Grid ColumnDefinitions="Auto,Auto,Auto,*,Auto,Auto,Auto">
+                <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="6">
+                    <TextBlock Text="🖥️" FontSize="12" VerticalAlignment="Center"/>
+                    <TextBlock Text="{Binding OsName}" FontSize="10" FontWeight="SemiBold"
+                              Foreground="{DynamicResource ThemeTextPrimaryBrush}" VerticalAlignment="Center"/>
+                </StackPanel>
+                
+                <Border Grid.Column="1" Width="1" Height="16" Background="{DynamicResource ThemeBorderBrush}" Margin="12,0"/>
+                
+                <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="6">
+                    <TextBlock Text="🐧" FontSize="10" VerticalAlignment="Center" IsVisible="{Binding IsLinux}"/>
+                    <TextBlock Text="🪟" FontSize="10" VerticalAlignment="Center" IsVisible="{Binding IsWindows}"/>
+                    <TextBlock Text="{Binding KernelVersion}" FontSize="10"
+                              Foreground="{DynamicResource ThemeTextSecondaryBrush}" VerticalAlignment="Center"/>
+                </StackPanel>
+                
+                <Border Grid.Column="3" Width="1" Height="16" Background="{DynamicResource ThemeBorderBrush}" Margin="12,0"/>
+                
+                <StackPanel Grid.Column="4" Orientation="Horizontal" Spacing="6">
+                    <TextBlock Text="💻" FontSize="10" VerticalAlignment="Center"/>
+                    <TextBlock Text="{Binding CpuInfo}" FontSize="10"
+                              Foreground="{DynamicResource ThemeTextSecondaryBrush}" VerticalAlignment="Center"/>
+                </StackPanel>
+                
+                <Border Grid.Column="5" Width="1" Height="16" Background="{DynamicResource ThemeBorderBrush}" Margin="12,0"/>
+                
+                <StackPanel Grid.Column="6" Orientation="Horizontal" Spacing="6">
+                    <TextBlock Text="🧠" FontSize="10" VerticalAlignment="Center"/>
+                    <TextBlock Text="{Binding RamInfo}" FontSize="10"
+                              Foreground="{DynamicResource ThemeTextSecondaryBrush}" VerticalAlignment="Center"/>
                 </StackPanel>
             </Grid>
         </Border>
 
         <!-- ========== CONTENT AREA ========== -->
-        <Border Grid.Row="1" Background="#FFFFFF" Margin="0">
+        <Border Grid.Row="2" 
+                Background="{DynamicResource ThemeBackgroundBrush}" 
+                Margin="16"
+                CornerRadius="8">
             <ContentControl Content="{Binding CurrentContent}"/>
         </Border>
 
         <!-- ========== STATUS BAR ========== -->
-        <Border Grid.Row="2" Background="#F8F9FA" BorderBrush="#DEE2E6" BorderThickness="0,1,0,0">
-            <Grid>
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="*"/>
-                    <ColumnDefinition Width="Auto"/>
-                </Grid.ColumnDefinitions>
-
-                <TextBlock Grid.Column="0" Text="{Binding StatusMessage}" 
-                          Foreground="#495057" VerticalAlignment="Center" Margin="10,0"
-                          FontSize="11" FontWeight="SemiBold"/>
-                
-                <TextBlock Grid.Column="1" Text="v1.0.0" 
-                          Foreground="#6C757D" VerticalAlignment="Center" Margin="10,0"
-                          FontSize="10" FontWeight="SemiBold"/>
+        <Border Grid.Row="3" 
+                Background="{DynamicResource ThemeSecondaryBackgroundBrush}" 
+                BorderBrush="{DynamicResource ThemeBorderBrush}" 
+                BorderThickness="0,1,0,0"
+                Height="28">
+            <Grid ColumnDefinitions="*,Auto,Auto">
+                <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center" Margin="12,0">
+                    <TextBlock Text="📌 " Foreground="{DynamicResource ThemePrimaryBrush}" VerticalAlignment="Center" FontSize="10"/>
+                    <TextBlock Text="{Binding StatusMessage}" 
+                              Foreground="{DynamicResource ThemeTextSecondaryBrush}"
+                              FontSize="11" TextTrimming="CharacterEllipsis"
+                              VerticalAlignment="Center"/>
+                </StackPanel>
+                <StackPanel Grid.Column="1" Orientation="Horizontal" Margin="0,0,16,0" Spacing="16">
+                    <TextBlock FontSize="10" Foreground="{DynamicResource ThemeTextMutedBrush}" VerticalAlignment="Center">
+                        <Run Text="Runtime: "/>
+                        <Run Text="{Binding RuntimeInfo}" FontWeight="SemiBold"/>
+                    </TextBlock>
+                </StackPanel>
+                <TextBlock Grid.Column="2" 
+                          Text="{Binding AppVersion}" 
+                          Foreground="{DynamicResource ThemeTextMutedBrush}" 
+                          VerticalAlignment="Center"
+                          FontSize="10"
+                          Padding="12,0"/>
             </Grid>
         </Border>
     </Grid>

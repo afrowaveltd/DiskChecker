@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.ObjectModel;
 using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
 using Avalonia.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
@@ -13,22 +14,37 @@ using DiskChecker.UI.Avalonia.Services.Interfaces;
 
 namespace DiskChecker.UI.Avalonia.ViewModels;
 
-public partial class SurfaceTestViewModel : ViewModelBase, INavigableViewModel
+public partial class SurfaceTestViewModel : ViewModelBase, INavigableViewModel, IDisposable
 {
     private readonly INavigationService _navigationService;
     private readonly ISelectedDiskService _selectedDiskService;
     private readonly IDialogService _dialogService;
     private readonly ISettingsService _settingsService;
     private readonly IDiskDetectionService _diskDetectionService;
-    private readonly DiskSanitizationService _sanitizationService;
+    private readonly IDiskSanitizationService _sanitizationService;
     private readonly DiskCardTestService _cardTestService;
     
     private double _writeProgress;
     private double _verifyProgress;
+    
+    // Combined stats (for backward compatibility / total view)
     private double _currentSpeed;
-    private double _minSpeed;
+    private double _minSpeed = double.MaxValue;
     private double _maxSpeed;
+    private bool _firstNonZeroSpeedRecorded;
     private double _avgSpeed;
+    
+    // Write phase statistics
+    private double _writeCurrentSpeed;
+    private double _writeMinSpeed = double.MaxValue;
+    private double _writeMaxSpeed;
+    private double _writeAvgSpeed;
+    
+    // Read phase statistics  
+    private double _readCurrentSpeed;
+    private double _readMinSpeed = double.MaxValue;
+    private double _readMaxSpeed;
+    private double _readAvgSpeed;
     private int _currentTemperature = 35;
     private int _minTemperature = int.MaxValue;
     private int _maxTemperature;
@@ -44,6 +60,7 @@ public partial class SurfaceTestViewModel : ViewModelBase, INavigableViewModel
     private DateTime _testStartTime;
     private int _selectedZoomIndex = 1; // Default 5 min
     private int _currentPhase; // 0 = Write, 1 = Read (default is 0)
+    private CancellationTokenSource? _testCancellation;
 
     public SurfaceTestViewModel(
         INavigationService navigationService,
@@ -51,7 +68,7 @@ public partial class SurfaceTestViewModel : ViewModelBase, INavigableViewModel
         IDialogService dialogService,
         ISettingsService settingsService,
         IDiskDetectionService diskDetectionService,
-        DiskSanitizationService sanitizationService,
+        IDiskSanitizationService sanitizationService,
         DiskCardTestService cardTestService)
     {
         _navigationService = navigationService;
@@ -81,7 +98,7 @@ public partial class SurfaceTestViewModel : ViewModelBase, INavigableViewModel
     public ObservableCollection<CoreDriveInfo> AvailableDrives { get; }
     public ObservableCollection<TestProfileItem> TestProfiles { get; }
     
-    // Graph data collections
+    // Graph data collections (legacy)
     public ObservableCollection<SurfaceTestDataPoint> WriteSpeedHistory { get; }
     public ObservableCollection<SurfaceTestDataPoint> ReadSpeedHistory { get; }
     public ObservableCollection<TemperatureDataPoint> TemperatureHistory { get; }
@@ -121,15 +138,59 @@ public partial class SurfaceTestViewModel : ViewModelBase, INavigableViewModel
 
     public double WriteProgress { get => _writeProgress; set => SetProperty(ref _writeProgress, value); }
     public double VerifyProgress { get => _verifyProgress; set => SetProperty(ref _verifyProgress, value); }
+    
+    // Combined statistics (current total speed)
     public double CurrentSpeed { get => _currentSpeed; set => SetProperty(ref _currentSpeed, value); }
-    public double MinSpeed { get => _minSpeed; set => SetProperty(ref _minSpeed, value); }
+    public double MinSpeed => _minSpeed == double.MaxValue ? 0 : _minSpeed;
     public double MaxSpeed { get => _maxSpeed; set => SetProperty(ref _maxSpeed, value); }
     public double AvgSpeed { get => _avgSpeed; set => SetProperty(ref _avgSpeed, value); }
+    
+    // Write phase statistics
+    public double WriteCurrentSpeed 
+    { 
+        get => _writeCurrentSpeed; 
+        set => SetProperty(ref _writeCurrentSpeed, value); 
+    }
+    public double WriteMinSpeed => _writeMinSpeed == double.MaxValue ? 0 : _writeMinSpeed;
+    public double WriteMaxSpeed 
+    { 
+        get => _writeMaxSpeed; 
+        set => SetProperty(ref _writeMaxSpeed, value); 
+    }
+    public double WriteAvgSpeed 
+    { 
+        get => _writeAvgSpeed; 
+        set => SetProperty(ref _writeAvgSpeed, value); 
+    }
+    
+    // Read phase statistics
+    public double ReadCurrentSpeed 
+    { 
+        get => _readCurrentSpeed; 
+        set => SetProperty(ref _readCurrentSpeed, value); 
+    }
+    public double ReadMinSpeed => _readMinSpeed == double.MaxValue ? 0 : _readMinSpeed;
+    public double ReadMaxSpeed 
+    { 
+        get => _readMaxSpeed; 
+        set => SetProperty(ref _readMaxSpeed, value); 
+    }
+    public double ReadAvgSpeed 
+    { 
+        get => _readAvgSpeed; 
+        set => SetProperty(ref _readAvgSpeed, value); 
+    }
+    
+    // Y positions for reference lines in graph (in pixels from top)
+    // Graph height is 160px for speed, bars are aligned to bottom
+    public double MaxSpeedLineY => Math.Max(0, 160 - (MaxSpeed / Math.Max(DisplayMaxSpeed, 1)) * 160);
+    public double MinSpeedLineY => Math.Max(0, 160 - (MinSpeed / Math.Max(DisplayMaxSpeed, 1)) * 160);
+    public double AvgSpeedLineY => Math.Max(0, 160 - (AvgSpeed / Math.Max(DisplayMaxSpeed, 1)) * 160);
     public int CurrentTemperature { get => _currentTemperature; set => SetProperty(ref _currentTemperature, value); }
     public int MinTemperature => _minTemperature == int.MaxValue ? 0 : _minTemperature;
     public int MaxTemperature => _maxTemperature;
-    public double DisplayMaxSpeed { get; private set; } = 100;
-    public double DisplayMaxTemperature { get; private set; } = 50;
+    public double DisplayMaxSpeed { get; private set; } = 200; // Starting value, set dynamically during test
+    public double DisplayMaxTemperature { get; private set; } = 80; // Fixed at 80°C for consistent graph scale
     public int ErrorCount { get => _errorCount; set => SetProperty(ref _errorCount, value); }
     public string TimeRemaining { get => _timeRemaining; set => SetProperty(ref _timeRemaining, value); }
     
@@ -155,7 +216,18 @@ public partial class SurfaceTestViewModel : ViewModelBase, INavigableViewModel
         set => SetProperty(ref _currentPhase, value);
     }
     public string StatusMessage { get => _statusMessage; set => SetProperty(ref _statusMessage, value); }
-    public bool IsLoadingDrives { get => _isLoadingDrives; set => SetProperty(ref _isLoadingDrives, value); }
+    public bool IsLoadingDrives
+    {
+        get => _isLoadingDrives;
+        set
+        {
+            if (SetProperty(ref _isLoadingDrives, value))
+            {
+                OnPropertyChanged(nameof(CanStartTest));
+                OnPropertyChanged(nameof(CanChangeDisk));
+            }
+        }
+    }
 
     public bool IsTesting
     {
@@ -266,6 +338,7 @@ public partial class SurfaceTestViewModel : ViewModelBase, INavigableViewModel
                     if (drives.Count == 0)
                     {
                         StatusMessage = "Nebyly nalezeny žádné disky";
+                        IsLoadingDrives = false;
                         return;
                     }
 
@@ -278,6 +351,7 @@ public partial class SurfaceTestViewModel : ViewModelBase, INavigableViewModel
                             SelectedDrive = existing;
                             IsLocked = _selectedDiskService.IsSelectedDiskLocked;
                             StatusMessage = $"Vybrán disk: {SelectedDrive.Name ?? SelectedDrive.Path}";
+                            IsLoadingDrives = false;
                             return;
                         }
                     }
@@ -335,7 +409,7 @@ public partial class SurfaceTestViewModel : ViewModelBase, INavigableViewModel
             
             // Add to legacy collection for compatibility
             SpeedHistory.Add(new SpeedDataPoint { Time = SpeedHistory.Count, Speed = speed });
-            while (SpeedHistory.Count > 300) // Keep more history for zoom
+            while (SpeedHistory.Count > 300)
                 SpeedHistory.RemoveAt(0);
             
             // Add to phase-specific collection
@@ -362,7 +436,7 @@ public partial class SurfaceTestViewModel : ViewModelBase, INavigableViewModel
                     TemperatureHistory.RemoveAt(0);
             }
             
-            // Update statistics with outlier removal
+            // Update statistics
             UpdateStatistics();
             
             // Recalculate heights for display
@@ -372,91 +446,190 @@ public partial class SurfaceTestViewModel : ViewModelBase, INavigableViewModel
     
     private void UpdateStatistics()
     {
-        // Calculate speed statistics, ignoring extreme outliers (lowest and highest 1%)
-        if (SpeedHistory.Count > 2)
+        // Calculate separate statistics for Write and Read phases
+        // Also maintain combined statistics for backward compatibility
+        
+        // ===== WRITE PHASE STATISTICS =====
+        if (WriteSpeedHistory.Count > 0)
         {
-            var allSpeeds = SpeedHistory.Select(s => s.Speed).OrderBy(s => s).ToList();
+            var writeSpeeds = WriteSpeedHistory
+                .Select(p => p.Speed)
+                .Where(s => s > 1.0)  // Filter artifacts < 1 MB/s
+                .ToList();
             
-            // Remove top and bottom 1% as outliers (at least 1 value from each end if count > 10)
-            var outlierCount = Math.Max(1, (int)(allSpeeds.Count * 0.01));
-            var filteredSpeeds = allSpeeds.Skip(outlierCount).Take(allSpeeds.Count - 2 * outlierCount).ToList();
-            
-            if (filteredSpeeds.Count > 0)
+            if (writeSpeeds.Count > 0)
             {
-                // Use filtered data for display, but show actual max for reference
-                var actualMin = allSpeeds.First(); // True minimum
-                var actualMax = allSpeeds.Last();   // True maximum
+                // Update current write speed
+                WriteCurrentSpeed = writeSpeeds[^1];
                 
-                // Min shown = second lowest (to avoid 0 from test start)
-                MinSpeed = allSpeeds.Count > 2 ? allSpeeds[1] : actualMin;
+                // Min speed
+                var newWriteMin = writeSpeeds.Min();
+                if (newWriteMin < _writeMinSpeed || _writeMinSpeed == double.MaxValue)
+                {
+                    _writeMinSpeed = newWriteMin;
+                    OnPropertyChanged(nameof(WriteMinSpeed));
+                }
                 
-                // Max shown = second highest (to avoid occasional spikes)
-                MaxSpeed = allSpeeds.Count > 2 ? allSpeeds[^2] : actualMax;
+                // Max speed
+                var newWriteMax = writeSpeeds.Max();
+                if (newWriteMax > _writeMaxSpeed)
+                {
+                    _writeMaxSpeed = newWriteMax;
+                    OnPropertyChanged(nameof(WriteMaxSpeed));
+                }
                 
-                // Average from filtered data
-                AvgSpeed = filteredSpeeds.Average();
-                
-                // Display max = actual max + 10%, rounded up to nearest 10
-                var displayMax = actualMax * 1.1;
-                DisplayMaxSpeed = Math.Max(100, Math.Ceiling(displayMax / 10) * 10);
+                // Average speed
+                WriteAvgSpeed = writeSpeeds.Average();
             }
         }
-        else if (SpeedHistory.Count > 0)
+        
+        // ===== READ PHASE STATISTICS =====
+        if (ReadSpeedHistory.Count > 0)
         {
-            // Not enough data for outlier removal
-            var speeds = SpeedHistory.Select(s => s.Speed).ToList();
-            MinSpeed = speeds.Min();
-            MaxSpeed = speeds.Max();
-            AvgSpeed = speeds.Average();
-            DisplayMaxSpeed = Math.Max(100, Math.Ceiling(MaxSpeed * 1.1 / 10) * 10);
+            var readSpeeds = ReadSpeedHistory
+                .Select(p => p.Speed)
+                .Where(s => s > 1.0)  // Filter artifacts < 1 MB/s
+                .ToList();
+            
+            if (readSpeeds.Count > 0)
+            {
+                // Update current read speed
+                ReadCurrentSpeed = readSpeeds[^1];
+                
+                // Min speed
+                var newReadMin = readSpeeds.Min();
+                if (newReadMin < _readMinSpeed || _readMinSpeed == double.MaxValue)
+                {
+                    _readMinSpeed = newReadMin;
+                    OnPropertyChanged(nameof(ReadMinSpeed));
+                }
+                
+                // Max speed
+                var newReadMax = readSpeeds.Max();
+                if (newReadMax > _readMaxSpeed)
+                {
+                    _readMaxSpeed = newReadMax;
+                    OnPropertyChanged(nameof(ReadMaxSpeed));
+                }
+                
+                // Average speed
+                ReadAvgSpeed = readSpeeds.Average();
+            }
         }
         
-        // Update temperature stats with outlier removal
-        if (TemperatureHistory.Count > 2)
+        // ===== COMBINED STATISTICS (for graph and legacy display) =====
+        if (SpeedHistory.Count > 0)
         {
-            var allTemps = TemperatureHistory.Select(t => (double)t.Temperature).OrderBy(t => t).ToList();
+            var speeds = SpeedHistory.Select(s => s.Speed).ToList();
             
-            // Remove outliers
-            var outlierCount = Math.Max(1, (int)(allTemps.Count * 0.01));
-            var filteredTemps = allTemps.Skip(outlierCount).Take(allTemps.Count - 2 * outlierCount).ToList();
-            
-            if (filteredTemps.Count > 0)
+            // Find first non-zero speed index
+            int startIndex = 0;
+            if (!_firstNonZeroSpeedRecorded)
             {
-                // Min temperature = second lowest (avoid startup artifacts)
-                _minTemperature = (int)(allTemps.Count > 2 ? allTemps[1] : allTemps.First());
+                for (int i = 0; i < speeds.Count; i++)
+                {
+                    if (speeds[i] > 1.0)
+                    {
+                        startIndex = i;
+                        _firstNonZeroSpeedRecorded = true;
+                        break;
+                    }
+                }
+            }
+            else
+            {
+                startIndex = 0;
+            }
+            
+            if (_firstNonZeroSpeedRecorded || speeds.Any(s => s > 1.0))
+            {
+                var validSpeeds = speeds
+                    .Skip(startIndex)
+                    .Where(s => s > 1.0)
+                    .ToList();
                 
-                // Max temperature = second highest (avoid sensor glitches)
-                _maxTemperature = (int)(allTemps.Count > 2 ? allTemps[^2] : allTemps.Last());
-                
+                if (validSpeeds.Count > 0)
+                {
+                    var newMin = validSpeeds.Min();
+                    if (newMin < _minSpeed || _minSpeed == double.MaxValue)
+                    {
+                        _minSpeed = newMin;
+                        OnPropertyChanged(nameof(MinSpeed));
+                        OnPropertyChanged(nameof(MinSpeedLineY));
+                    }
+                    
+                    var newMax = validSpeeds.Max();
+                    if (newMax > _maxSpeed)
+                    {
+                        _maxSpeed = newMax;
+                        OnPropertyChanged(nameof(MaxSpeed));
+                        OnPropertyChanged(nameof(MaxSpeedLineY));
+                        
+                        var requiredMax = newMax * 1.1;
+                        if (requiredMax > DisplayMaxSpeed)
+                        {
+                            DisplayMaxSpeed = Math.Ceiling(requiredMax / 10) * 10;
+                            OnPropertyChanged(nameof(MinSpeedLineY));
+                            OnPropertyChanged(nameof(AvgSpeedLineY));
+                        }
+                    }
+                    
+                    AvgSpeed = validSpeeds.Average();
+                    OnPropertyChanged(nameof(AvgSpeedLineY));
+                }
+            }
+            else if (speeds.Count > 0 && !_firstNonZeroSpeedRecorded)
+            {
+                var nonZeroSpeeds = speeds.Where(s => s > 0.1).ToList();
+                if (nonZeroSpeeds.Count > 0)
+                    AvgSpeed = nonZeroSpeeds.Average();
+            }
+        }
+        
+        // Temperature stats
+        if (TemperatureHistory.Count > 0)
+        {
+            var temps = TemperatureHistory.Select(t => (double)t.Temperature).ToList();
+            var newMinTemp = temps.Min();
+            var newMaxTemp = temps.Max();
+            
+            if (newMinTemp < _minTemperature || _minTemperature == int.MaxValue)
+            {
+                _minTemperature = (int)newMinTemp;
                 OnPropertyChanged(nameof(MinTemperature));
+            }
+            
+            if (newMaxTemp > _maxTemperature)
+            {
+                _maxTemperature = (int)newMaxTemp;
                 OnPropertyChanged(nameof(MaxTemperature));
-                
-                // Display max = actual max + 10%, at least 40°C, rounded to nearest 5
-                var displayMaxTemp = allTemps[^1] * 1.1;
-                DisplayMaxTemperature = Math.Max(40, Math.Ceiling(displayMaxTemp / 5) * 5);
             }
         }
     }
 
     private void UpdateGraphHeights()
     {
-        var maxSpeedHeight = 160.0; // Max height in pixels for speed graph (60% of space)
-        var maxTempHeight = 100.0; // Max height in pixels for temperature graph (40% of space)
-        var maxSpeed = Math.Max(1, DisplayMaxSpeed); // Avoid division by zero
+        // Y-axis scale is set ONCE at the beginning of test based on first significant speed
+        // This ensures stable graph scale during test while adapting to different disk types
         
+        var maxSpeedHeight = 160.0; // Max height in pixels for speed graph
+        var maxTempHeight = 100.0;  // Max height in pixels for temperature graph
+        var maxSpeed = Math.Max(DisplayMaxSpeed, 1); // Use dynamic scale (set once during test)
+        
+        // Speed heights
         foreach (var point in WriteSpeedHistory)
             point.Height = Math.Max(2, (point.Speed / maxSpeed) * maxSpeedHeight);
         
         foreach (var point in ReadSpeedHistory)
             point.Height = Math.Max(2, (point.Speed / maxSpeed) * maxSpeedHeight);
         
-        // Temperature graph: range from 15°C to max+10%
+        // Temperature graph: range from 15°C to 80°C (65°C range)
         var minTemp = 15.0;
-        var tempRange = Math.Max(10, DisplayMaxTemperature - minTemp); // At least 10°C range
+        var maxTemp = 80.0;
+        var tempRange = maxTemp - minTemp; // 65°C range
         
         foreach (var point in TemperatureHistory)
         {
-            // Calculate height relative to temperature range (15°C to max)
             var normalizedTemp = Math.Max(0, point.Temperature - minTemp);
             point.Height = Math.Max(2, (normalizedTemp / tempRange) * maxTempHeight);
         }
@@ -470,12 +643,46 @@ public partial class SurfaceTestViewModel : ViewModelBase, INavigableViewModel
             WriteSpeedHistory.Clear();
             ReadSpeedHistory.Clear();
             TemperatureHistory.Clear();
-            MinSpeed = 0;
-            MaxSpeed = 0;
+            
+            // Combined stats
+            _minSpeed = double.MaxValue;
+            _maxSpeed = 0;
             AvgSpeed = 0;
+            
+            // Write phase stats
+            _writeMinSpeed = double.MaxValue;
+            _writeMaxSpeed = 0;
+            _writeAvgSpeed = 0;
+            _writeCurrentSpeed = 0;
+            
+            // Read phase stats
+            _readMinSpeed = double.MaxValue;
+            _readMaxSpeed = 0;
+            _readAvgSpeed = 0;
+            _readCurrentSpeed = 0;
+            
+            // Temperature
             _minTemperature = int.MaxValue;
             _maxTemperature = 0;
-            DisplayMaxSpeed = 100;
+            _firstNonZeroSpeedRecorded = false;
+            DisplayMaxSpeed = 200;
+            DisplayMaxTemperature = 80;
+            
+            // Notify all properties
+            OnPropertyChanged(nameof(MinSpeed));
+            OnPropertyChanged(nameof(MaxSpeed));
+            OnPropertyChanged(nameof(AvgSpeed));
+            OnPropertyChanged(nameof(WriteMinSpeed));
+            OnPropertyChanged(nameof(WriteMaxSpeed));
+            OnPropertyChanged(nameof(WriteAvgSpeed));
+            OnPropertyChanged(nameof(WriteCurrentSpeed));
+            OnPropertyChanged(nameof(ReadMinSpeed));
+            OnPropertyChanged(nameof(ReadMaxSpeed));
+            OnPropertyChanged(nameof(ReadAvgSpeed));
+            OnPropertyChanged(nameof(ReadCurrentSpeed));
+            OnPropertyChanged(nameof(MinSpeedLineY));
+            OnPropertyChanged(nameof(MaxSpeedLineY));
+            OnPropertyChanged(nameof(AvgSpeedLineY));
         });
     }
 
@@ -536,14 +743,19 @@ public partial class SurfaceTestViewModel : ViewModelBase, INavigableViewModel
         VerifyProgress = 0;
         _testStartTime = DateTime.UtcNow;
         _currentPhase = 0; // Start with Write phase
+        _testCancellation = new CancellationTokenSource();
         ClearSpeedHistory();
 
         try
         {
             if (profile.IsDestructive)
-                await RunSanitizationAsync();
+                await RunSanitizationAsync(_testCancellation.Token);
             else
-                await RunTestAsync();
+                await RunTestAsync(_testCancellation.Token);
+        }
+        catch (OperationCanceledException)
+        {
+            StatusMessage = "Test zrušen uživatelem";
         }
         catch (Exception ex)
         {
@@ -552,20 +764,54 @@ public partial class SurfaceTestViewModel : ViewModelBase, INavigableViewModel
         }
         finally 
         { 
-            IsTesting = false; 
+            IsTesting = false;
+            _testCancellation?.Dispose();
+            _testCancellation = null;
         }
     }
 
-    private async Task RunSanitizationAsync()
+    private async Task RunSanitizationAsync(CancellationToken cancellationToken)
     {
         if (SelectedDrive == null) return;
 
         var progress = new Progress<SanitizationProgress>(p =>
         {
+            // Check for cancellation
+            if (cancellationToken.IsCancellationRequested)
+                return;
+            
             Dispatcher.UIThread.Post(() =>
             {
+                if (cancellationToken.IsCancellationRequested)
+                    return;
+                
                 StatusMessage = p.Phase;
-                WriteProgress = p.ProgressPercent;
+                
+                // Detect phase from status message
+                var isReadPhase = p.Phase.Contains("Čtení") || p.Phase.Contains("ověření") || p.Phase.Contains("Read");
+                var isWritePhase = p.Phase.Contains("Zápis") || p.Phase.Contains("Write");
+                
+                if (isReadPhase && _currentPhase != 1)
+                {
+                    CurrentPhase = 1; // Switch to read phase
+                }
+                else if (isWritePhase && _currentPhase != 0)
+                {
+                    CurrentPhase = 0; // Ensure write phase
+                }
+                
+                // Progress: Write is 0-50%, Read is 50-100%
+                if (isReadPhase)
+                {
+                    WriteProgress = 100; // Write complete
+                    VerifyProgress = p.ProgressPercent; // 0-100% of read
+                }
+                else if (isWritePhase)
+                {
+                    WriteProgress = p.ProgressPercent; // 0-100% of write
+                    VerifyProgress = 0;
+                }
+                
                 CurrentSpeed = p.CurrentSpeedMBps;
                 ErrorCount = p.Errors;
                 AddSpeedPoint(p.CurrentSpeedMBps);
@@ -574,18 +820,34 @@ public partial class SurfaceTestViewModel : ViewModelBase, INavigableViewModel
             });
         });
 
+        // Note: Sanitization cannot be safely cancelled once started
+        // We check cancellation before starting but the operation itself runs to completion
+        cancellationToken.ThrowIfCancellationRequested();
+        
         var result = await _sanitizationService.SanitizeDiskAsync(
-            SelectedDrive.Path, SelectedDrive.TotalSize, true, true, "SCCM", progress);
+            SelectedDrive.Path, SelectedDrive.TotalSize, true, true, "SCCM", progress, cancellationToken);
+
+        // Check if user cancelled during operation
+        if (cancellationToken.IsCancellationRequested)
+        {
+            StatusMessage = "Sanitizace zrušena (disk může být částečně přepsán)";
+            cancellationToken.ThrowIfCancellationRequested();
+        }
 
         if (result.Success)
         {
-            StatusMessage = $"Dokončeno! Rychlost: {result.WriteSpeedMBps:F1} MB/s";
+            // Calculate test duration
+            var duration = result.Duration;
+            
+            StatusMessage = $"Dokončeno! Zápis: {result.WriteSpeedMBps:F1} MB/s, Čtení: {result.ReadSpeedMBps:F1} MB/s";
             
             // Save to disk card
             try
             {
-                var card = await _cardTestService.GetOrCreateCardAsync(SelectedDrive);
-                await _cardTestService.SaveSanitizationAsync(card, result);
+                var card = await _cardTestService.GetOrCreateCardAsync(SelectedDrive!, cancellationToken);
+                await _cardTestService.SaveSanitizationAsync(card, result, cancellationToken);
+                
+                StatusMessage = $"Sanitizace uložena - {card.ModelName}";
             }
             catch (Exception ex)
             {
@@ -593,7 +855,18 @@ public partial class SurfaceTestViewModel : ViewModelBase, INavigableViewModel
             }
             
             await _dialogService.ShowSuccessAsync("Sanitizace dokončena", 
-                $"Disk byl úspěšně sanitizován.\nRychlost zápisu: {result.WriteSpeedMBps:F1} MB/s");
+                $"Disk byl úspěšně sanitizován a uložen.\n\n" +
+                $"📊 Výsledky sanitizace:\n" +
+                $"━━━━━━━━━━━━━━━━━━━━\n" +
+                $"💿 Disk: {SelectedDrive?.Name ?? "Unknown"}\n" +
+                $"⏱ Doba: {duration:hh\\:mm\\:ss}\n" +
+                $"💾 Zpracováno: {result.BytesWritten / (1024.0 * 1024 * 1024):F2} GB\n\n" +
+                $"📝 ZÁPIS:\n" +
+                $"   Rychlost: {result.WriteSpeedMBps:F1} MB/s\n\n" +
+                $"📖 ČTENÍ/OVĚŘENÍ:\n" +
+                $"   Rychlost: {result.ReadSpeedMBps:F1} MB/s\n\n" +
+                $"✅ Stav: {(result.ErrorsDetected == 0 ? "Bez chyb" : $"{result.ErrorsDetected} chyb")}\n" +
+                $"📁 Karta disku vytvořena/aktualizována");
         }
         else
         {
@@ -602,41 +875,214 @@ public partial class SurfaceTestViewModel : ViewModelBase, INavigableViewModel
         }
     }
 
-    private async Task RunTestAsync()
+    private async Task RunTestAsync(CancellationToken cancellationToken)
     {
         StatusMessage = "Spouštím test povrchu...";
         
         var profile = TestProfiles.FirstOrDefault(p => p.IsSelected);
-        var testDuration = profile?.Name switch
+        var testDurationMs = profile?.Name switch
         {
-            "Rychlý test (100 MB)" => 100,
-            "Plný test (1 GB)" => 200,
-            _ => 100
+            "Rychlý test (100 MB)" => 5000,
+            "Plný test (1 GB)" => 10000,
+            _ => 5000
         };
         
-        for (int i = 0; i <= testDuration; i += 2)
+        // Track test data for saving
+        var testStartTime = DateTime.UtcNow;
+        var writeSamples = new List<(double Speed, int Temp, DateTime Time)>();
+        var readSamples = new List<(double Speed, int Temp, DateTime Time)>();
+        var minWriteSpeed = double.MaxValue;
+        var maxWriteSpeed = 0.0;
+        var minReadSpeed = double.MaxValue;
+        var maxReadSpeed = 0.0;
+        
+        _currentPhase = 0;
+        var writePhaseDuration = testDurationMs / 2;
+        var readPhaseDuration = testDurationMs / 2;
+        
+        // Write phase (0-50%)
+        StatusMessage = "Zápis dat...";
+        for (int i = 0; i <= writePhaseDuration; i += 100)
         {
-            var progress = i;
-            WriteProgress = progress / 2.0;
-            VerifyProgress = progress > 50 ? (progress - 50) : 0;
+            cancellationToken.ThrowIfCancellationRequested();
+            
+            var progress = (double)i / writePhaseDuration * 100;
+            WriteProgress = progress * 0.5;
+            VerifyProgress = 0;
             
             var speed = 45 + Random.Shared.NextDouble() * 15;
             CurrentSpeed = speed;
             CurrentTemperature = 35 + Random.Shared.Next(0, 5);
             AddSpeedPoint(speed);
-            TimeRemaining = TimeSpan.FromSeconds((testDuration - i) * 0.5).ToString(@"hh\:mm\:ss");
             
-            await Task.Delay(100);
+            // Track write stats
+            writeSamples.Add((speed, CurrentTemperature, DateTime.UtcNow));
+            if (speed < minWriteSpeed) minWriteSpeed = speed;
+            if (speed > maxWriteSpeed) maxWriteSpeed = speed;
+            
+            var totalProgress = (i + writePhaseDuration) / 2.0;
+            var remaining = testDurationMs - totalProgress;
+            TimeRemaining = TimeSpan.FromMilliseconds(remaining).ToString(@"mm\:ss");
+            
+            await Task.Delay(100, cancellationToken);
         }
         
-        StatusMessage = "Test dokončen";
-        await _dialogService.ShowSuccessAsync("Test dokončen", "Test povrchu byl úspěšně dokončen.");
+        // Read phase (50-100%)
+        CurrentPhase = 1;
+        StatusMessage = "Čtení a ověřování...";
+        for (int i = 0; i <= readPhaseDuration; i += 100)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            
+            var progress = (double)i / readPhaseDuration * 100;
+            WriteProgress = 100;
+            VerifyProgress = progress;
+            
+            var speed = 50 + Random.Shared.NextDouble() * 20;
+            CurrentSpeed = speed;
+            CurrentTemperature = 35 + Random.Shared.Next(0, 5);
+            AddSpeedPoint(speed);
+            
+            // Track read stats
+            readSamples.Add((speed, CurrentTemperature, DateTime.UtcNow));
+            if (speed < minReadSpeed) minReadSpeed = speed;
+            if (speed > maxReadSpeed) maxReadSpeed = speed;
+            
+            var remaining = readPhaseDuration - i;
+            TimeRemaining = TimeSpan.FromMilliseconds(remaining).ToString(@"mm\:ss");
+            
+            await Task.Delay(100, cancellationToken);
+        }
+        
+        var testEndTime = DateTime.UtcNow;
+        var duration = testEndTime - testStartTime;
+        
+        // Calculate averages
+        var avgWriteSpeed = writeSamples.Count > 0 ? writeSamples.Average(s => s.Speed) : 0;
+        var avgReadSpeed = readSamples.Count > 0 ? readSamples.Average(s => s.Speed) : 0;
+        if (minWriteSpeed == double.MaxValue) minWriteSpeed = 0;
+        if (minReadSpeed == double.MaxValue) minReadSpeed = 0;
+        
+        StatusMessage = "Ukládám výsledky testu...";
+        
+        // Create and save test result
+        try
+        {
+            // Verify drive is selected
+            if (SelectedDrive == null)
+            {
+                throw new InvalidOperationException("Žádný disk není vybrán");
+            }
+            
+            // Determine operation type based on profile
+            var operation = profile?.Name switch
+            {
+                "Rychlý test (100 MB)" => SurfaceTestOperation.ReadOnly,  // Read-only, no write
+                "Plný test (1 GB)" => SurfaceTestOperation.WritePattern,   // Write and verify
+                "Test celého disku" => SurfaceTestOperation.WritePattern,   // Full disk write and verify
+                _ => SurfaceTestOperation.ReadOnly
+            };
+            
+            System.Diagnostics.Debug.WriteLine($"[SurfaceTest] Saving test result for drive: {SelectedDrive.Name ?? "Unknown"}");
+            System.Diagnostics.Debug.WriteLine($"[SurfaceTest] Serial: {SelectedDrive.SerialNumber ?? "N/A"}");
+            System.Diagnostics.Debug.WriteLine($"[SurfaceTest] Operation: {operation}");
+            System.Diagnostics.Debug.WriteLine($"[SurfaceTest] Samples: {writeSamples.Count} write + {readSamples.Count} read");
+            
+            var result = new SurfaceTestResult
+            {
+                TestId = Guid.NewGuid().ToString(),
+                StartedAtUtc = testStartTime,
+                CompletedAtUtc = testEndTime,
+                DriveModel = SelectedDrive.Name ?? "Unknown",
+                DriveSerialNumber = SelectedDrive.SerialNumber ?? "",
+                DriveInterface = SelectedDrive.BusType.ToString() ?? "Unknown",
+                DriveTotalBytes = SelectedDrive.TotalSize,
+                Operation = operation,
+                TotalBytesTested = (long)(100 * 1024 * 1024),
+                ErrorCount = 0,
+                AverageSpeedMbps = (avgWriteSpeed + avgReadSpeed) / 2,
+                PeakSpeedMbps = Math.Max(maxWriteSpeed, maxReadSpeed),
+                MinSpeedMbps = Math.Min(minWriteSpeed, minReadSpeed)
+            };
+            
+            // Add samples (speed is already in MB/s)
+            foreach (var sample in writeSamples)
+            {
+                result.Samples.Add(new SurfaceTestSample
+                {
+                    OffsetBytes = 0,
+                    BlockSizeBytes = 1024 * 1024,
+                    ThroughputMbps = sample.Speed,  // Already in MB/s
+                    TimestampUtc = sample.Time
+                });
+            }
+            
+            foreach (var sample in readSamples)
+            {
+                result.Samples.Add(new SurfaceTestSample
+                {
+                    OffsetBytes = 0,
+                    BlockSizeBytes = 1024 * 1024,
+                    ThroughputMbps = sample.Speed,  // Already in MB/s
+                    TimestampUtc = sample.Time
+                });
+            }
+            
+            // Save to disk card
+            System.Diagnostics.Debug.WriteLine($"[SurfaceTest] Getting or creating disk card...");
+            var card = await _cardTestService.GetOrCreateCardAsync(SelectedDrive!, cancellationToken);
+            System.Diagnostics.Debug.WriteLine($"[SurfaceTest] Card created/found: ID={card.Id}, Model={card.ModelName}");
+            
+            System.Diagnostics.Debug.WriteLine($"[SurfaceTest] Saving surface test result...");
+            await _cardTestService.SaveSurfaceTestAsync(card, result, cancellationToken);
+            System.Diagnostics.Debug.WriteLine($"[SurfaceTest] Test result saved successfully");
+            
+            // Calculate overall stats for display
+            var overallMaxSpeed = Math.Max(maxWriteSpeed, maxReadSpeed);
+            var overallMinSpeed = Math.Min(minWriteSpeed, minReadSpeed);
+            var overallAvgSpeed = (avgWriteSpeed + avgReadSpeed) / 2;
+            
+            StatusMessage = $"Test dokončen - Průměr: {overallAvgSpeed:F1} MB/s";
+            
+            await _dialogService.ShowSuccessAsync("Test dokončen",
+                $"Test povrchu byl úspěšně dokončen a uložen.\n\n" +
+                $"📊 Výsledky testu:\n" +
+                $"━━━━━━━━━━━━━━━━━━━━\n" +
+                $"⏱ Doba testu: {duration:mm\\:ss}\n\n" +
+                $"📝 ZÁPIS:\n" +
+                $"   Min: {minWriteSpeed:F1} MB/s\n" +
+                $"   Max: {maxWriteSpeed:F1} MB/s\n" +
+                $"   Průměr: {avgWriteSpeed:F1} MB/s\n\n" +
+                $"📖 ČTENÍ:\n" +
+                $"   Min: {minReadSpeed:F1} MB/s\n" +
+                $"   Max: {maxReadSpeed:F1} MB/s\n" +
+                $"   Průměr: {avgReadSpeed:F1} MB/s\n\n" +
+                $"💾 Celkem: {overallAvgSpeed:F1} MB/s\n" +
+                $"📈 Rozsah: {overallMinSpeed:F1} - {overallMaxSpeed:F1} MB/s");
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"[SurfaceTest] ERROR saving test result: {ex.GetType().Name}");
+            System.Diagnostics.Debug.WriteLine($"[SurfaceTest] Error message: {ex.Message}");
+            System.Diagnostics.Debug.WriteLine($"[SurfaceTest] Stack trace: {ex.StackTrace}");
+            
+            if (ex.InnerException != null)
+            {
+                System.Diagnostics.Debug.WriteLine($"[SurfaceTest] Inner exception: {ex.InnerException.Message}");
+            }
+            
+            StatusMessage = $"Chyba při ukládání: {ex.Message}";
+            await _dialogService.ShowErrorAsync("Chyba", 
+                $"Test byl dokončen, ale výsledky se nepodařilo uložit.\n\n" +
+                $"Chyba: {ex.Message}\n\n" +
+                $"Typ: {ex.GetType().Name}");
+        }
     }
 
     [RelayCommand]
     private void CancelTest() 
     { 
-        IsTesting = false; 
+        _testCancellation?.Cancel();
         StatusMessage = "Test zrušen"; 
     }
 
@@ -650,6 +1096,12 @@ public partial class SurfaceTestViewModel : ViewModelBase, INavigableViewModel
         foreach (var x in TestProfiles) x.IsSelected = false;
         p.IsSelected = true;
         StatusMessage = $"Vybrán profil: {p.Name}";
+    }
+
+    public void Dispose()
+    {
+        _testCancellation?.Dispose();
+        GC.SuppressFinalize(this);
     }
 }
 

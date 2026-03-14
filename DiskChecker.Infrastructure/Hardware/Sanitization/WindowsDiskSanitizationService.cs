@@ -5,53 +5,24 @@ using System.Linq;
 using System.Runtime.InteropServices;
 using System.Threading;
 using System.Threading.Tasks;
+using DiskChecker.Core.Interfaces;
 using Microsoft.Extensions.Logging;
 using Microsoft.Win32.SafeHandles;
 
 namespace DiskChecker.Infrastructure.Hardware.Sanitization;
 
 /// <summary>
-/// Result of disk sanitization operation.
+/// Windows implementation of disk sanitization service.
+/// Uses Win32 API for raw disk access.
+/// WARNING: This destroys ALL data on the disk!
 /// </summary>
-public class SanitizationResult
+public class WindowsDiskSanitizationService : IDiskSanitizationService
 {
-    public bool Success { get; set; }
-    public string? ErrorMessage { get; set; }
-    public long BytesWritten { get; set; }
-    public long BytesRead { get; set; }
-    public double WriteSpeedMBps { get; set; }
-    public double ReadSpeedMBps { get; set; }
-    public int ErrorsDetected { get; set; }
-    public TimeSpan Duration { get; set; }
-    public bool PartitionCreated { get; set; }
-    public bool Formatted { get; set; }
-}
-
-/// <summary>
-/// Progress callback for sanitization operations.
-/// </summary>
-public class SanitizationProgress
-{
-    public string Phase { get; set; } = "";
-    public double ProgressPercent { get; set; }
-    public long BytesProcessed { get; set; }
-    public long TotalBytes { get; set; }
-    public double CurrentSpeedMBps { get; set; }
-    public int Errors { get; set; }
-    public TimeSpan? EstimatedTimeRemaining { get; set; }
-}
-
-/// <summary>
-/// Service for performing destructive disk sanitization.
-/// This will ERASE ALL DATA on the disk!
-/// </summary>
-public class DiskSanitizationService
-{
-    private readonly ILogger<DiskSanitizationService>? _logger;
+    private readonly ILogger<WindowsDiskSanitizationService>? _logger;
     private const uint IOCTL_DISK_UPDATE_PROPERTIES = 0x70140;
     private const int BUFFER_SIZE = 64 * 1024 * 1024; // 64 MB buffer
 
-    public DiskSanitizationService(ILogger<DiskSanitizationService>? logger = null)
+    public WindowsDiskSanitizationService(ILogger<WindowsDiskSanitizationService>? logger = null)
     {
         _logger = logger;
     }
@@ -64,7 +35,7 @@ public class DiskSanitizationService
         string devicePath,
         long diskSize,
         bool createPartition = true,
-        bool formatNtfs = true,
+        bool format = true,
         string volumeLabel = "SCCM",
         IProgress<SanitizationProgress>? progress = null,
         CancellationToken cancellationToken = default)
@@ -136,7 +107,7 @@ public class DiskSanitizationService
             }
 
             // Phase 4: Format NTFS
-            if (formatNtfs && createPartition)
+            if (format && createPartition)
             {
                 progress?.Report(new SanitizationProgress
                 {

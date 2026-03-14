@@ -164,15 +164,14 @@ public partial class App : global::Avalonia.Application
         {
             services.AddSingleton<IDiskDetectionService, LinuxDiskDetectionService>();
             services.AddTransient<ISmartaProvider, LinuxSmartaProvider>();
+            services.AddSingleton<IDiskSanitizationService, LinuxDiskSanitizationService>();
         }
         else
         {
             services.AddSingleton<IDiskDetectionService, DiskDetectionService>();
             services.AddTransient<ISmartaProvider, WindowsSmartaProvider>();
+            services.AddSingleton<IDiskSanitizationService, WindowsDiskSanitizationService>();
         }
-        
-        // Disk sanitization service
-        services.AddSingleton<DiskSanitizationService>();
         
         // Infrastructure services
         services.AddScoped<DiskCardRepository>();

@@ -545,7 +545,7 @@ public string SelectedTestType
                             card.GradeText = quality.Grade.ToString();
                             card.TemperatureText = smartData?.Temperature > 0 ? $"{smartData.Temperature}°C" : "N/A";
                             card.IsLoading = false;
-                            card.ErrorMessage = error;
+                            card.ErrorMessage = error ?? string.Empty;
                         }
 
                         processed++;

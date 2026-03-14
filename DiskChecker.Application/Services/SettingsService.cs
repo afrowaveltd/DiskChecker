@@ -18,6 +18,7 @@ public class SettingsService : ISettingsService
     private bool _enableLogging = true;
     private string _logLevel = "Information";
     private List<string> _lockedDisks = new();
+    private bool _isDarkTheme;
     // SMART probe persisted settings
     private int _smartCacheTtlMinutes = 10;
     private int _smartProbeTimeoutSeconds = 4;
@@ -25,6 +26,7 @@ public class SettingsService : ISettingsService
     
     private readonly string _settingsFilePath;
     private readonly string _lockedDisksFilePath;
+    private readonly string _darkThemeFilePath;
     
     // Cached JsonSerializerOptions for performance
     private static readonly JsonSerializerOptions JsonOptions = new() { WriteIndented = true };
@@ -37,9 +39,11 @@ public class SettingsService : ISettingsService
         
         _settingsFilePath = Path.Combine(appFolder, "settings.json");
         _lockedDisksFilePath = Path.Combine(appFolder, "locked_disks.json");
+        _darkThemeFilePath = Path.Combine(appFolder, "dark_theme");
 
         LoadSettingsFromFile();
         LoadLockedDisksFromFile();
+        LoadDarkThemeFromFile();
     }
 
     public Task<bool> GetAutoCheckForUpdatesAsync() => Task.FromResult(_autoCheckForUpdates);
@@ -83,6 +87,52 @@ public class SettingsService : ISettingsService
         SaveLockedDisksToFile();
         SaveSettingsToFile();
         return Task.CompletedTask;
+    }
+    
+    // Theme settings
+    public Task<bool> GetIsDarkThemeAsync() => Task.FromResult(_isDarkTheme);
+    
+    public Task SetIsDarkThemeAsync(bool isDark)
+    {
+        _isDarkTheme = isDark;
+        SaveDarkThemeToFile();
+        return Task.CompletedTask;
+    }
+    
+    private void LoadDarkThemeFromFile()
+    {
+        try
+        {
+            _isDarkTheme = File.Exists(_darkThemeFilePath);
+        }
+        catch
+        {
+            _isDarkTheme = false;
+        }
+    }
+    
+    private void SaveDarkThemeToFile()
+    {
+        try
+        {
+            if (_isDarkTheme)
+            {
+                // Create empty file to indicate dark theme
+                File.WriteAllText(_darkThemeFilePath, string.Empty);
+            }
+            else
+            {
+                // Delete file to indicate light theme
+                if (File.Exists(_darkThemeFilePath))
+                {
+                    File.Delete(_darkThemeFilePath);
+                }
+            }
+        }
+        catch
+        {
+            // Ignore file errors
+        }
     }
     
     // Disk Lock Management

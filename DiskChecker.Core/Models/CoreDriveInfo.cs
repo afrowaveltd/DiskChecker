@@ -90,6 +90,25 @@ public class CoreDriveInfo
     /// </summary>
     public List<CoreDriveInfo> Volumes { get; set; } = new();
     
+    /// <summary>
+    /// Media type of the disk (e.g., "Fixed hard disk media", "Removable").
+    /// </summary>
+    public string? MediaType { get; set; }
+    
+    /// <summary>
+    /// Bus/connection type for this disk.
+    /// </summary>
+    public CoreBusType BusType { get; set; } = CoreBusType.Unknown;
+    
+    /// <summary>
+    /// Firmware revision string (alias for FirmwareVersion).
+    /// </summary>
+    public string? FirmwareRevision 
+    { 
+        get => FirmwareVersion; 
+        set => FirmwareVersion = value; 
+    }
+    
     // Legacy compatibility properties
     public string? VolumeInfo { get; set; }
     public bool IsSystemDisk { get; set; }

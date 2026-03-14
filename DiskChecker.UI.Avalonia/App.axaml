@@ -2,9 +2,7 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:converters="using:DiskChecker.UI.Avalonia.Converters"
              x:Class="DiskChecker.UI.Avalonia.App"
-             xmlns:local="using:DiskChecker.UI.Avalonia"
-             RequestedThemeVariant="Light">
-             <!-- "Light" ThemeVariant for consistent light theme -->
+             xmlns:local="using:DiskChecker.UI.Avalonia">
 
     <Application.DataTemplates>
         <local:ViewLocator/>
@@ -16,37 +14,18 @@
     </Application.Styles>
     
     <Application.Resources>
-        <!-- Theme palette (light, high contrast) -->
-        <SolidColorBrush x:Key="ThemeBackgroundBrush" Color="#FFFFFF"/>
-        <SolidColorBrush x:Key="ThemePanelBrush" Color="#F8F9FA"/>
-        <SolidColorBrush x:Key="ThemeCardBrush" Color="#FFFFFF"/>
-        <SolidColorBrush x:Key="ThemeBorderBrush" Color="#DEE2E6"/>
-        <SolidColorBrush x:Key="ThemePrimaryBrush" Color="#004B93"/>
-        <SolidColorBrush x:Key="ThemeAccentBrush" Color="#F7C600"/>
-        
-        <!-- Text colors for contrast -->
-        <SolidColorBrush x:Key="ThemeTextPrimaryBrush" Color="#1A1A1A"/>
-        <SolidColorBrush x:Key="ThemeTextSecondaryBrush" Color="#495057"/>
-        <SolidColorBrush x:Key="ThemeTextMutedBrush" Color="#6C757D"/>
-        
         <!-- Converters -->
         <converters:BooleanToBrushConverter x:Key="BooleanToBrushConverter"/>
         <converters:InverseBooleanConverter x:Key="InverseBooleanConverter"/>
         <converters:EnumToBooleanConverter x:Key="EnumToBooleanConverter"/>
-        <!-- Simple NotNull converter used in views -->
         <converters:NotNullConverter x:Key="NotNullConverter"/>
-        <!-- Lock converters for disk protection -->
         <converters:LockTextConverter x:Key="LockTextConverter"/>
         <converters:LockButtonConverter x:Key="LockButtonConverter"/>
-        <!-- Speed converter for graph -->
         <converters:SpeedToHeightConverter x:Key="SpeedToHeightConverter"/>
-        <!-- Int to bool converter -->
         <converters:IntToBoolConverter x:Key="IntToBoolConverter"/>
         <converters:IntToBoolConverter x:Key="InvertedIntToBoolConverter" Invert="True"/>
-        <!-- Active navigation converters -->
         <converters:ActiveNavConverter x:Key="ActiveNavConverter"/>
         <converters:ActiveNavTextConverter x:Key="ActiveNavTextConverter"/>
-        <!-- Grade to color converter -->
         <converters:GradeToColorConverter x:Key="GradeToColorConverter"/>
     </Application.Resources>
 </Application>

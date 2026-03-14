@@ -208,12 +208,12 @@ public class DiskCardTestService
             IsDestructive = result.Operation == SurfaceTestOperation.WriteZeroFill,
             BytesWritten = result.Operation == SurfaceTestOperation.ReadOnly ? 0 : result.TotalBytesTested,
             BytesRead = result.TotalBytesTested,
-            AverageWriteSpeedMBps = result.AverageSpeedMbps / 1024.0,
-            AverageReadSpeedMBps = result.AverageSpeedMbps / 1024.0,
-            MaxWriteSpeedMBps = result.PeakSpeedMbps / 1024.0,
-            MaxReadSpeedMBps = result.PeakSpeedMbps / 1024.0,
-            MinWriteSpeedMBps = result.MinSpeedMbps / 1024.0,
-            MinReadSpeedMBps = result.MinSpeedMbps / 1024.0,
+            AverageWriteSpeedMBps = result.AverageSpeedMbps,  // Already in MB/s
+            AverageReadSpeedMBps = result.AverageSpeedMbps,   // Already in MB/s
+            MaxWriteSpeedMBps = result.PeakSpeedMbps,         // Already in MB/s
+            MaxReadSpeedMBps = result.PeakSpeedMbps,          // Already in MB/s
+            MinWriteSpeedMBps = result.MinSpeedMbps,          // Already in MB/s
+            MinReadSpeedMBps = result.MinSpeedMbps,          // Already in MB/s
             WriteErrors = result.Operation == SurfaceTestOperation.ReadOnly ? 0 : result.ErrorCount,
             ReadErrors = result.ErrorCount,
             VerificationErrors = result.ErrorCount,
@@ -231,7 +231,7 @@ public class DiskCardTestService
         {
             var speedSample = new SpeedSample
             {
-                SpeedMBps = sample.ThroughputMbps / 1024.0,
+                SpeedMBps = sample.ThroughputMbps,  // Already in MB/s
                 Timestamp = sample.TimestampUtc
             };
 
@@ -268,7 +268,7 @@ public class DiskCardTestService
     /// </summary>
     public async Task<TestSession> SaveSanitizationAsync(
         DiskCard card,
-        DiskChecker.Infrastructure.Hardware.Sanitization.SanitizationResult result,
+        SanitizationResult result,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(card);

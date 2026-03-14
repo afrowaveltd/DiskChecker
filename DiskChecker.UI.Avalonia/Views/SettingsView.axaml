@@ -11,292 +11,296 @@
         </Grid.RowDefinitions>
 
         <!-- ========== HEADER ========== -->
-        <Border Grid.Row="0" Background="{DynamicResource ThemePanelBrush}" BorderBrush="{DynamicResource ThemeBorderBrush}" BorderThickness="0,0,0,1" Padding="20">
-            <Grid>
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="*"/>
-                    <ColumnDefinition Width="Auto"/>
-                </Grid.ColumnDefinitions>
-
-                <StackPanel Grid.Column="0">
+        <Border Grid.Row="0" 
+                Background="{DynamicResource ThemeSecondaryBackgroundBrush}" 
+                BorderBrush="{DynamicResource ThemeBorderBrush}" 
+                BorderThickness="0,0,0,1" 
+                Padding="20,16" Height="80">
+            <Grid ColumnDefinitions="*,Auto">
+                <StackPanel Margin="0,-4">
                     <TextBlock Text="⚙️ Nastavení" 
-                               FontSize="28" FontWeight="Bold" Foreground="#1a1a1a" Margin="0,0,0,5"/>
-                    <TextBlock Text="Konfigurace aplikace a systémová nastavení" 
-                               FontSize="13" Foreground="#444444"/>
-                    <TextBlock Text="{Binding StatusMessage}" FontSize="11" Foreground="#333333" Margin="0,4,0,0"/>
+                               FontSize="26" FontWeight="Bold" 
+                               Foreground="{DynamicResource ThemeTextPrimaryBrush}"
+                               Margin="0,0,0,4"/>
+                    <TextBlock Text="Konfigurace aplikace a preferencí" 
+                               FontSize="12"
+                               Foreground="{DynamicResource ThemeTextSecondaryBrush}"/>
+                    <TextBlock Text="{Binding StatusMessage}" 
+                               FontSize="10"
+                               Foreground="{DynamicResource ThemeTextMutedBrush}"
+                               Margin="0,2,0,0"/>
                 </StackPanel>
-
                 <Button Grid.Column="1"
-                        Content="🏠 Zpět"
-                        Command="{Binding $parent[UserControl].DataContext.NavigationService.NavigateToDiskSelectionCommand}"
-                        Background="#666666"
-                        Foreground="White"
-                        VerticalAlignment="Center"/>
+                        Content="← Zpět"
+                        Command="{Binding GoBackCommand}"
+                        Background="{DynamicResource ThemeSecondaryBackgroundBrush}"
+                        Foreground="{DynamicResource ThemeTextPrimaryBrush}"
+                        BorderBrush="{DynamicResource ThemeBorderBrush}"
+                        VerticalAlignment="Center"
+                        CornerRadius="6"
+                        Padding="14,8"
+                        FontWeight="SemiBold"/>
             </Grid>
         </Border>
 
-        <!-- ========== MAIN CONTENT ========== -->
-        <ScrollViewer Grid.Row="1" Margin="20">
-            <StackPanel Spacing="15">
-                <!-- ========== GENERAL SETTINGS ========== -->
-                <Border Background="{DynamicResource ThemePanelBrush}" BorderBrush="{DynamicResource ThemeBorderBrush}" BorderThickness="1" Padding="15">
-                    <StackPanel>
-                        <TextBlock Text="🌐 Obecné nastavení" FontSize="16" FontWeight="Bold" Foreground="#1a1a1a" Margin="0,0,0,15"/>
-
-                        <CheckBox Content="Automaticky kontrolovat aktualizace" 
-                                  IsChecked="{Binding AutoCheckForUpdates}" 
-                                  Margin="0,0,0,10"/>
-
-                        <CheckBox Content="Spouštět při startu systému" 
-                                  IsChecked="{Binding RunAtStartup}" 
-                                  Margin="0,0,0,10"/>
-
-                        <CheckBox Content="Minimalizovat do lišty" 
-                                  IsChecked="{Binding MinimizeToTray}" 
-                                  Margin="0,0,0,15"/>
-
-                        <TextBlock Text=".interval automatického ukládání (minuty):" 
-                                   FontWeight="Bold" 
-                                   Margin="0,0,0,5"/>
-                        <NumericUpDown Value="{Binding AutoSaveInterval}" 
-                                       Minimum="1" 
-                                       Maximum="60" 
-                                       Width="100" 
-                                       HorizontalAlignment="Left"/>
-                    </StackPanel>
-                </Border>
-
-                <!-- ========== EXPORT SETTINGS ========== -->
-                <Border Background="{DynamicResource ThemePanelBrush}" BorderBrush="{DynamicResource ThemeBorderBrush}" BorderThickness="1" Padding="15">
-                    <StackPanel>
-                        <TextBlock Text="💾 Nastavení exportu" FontSize="16" FontWeight="Bold" Foreground="#1a1a1a" Margin="0,0,0,15"/>
-
-                        <TextBlock Text="Výchozí složka pro export:" 
-                                   FontWeight="Bold" 
-                                   Margin="0,0,0,5"/>
-                        <Grid>
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="*"/>
-                                <ColumnDefinition Width="Auto"/>
-                            </Grid.ColumnDefinitions>
-                            <TextBox Grid.Column="0" 
-                                     Text="{Binding DefaultExportPath}" 
-                                     Margin="0,0,10,0"/>
-                            <Button Grid.Column="1" 
-                                    Content="..."
-                                    Command="{Binding BrowseExportPathCommand}"
-                                    Padding="10,5"/>
-                        </Grid>
-                    </StackPanel>
-                </Border>
-
-                <!-- ========== LANGUAGE SETTINGS ========== -->
-                <Border Background="{DynamicResource ThemePanelBrush}" BorderBrush="{DynamicResource ThemeBorderBrush}" BorderThickness="1" Padding="15">
-                    <StackPanel>
-                        <TextBlock Text="🗣 Jazyk aplikace" FontSize="16" FontWeight="Bold" Foreground="#1a1a1a" Margin="0,0,0,15"/>
-
-                        <TextBlock Text="Jazyk:" 
-                                   FontWeight="Bold" 
-                                   Margin="0,0,0,5"/>
-                        <ComboBox SelectedItem="{Binding Language}" Width="200" HorizontalAlignment="Left">
-                            <ComboBoxItem Content="Čeština"/>
-                            <ComboBoxItem Content="English"/>
-                            <ComboBoxItem Content="Deutsch"/>
-                        </ComboBox>
-                    </StackPanel>
-                </Border>
-
-                <!-- ========== LOGGING SETTINGS ========== -->
-                <Border Background="{DynamicResource ThemePanelBrush}" BorderBrush="{DynamicResource ThemeBorderBrush}" BorderThickness="1" Padding="15">
-                    <StackPanel>
-                        <TextBlock Text="📝 Protokolování" FontSize="16" FontWeight="Bold" Foreground="#1a1a1a" Margin="0,0,0,15"/>
-
-                        <CheckBox Content="Povolit protokolování" 
-                                  IsChecked="{Binding EnableLogging}" 
-                                  Margin="0,0,0,10"/>
-
-                        <TextBlock Text="Úroveň protokolování:" 
-                                   FontWeight="Bold" 
-                                   Margin="0,0,0,5"/>
-                        <ComboBox SelectedItem="{Binding LogLevel}" Width="200" HorizontalAlignment="Left">
-                            <ComboBoxItem Content="Verbose"/>
-                            <ComboBoxItem Content="Information"/>
-                            <ComboBoxItem Content="Warning"/>
-                            <ComboBoxItem Content="Error"/>
-                        </ComboBox>
-                    </StackPanel>
-                </Border>
-
-                <!-- ========== BACKUP & RESTORE ========== -->
-                <Border Background="{DynamicResource ThemePanelBrush}" BorderBrush="{DynamicResource ThemeBorderBrush}" BorderThickness="1" Padding="15">
-                    <StackPanel>
-                        <TextBlock Text="💿 Záloha a obnova dat" FontSize="16" FontWeight="Bold" Foreground="#1a1a1a" Margin="0,0,0,15"/>
+        <!-- ========== SETTINGS CONTENT ========== -->
+        <ScrollViewer Grid.Row="1" Margin="16">
+            <StackPanel Spacing="12">
+                
+                <!-- General Settings -->
+                <Border Background="{DynamicResource ThemeCardBackgroundBrush}"
+                       BorderBrush="{DynamicResource ThemeBorderBrush}"
+                       BorderThickness="1"
+                       CornerRadius="8"
+                       Padding="16">
+                    <StackPanel Spacing="10">
+                        <TextBlock Text="📋 Obecné nastavení" 
+                                  FontSize="14" FontWeight="Bold"
+                                  Foreground="{DynamicResource ThemeTextPrimaryBrush}"
+                                  Margin="0,0,0,8"/>
                         
-                        <TextBlock Text="Vytvořte zálohu databáze a nastavení pro případ obnovy nebo přenosu na jiný počítač." 
-                                   TextWrapping="Wrap" Foreground="#555555" Margin="0,0,0,15"/>
-
-                        <!-- Backup Actions -->
-                        <Grid Margin="0,0,0,15">
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="*"/>
-                                <ColumnDefinition Width="Auto"/>
-                            </Grid.ColumnDefinitions>
-                            
-                            <StackPanel Grid.Column="0">
-                                <TextBlock Text="📦 Vytvořit zálohu" FontWeight="Bold"/>
-                                <TextBlock Text="Uloží aktuální databázi a nastavení do ZIP souboru" 
-                                           Foreground="#666666" FontSize="11"/>
-                            </StackPanel>
-                            
-                            <Button Grid.Column="1"
-                                    Content="➕ Vytvořit zálohu"
-                                    Command="{Binding CreateBackupCommand}"
-                                    IsEnabled="{Binding !IsSaving}"
-                                    Background="#3498DB" Foreground="White"
-                                    Padding="15,8">
-                                <Button.Styles>
-                                    <Style Selector="Button">
-                                        <Setter Property="BorderThickness" Value="0"/>
-                                        <Setter Property="FontWeight" Value="Bold"/>
-                                        <Setter Property="Cursor" Value="Hand"/>
-                                    </Style>
-                                </Button.Styles>
-                            </Button>
+                        <Grid ColumnDefinitions="200,*">
+                            <TextBlock Grid.Column="0" Text="Jazyk aplikace:" 
+                                      FontSize="11" VerticalAlignment="Center"
+                                      Foreground="{DynamicResource ThemeTextSecondaryBrush}"/>
+                            <ComboBox Grid.Column="1" SelectedIndex="0"
+                                      HorizontalAlignment="Stretch"
+                                      Background="{DynamicResource ThemeCardBackgroundBrush}"
+                                      BorderBrush="{DynamicResource ThemeBorderBrush}">
+                                <ComboBoxItem Content="Čeština"/>
+                                <ComboBoxItem Content="English"/>
+                                <ComboBoxItem Content="Deutsch"/>
+                            </ComboBox>
                         </Grid>
-
-                        <Separator Margin="0,5"/>
-
-                        <!-- Restore Section -->
-                        <Grid Margin="0,15,0,0">
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="*"/>
-                                <ColumnDefinition Width="Auto"/>
-                            </Grid.ColumnDefinitions>
-                            
-                            <StackPanel Grid.Column="0">
-                                <TextBlock Text="📥 Obnovit ze zálohy" FontWeight="Bold"/>
-                                <TextBlock Text="Obnoví databázi a nastavení ze souboru zálohy" 
-                                           Foreground="#666666" FontSize="11"/>
-                            </StackPanel>
-                            
-                            <Button Grid.Column="1"
-                                    Content="🔁 Obnovit"
-                                    Command="{Binding RestoreBackupCommand}"
-                                    IsEnabled="{Binding !IsSaving}"
-                                    Background="#E67E22" Foreground="White"
-                                    Padding="15,8">
-                                <Button.Styles>
-                                    <Style Selector="Button">
-                                        <Setter Property="BorderThickness" Value="0"/>
-                                        <Setter Property="FontWeight" Value="Bold"/>
-                                        <Setter Property="Cursor" Value="Hand"/>
-                                    </Style>
-                                </Button.Styles>
-                            </Button>
+                        
+                        <Grid ColumnDefinitions="200,*">
+                            <TextBlock Grid.Column="0" Text="Automatické ukládání:" 
+                                      FontSize="11" VerticalAlignment="Center"
+                                      Foreground="{DynamicResource ThemeTextSecondaryBrush}"/>
+                            <CheckBox Grid.Column="1" Content="Ukládat výsledky automaticky"
+                                     IsChecked="{Binding AutoSaveResults}"
+                                     FontSize="11"/>
                         </Grid>
+                        
+                        <Grid ColumnDefinitions="200,*">
+                            <TextBlock Grid.Column="0" Text="Upozornění:" 
+                                      FontSize="11" VerticalAlignment="Center"
+                                      Foreground="{DynamicResource ThemeTextSecondaryBrush}"/>
+                            <CheckBox Grid.Column="1" Content="Zobrazovat upozornění při dokončení"
+                                     IsChecked="{Binding ShowNotifications}"
+                                     FontSize="11"/>
+                        </Grid>
+                    </StackPanel>
+                </Border>
 
-                        <!-- Available Backups List -->
-                        <Border Background="#F8F9FA" BorderBrush="#DEE2E6" BorderThickness="1" 
-                                Padding="10" Margin="0,15,0,0">
-                            <StackPanel>
-                                <Grid>
-                                    <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="*"/>
-                                        <ColumnDefinition Width="Auto"/>
-                                    </Grid.ColumnDefinitions>
-                                    
-                                    <TextBlock Grid.Column="0" Text="📁 Dostupné zálohy" FontWeight="Bold"/>
-                                    <Button Grid.Column="1"
-                                            Content="🔄"
-                                            Command="{Binding RefreshBackupsCommand}"
-                                            ToolTip.Tip="Obnovit seznam"
-                                            Background="Transparent"
-                                            Padding="5"/>
-                                </Grid>
-                                
-                                <TextBlock Text="{Binding DefaultBackupDirectory}" 
-                                           FontSize="10" Foreground="#888888" Margin="0,5,0,10"/>
+                <!-- Test Settings -->
+                <Border Background="{DynamicResource ThemeCardBackgroundBrush}"
+                       BorderBrush="{DynamicResource ThemeBorderBrush}"
+                       BorderThickness="1"
+                       CornerRadius="8"
+                       Padding="16">
+                    <StackPanel Spacing="10">
+                        <TextBlock Text="🧪 Nastavení testů" 
+                                  FontSize="14" FontWeight="Bold"
+                                  Foreground="{DynamicResource ThemeTextPrimaryBrush}"
+                                  Margin="0,0,0,8"/>
+                        
+                        <Grid ColumnDefinitions="200,*">
+                            <TextBlock Grid.Column="0" Text="Výchozí test:" 
+                                      FontSize="11" VerticalAlignment="Center"
+                                      Foreground="{DynamicResource ThemeTextSecondaryBrush}"/>
+                            <ComboBox Grid.Column="1" SelectedIndex="0"
+                                      HorizontalAlignment="Stretch"
+                                      Background="{DynamicResource ThemeCardBackgroundBrush}"
+                                      BorderBrush="{DynamicResource ThemeBorderBrush}">
+                                <ComboBoxItem Content="Rychlý test"/>
+                                <ComboBoxItem Content="Plný test"/>
+                                <ComboBoxItem Content="Sanitizace"/>
+                            </ComboBox>
+                        </Grid>
+                        
+                        <Grid ColumnDefinitions="200,*">
+                            <TextBlock Grid.Column="0" Text="SMART cache TTL (min):" 
+                                      FontSize="11" VerticalAlignment="Center"
+                                      Foreground="{DynamicResource ThemeTextSecondaryBrush}"/>
+                            <TextBox Grid.Column="1" 
+                                    Text="{Binding SmartCacheTtl}"
+                                    Background="{DynamicResource ThemeCardBackgroundBrush}"
+                                    BorderBrush="{DynamicResource ThemeBorderBrush}"
+                                    Padding="8,4"/>
+                        </Grid>
+                        
+                        <Grid ColumnDefinitions="200,*">
+                            <TextBlock Grid.Column="0" Text="Timeout testů (s):" 
+                                      FontSize="11" VerticalAlignment="Center"
+                                      Foreground="{DynamicResource ThemeTextSecondaryBrush}"/>
+                            <TextBox Grid.Column="1" 
+                                    Text="{Binding TestTimeout}"
+                                    Background="{DynamicResource ThemeCardBackgroundBrush}"
+                                    BorderBrush="{DynamicResource ThemeBorderBrush}"
+                                    Padding="8,4"/>
+                        </Grid>
+                    </StackPanel>
+                </Border>
 
-                                <!-- Backup List -->
-                                <ItemsControl ItemsSource="{Binding AvailableBackups}" MaxHeight="150">
-                                    <ItemsControl.ItemTemplate>
-                                        <DataTemplate>
-                                            <Border Background="White" BorderBrush="#DEE2E6" 
-                                                    BorderThickness="1" Padding="8" Margin="0,3">
-                                                <Grid>
-                                                    <Grid.ColumnDefinitions>
-                                                        <ColumnDefinition Width="Auto"/>
-                                                        <ColumnDefinition Width="*"/>
-                                                        <ColumnDefinition Width="Auto"/>
-                                                    </Grid.ColumnDefinitions>
-                                                    
-                                                    <RadioButton Grid.Column="0" 
-                                                                 GroupName="Backups"
-                                                                 IsChecked="{Binding $parent[ItemsControl].(DataContext).SelectedBackup, 
-                                                                            Converter={x:Static ObjectConverters.IsNotNull},
-                                                                            ConverterParameter={Binding}}"
-                                                                 Margin="0,0,8,0"/>
-                                                    
-                                                    <StackPanel Grid.Column="1">
-                                                        <TextBlock Text="{Binding FileName}" FontWeight="SemiBold"/>
-                                                        <TextBlock FontSize="10" Foreground="#666666">
-                                                            <TextBlock.Text>
-                                                                <MultiBinding StringFormat="{}{0:dd.MM.yyyy HH:mm} | {1:N0} B">
-                                                                    <Binding Path="CreatedAt"/>
-                                                                    <Binding Path="SizeBytes"/>
-                                                                </MultiBinding>
-                                                            </TextBlock.Text>
-                                                        </TextBlock>
-                                                    </StackPanel>
-                                                    
-                                                    <TextBlock Grid.Column="2" Text="{Binding Version}" 
-                                                               Foreground="#888888" FontSize="10" 
-                                                               VerticalAlignment="Center"/>
-                                                </Grid>
-                                            </Border>
-                                        </DataTemplate>
-                                    </ItemsControl.ItemTemplate>
-                                </ItemsControl>
+                <!-- Storage Settings -->
+                <Border Background="{DynamicResource ThemeCardBackgroundBrush}"
+                       BorderBrush="{DynamicResource ThemeBorderBrush}"
+                       BorderThickness="1"
+                       CornerRadius="8"
+                       Padding="16">
+                    <StackPanel Spacing="10">
+                        <TextBlock Text="💾 Úložiště dat" 
+                                  FontSize="14" FontWeight="Bold"
+                                  Foreground="{DynamicResource ThemeTextPrimaryBrush}"
+                                  Margin="0,0,0,8"/>
+                        
+                        <Grid ColumnDefinitions="200,*">
+                            <TextBlock Grid.Column="0" Text="Databáze:" 
+                                      FontSize="11" VerticalAlignment="Center"
+                                      Foreground="{DynamicResource ThemeTextSecondaryBrush}"/>
+                            <TextBlock Grid.Column="1" 
+                                      Text="~/.local/share/DiskChecker/DiskChecker.db"
+                                      FontSize="10"
+                                      FontFamily="Consolas"
+                                      Foreground="{DynamicResource ThemeTextMutedBrush}"
+                                      VerticalAlignment="Center"/>
+                        </Grid>
+                        
+                        <Grid ColumnDefinitions="200,*">
+                            <TextBlock Grid.Column="0" Text="Velikost databáze:" 
+                                      FontSize="11" VerticalAlignment="Center"
+                                      Foreground="{DynamicResource ThemeTextSecondaryBrush}"/>
+                            <TextBlock Grid.Column="1" 
+                                      Text="{Binding DatabaseSize}"
+                                      FontSize="11"
+                                      Foreground="{DynamicResource ThemeTextSecondaryBrush}"
+                                      VerticalAlignment="Center"/>
+                        </Grid>
+                        
+                        <StackPanel Orientation="Horizontal" Spacing="8" Margin="0,8,0,0">
+                            <Button Content="📂 Otevřít složku"
+                                   Command="{Binding OpenDataFolderCommand}"
+                                   Background="{DynamicResource ThemeSecondaryBackgroundBrush}"
+                                   Foreground="{DynamicResource ThemeTextPrimaryBrush}"
+                                   BorderBrush="{DynamicResource ThemeBorderBrush}"
+                                   CornerRadius="6"
+                                   Padding="10,6"
+                                   FontSize="10"/>
+                            <Button Content="🗑️ Vyčistit cache"
+                                   Command="{Binding ClearCacheCommand}"
+                                   Background="{DynamicResource ThemeSecondaryBackgroundBrush}"
+                                   Foreground="{DynamicResource ThemeTextPrimaryBrush}"
+                                   BorderBrush="{DynamicResource ThemeBorderBrush}"
+                                   CornerRadius="6"
+                                   Padding="10,6"
+                                   FontSize="10"/>
+                        </StackPanel>
+                    </StackPanel>
+                </Border>
 
-                                <TextBlock Text="Nevytvořen žádný backup" 
-                                           Foreground="#888888" FontStyle="Italic"
-                                           IsVisible="{Binding !AvailableBackups.Count}"/>
-                            </StackPanel>
-                        </Border>
+                <!-- Backup Settings -->
+                <Border Background="{DynamicResource ThemeCardBackgroundBrush}"
+                       BorderBrush="{DynamicResource ThemeBorderBrush}"
+                       BorderThickness="1"
+                       CornerRadius="8"
+                       Padding="16">
+                    <StackPanel Spacing="10">
+                        <TextBlock Text="🔧 Záloha a obnovení" 
+                                  FontSize="14" FontWeight="Bold"
+                                  Foreground="{DynamicResource ThemeTextPrimaryBrush}"
+                                  Margin="0,0,0,8"/>
+                        
+                        <Grid ColumnDefinitions="200,*">
+                            <TextBlock Grid.Column="0" Text="Automatická záloha:" 
+                                      FontSize="11" VerticalAlignment="Center"
+                                      Foreground="{DynamicResource ThemeTextSecondaryBrush}"/>
+                            <CheckBox Grid.Column="1" Content="Zálohovat každý týden"
+                                     IsChecked="{Binding AutoBackup}"
+                                     FontSize="11"/>
+                        </Grid>
+                        
+                        <Grid ColumnDefinitions="200,*">
+                            <TextBlock Grid.Column="0" Text="Poslední záloha:" 
+                                      FontSize="11" VerticalAlignment="Center"
+                                      Foreground="{DynamicResource ThemeTextSecondaryBrush}"/>
+                            <TextBlock Grid.Column="1" 
+                                      Text="{Binding LastBackup, StringFormat='{}{0:dd.MM.yyyy HH:mm}'}"
+                                      FontSize="11"
+                                      Foreground="{DynamicResource ThemeTextSecondaryBrush}"
+                                      VerticalAlignment="Center"/>
+                        </Grid>
+                        
+                        <StackPanel Orientation="Horizontal" Spacing="8" Margin="0,8,0,0">
+                            <Button Content="💾 Vytvořit zálohu"
+                                   Command="{Binding CreateBackupCommand}"
+                                   Background="{DynamicResource ThemePrimaryBrush}"
+                                   Foreground="White"
+                                   CornerRadius="6"
+                                   Padding="12,6"
+                                   FontWeight="SemiBold"
+                                   FontSize="10"/>
+                            <Button Content="📂 Obnovit ze zálohy"
+                                   Command="{Binding RestoreBackupCommand}"
+                                   Background="{DynamicResource ThemeSecondaryBackgroundBrush}"
+                                   Foreground="{DynamicResource ThemeTextPrimaryBrush}"
+                                   BorderBrush="{DynamicResource ThemeBorderBrush}"
+                                   CornerRadius="6"
+                                   Padding="12,6"
+                                   FontSize="10"/>
+                        </StackPanel>
+                    </StackPanel>
+                </Border>
+
+                <!-- About Section -->
+                <Border Background="{DynamicResource ThemeCardBackgroundBrush}"
+                       BorderBrush="{DynamicResource ThemeBorderBrush}"
+                       BorderThickness="1"
+                       CornerRadius="8"
+                       Padding="16">
+                    <StackPanel Spacing="6">
+                        <TextBlock Text="ℹ️ O aplikaci" 
+                                  FontSize="14" FontWeight="Bold"
+                                  Foreground="{DynamicResource ThemeTextPrimaryBrush}"
+                                  Margin="0,0,0,8"/>
+                        
+                        <TextBlock FontSize="11" Foreground="{DynamicResource ThemeTextSecondaryBrush}">
+                            <Run Text="DiskChecker v1.0.0"/>
+                        </TextBlock>
+                        <TextBlock FontSize="10" Foreground="{DynamicResource ThemeTextMutedBrush}">
+                            <Run Text="Profesionální nástroj pro diagnostiku disků"/>
+                        </TextBlock>
+                        <TextBlock FontSize="10" Foreground="{DynamicResource ThemeTextMutedBrush}">
+                            <Run Text="© 2024-2026 DiskChecker Project"/>
+                        </TextBlock>
                     </StackPanel>
                 </Border>
             </StackPanel>
         </ScrollViewer>
 
-        <!-- ========== ACTION BUTTONS ========== -->
-        <Border Grid.Row="2" Background="{DynamicResource ThemePanelBrush}" BorderBrush="{DynamicResource ThemeBorderBrush}" BorderThickness="0,1,0,0" Padding="20">
-            <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
-                <Button Content="🔄 Resetovat" 
-                        Command="{Binding ResetSettingsCommand}"
-                        Background="#E74C3C" Foreground="White" 
-                        Padding="15,10" Margin="0,0,10,0">
-                    <Button.Styles>
-                        <Style Selector="Button">
-                            <Setter Property="BorderThickness" Value="0"/>
-                            <Setter Property="FontWeight" Value="Bold"/>
-                            <Setter Property="Cursor" Value="Hand"/>
-                        </Style>
-                    </Button.Styles>
-                </Button>
-                
-                <Button Content="💾 Uložit" 
-                        Command="{Binding SaveSettingsCommand}"
-                        IsEnabled="{Binding !IsSaving}"
-                        Background="#27AE60" Foreground="White" 
-                        Padding="15,10">
-                    <Button.Styles>
-                        <Style Selector="Button">
-                            <Setter Property="BorderThickness" Value="0"/>
-                            <Setter Property="FontWeight" Value="Bold"/>
-                            <Setter Property="Cursor" Value="Hand"/>
-                        </Style>
-                    </Button.Styles>
-                </Button>
+        <!-- ========== STATUS BAR ========== -->
+        <Border Grid.Row="2" 
+               Background="{DynamicResource ThemePanelBackgroundBrush}"
+               BorderBrush="{DynamicResource ThemeBorderBrush}"
+               BorderThickness="0,1,0,0"
+               Height="28">
+            <StackPanel Orientation="Horizontal" Margin="16,0" Spacing="12">
+                <Button Content="💾 Uložit nastavení"
+                       Command="{Binding SaveSettingsCommand}"
+                       Background="{DynamicResource ThemeSuccessBrush}"
+                       Foreground="White"
+                       CornerRadius="6"
+                       Padding="12,4"
+                       FontWeight="SemiBold"
+                       FontSize="10"/>
+                <Button Content="↺ Obnovit výchozí"
+                       Command="{Binding ResetSettingsCommand}"
+                       Background="{DynamicResource ThemeSecondaryBackgroundBrush}"
+                       Foreground="{DynamicResource ThemeTextPrimaryBrush}"
+                       BorderBrush="{DynamicResource ThemeBorderBrush}"
+                       CornerRadius="6"
+                       Padding="12,4"
+                       FontSize="10"/>
             </StackPanel>
         </Border>
     </Grid>

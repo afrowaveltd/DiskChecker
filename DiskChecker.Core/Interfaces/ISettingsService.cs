@@ -22,6 +22,17 @@ public interface ISettingsService
     Task<string> GetLogLevelAsync();
     Task SetLogLevelAsync(string level);
     Task ResetToDefaultsAsync();
+    
+    // Theme settings
+    /// <summary>
+    /// Gets whether dark theme is enabled.
+    /// </summary>
+    Task<bool> GetIsDarkThemeAsync();
+    
+    /// <summary>
+    /// Sets the dark theme preference.
+    /// </summary>
+    Task SetIsDarkThemeAsync(bool isDark);
 
     // SMART probe configuration (persisted)
     Task<int> GetSmartCacheTtlMinutesAsync();

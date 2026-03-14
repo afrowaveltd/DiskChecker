@@ -1,5 +1,8 @@
+
+using System;
+using System.Collections.Generic;
 using System.Diagnostics;
-using System.Runtime.InteropServices;
+using System.IO;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 using DiskChecker.Core.Interfaces;
@@ -7,10 +10,6 @@ using DiskChecker.Core.Models;
 
 namespace DiskChecker.Application.Services;
 
-/// <summary>
-/// Service for detecting and listing disk drives on Linux systems.
-/// Uses lsblk and /sys filesystem for disk information.
-/// </summary>
 public class LinuxDiskDetectionService : IDiskDetectionService
 {
     public async Task<IReadOnlyList<CoreDriveInfo>> GetDrivesAsync(CancellationToken cancellationToken = default)
@@ -19,8 +18,7 @@ public class LinuxDiskDetectionService : IDiskDetectionService
         
         try
         {
-            // Use lsblk to get disk information
-            var lsblkOutput = await ExecuteCommandAsync("lsblk", "-J -b -o NAME,SIZE,TYPE,MOUNTPOINT,MODEL,SERIAL,FSTYPE,LABEL", cancellationToken);
+            var lsblkOutput = await ExecuteCommandAsync("lsblk", "-J -b -o NAME,SIZE,TYPE,MOUNTPOINT,MODEL,SERIAL,FSTYPE,LABEL,ROTA,TRAN,WWN", cancellationToken);
             
             if (!string.IsNullOrEmpty(lsblkOutput))
             {
@@ -32,13 +30,23 @@ public class LinuxDiskDetectionService : IDiskDetectionService
             Debug.WriteLine($"[LinuxDiskDetectionService] lsblk failed: {ex.Message}");
         }
         
-        // Fallback: read from /sys/block and /proc/partitions
         if (drives.Count == 0)
         {
             drives = await GetDrivesFromSysfsAsync(cancellationToken);
         }
         
-        // Mark system disk (root filesystem)
+        foreach (var drive in drives)
+        {
+            try
+            {
+                await EnrichWithPartitionInfoAsync(drive, cancellationToken);
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"[LinuxDiskDetectionService] Failed to enrich partition info: {ex.Message}");
+            }
+        }
+        
         await MarkSystemDiskAsync(drives, cancellationToken);
         
         return drives.AsReadOnly();
@@ -62,7 +70,6 @@ public class LinuxDiskDetectionService : IDiskDetectionService
                     ? typeProp.GetString() ?? "" 
                     : "";
                 
-                // Only process whole disks, not partitions
                 if (!string.Equals(type, "disk", StringComparison.Ordinal))
                     continue;
                 
@@ -81,18 +88,40 @@ public class LinuxDiskDetectionService : IDiskDetectionService
                         : 0;
                 
                 var model = device.TryGetProperty("model", out var modelProp) 
-                    ? modelProp.GetString() 
+                    ? modelProp.GetString()?.Trim() 
                     : null;
                 
                 var serial = device.TryGetProperty("serial", out var serialProp) 
-                    ? serialProp.GetString() 
+                    ? serialProp.GetString()?.Trim() 
                     : null;
                 
-                // Build path for /dev device
+                var transport = device.TryGetProperty("tran", out var tranProp) 
+                    ? tranProp.GetString() 
+                    : null;
+                
+                var rotational = device.TryGetProperty("rota", out var rotaProp) 
+                    && rotaProp.ValueKind == JsonValueKind.String
+                    && rotaProp.GetString() == "0"
+                    ? false 
+                    : true;
+                
                 var path = $"/dev/{name}";
                 
-                // Get mount points from children (partitions)
-                var mountPoints = new List<(string MountPoint, string FsType, string Label)>();
+                var displayNameParts = new List<string>();
+                if (!string.IsNullOrEmpty(model))
+                    displayNameParts.Add(model);
+                else
+                    displayNameParts.Add(name);
+                
+                if (!string.IsNullOrEmpty(transport))
+                {
+                    displayNameParts.Add($"({transport.ToUpperInvariant()})");
+                }
+                
+                var displayName = string.Join(" ", displayNameParts);
+                var busType = DetermineBusType(transport, rotational);
+                
+                var mountPoints = new List<(string MountPoint, string FsType, string Label, string DevicePath, long Size)>();
                 if (device.TryGetProperty("children", out var children))
                 {
                     foreach (var child in children.EnumerateArray())
@@ -106,10 +135,23 @@ public class LinuxDiskDetectionService : IDiskDetectionService
                         var label = child.TryGetProperty("label", out var labelProp) 
                             ? labelProp.GetString() 
                             : null;
+                        var partitionName = child.TryGetProperty("name", out var pnProp) 
+                            ? pnProp.GetString() 
+                            : null;
+                        var partitionSize = child.TryGetProperty("size", out var psProp) 
+                            && long.TryParse(psProp.GetString(), out var pSize) 
+                            ? pSize 
+                            : 0;
                         
-                        if (!string.IsNullOrEmpty(mountPoint))
+                        if (!string.IsNullOrEmpty(partitionName))
                         {
-                            mountPoints.Add((mountPoint, fsType ?? "", label ?? ""));
+                            mountPoints.Add((
+                                mountPoint ?? "",
+                                fsType ?? "",
+                                label ?? "",
+                                $"/dev/{partitionName}",
+                                partitionSize
+                            ));
                         }
                     }
                 }
@@ -118,21 +160,24 @@ public class LinuxDiskDetectionService : IDiskDetectionService
                 {
                     Id = Guid.NewGuid(),
                     Path = path,
-                    Name = $"{model ?? name} ({path})",
+                    Name = displayName,
                     TotalSize = size,
                     IsPhysical = true,
                     IsReady = true,
-                    SerialNumber = serial
+                    SerialNumber = serial,
+                    Model = model,
+                    Interface = transport ?? "Unknown",
+                    BusType = busType
                 };
                 
-                // Add info about mounted partitions
-                foreach (var (mountPoint, fsType, label) in mountPoints)
+                foreach (var (mountPoint, fsType, label, devicePath, pSize) in mountPoints)
                 {
                     drive.Volumes.Add(new CoreDriveInfo
                     {
                         Id = Guid.NewGuid(),
                         Path = mountPoint,
-                        Name = label,
+                        Name = !string.IsNullOrEmpty(label) ? label : devicePath,
+                        TotalSize = pSize,
                         FileSystem = fsType,
                         IsPhysical = false,
                         IsReady = true
@@ -149,6 +194,89 @@ public class LinuxDiskDetectionService : IDiskDetectionService
         
         return drives;
     }
+    
+    private static CoreBusType DetermineBusType(string? transport, bool isRotational)
+    {
+        if (string.IsNullOrEmpty(transport))
+        {
+            return isRotational ? CoreBusType.Sata : CoreBusType.Unknown;
+        }
+        
+        return transport.ToLowerInvariant() switch
+        {
+            "nvme" => CoreBusType.Nvme,
+            "sata" => CoreBusType.Sata,
+            "usb" => CoreBusType.Usb,
+            "sas" => CoreBusType.Sas,
+            "ide" => CoreBusType.Ide,
+            _ => CoreBusType.Unknown
+        };
+    }
+
+    private async Task EnrichWithPartitionInfoAsync(CoreDriveInfo drive, CancellationToken cancellationToken)
+    {
+        try
+        {
+            var deviceName = Path.GetFileName(drive.Path);
+            var lsblkOutput = await ExecuteCommandAsync("lsblk", $"-J -b -o NAME,MOUNTPOINT,FSTYPE,LABEL,SIZE {deviceName}", cancellationToken);
+            
+            if (string.IsNullOrEmpty(lsblkOutput))
+                return;
+            
+            using var doc = JsonDocument.Parse(lsblkOutput);
+            var root = doc.RootElement;
+            
+            if (!root.TryGetProperty("blockdevices", out var devices))
+                return;
+            
+            drive.Volumes.Clear();
+            
+            foreach (var device in devices.EnumerateArray())
+            {
+                if (device.TryGetProperty("children", out var children))
+                {
+                    foreach (var partition in children.EnumerateArray())
+                    {
+                        var mountPoint = partition.TryGetProperty("mountpoint", out var mpProp) 
+                            ? mpProp.GetString()?.Trim() 
+                            : null;
+                        var fileSystem = partition.TryGetProperty("fstype", out var fsProp) 
+                            ? fsProp.GetString() 
+                            : null;
+                        var label = partition.TryGetProperty("label", out var labelProp) 
+                            ? labelProp.GetString() 
+                            : null;
+                        var partitionName = partition.TryGetProperty("name", out var nameProp) 
+                            ? nameProp.GetString() 
+                            : null;
+                        var partitionSize = partition.TryGetProperty("size", out var sizeProp) 
+                            && long.TryParse(sizeProp.GetString(), out var s)
+                            ? s 
+                            : 0;
+                        
+                        if (!string.IsNullOrEmpty(mountPoint) && mountPoint != "null")
+                        {
+                            drive.Volumes.Add(new CoreDriveInfo
+                            {
+                                Id = Guid.NewGuid(),
+                                Path = mountPoint,
+                                Name = !string.IsNullOrEmpty(label) ? label : "Partition",
+                                TotalSize = partitionSize,
+                                FileSystem = fileSystem ?? "",
+                                IsPhysical = false,
+                                IsReady = true,
+                                VolumeInfo = !string.IsNullOrEmpty(fileSystem) ? fileSystem : ""
+                            });
+                        }
+                    }
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            Debug.WriteLine($"[LinuxDiskDetectionService] EnrichWithPartitionInfoAsync failed: {ex.Message}");
+        }
+    }
 
     private async Task<List<CoreDriveInfo>> GetDrivesFromSysfsAsync(CancellationToken cancellationToken)
     {
@@ -164,7 +292,6 @@ public class LinuxDiskDetectionService : IDiskDetectionService
             {
                 var deviceName = Path.GetFileName(devicePath);
                 
-                // Skip loop devices and RAM disks
                 if (deviceName.StartsWith("loop", StringComparison.Ordinal) || 
                     deviceName.StartsWith("ram", StringComparison.Ordinal) || 
                     deviceName.StartsWith("zram", StringComparison.Ordinal))
@@ -172,7 +299,6 @@ public class LinuxDiskDetectionService : IDiskDetectionService
                     continue;
                 }
                 
-                // Read size in sectors
                 var sizePath = Path.Combine(devicePath, "size");
                 long sizeBytes = 0;
                 if (File.Exists(sizePath))
@@ -180,11 +306,10 @@ public class LinuxDiskDetectionService : IDiskDetectionService
                     var sizeText = await File.ReadAllTextAsync(sizePath, cancellationToken);
                     if (long.TryParse(sizeText.Trim(), out var sectors))
                     {
-                        sizeBytes = sectors * 512; // Standard sector size
+                        sizeBytes = sectors * 512;
                     }
                 }
                 
-                // Read device model
                 var modelPath = Path.Combine(devicePath, "device", "model");
                 string? model = null;
                 if (File.Exists(modelPath))
@@ -192,15 +317,6 @@ public class LinuxDiskDetectionService : IDiskDetectionService
                     model = (await File.ReadAllTextAsync(modelPath, cancellationToken)).Trim();
                 }
                 
-                // Read vendor if available
-                var vendorPath = Path.Combine(devicePath, "device", "vendor");
-                string? vendor = null;
-                if (File.Exists(vendorPath))
-                {
-                    vendor = (await File.ReadAllTextAsync(vendorPath, cancellationToken)).Trim();
-                }
-                
-                // Read serial if available
                 var serialPath = Path.Combine(devicePath, "device", "serial");
                 string? serial = null;
                 if (File.Exists(serialPath))
@@ -211,11 +327,6 @@ public class LinuxDiskDetectionService : IDiskDetectionService
                 var displayName = string.IsNullOrEmpty(model) 
                     ? $"/dev/{deviceName}" 
                     : $"{model} (/dev/{deviceName})";
-                
-                if (!string.IsNullOrEmpty(vendor) && !displayName.Contains(vendor))
-                {
-                    displayName = $"{vendor} {displayName}";
-                }
                 
                 drives.Add(new CoreDriveInfo
                 {
@@ -241,19 +352,21 @@ public class LinuxDiskDetectionService : IDiskDetectionService
     {
         try
         {
-            // Find which device has / mounted
             var findmntOutput = await ExecuteCommandAsync("findmnt", "-n -o SOURCE /", cancellationToken);
             
             if (!string.IsNullOrEmpty(findmntOutput))
             {
-                // findmnt returns something like /dev/sda2 or /dev/nvme0n1p2
                 var rootPartition = findmntOutput.Trim();
                 var rootDisk = GetParentDiskFromPartition(rootPartition);
                 
                 foreach (var drive in drives)
                 {
-                    if (string.Equals(drive.Path, rootDisk, StringComparison.OrdinalIgnoreCase) ||
-                        string.Equals(drive.Path, rootPartition, StringComparison.OrdinalIgnoreCase))
+                    if (string.Equals(drive.Path, rootDisk, StringComparison.OrdinalIgnoreCase))
+                    {
+                        drive.IsSystemDisk = true;
+                    }
+                    
+                    if (!drive.IsSystemDisk && drive.Volumes.Any(v => v.Path == "/"))
                     {
                         drive.IsSystemDisk = true;
                     }
@@ -262,7 +375,6 @@ public class LinuxDiskDetectionService : IDiskDetectionService
         }
         catch
         {
-            // Fallback: assume sda or nvme0n1 is system disk
             var systemDisk = drives.FirstOrDefault(d => 
                 d.Path.Contains("sda", StringComparison.OrdinalIgnoreCase) || 
                 d.Path.Contains("nvme0n1", StringComparison.OrdinalIgnoreCase));
@@ -275,22 +387,17 @@ public class LinuxDiskDetectionService : IDiskDetectionService
 
     private static string GetParentDiskFromPartition(string partitionPath)
     {
-        // /dev/sda2 -> /dev/sda
-        // /dev/nvme0n1p2 -> /dev/nvme0n1
-        // /dev/sdb3 -> /dev/sdb
-        
         var match = Regex.Match(partitionPath, @"^(/dev/(?:nvme\d+n\d+|sd[a-z]|vd[a-z]|hd[a-z]))", RegexOptions.IgnoreCase);
         if (match.Success)
         {
             return match.Groups[1].Value;
         }
         
-        // Try to remove partition number suffix
         var parentPath = Regex.Replace(partitionPath, @"p?\d+$", "");
         return parentPath;
     }
 
-    private static async Task<string?> ExecuteCommandAsync(string command, string arguments, CancellationToken cancellationToken)
+    private static async Task<string?> ExecuteCommandAsync(string command, string arguments, CancellationToken cancellationToken = default)
     {
         try
         {

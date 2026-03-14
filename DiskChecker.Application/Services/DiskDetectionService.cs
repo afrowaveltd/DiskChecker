@@ -1,3 +1,6 @@
+
+using System;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.Runtime.InteropServices;
 using System.Text.Json;
@@ -22,10 +25,6 @@ public class DiskDetectionService : IDiskDetectionService
         // Detect system disk path (C: drive physical path)
         _systemDiskPath = await GetSystemDiskPathAsync();
         
-        // DEBUG: Log detected system disk path
-        Debug.WriteLine($"[DiskDetectionService] Detected system disk path: {_systemDiskPath ?? "NULL"}");
-        Console.WriteLine($"[DiskDetectionService] Detected system disk path: {_systemDiskPath ?? "NULL"}");
-        
         // Get physical drives on Windows
         if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
         {
@@ -35,9 +34,6 @@ public class DiskDetectionService : IDiskDetectionService
             foreach (var drive in physicalDrives)
             {
                 drive.IsSystemDisk = IsSystemDisk(drive.Path, drive.Name);
-                // DEBUG: Log each drive's system disk status
-                Debug.WriteLine($"[DiskDetectionService] Drive: {drive.Path}, Name: {drive.Name}, IsSystemDisk: {drive.IsSystemDisk}");
-                Console.WriteLine($"[DiskDetectionService] Drive: {drive.Path}, Name: {drive.Name}, IsSystemDisk: {drive.IsSystemDisk}");
             }
             
             drives.AddRange(physicalDrives);
@@ -46,7 +42,6 @@ public class DiskDetectionService : IDiskDetectionService
         // If no physical drives found, try fallback
         if (drives.Count == 0)
         {
-            // Fallback: Try WMI directly
             var wmiDrives = await GetPhysicalDrivesWmiAsync(cancellationToken);
             foreach (var drive in wmiDrives)
             {
@@ -55,64 +50,58 @@ public class DiskDetectionService : IDiskDetectionService
             drives.AddRange(wmiDrives);
         }
         
-        // For each physical drive, try to enumerate its volumes (partitions) and attach them
+        // For each physical drive, try to enumerate its volumes (partitions)
         if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
         {
-            try
+            foreach (var phys in drives.Where(d => d.IsPhysical).ToList())
             {
-                foreach (var phys in drives.Where(d => d.IsPhysical).ToList())
+                try
                 {
-                    try
+                    var vols = VolumeInfoHelper.GetVolumeDetails(phys.Path);
+                    foreach (var v in vols)
                     {
-                        var vols = VolumeInfoHelper.GetVolumeDetails(phys.Path);
-                        foreach (var v in vols)
+                        try
                         {
-                            try
+                            var driveLetter = v.DriveLetter;
+                            long totalSize = 0;
+                            long freeSpace = 0;
+                            string fs = v.FileSystem ?? string.Empty;
+                            string name = v.VolumeLabel ?? driveLetter;
+                            
+                            if (!string.IsNullOrEmpty(driveLetter))
                             {
-                                var driveLetter = v.DriveLetter; // e.g., "C:"
-                                long totalSize = 0;
-                                long freeSpace = 0;
-                                string fs = v.FileSystem ?? string.Empty;
-                                string name = v.VolumeLabel ?? driveLetter;
-                                if (!string.IsNullOrEmpty(driveLetter))
+                                try
                                 {
-                                    try
+                                    var di = new DriveInfo(driveLetter.TrimEnd('\\'));
+                                    if (di.IsReady)
                                     {
-                                        var di = new DriveInfo(driveLetter.TrimEnd('\\'));
-                                        if (di.IsReady)
-                                        {
-                                            totalSize = di.TotalSize;
-                                            freeSpace = di.AvailableFreeSpace;
-                                            fs = di.DriveFormat;
-                                        }
-                                    }
-                                    catch
-                                    {
-                                        // ignore
+                                        totalSize = di.TotalSize;
+                                        freeSpace = di.AvailableFreeSpace;
+                                        fs = di.DriveFormat;
+                                        name = !string.IsNullOrEmpty(di.VolumeLabel) ? di.VolumeLabel : driveLetter;
                                     }
                                 }
-
-                                var volumeInfo = new CoreDriveInfo
-                                {
-                                    Id = Guid.NewGuid(),
-                                    Path = driveLetter ?? string.Empty,
-                                    Name = name,
-                                    TotalSize = totalSize,
-                                    FreeSpace = freeSpace,
-                                    FileSystem = fs,
-                                    IsPhysical = false,
-                                    IsReady = true
-                                };
-
-                                phys.Volumes.Add(volumeInfo);
+                                catch { }
                             }
-                            catch { }
+
+                            phys.Volumes.Add(new CoreDriveInfo
+                            {
+                                Id = Guid.NewGuid(),
+                                Path = driveLetter ?? string.Empty,
+                                Name = name,
+                                TotalSize = totalSize,
+                                FreeSpace = freeSpace,
+                                FileSystem = fs,
+                                IsPhysical = false,
+                                IsReady = true,
+                                VolumeInfo = fs
+                            });
                         }
+                        catch { }
                     }
-                    catch { /* ignore volume enumeration errors */ }
                 }
+                catch { }
             }
-            catch { /* safe fallback - don't let volume enumeration break drive listing */ }
         }
         
         // If still no drives, add a placeholder for system disk
@@ -133,22 +122,16 @@ public class DiskDetectionService : IDiskDetectionService
         return drives.AsReadOnly();
     }
     
-    /// <summary>
-    /// Checks if a drive is the system disk
-    /// </summary>
     private bool IsSystemDisk(string devicePath, string? name)
     {
-        // Check by device path
         if (!string.IsNullOrEmpty(devicePath))
         {
-            // FIRST: Check if we detected system disk path via PowerShell (most reliable)
             if (!string.IsNullOrEmpty(_systemDiskPath) && 
                 devicePath.Equals(_systemDiskPath, StringComparison.OrdinalIgnoreCase))
             {
                 return true;
             }
             
-            // SECOND: Fallback - PhysicalDrive0 is usually system disk (only if PowerShell detection failed)
             if (string.IsNullOrEmpty(_systemDiskPath) && 
                 (devicePath.Contains("PhysicalDrive0", StringComparison.OrdinalIgnoreCase) ||
                  devicePath.Contains("PHYSICALDRIVE0", StringComparison.OrdinalIgnoreCase)))
@@ -157,7 +140,6 @@ public class DiskDetectionService : IDiskDetectionService
             }
         }
         
-        // Fallback: check by name (C: drive)
         if (!string.IsNullOrEmpty(name) && name.Contains("C:", StringComparison.OrdinalIgnoreCase))
         {
             return true;
@@ -166,16 +148,12 @@ public class DiskDetectionService : IDiskDetectionService
         return false;
     }
     
-    /// <summary>
-    /// Gets the physical path of the system disk (C: drive)
-    /// </summary>
     private async Task<string?> GetSystemDiskPathAsync()
     {
         try
         {
             if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
             {
-                // Use PowerShell to get the physical disk for C: drive
                 var psi = new ProcessStartInfo
                 {
                     FileName = "powershell.exe",
@@ -192,14 +170,12 @@ public class DiskDetectionService : IDiskDetectionService
                 var output = await process.StandardOutput.ReadToEndAsync();
                 await process.WaitForExitAsync();
                 
-                // Parse output - might be something like "\\?\scsi#disk&ven_xxx#..."
                 var lines = output.Trim().Split('\n');
                 foreach (var line in lines)
                 {
                     var trimmed = line.Trim();
                     if (!string.IsNullOrEmpty(trimmed))
                     {
-                        // Extract physical drive number from path
                         var match = System.Text.RegularExpressions.Regex.Match(trimmed, @"PHYSICALDRIVE(\d+)", 
                             System.Text.RegularExpressions.RegexOptions.IgnoreCase);
                         if (match.Success)
@@ -210,18 +186,12 @@ public class DiskDetectionService : IDiskDetectionService
                 }
             }
         }
-        catch
-        {
-            // Ignore errors
-        }
+        catch { }
         
         return null;
     }
     
-    /// <summary>
-    /// Gets the size of C: drive as fallback
-    /// </summary>
-    private long GetSystemDriveSize()
+    private static long GetSystemDriveSize()
     {
         try
         {
@@ -243,7 +213,7 @@ public class DiskDetectionService : IDiskDetectionService
             var psi = new ProcessStartInfo
             {
                 FileName = "powershell.exe",
-                Arguments = "-NoProfile -ExecutionPolicy Bypass -Command \"Get-CimInstance Win32_DiskDrive | Select-Object DeviceID, Model, Size, MediaType, FirmwareRevision, SerialNumber | ConvertTo-Json -Compress\"",
+                Arguments = "-NoProfile -ExecutionPolicy Bypass -Command \"Get-CimInstance Win32_DiskDrive | Select-Object DeviceID, Model, Size, MediaType, FirmwareRevision, SerialNumber, InterfaceType | ConvertTo-Json -Compress\"",
                 RedirectStandardOutput = true,
                 RedirectStandardError = true,
                 UseShellExecute = false,
@@ -258,7 +228,6 @@ public class DiskDetectionService : IDiskDetectionService
             
             if (string.IsNullOrWhiteSpace(output)) return drives;
             
-            // Handle both single object and array JSON
             using var doc = JsonDocument.Parse(output.Trim());
             var root = doc.RootElement;
             
@@ -278,14 +247,12 @@ public class DiskDetectionService : IDiskDetectionService
         }
         catch
         {
-            // Fallback: try WMI directly
             try
             {
                 drives = await GetPhysicalDrivesWmiAsync(cancellationToken);
             }
             catch
             {
-                // Last resort: just add PHYSICALDRIVE0
                 drives.Add(new CoreDriveInfo
                 {
                     Id = Guid.NewGuid(),
@@ -308,7 +275,7 @@ public class DiskDetectionService : IDiskDetectionService
         var psi = new ProcessStartInfo
         {
             FileName = "wmic",
-            Arguments = "diskdrive get deviceid,model,size /format:list",
+            Arguments = "diskdrive get deviceid,model,size,interfacetype /format:list",
             RedirectStandardOutput = true,
             RedirectStandardError = true,
             UseShellExecute = false,
@@ -321,18 +288,17 @@ public class DiskDetectionService : IDiskDetectionService
         var output = await process.StandardOutput.ReadToEndAsync(cancellationToken);
         await process.WaitForExitAsync(cancellationToken);
         
-        // Parse WMIC output
         var lines = output.Split('\n');
         string? currentDeviceId = null;
         string? currentModel = null;
         long currentSize = 0;
+        string? currentInterface = null;
         
         foreach (var line in lines)
         {
             var trimmed = line.Trim();
             if (string.IsNullOrEmpty(trimmed)) 
             {
-                // End of record - add drive if we have data
                 if (!string.IsNullOrEmpty(currentDeviceId))
                 {
                     drives.Add(new CoreDriveInfo
@@ -342,11 +308,13 @@ public class DiskDetectionService : IDiskDetectionService
                         Name = currentModel ?? "Unknown Drive",
                         TotalSize = currentSize,
                         IsPhysical = true,
-                        IsReady = true
+                        IsReady = true,
+                        Interface = currentInterface ?? "Unknown"
                     });
                     currentDeviceId = null;
                     currentModel = null;
                     currentSize = 0;
+                    currentInterface = null;
                 }
                 continue;
             }
@@ -357,9 +325,10 @@ public class DiskDetectionService : IDiskDetectionService
                 currentModel = trimmed.AsSpan(6).ToString();
             else if (trimmed.StartsWith("Size=", StringComparison.OrdinalIgnoreCase) && long.TryParse(trimmed.AsSpan(5), out var size))
                 currentSize = size;
+            else if (trimmed.StartsWith("InterfaceType=", StringComparison.OrdinalIgnoreCase))
+                currentInterface = trimmed.AsSpan(14).ToString();
         }
         
-        // Add last record if any
         if (!string.IsNullOrEmpty(currentDeviceId))
         {
             drives.Add(new CoreDriveInfo
@@ -369,7 +338,8 @@ public class DiskDetectionService : IDiskDetectionService
                 Name = currentModel ?? "Unknown Drive",
                 TotalSize = currentSize,
                 IsPhysical = true,
-                IsReady = true
+                IsReady = true,
+                Interface = currentInterface ?? "Unknown"
             });
         }
         
@@ -390,9 +360,23 @@ public class DiskDetectionService : IDiskDetectionService
                 ? modelProp.GetString()?.Trim() 
                 : "Unknown Drive";
             
-            var size = item.TryGetProperty("Size", out var sizeProp) && sizeProp.ValueKind == System.Text.Json.JsonValueKind.Number
+            var size = item.TryGetProperty("Size", out var sizeProp) && sizeProp.ValueKind == JsonValueKind.Number
                 ? sizeProp.GetInt64() 
                 : 0;
+            
+            var interfaceType = item.TryGetProperty("InterfaceType", out var ifaceProp) 
+                ? ifaceProp.GetString() 
+                : "Unknown";
+            
+            var serialNumber = item.TryGetProperty("SerialNumber", out var serialProp) 
+                ? serialProp.GetString()?.Trim() 
+                : null;
+            
+            var mediaType = item.TryGetProperty("MediaType", out var mediaProp) 
+                ? mediaProp.GetString() 
+                : null;
+            
+            var busType = DetermineBusType(interfaceType);
             
             return new CoreDriveInfo
             {
@@ -401,7 +385,11 @@ public class DiskDetectionService : IDiskDetectionService
                 Name = model ?? "Unknown Drive",
                 TotalSize = size,
                 IsPhysical = true,
-                IsReady = true
+                IsReady = true,
+                SerialNumber = serialNumber,
+                MediaType = mediaType,
+                Interface = interfaceType ?? "Unknown",
+                BusType = busType
             };
         }
         catch
@@ -409,43 +397,22 @@ public class DiskDetectionService : IDiskDetectionService
             return null;
         }
     }
-
-    private async Task<List<CoreDriveInfo>> GetLogicalDrivesAsync(CancellationToken cancellationToken)
+    
+    private static CoreBusType DetermineBusType(string? interfaceType)
     {
-        var drives = new List<CoreDriveInfo>();
+        if (string.IsNullOrEmpty(interfaceType))
+            return CoreBusType.Unknown;
         
-        await Task.Run(() =>
+        return interfaceType.ToLowerInvariant() switch
         {
-            var logicalDrives = DriveInfo.GetDrives();
-            
-            foreach (var drive in logicalDrives)
-            {
-                try
-                {
-                    if (drive.IsReady)
-                    {
-                        drives.Add(new CoreDriveInfo
-                        {
-                            Id = Guid.NewGuid(),
-                            Path = drive.Name,
-                            Name = drive.VolumeLabel ?? drive.Name,
-                            TotalSize = drive.TotalSize,
-                            FreeSpace = drive.AvailableFreeSpace,
-                            FileSystem = drive.DriveFormat,
-                            IsPhysical = false,
-                            IsReady = drive.IsReady,
-                            IsRemovable = drive.DriveType == DriveType.Removable
-                        });
-                    }
-                }
-                catch
-                {
-                    // Skip drives that can't be accessed
-                }
-            }
-        }, cancellationToken);
-        
-        return drives;
+            "nvme" => CoreBusType.Nvme,
+            "sata" => CoreBusType.Sata,
+            "usb" => CoreBusType.Usb,
+            "sas" => CoreBusType.Sas,
+            "ide" => CoreBusType.Ide,
+            "scsi" => CoreBusType.Sata,
+            _ => CoreBusType.Unknown
+        };
     }
 
     public async Task<CoreDriveInfo?> GetDriveAsync(string path, CancellationToken cancellationToken = default)

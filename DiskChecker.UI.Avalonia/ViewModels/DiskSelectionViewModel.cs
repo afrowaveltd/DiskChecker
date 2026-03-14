@@ -33,6 +33,13 @@ public partial class DiskSelectionViewModel : ViewModelBase, INavigableViewModel
     private string _systemDiskGrade = "?";
     private string _systemDiskTemperature = "N/A";
     private string _systemDiskSummary = "Načítám data...";
+    
+    // Dashboard properties
+    private int _physicalDiskCount;
+    private string _totalCapacity = "0 GB";
+    private int _healthyDiskCount;
+    private string _healthSummary = "Načítám...";
+    private bool _isSystemDiskHealthy;
 
     /// <summary>
     /// Initializes a new instance of the DiskSelectionViewModel.
@@ -137,6 +144,51 @@ public partial class DiskSelectionViewModel : ViewModelBase, INavigableViewModel
         set => SetProperty(ref _systemDiskSummary, value);
     }
 
+    /// <summary>
+    /// Number of physical disks detected.
+    /// </summary>
+    public int PhysicalDiskCount
+    {
+        get => _physicalDiskCount;
+        set => SetProperty(ref _physicalDiskCount, value);
+    }
+
+    /// <summary>
+    /// Total capacity of all disks combined.
+    /// </summary>
+    public string TotalCapacity
+    {
+        get => _totalCapacity;
+        set => SetProperty(ref _totalCapacity, value);
+    }
+
+    /// <summary>
+    /// Number of healthy disks.
+    /// </summary>
+    public int HealthyDiskCount
+    {
+        get => _healthyDiskCount;
+        set => SetProperty(ref _healthyDiskCount, value);
+    }
+
+    /// <summary>
+    /// Health summary text.
+    /// </summary>
+    public string HealthSummary
+    {
+        get => _healthSummary;
+        set => SetProperty(ref _healthSummary, value);
+    }
+
+    /// <summary>
+    /// Whether the system disk is healthy.
+    /// </summary>
+    public bool IsSystemDiskHealthy
+    {
+        get => _isSystemDiskHealthy;
+        set => SetProperty(ref _isSystemDiskHealthy, value);
+    }
+
     /// <inheritdoc/>
     public void OnNavigatedTo()
     {
@@ -144,7 +196,7 @@ public partial class DiskSelectionViewModel : ViewModelBase, INavigableViewModel
         Task.Run(LoadDataAsync);
     }
 
-        private async Task LoadDataAsync()
+    private async Task LoadDataAsync()
     {
         try
         {
@@ -160,40 +212,58 @@ public partial class DiskSelectionViewModel : ViewModelBase, INavigableViewModel
             // Clear existing items
             DiskCards.Clear();
             
+            // Track totals for dashboard
+            long totalBytes = 0;
+            int healthyCount = 0;
+            
             // Load each drive and build disk cards
             foreach (var drive in drives)
             {
                 try
                 {
-                    await LoadDriveAsync(drive, lockedDisks);
+                    var card = await LoadDriveAsync(drive, lockedDisks);
+                    totalBytes += drive.TotalSize;
+                    if (card.GradeText is "A" or "B" or "C")
+                    {
+                        healthyCount++;
+                    }
                 }
                 catch (Exception)
                 {
                     // If we can't get SMART data, add the drive with basic info
                     AddBasicDriveCard(drive, lockedDisks);
+                    totalBytes += drive.TotalSize;
                 }
             }
             
+            // Update dashboard stats
+            PhysicalDiskCount = DiskCards.Count;
+            TotalCapacity = FormatCapacity(totalBytes);
+            HealthyDiskCount = healthyCount;
+            HealthSummary = healthyCount == DiskCards.Count 
+                ? "Všechny disky v pořádku" 
+                : $"{DiskCards.Count - healthyCount} disků potřebuje pozornost";
+
             // SINGLE SOURCE OF TRUTH: Find system disk from the already-loaded disk cards
-            // The disk card with IsSystemDisk = true is the system disk - use it for quick report
             var systemDiskCard = DiskCards.FirstOrDefault(c => c.IsSystemDisk);
             if (systemDiskCard != null)
             {
                 UpdateSystemDiskReport(systemDiskCard.Drive, systemDiskCard.SmartData);
+                IsSystemDiskHealthy = systemDiskCard.GradeText is "A" or "B" or "C";
             }
             else
             {
-                // No system disk found
                 UpdateSystemDiskReport(null, null);
+                IsSystemDiskHealthy = false;
             }
 
-            LoadingState = DiskCards.Count > 0 ? "Disky naÄŤteny" : "Ĺ˝ĂˇdnĂ© disky nalezeny";
+            LoadingState = DiskCards.Count > 0 ? $"Načteno {DiskCards.Count} disků" : "Žádné disky nenalezeny";
             StatusMessage = $"Nalezeno {DiskCards.Count} disků";
         }
         catch (Exception ex)
         {
             LoadingState = $"Chyba: {ex.Message}";
-            StatusMessage = "NepodaĹ™ilo se naÄŤĂ­st disky";
+            StatusMessage = "Nepodařilo se načíst disky";
         }
         finally
         {
@@ -201,7 +271,7 @@ public partial class DiskSelectionViewModel : ViewModelBase, INavigableViewModel
         }
     }
 
-    private async Task<SmartaData?> LoadDriveAsync(CoreDriveInfo drive, List<string> lockedDisks)
+    private async Task<DiskStatusCardItem> LoadDriveAsync(CoreDriveInfo drive, List<string> lockedDisks)
     {
         // Get SMART data for the drive
         var smartData = await _smartaProvider.GetSmartaDataAsync(drive.Path);
@@ -214,17 +284,28 @@ public partial class DiskSelectionViewModel : ViewModelBase, INavigableViewModel
         // Format capacity
         var capacityText = FormatCapacity(drive.TotalSize);
         
-        // Format temperature (handle nullable Temperature)
+        // Format temperature
         var temperatureText = smartData?.Temperature.HasValue == true && smartData.Temperature.Value > 0 
             ? $"{smartData.Temperature.Value}°C" 
             : "N/A";
         
         // Use ONLY the IsSystemDisk property set by DiskDetectionService
-        // Do NOT use PhysicalDrive0 fallback - that can incorrectly match USB disks
         var isSystemDisk = drive.IsSystemDisk;
         
         // Check if disk is locked
         var isLocked = lockedDisks.Any(p => IsSameDiskk(p, drive.Path)) || isSystemDisk;
+        
+        // Build partitions display
+        var partitionsDisplay = BuildPartitionsDisplay(drive);
+        var partitionCount = drive.Volumes?.Count ?? 0;
+        
+        // Determine health status
+        var healthStatus = quality.Grade switch
+        {
+            QualityGrade.A or QualityGrade.B => "OK",
+            QualityGrade.C => "Warning",
+            _ => "Critical"
+        };
         
         var card = new DiskStatusCardItem
         {
@@ -240,12 +321,63 @@ public partial class DiskSelectionViewModel : ViewModelBase, INavigableViewModel
             Quality = quality,
             IsSystemDisk = isSystemDisk,
             IsSystemDiskLabel = isSystemDisk ? "Systémový disk" : "",
-            IsLocked = isLocked
+            IsLocked = isLocked,
+            SerialNumber = smartData?.SerialNumber ?? drive.SerialNumber,
+            Interface = drive.Interface,
+            PartitionsDisplay = partitionsDisplay,
+            PartitionCount = partitionCount,
+            HealthStatus = healthStatus
         };
         
         DiskCards.Add(card);
         
-        return smartData;
+        return card;
+    }
+    
+    private static string BuildPartitionsDisplay(CoreDriveInfo drive)
+    {
+        if (drive.Volumes == null || drive.Volumes.Count == 0)
+        {
+            return "";
+        }
+        
+        var parts = new System.Collections.Generic.List<string>();
+        foreach (var vol in drive.Volumes.Take(4)) // Limit to 4 partitions for display
+        {
+            var label = !string.IsNullOrEmpty(vol.Name) ? vol.Name : vol.Path;
+            var mountPoint = vol.Path;
+            var fs = !string.IsNullOrEmpty(vol.FileSystem) ? vol.FileSystem : "";
+            
+            if (!string.IsNullOrEmpty(mountPoint))
+            {
+                var sizeStr = FormatCapacity(vol.TotalSize);
+                var partText = !string.IsNullOrEmpty(fs) 
+                    ? $"{mountPoint} ({fs}, {sizeStr})"
+                    : $"{mountPoint} ({sizeStr})";
+                parts.Add(partText);
+            }
+        }
+        
+        var result = string.Join(" | ", parts);
+        
+        if (drive.Volumes.Count > 4)
+        {
+            result += $" +{drive.Volumes.Count - 4} dalších";
+        }
+        
+        return result;
+    }
+    
+    private static string FormatCapacity(long bytes)
+    {
+        if (bytes <= 0) return "Unknown";
+        
+        var gb = bytes / (1024.0 * 1024.0 * 1024.0);
+        if (gb >= 1000)
+        {
+            return $"{gb / 1024.0:F1} TB";
+        }
+        return $"{gb:F0} GB";
     }
     
     private static bool IsSameDiskk(string identifier1, string identifier2)
@@ -280,10 +412,9 @@ public partial class DiskSelectionViewModel : ViewModelBase, INavigableViewModel
 
     private void AddBasicDriveCard(CoreDriveInfo drive, List<string> lockedDisks)
     {
-        // Use ONLY the IsSystemDisk property set by DiskDetectionService
-        // Do NOT use PhysicalDrive0 fallback - that can incorrectly match USB disks
         var isSystemDisk = drive.IsSystemDisk;
         var isLocked = lockedDisks.Any(p => IsSameDiskk(p, drive.Path)) || isSystemDisk;
+        var partitionsDisplay = BuildPartitionsDisplay(drive);
         
         DiskCards.Add(new DiskStatusCardItem
         {
@@ -295,7 +426,12 @@ public partial class DiskSelectionViewModel : ViewModelBase, INavigableViewModel
             TemperatureText = "N/A",
             IsSystemDisk = isSystemDisk,
             IsSystemDiskLabel = isSystemDisk ? "Systémový disk" : "",
-            IsLocked = isLocked
+            IsLocked = isLocked,
+            SerialNumber = drive.SerialNumber,
+            Interface = drive.Interface,
+            PartitionsDisplay = partitionsDisplay,
+            PartitionCount = drive.Volumes?.Count ?? 0,
+            HealthStatus = "Unknown"
         });
     }
 
@@ -341,18 +477,6 @@ public partial class DiskSelectionViewModel : ViewModelBase, INavigableViewModel
             SystemDiskTemperature = "N/A";
             SystemDiskSummary = "SMART data nedostupná";
         }
-    }
-    
-    private static string FormatCapacity(long bytes)
-    {
-        if (bytes <= 0) return "Unknown";
-        
-        var gb = bytes / (1024.0 * 1024.0 * 1024.0);
-        if (gb >= 1000)
-        {
-            return $"{gb / 1024.0:F1} TB";
-        }
-        return $"{gb:F0} GB";
     }
 
     /// <summary>
