@@ -11,23 +11,32 @@ using DiskChecker.Core.Interfaces;
 
 namespace DiskChecker.UI.Avalonia.ViewModels
 {
-    public partial class ReportViewModel : ViewModelBase
+    public partial class ReportViewModel : ViewModelBase, INavigableViewModel
     {
         private readonly IDiskCardRepository _diskCardRepository;
         private readonly IDialogService _dialogService;
+        private readonly INavigationService _navigationService;
+        private readonly ISelectedDiskService _selectedDiskService;
         private ObservableCollection<TestReportItem> _reports = new();
         private TestReportItem? _selectedReport;
         private bool _isLoading;
         private string _statusMessage = string.Empty;
 
-        public ReportViewModel(IDiskCardRepository diskCardRepository, IDialogService dialogService)
+        public ReportViewModel(
+            IDiskCardRepository diskCardRepository,
+            IDialogService dialogService,
+            INavigationService navigationService,
+            ISelectedDiskService selectedDiskService)
         {
             _diskCardRepository = diskCardRepository ?? throw new ArgumentNullException(nameof(diskCardRepository));
             _dialogService = dialogService ?? throw new ArgumentNullException(nameof(dialogService));
+            _navigationService = navigationService ?? throw new ArgumentNullException(nameof(navigationService));
+            _selectedDiskService = selectedDiskService ?? throw new ArgumentNullException(nameof(selectedDiskService));
             
             DeleteReportCommand = new AsyncRelayCommand(DeleteReportAsync, () => SelectedReport != null);
             ExportReportCommand = new AsyncRelayCommand(ExportReportAsync, () => SelectedReport != null);
-            
+            OpenFullReportCommand = new AsyncRelayCommand(OpenFullReportAsync, () => SelectedReport != null);
+            NavigateBackCommand = new RelayCommand(NavigateBack);
             LoadReportsCommand = new AsyncRelayCommand(LoadReportsAsync);
             _ = LoadReportsAsync();
         }
@@ -66,6 +75,13 @@ namespace DiskChecker.UI.Avalonia.ViewModels
         public IAsyncRelayCommand DeleteReportCommand { get; }
         public IAsyncRelayCommand ExportReportCommand { get; }
         public IAsyncRelayCommand LoadReportsCommand { get; }
+        public IAsyncRelayCommand OpenFullReportCommand { get; }
+        public IRelayCommand NavigateBackCommand { get; }
+
+        public void OnNavigatedTo()
+        {
+            _ = LoadReportsAsync();
+        }
 
         private async Task DeleteReportAsync()
         {
@@ -108,6 +124,40 @@ namespace DiskChecker.UI.Avalonia.ViewModels
                 StatusMessage = $"Chyba při exportu reportu: {ex.Message}";
                 await _dialogService.ShowErrorAsync("Chyba", $"Nepodařilo se exportovat report: {ex.Message}");
             }
+        }
+
+        private async Task OpenFullReportAsync()
+        {
+            if (SelectedReport == null)
+            {
+                return;
+            }
+
+            var card = await _diskCardRepository.GetByIdAsync(SelectedReport.DiskCardId);
+            if (card == null)
+            {
+                await _dialogService.ShowErrorAsync("Chyba", "Karta disku pro vybraný report nebyla nalezena.");
+                return;
+            }
+
+            _selectedDiskService.SelectedDisk = new CoreDriveInfo
+            {
+                Path = card.DevicePath,
+                Name = card.ModelName,
+                TotalSize = card.Capacity,
+                SerialNumber = card.SerialNumber,
+                FirmwareVersion = card.FirmwareVersion,
+                IsRemovable = string.Equals(card.ConnectionType, "External", StringComparison.OrdinalIgnoreCase)
+            };
+            _selectedDiskService.SelectedDiskDisplayName = card.ModelName;
+            _selectedDiskService.IsSelectedDiskLocked = card.IsLocked;
+
+            _navigationService.NavigateTo<DiskCardDetailViewModel>();
+        }
+
+        private void NavigateBack()
+        {
+            _navigationService.NavigateTo<DiskCardsViewModel>();
         }
 
         private async Task LoadReportsAsync()

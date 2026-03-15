@@ -198,11 +198,13 @@ public partial class DiskCardsViewModel : ViewModelBase, INavigableViewModel
             
             foreach (var card in cards.OrderByDescending(c => c.LastTestedAt))
             {
+                var storedSerial = card.SerialNumber;
+
                 var copy = new DiskCard
                 {
                     Id = card.Id,
                     ModelName = card.ModelName,
-                    SerialNumber = card.SerialNumber,
+                    SerialNumber = storedSerial,
                     DevicePath = card.DevicePath,
                     DiskType = card.DiskType,
                     InterfaceType = card.InterfaceType,
@@ -225,8 +227,10 @@ public partial class DiskCardsViewModel : ViewModelBase, INavigableViewModel
                     string.Equals(d.Path, copy.DevicePath, StringComparison.OrdinalIgnoreCase) ||
                     (!string.IsNullOrWhiteSpace(d.SerialNumber) && string.Equals(
                         DriveIdentityResolver.BuildIdentityKey(d.Path, d.SerialNumber, d.Name ?? "Unknown", d.FirmwareVersion),
-                        copy.SerialNumber,
+                        storedSerial,
                         StringComparison.OrdinalIgnoreCase)));
+
+                copy.SerialNumber = ResolveDisplaySerial(storedSerial, matchedDrive?.SerialNumber);
 
                 if (matchedDrive?.Volumes != null)
                 {
@@ -455,6 +459,22 @@ public partial class DiskCardsViewModel : ViewModelBase, INavigableViewModel
     #endregion
 
     #region Private Methods
+
+    private static string ResolveDisplaySerial(string storedSerial, string? detectedSerial)
+    {
+        if (!string.IsNullOrWhiteSpace(detectedSerial))
+        {
+            return detectedSerial.Trim();
+        }
+
+        if (string.IsNullOrWhiteSpace(storedSerial) ||
+            storedSerial.StartsWith("NOSN-", StringComparison.OrdinalIgnoreCase))
+        {
+            return "N/A";
+        }
+
+        return storedSerial;
+    }
 
     private void ApplyFilters()
     {

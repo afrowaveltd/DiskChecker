@@ -26,7 +26,7 @@
 
                 <Button Grid.Column="1"
                         Content="🏠 Zpět"
-                        Command="{Binding $parent[UserControl].DataContext.NavigationService.NavigateToDiskCardsCommand}"
+                        Command="{Binding NavigateBackCommand}"
                         Background="{DynamicResource ThemeSecondaryBackgroundBrush}" Foreground="{DynamicResource ThemeTextPrimaryBrush}"
                         BorderBrush="{DynamicResource ThemeBorderBrush}"
                         VerticalAlignment="Center"/>
@@ -176,15 +176,21 @@
                 </Border>
 
                 <StackPanel Grid.Row="2" Orientation="Horizontal">
+                    <Button Content="📑 Plný report" 
+                            Command="{Binding OpenFullReportCommand}"
+                            IsEnabled="{Binding SelectedReport, Converter={StaticResource NotNullConverter}}"
+                            Background="{DynamicResource ThemeInfoBrush}" Foreground="White" 
+                            Padding="14,8" Margin="0,0,8,0"/>
+
                     <Button Content="💾 Exportovat" 
                             Command="{Binding ExportReportCommand}"
-                            IsEnabled="{Binding SelectedReport}"
+                            IsEnabled="{Binding SelectedReport, Converter={StaticResource NotNullConverter}}"
                             Background="{DynamicResource ThemePrimaryBrush}" Foreground="White" 
                             Padding="14,8" Margin="0,0,8,0"/>
                     
                     <Button Content="🗑️ Smazat" 
                             Command="{Binding DeleteReportCommand}"
-                            IsEnabled="{Binding SelectedReport}"
+                            IsEnabled="{Binding SelectedReport, Converter={StaticResource NotNullConverter}}"
                             Background="{DynamicResource ThemeDangerBrush}" Foreground="White" 
                             Padding="14,8"/>
                 </StackPanel>

@@ -142,7 +142,7 @@
                                         <Button Content="📄 Cert."
                                                 Command="{Binding $parent[DataGrid].DataContext.GenerateCertificateCommand}"
                                                 CommandParameter="{Binding}"
-                                                IsEnabled="{Binding CanGenerateCertificate}"
+                                                IsEnabled="{Binding TestCount, Converter={StaticResource IntToBoolConverter}}"
                                                 Background="{DynamicResource ThemeSuccessBrush}" Foreground="White"
                                                 FontSize="10" Padding="8,4" Cursor="Hand"/>
                                         <Button Content="📁 Archiv"

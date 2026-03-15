@@ -251,6 +251,26 @@ public class TestSession
     /// User notes for this test session
     /// </summary>
     public string? Notes { get; set; }
+    
+    /// <summary>
+    /// Alias for UI bindings expecting test timestamp.
+    /// </summary>
+    public DateTime TestedAt => StartedAt;
+
+    /// <summary>
+    /// Alias for UI bindings expecting tested sectors count.
+    /// </summary>
+    public long SectorsTested => BytesRead > 0 ? BytesRead / 512 : 0;
+
+    /// <summary>
+    /// Alias for UI bindings expecting aggregate error count.
+    /// </summary>
+    public int ErrorCount => Errors.Count + WriteErrors + ReadErrors + VerificationErrors;
+
+    /// <summary>
+    /// Alias for UI bindings expecting current/average temperature.
+    /// </summary>
+    public int Temperature => (int)Math.Round(AverageTemperature ?? MaxTemperature ?? StartTemperature ?? 0);
 }
 
 /// <summary>

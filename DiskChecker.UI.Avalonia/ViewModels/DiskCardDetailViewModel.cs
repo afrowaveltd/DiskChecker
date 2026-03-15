@@ -4,6 +4,7 @@ using System.Linq;
 using System.Threading.Tasks;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using DiskChecker.Application.Services;
 using DiskChecker.Core.Interfaces;
 using DiskChecker.Core.Models;
 using DiskChecker.UI.Avalonia.Services.Interfaces;
@@ -31,6 +32,8 @@ public partial class DiskCardDetailViewModel : ViewModelBase, INavigableViewMode
     private bool _isLoading;
     private string _statusMessage = "Detail karty disku";
 
+    private string _notes = string.Empty;
+
     public DiskCardDetailViewModel(
         IDiskCardRepository diskCardRepository,
         INavigationService navigationService,
@@ -47,6 +50,7 @@ public partial class DiskCardDetailViewModel : ViewModelBase, INavigableViewMode
         _selectedDiskService = selectedDiskService;
         
         TestSessions = new ObservableCollection<TestSession>();
+        SmartHistory = new ObservableCollection<SmartHistoryItem>();
         SpeedChartModel = new PlotModel { Title = "Rychlost testu" };
         TemperatureChartModel = new PlotModel { Title = "Teplota během testu" };
     }
@@ -110,8 +114,47 @@ public partial class DiskCardDetailViewModel : ViewModelBase, INavigableViewMode
 
     public ObservableCollection<TestSession> TestSessions { get; }
 
+    public ObservableCollection<SmartHistoryItem> SmartHistory { get; }
+
     public PlotModel SpeedChartModel { get; }
     public PlotModel TemperatureChartModel { get; }
+
+    public string Notes
+    {
+        get => _notes;
+        set => SetProperty(ref _notes, value);
+    }
+
+    // Compatibility aliases for XAML bindings
+    public DiskCard? Card => CurrentCard;
+    public bool HasTestSessions => TestSessions.Count > 0;
+    public IRelayCommand NavigateBackCommand => GoBackCommand;
+    public IAsyncRelayCommand SaveNotesCommand => AddNoteCommand;
+
+    public string GradeColor => (CurrentCard?.OverallGrade ?? "?") switch
+    {
+        "A" => "#27AE60",
+        "B" => "#2ECC71",
+        "C" => "#F39C12",
+        "D" => "#E67E22",
+        "E" => "#E74C3C",
+        "F" => "#C0392B",
+        _ => "#95A5A6"
+    };
+
+    public double AverageScore => TestSessions.Count == 0 ? 0 : TestSessions.Average(s => s.Score);
+
+    public string BestGrade => TestSessions.Count == 0
+        ? "-"
+        : TestSessions.OrderByDescending(s => s.Score).First().Grade;
+
+    public string WorstGrade => TestSessions.Count == 0
+        ? "-"
+        : TestSessions.OrderBy(s => s.Score).First().Grade;
+
+    public long TotalSectorsTested => TestSessions.Sum(s => s.SectorsTested);
+
+    public int TotalErrors => TestSessions.Sum(s => s.ErrorCount);
 
     // Computed properties
     public bool HasCard => CurrentCard != null;
@@ -232,13 +275,15 @@ public partial class DiskCardDetailViewModel : ViewModelBase, INavigableViewMode
         if (CurrentCard == null) return;
 
         var note = await _dialogService.ShowInputDialogAsync("Poznámka", "Zadejte poznámku:", CurrentCard.Notes ?? "");
-        
-        if (!string.IsNullOrEmpty(note))
+        if (note == null)
         {
-            CurrentCard.Notes = note;
-            await _diskCardRepository.UpdateAsync(CurrentCard);
-            StatusMessage = "Poznámka uložena";
+            return;
         }
+
+        CurrentCard.Notes = note;
+        Notes = note;
+        await _diskCardRepository.UpdateAsync(CurrentCard);
+        StatusMessage = "Poznámka uložena";
     }
 
     [RelayCommand]
@@ -258,14 +303,20 @@ public partial class DiskCardDetailViewModel : ViewModelBase, INavigableViewMode
             IsLoading = true;
             StatusMessage = "Hledám kartu disku...";
 
-            // Prefer identity by serial number if available, fallback to device path
-            DiskCard? card = null;
-            if (!string.IsNullOrWhiteSpace(disk.SerialNumber))
-            {
-                card = await _diskCardRepository.GetBySerialNumberAsync(disk.SerialNumber);
-            }
+            var identityKey = DriveIdentityResolver.BuildIdentityKey(
+                disk.Path,
+                disk.SerialNumber,
+                disk.Name ?? "Unknown",
+                disk.FirmwareVersion);
+            var legacyKey = BuildLegacyIdentityKey(
+                disk.Path,
+                disk.SerialNumber,
+                disk.Name ?? "Unknown",
+                disk.FirmwareVersion);
 
-            card ??= await _diskCardRepository.GetByDevicePathAsync(disk.Path);
+            DiskCard? card = await _diskCardRepository.GetBySerialNumberAsync(identityKey)
+                           ?? await _diskCardRepository.GetBySerialNumberAsync(legacyKey)
+                           ?? await _diskCardRepository.GetByDevicePathAsync(disk.Path);
 
             if (card == null)
             {
@@ -273,12 +324,12 @@ public partial class DiskCardDetailViewModel : ViewModelBase, INavigableViewMode
                 card = new DiskCard
                 {
                     ModelName = disk.Name ?? "Unknown",
-                    SerialNumber = disk.SerialNumber ?? string.Empty,
+                    SerialNumber = identityKey,
                     DevicePath = disk.Path,
                     Capacity = disk.TotalSize,
                     FirmwareVersion = disk.FirmwareVersion ?? string.Empty,
                     DiskType = "Unknown",
-                    InterfaceType = "Unknown",
+                    InterfaceType = disk.BusType.ToString(),
                     IsLocked = _selectedDiskService.IsSelectedDiskLocked
                 };
 
@@ -317,13 +368,43 @@ public partial class DiskCardDetailViewModel : ViewModelBase, INavigableViewMode
                 // Load test sessions
                 var sessions = await _diskCardRepository.GetTestSessionsAsync(cardId);
                 TestSessions.Clear();
+                SmartHistory.Clear();
+
                 foreach (var session in sessions.OrderByDescending(s => s.StartedAt))
                 {
                     TestSessions.Add(session);
+
+                    SmartHistory.Add(new SmartHistoryItem
+                    {
+                        TestedAt = session.StartedAt,
+                        Temperature = session.Temperature,
+                        PowerOnHours = 0,
+                        ReallocatedSectors = 0,
+                        PendingSectors = 0,
+                        ReadErrors = session.ReadErrors,
+                        ReallocEvents = session.VerificationErrors,
+                        Notes = session.Notes ?? string.Empty
+                    });
                 }
+
+                Notes = CurrentCard.Notes ?? string.Empty;
 
                 // Load latest certificate
                 LatestCertificate = await _diskCardRepository.GetLatestCertificateAsync(cardId);
+
+                OnPropertyChanged(nameof(Card));
+                OnPropertyChanged(nameof(HasTestSessions));
+                OnPropertyChanged(nameof(GradeColor));
+                OnPropertyChanged(nameof(AverageScore));
+                OnPropertyChanged(nameof(BestGrade));
+                OnPropertyChanged(nameof(WorstGrade));
+                OnPropertyChanged(nameof(TotalSectorsTested));
+                OnPropertyChanged(nameof(TotalErrors));
+
+                if (SelectedSession == null)
+                {
+                    SelectedSession = TestSessions.FirstOrDefault();
+                }
 
                 StatusMessage = $"Karta načtena: {CurrentCard.ModelName}";
             }
@@ -336,6 +417,21 @@ public partial class DiskCardDetailViewModel : ViewModelBase, INavigableViewMode
         {
             IsLoading = false;
         }
+    }
+
+    private static string BuildLegacyIdentityKey(string drivePath, string? serialNumber, string deviceModel, string? firmwareVersion)
+    {
+        if (!string.IsNullOrWhiteSpace(serialNumber))
+        {
+            return $"{serialNumber}_{deviceModel}_{firmwareVersion ?? "unknown"}";
+        }
+
+        if (!string.IsNullOrWhiteSpace(deviceModel))
+        {
+            return $"{deviceModel}_{drivePath.Replace("\\", "_").Replace("/", "_")}_{firmwareVersion ?? "unknown"}";
+        }
+
+        return drivePath;
     }
 
     private void UpdateCharts()
@@ -398,4 +494,16 @@ public partial class DiskCardDetailViewModel : ViewModelBase, INavigableViewMode
     }
 
     #endregion
+}
+
+public class SmartHistoryItem
+{
+    public DateTime TestedAt { get; set; }
+    public int Temperature { get; set; }
+    public int PowerOnHours { get; set; }
+    public int ReallocatedSectors { get; set; }
+    public int PendingSectors { get; set; }
+    public int ReadErrors { get; set; }
+    public int ReallocEvents { get; set; }
+    public string Notes { get; set; } = string.Empty;
 }

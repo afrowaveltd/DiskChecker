@@ -302,6 +302,7 @@ public class LinuxDiskSanitizationService : IDiskSanitizationService
         var stopwatch = Stopwatch.StartNew();
         var buffer = new byte[BUFFER_SIZE];
         long bytesWritten = 0;
+        double smoothedSpeed = 0;
 
         try
         {
@@ -321,17 +322,24 @@ public class LinuxDiskSanitizationService : IDiskSanitizationService
                 cancellationToken.ThrowIfCancellationRequested();
 
                 var bytesToWrite = (int)Math.Min(BUFFER_SIZE, diskSize - bytesWritten);
-                
+                var chunkStopwatch = Stopwatch.StartNew();
+
                 // Use async write for better performance
                 await fileStream.WriteAsync(buffer.AsMemory(0, bytesToWrite), cancellationToken);
-                await fileStream.FlushAsync(cancellationToken);
-                
+
+                chunkStopwatch.Stop();
                 bytesWritten += bytesToWrite;
 
+                var chunkSeconds = chunkStopwatch.Elapsed.TotalSeconds;
+                var instantSpeed = chunkSeconds > 0
+                    ? bytesToWrite / (1024.0 * 1024.0) / chunkSeconds
+                    : 0;
+                smoothedSpeed = smoothedSpeed <= 0 ? instantSpeed : (smoothedSpeed * 0.7) + (instantSpeed * 0.3);
+
                 var elapsed = stopwatch.Elapsed.TotalSeconds;
-                var speed = elapsed > 0 ? bytesWritten / (1024.0 * 1024.0) / elapsed : 0;
+                var averageSpeed = elapsed > 0 ? bytesWritten / (1024.0 * 1024.0) / elapsed : 0;
                 var remaining = diskSize - bytesWritten;
-                var eta = speed > 0 ? TimeSpan.FromSeconds(remaining / (1024.0 * 1024.0) / speed) : (TimeSpan?)null;
+                var eta = averageSpeed > 0 ? TimeSpan.FromSeconds(remaining / (1024.0 * 1024.0) / averageSpeed) : (TimeSpan?)null;
 
                 progress?.Report(new SanitizationProgress
                 {
@@ -339,11 +347,13 @@ public class LinuxDiskSanitizationService : IDiskSanitizationService
                     ProgressPercent = (double)bytesWritten / diskSize * 100,
                     BytesProcessed = bytesWritten,
                     TotalBytes = diskSize,
-                    CurrentSpeedMBps = speed,
+                    CurrentSpeedMBps = smoothedSpeed,
                     Errors = result.Errors,
                     EstimatedTimeRemaining = eta
                 });
             }
+
+            await fileStream.FlushAsync(cancellationToken);
 
             result.Success = true;
             result.BytesWritten = bytesWritten;
@@ -371,6 +381,7 @@ public class LinuxDiskSanitizationService : IDiskSanitizationService
         var buffer = new byte[BUFFER_SIZE];
         var zeroBuffer = new byte[BUFFER_SIZE];
         long bytesRead = 0;
+        double smoothedSpeed = 0;
 
         try
         {
@@ -388,7 +399,9 @@ public class LinuxDiskSanitizationService : IDiskSanitizationService
                 cancellationToken.ThrowIfCancellationRequested();
 
                 var bytesToRead = (int)Math.Min(BUFFER_SIZE, diskSize - bytesRead);
+                var chunkStopwatch = Stopwatch.StartNew();
                 var bytesReadThisChunk = await fileStream.ReadAsync(buffer.AsMemory(0, bytesToRead), cancellationToken);
+                chunkStopwatch.Stop();
 
                 if (bytesReadThisChunk != bytesToRead)
                 {
@@ -416,10 +429,16 @@ public class LinuxDiskSanitizationService : IDiskSanitizationService
 
                 bytesRead += bytesReadThisChunk;
 
+                var chunkSeconds = chunkStopwatch.Elapsed.TotalSeconds;
+                var instantSpeed = chunkSeconds > 0
+                    ? bytesReadThisChunk / (1024.0 * 1024.0) / chunkSeconds
+                    : 0;
+                smoothedSpeed = smoothedSpeed <= 0 ? instantSpeed : (smoothedSpeed * 0.7) + (instantSpeed * 0.3);
+
                 var elapsed = stopwatch.Elapsed.TotalSeconds;
-                var speed = elapsed > 0 ? bytesRead / (1024.0 * 1024.0) / elapsed : 0;
+                var averageSpeed = elapsed > 0 ? bytesRead / (1024.0 * 1024.0) / elapsed : 0;
                 var remaining = diskSize - bytesRead;
-                var eta = speed > 0 ? TimeSpan.FromSeconds(remaining / (1024.0 * 1024.0) / speed) : (TimeSpan?)null;
+                var eta = averageSpeed > 0 ? TimeSpan.FromSeconds(remaining / (1024.0 * 1024.0) / averageSpeed) : (TimeSpan?)null;
 
                 progress?.Report(new SanitizationProgress
                 {
@@ -427,7 +446,7 @@ public class LinuxDiskSanitizationService : IDiskSanitizationService
                     ProgressPercent = (double)bytesRead / diskSize * 100,
                     BytesProcessed = bytesRead,
                     TotalBytes = diskSize,
-                    CurrentSpeedMBps = speed,
+                    CurrentSpeedMBps = smoothedSpeed,
                     Errors = result.Errors,
                     EstimatedTimeRemaining = eta
                 });

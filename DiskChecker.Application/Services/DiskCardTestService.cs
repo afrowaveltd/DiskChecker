@@ -58,9 +58,18 @@ public class DiskCardTestService
         ArgumentNullException.ThrowIfNull(drive);
 
         var serialKey = BuildIdentityKey(drive);
+        var legacyKey = DriveIdentityResolver.BuildLegacyIdentityKey(
+            drive.Path,
+            drive.SerialNumber,
+            drive.Name ?? "Unknown",
+            null);
 
         var card = await _dbContext.DiskCards
-            .FirstOrDefaultAsync(c => c.SerialNumber == serialKey, cancellationToken);
+            .FirstOrDefaultAsync(c =>
+                c.SerialNumber == serialKey ||
+                c.SerialNumber == legacyKey ||
+                c.DevicePath == drive.Path,
+                cancellationToken);
 
         if (card == null)
         {
@@ -72,7 +81,7 @@ public class DiskCardTestService
                 DiskType = DetermineDiskType(drive),
                 InterfaceType = DetermineInterfaceType(drive),
                 Capacity = drive.TotalSize,
-                FirmwareVersion = string.Empty,
+                FirmwareVersion = drive.FirmwareVersion ?? string.Empty,
                 ConnectionType = drive.IsRemovable ? "External" : "Internal",
                 CreatedAt = DateTime.UtcNow,
                 LastTestedAt = DateTime.UtcNow,
@@ -89,6 +98,45 @@ public class DiskCardTestService
             {
                 LogCardCreated(_logger, card.ModelName, card.SerialNumber, null);
             }
+
+            return card;
+        }
+
+        var cardChanged = false;
+
+        if (!string.Equals(card.SerialNumber, serialKey, StringComparison.Ordinal))
+        {
+            var serialKeyTaken = await _dbContext.DiskCards
+                .AnyAsync(c => c.Id != card.Id && c.SerialNumber == serialKey, cancellationToken);
+
+            if (!serialKeyTaken)
+            {
+                card.SerialNumber = serialKey;
+                cardChanged = true;
+            }
+        }
+
+        if (!string.Equals(card.DevicePath, drive.Path, StringComparison.OrdinalIgnoreCase))
+        {
+            card.DevicePath = drive.Path;
+            cardChanged = true;
+        }
+
+        if (!string.Equals(card.ModelName, drive.Name ?? "Unknown", StringComparison.Ordinal))
+        {
+            card.ModelName = drive.Name ?? "Unknown";
+            cardChanged = true;
+        }
+
+        if (card.IsArchived)
+        {
+            ReactivateCardForTesting(card);
+            cardChanged = true;
+        }
+
+        if (cardChanged)
+        {
+            await _dbContext.SaveChangesAsync(cancellationToken);
         }
 
         return card;
@@ -167,6 +215,7 @@ public class DiskCardTestService
         _dbContext.TestSessions.Add(session);
 
         // Update disk card
+        ReactivateCardForTesting(card);
         card.TestCount++;
         card.LastTestedAt = DateTime.UtcNow;
         await UpdateCardGradeAsync(card, cancellationToken);
@@ -249,6 +298,7 @@ public class DiskCardTestService
         _dbContext.TestSessions.Add(session);
 
         // Update disk card
+        ReactivateCardForTesting(card);
         card.TestCount++;
         card.LastTestedAt = DateTime.UtcNow;
         await UpdateCardGradeAsync(card, cancellationToken);
@@ -269,6 +319,8 @@ public class DiskCardTestService
     public async Task<TestSession> SaveSanitizationAsync(
         DiskCard card,
         SanitizationResult result,
+        IEnumerable<SpeedSample>? writeSamples = null,
+        IEnumerable<SpeedSample>? readSamples = null,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(card);
@@ -303,9 +355,20 @@ public class DiskCardTestService
             HealthAssessment = result.ErrorsDetected == 0 ? HealthAssessment.Excellent : HealthAssessment.Poor
         };
 
+        if (writeSamples != null)
+        {
+            session.WriteSamples.AddRange(writeSamples);
+        }
+
+        if (readSamples != null)
+        {
+            session.ReadSamples.AddRange(readSamples);
+        }
+
         _dbContext.TestSessions.Add(session);
 
         // Update disk card
+        ReactivateCardForTesting(card);
         card.TestCount++;
         card.LastTestedAt = DateTime.UtcNow;
         await UpdateCardGradeAsync(card, cancellationToken);
@@ -444,6 +507,17 @@ public class DiskCardTestService
             >= 60 => "D",
             _ => "F"
         };
+    }
+
+    private static void ReactivateCardForTesting(DiskCard card)
+    {
+        if (!card.IsArchived)
+        {
+            return;
+        }
+
+        card.IsArchived = false;
+        card.ArchiveReason = null;
     }
 
     private static string BuildIdentityKey(CoreDriveInfo drive)

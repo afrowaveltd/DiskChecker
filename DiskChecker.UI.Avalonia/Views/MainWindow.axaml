@@ -118,13 +118,21 @@
                         </StackPanel>
                     </Button>
                     
-                    <Button Content="⚙️"
-                            Command="{Binding NavigateToSettingsCommand}"
+                    <Button Command="{Binding NavigateToSettingsCommand}"
                             Background="{Binding IsOnSettings, Converter={StaticResource ActiveNavConverter}}"
                             Foreground="{Binding IsOnSettings, Converter={StaticResource ActiveNavTextConverter}}"
-                            Width="36" Height="32" Margin="2"
-                            FontSize="12" Padding="0,0,0,1" Cursor="Hand"
-                            ToolTip.Tip="Nastavení aplikace"/>
+                            BorderBrush="{DynamicResource ThemeBorderBrush}"
+                            BorderThickness="1"
+                            CornerRadius="6"
+                            Padding="8,5"
+                            Height="28"
+                            Margin="2"
+                            VerticalAlignment="Center"
+                            Cursor="Hand"
+                            FontSize="12"
+                            ToolTip.Tip="Nastavení aplikace">
+                        <TextBlock Text="⚙️" FontSize="11" VerticalAlignment="Center"/>
+                    </Button>
                 </StackPanel>
             </Grid>
         </Border>

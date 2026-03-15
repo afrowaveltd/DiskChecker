@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 
 namespace DiskChecker.Core.Models;
 
@@ -119,4 +120,43 @@ public class DiskCard
     /// All certificates generated for this disk
     /// </summary>
     public List<DiskCertificate> Certificates { get; set; } = new();
+
+    /// <summary>
+    /// Display-friendly capacity text.
+    /// </summary>
+    public string CapacityText
+    {
+        get
+        {
+            if (Capacity <= 0)
+            {
+                return "Neznámá";
+            }
+
+            var gb = Capacity / (1024.0 * 1024.0 * 1024.0);
+            return gb >= 1024 ? $"{gb / 1024.0:F2} TB" : $"{gb:F0} GB";
+        }
+    }
+
+    /// <summary>
+    /// Best-effort manufacturer extracted from model name.
+    /// </summary>
+    public string Manufacturer
+    {
+        get
+        {
+            if (string.IsNullOrWhiteSpace(ModelName))
+            {
+                return "Neznámý";
+            }
+
+            var firstToken = ModelName.Split(' ', StringSplitOptions.RemoveEmptyEntries).FirstOrDefault();
+            return string.IsNullOrWhiteSpace(firstToken) ? "Neznámý" : firstToken;
+        }
+    }
+
+    /// <summary>
+    /// Last update timestamp for UI compatibility.
+    /// </summary>
+    public DateTime UpdatedAt => LastTestedAt;
 }

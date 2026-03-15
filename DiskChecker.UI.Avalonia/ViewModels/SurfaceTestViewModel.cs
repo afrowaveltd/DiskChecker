@@ -16,6 +16,7 @@ using LiveChartsCore.Defaults;
 using LiveChartsCore.SkiaSharpView;
 using LiveChartsCore.SkiaSharpView.Painting;
 using SkiaSharp;
+using Microsoft.EntityFrameworkCore;
 
 namespace DiskChecker.UI.Avalonia.ViewModels;
 
@@ -265,7 +266,7 @@ public partial class SurfaceTestViewModel : ViewModelBase, INavigableViewModel, 
     public int CurrentTemperature { get => _currentTemperature; set => SetProperty(ref _currentTemperature, value); }
     public int MinTemperature => _minTemperature == int.MaxValue ? 0 : _minTemperature;
     public int MaxTemperature => _maxTemperature;
-    public double DisplayMaxSpeed { get; private set; } = 200; // Starting value, set dynamically during test
+    public double DisplayMaxSpeed { get; private set; } = 50; // Dynamic: max measured speed +10%
     public double DisplayMaxTemperature { get; private set; } = 80; // Fixed at 80°C for consistent graph scale
     public int ErrorCount { get => _errorCount; set => SetProperty(ref _errorCount, value); }
     public string TimeRemaining { get => _timeRemaining; set => SetProperty(ref _timeRemaining, value); }
@@ -710,7 +711,12 @@ public partial class SurfaceTestViewModel : ViewModelBase, INavigableViewModel, 
 
     private void EnsureDisplayMaxSpeed(double observedSpeed)
     {
-        var requiredMax = Math.Max(200, Math.Ceiling(observedSpeed * 1.15 / 10) * 10);
+        if (observedSpeed <= 0)
+        {
+            return;
+        }
+
+        var requiredMax = Math.Max(10, Math.Ceiling(observedSpeed * 1.10));
         if (requiredMax <= DisplayMaxSpeed)
         {
             return;
@@ -798,7 +804,7 @@ public partial class SurfaceTestViewModel : ViewModelBase, INavigableViewModel, 
             // Temperature
             _minTemperature = int.MaxValue;
             _maxTemperature = 0;
-            DisplayMaxSpeed = 200;
+            DisplayMaxSpeed = 50;
             DisplayMaxTemperature = 80;
 
             if (SpeedYAxes.Length > 0)
@@ -936,11 +942,21 @@ public partial class SurfaceTestViewModel : ViewModelBase, INavigableViewModel, 
                 if (cancellationToken.IsCancellationRequested)
                     return;
                 
-                StatusMessage = p.Phase;
-                
                 // Detect phase from status message
                 var isReadPhase = p.Phase.Contains("Čtení") || p.Phase.Contains("ověření") || p.Phase.Contains("Read");
                 var isWritePhase = p.Phase.Contains("Zápis") || p.Phase.Contains("Write");
+
+                if ((isReadPhase || isWritePhase) && p.TotalBytes > 0)
+                {
+                    var phaseLabel = isReadPhase ? "Čtení/Ověření" : "Zápis";
+                    var processedText = FormatDataSize(p.BytesProcessed);
+                    var totalText = FormatDataSize(p.TotalBytes);
+                    StatusMessage = $"{phaseLabel}: {p.ProgressPercent:F1}% ({processedText} / {totalText})";
+                }
+                else
+                {
+                    StatusMessage = p.Phase;
+                }
                 
                 if (isReadPhase && _currentPhase != 1)
                 {
@@ -991,18 +1007,55 @@ public partial class SurfaceTestViewModel : ViewModelBase, INavigableViewModel, 
             var duration = result.Duration;
             
             StatusMessage = $"Dokončeno! Zápis: {result.WriteSpeedMBps:F1} MB/s, Čtení: {result.ReadSpeedMBps:F1} MB/s";
+
+            var usbWarning = GetUsbBottleneckWarning(result);
             
             // Save to disk card
             try
             {
                 var card = await _cardTestService.GetOrCreateCardAsync(SelectedDrive!, cancellationToken);
-                await _cardTestService.SaveSanitizationAsync(card, result, cancellationToken);
+
+                var writeSamples = await Dispatcher.UIThread.InvokeAsync(() =>
+                    WriteSpeedHistory
+                        .Select((p, index) => new SpeedSample
+                        {
+                            Timestamp = p.Timestamp,
+                            SpeedMBps = p.Speed,
+                            ProgressPercent = WriteSpeedHistory.Count > 1 ? index * 100.0 / (WriteSpeedHistory.Count - 1) : 0,
+                            BytesProcessed = 0
+                        })
+                        .ToList());
+
+                var readSamples = await Dispatcher.UIThread.InvokeAsync(() =>
+                    ReadSpeedHistory
+                        .Select((p, index) => new SpeedSample
+                        {
+                            Timestamp = p.Timestamp,
+                            SpeedMBps = p.Speed,
+                            ProgressPercent = ReadSpeedHistory.Count > 1 ? index * 100.0 / (ReadSpeedHistory.Count - 1) : 0,
+                            BytesProcessed = 0
+                        })
+                        .ToList());
+
+                await _cardTestService.SaveSanitizationAsync(card, result, writeSamples, readSamples, cancellationToken);
                 
                 StatusMessage = $"Sanitizace uložena - {card.ModelName}";
             }
+            catch (InvalidOperationException ex)
+            {
+                StatusMessage = $"Sanitizace dokončena, ale uložení karty selhalo: {ex.Message}";
+                await _dialogService.ShowErrorAsync("Uložení karty selhalo", ex.Message);
+            }
+            catch (DbUpdateException ex)
+            {
+                var message = ex.InnerException?.Message ?? ex.Message;
+                StatusMessage = $"Sanitizace dokončena, ale uložení karty selhalo: {message}";
+                await _dialogService.ShowErrorAsync("Uložení karty selhalo", message);
+            }
             catch (Exception ex)
             {
-                System.Diagnostics.Debug.WriteLine($"Failed to save sanitization to disk card: {ex.Message}");
+                StatusMessage = $"Sanitizace dokončena, ale uložení karty selhalo: {ex.Message}";
+                await _dialogService.ShowErrorAsync("Uložení karty selhalo", ex.Message);
             }
             
             await _dialogService.ShowSuccessAsync("Sanitizace dokončena", 
@@ -1016,8 +1069,9 @@ public partial class SurfaceTestViewModel : ViewModelBase, INavigableViewModel, 
                 $"   Rychlost: {result.WriteSpeedMBps:F1} MB/s\n\n" +
                 $"📖 ČTENÍ/OVĚŘENÍ:\n" +
                 $"   Rychlost: {result.ReadSpeedMBps:F1} MB/s\n\n" +
-                $"✅ Stav: {(result.ErrorsDetected == 0 ? "Bez chyb" : $"{result.ErrorsDetected} chyb")}\n" +
-                $"📁 Karta disku vytvořena/aktualizována");
+                $"✅ Stav: {(result.ErrorsDetected == 0 ? "Bez chyb" : $"{result.ErrorsDetected} chyb")}" +
+                (string.IsNullOrWhiteSpace(usbWarning) ? string.Empty : $"\n\n⚠ {usbWarning}") +
+                $"\n📁 Karta disku vytvořena/aktualizována");
         }
         else
         {
@@ -1229,6 +1283,62 @@ public partial class SurfaceTestViewModel : ViewModelBase, INavigableViewModel, 
                 $"Chyba: {ex.Message}\n\n" +
                 $"Typ: {ex.GetType().Name}");
         }
+    }
+
+    private static string FormatDataSize(long bytes)
+    {
+        if (bytes <= 0)
+        {
+            return "0 MB";
+        }
+
+        const double mb = 1024d * 1024d;
+        const double gb = mb * 1024d;
+        const double tb = gb * 1024d;
+
+        if (bytes >= tb)
+        {
+            return $"{bytes / tb:F2} TB";
+        }
+
+        if (bytes >= gb)
+        {
+            return $"{bytes / gb:F2} GB";
+        }
+
+        return $"{bytes / mb:F0} MB";
+    }
+
+    private string? GetUsbBottleneckWarning(SanitizationResult result)
+    {
+        if (SelectedDrive == null)
+        {
+            return null;
+        }
+
+        var isUsb = SelectedDrive.BusType == CoreBusType.Usb ||
+                    SelectedDrive.IsRemovable ||
+                    SelectedDrive.Interface.Contains("USB", StringComparison.OrdinalIgnoreCase) ||
+                    SelectedDrive.Path.Contains("USB", StringComparison.OrdinalIgnoreCase);
+
+        if (!isUsb)
+        {
+            return null;
+        }
+
+        var avgSpeed = (result.WriteSpeedMBps + result.ReadSpeedMBps) / 2d;
+
+        if (avgSpeed < 55)
+        {
+            return $"Detekováno pravděpodobné omezení rychlosti USB 2.0 ({avgSpeed:F1} MB/s). Zkuste USB 3.x port (modrý), kratší kvalitní kabel a přímé připojení bez hubu.";
+        }
+
+        if (avgSpeed < 120)
+        {
+            return $"Detekováno možné omezení přenosu přes USB ({avgSpeed:F1} MB/s). Zkuste jiný port/kabel a přímé připojení bez hubu.";
+        }
+
+        return null;
     }
 
     [RelayCommand]

@@ -317,6 +317,7 @@ online disk";
         var stopwatch = Stopwatch.StartNew();
         var buffer = new byte[BUFFER_SIZE];
         long bytesWritten = 0;
+        double smoothedSpeed = 0;
 
         SafeFileHandle? handle = null;
 
@@ -340,7 +341,9 @@ online disk";
                 cancellationToken.ThrowIfCancellationRequested();
 
                 var bytesToWrite = (int)Math.Min(BUFFER_SIZE, diskSize - bytesWritten);
+                var chunkStopwatch = Stopwatch.StartNew();
                 var bytesWrittenThisChunk = await WriteFileAsync(handle, buffer, bytesToWrite, cancellationToken);
+                chunkStopwatch.Stop();
                 
                 if (bytesWrittenThisChunk != bytesToWrite)
                 {
@@ -354,10 +357,16 @@ online disk";
 
                 bytesWritten += bytesWrittenThisChunk;
 
+                var chunkSeconds = chunkStopwatch.Elapsed.TotalSeconds;
+                var instantSpeed = chunkSeconds > 0
+                    ? bytesWrittenThisChunk / (1024.0 * 1024.0) / chunkSeconds
+                    : 0;
+                smoothedSpeed = smoothedSpeed <= 0 ? instantSpeed : (smoothedSpeed * 0.7) + (instantSpeed * 0.3);
+
                 var elapsed = stopwatch.Elapsed.TotalSeconds;
-                var speed = elapsed > 0 ? bytesWritten / (1024.0 * 1024.0) / elapsed : 0;
+                var averageSpeed = elapsed > 0 ? bytesWritten / (1024.0 * 1024.0) / elapsed : 0;
                 var remaining = diskSize - bytesWritten;
-                var eta = speed > 0 ? TimeSpan.FromSeconds(remaining / (1024.0 * 1024.0) / speed) : (TimeSpan?)null;
+                var eta = averageSpeed > 0 ? TimeSpan.FromSeconds(remaining / (1024.0 * 1024.0) / averageSpeed) : (TimeSpan?)null;
 
                 progress?.Report(new SanitizationProgress
                 {
@@ -365,7 +374,7 @@ online disk";
                     ProgressPercent = (double)bytesWritten / diskSize * 100,
                     BytesProcessed = bytesWritten,
                     TotalBytes = diskSize,
-                    CurrentSpeedMBps = speed,
+                    CurrentSpeedMBps = smoothedSpeed,
                     Errors = result.Errors,
                     EstimatedTimeRemaining = eta
                 });
@@ -400,6 +409,7 @@ online disk";
         var stopwatch = Stopwatch.StartNew();
         var buffer = new byte[BUFFER_SIZE];
         long bytesRead = 0;
+        double smoothedSpeed = 0;
 
         SafeFileHandle? handle = null;
 
@@ -422,7 +432,9 @@ online disk";
                 cancellationToken.ThrowIfCancellationRequested();
 
                 var bytesToRead = (int)Math.Min(BUFFER_SIZE, diskSize - bytesRead);
+                var chunkStopwatch = Stopwatch.StartNew();
                 var bytesReadThisChunk = await ReadFileAsync(handle, buffer, bytesToRead, cancellationToken);
+                chunkStopwatch.Stop();
 
                 if (bytesReadThisChunk != bytesToRead)
                 {
@@ -445,10 +457,16 @@ online disk";
 
                 bytesRead += bytesReadThisChunk;
 
+                var chunkSeconds = chunkStopwatch.Elapsed.TotalSeconds;
+                var instantSpeed = chunkSeconds > 0
+                    ? bytesReadThisChunk / (1024.0 * 1024.0) / chunkSeconds
+                    : 0;
+                smoothedSpeed = smoothedSpeed <= 0 ? instantSpeed : (smoothedSpeed * 0.7) + (instantSpeed * 0.3);
+
                 var elapsed = stopwatch.Elapsed.TotalSeconds;
-                var speed = elapsed > 0 ? bytesRead / (1024.0 * 1024.0) / elapsed : 0;
+                var averageSpeed = elapsed > 0 ? bytesRead / (1024.0 * 1024.0) / elapsed : 0;
                 var remaining = diskSize - bytesRead;
-                var eta = speed > 0 ? TimeSpan.FromSeconds(remaining / (1024.0 * 1024.0) / speed) : (TimeSpan?)null;
+                var eta = averageSpeed > 0 ? TimeSpan.FromSeconds(remaining / (1024.0 * 1024.0) / averageSpeed) : (TimeSpan?)null;
 
                 progress?.Report(new SanitizationProgress
                 {
@@ -456,7 +474,7 @@ online disk";
                     ProgressPercent = (double)bytesRead / diskSize * 100,
                     BytesProcessed = bytesRead,
                     TotalBytes = diskSize,
-                    CurrentSpeedMBps = speed,
+                    CurrentSpeedMBps = smoothedSpeed,
                     Errors = result.Errors,
                     EstimatedTimeRemaining = eta
                 });
