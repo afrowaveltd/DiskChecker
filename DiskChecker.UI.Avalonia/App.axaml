@@ -27,5 +27,10 @@
         <converters:ActiveNavConverter x:Key="ActiveNavConverter"/>
         <converters:ActiveNavTextConverter x:Key="ActiveNavTextConverter"/>
         <converters:GradeToColorConverter x:Key="GradeToColorConverter"/>
+        <converters:ProfileBackgroundConverter x:Key="ProfileBackgroundConverter"/>
+        <converters:ProfileBorderConverter x:Key="ProfileBorderConverter"/>
+        <converters:BooleanToClassesConverter x:Key="BooleanToClassesConverter"/>
+        <converters:FileSystemToBrushConverter x:Key="FileSystemToBrushConverter"/>
+        <converters:FileSystemToForegroundBrushConverter x:Key="FileSystemToForegroundBrushConverter"/>
     </Application.Resources>
 </Application>

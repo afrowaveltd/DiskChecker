@@ -24,6 +24,11 @@ public interface IDiskCardRepository
     Task DeleteAsync(int id);
     Task ArchiveAsync(int id, ArchiveReason reason, string? notes = null);
     Task RestoreAsync(int id);
+
+    /// <summary>
+    /// Sloučí duplicitní karty disku a převede navázaná data na primární kartu.
+    /// </summary>
+    Task<int> MergeDuplicateCardsAsync();
     
     // ========== Test Sessions ==========
     

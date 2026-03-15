@@ -2,35 +2,25 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:vm="using:DiskChecker.UI.Avalonia.ViewModels"
              xmlns:converters="using:DiskChecker.UI.Avalonia.Converters"
+             xmlns:lvc="clr-namespace:LiveChartsCore.SkiaSharpView.Avalonia;assembly=LiveChartsCore.SkiaSharpView.Avalonia"
              x:Class="DiskChecker.UI.Avalonia.Views.SurfaceTestView"
              Background="{DynamicResource ThemeBackgroundBrush}">
     <Grid>
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto"/>
-            <RowDefinition Height="2*"/>
-            <RowDefinition Height="6*"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
             <RowDefinition Height="Auto"/>
         </Grid.RowDefinitions>
 
         <!-- ========== HEADER ========== -->
         <Border Grid.Row="0" 
-                Background="{DynamicResource ThemeSecondaryBackgroundBrush}" 
-                Padding="20,16" Height="80"
-                BorderBrush="{DynamicResource ThemeBorderBrush}"
-                BorderThickness="0,0,0,1">
+                Classes="PageHeader">
             <Grid ColumnDefinitions="*,Auto">
-                <StackPanel Margin="0,-4">
-                    <TextBlock Text="🧪 Test Povrchu Disku" 
-                               FontSize="26" FontWeight="Bold" 
-                               Foreground="{DynamicResource ThemeTextPrimaryBrush}"
-                               Margin="0,0,0,4"/>
-                    <TextBlock Text="Kompletní zápis a ověření celého povrchu disku" 
-                               FontSize="12"
-                               Foreground="{DynamicResource ThemeTextSecondaryBrush}"/>
-                    <TextBlock Text="{Binding StatusMessage}" 
-                               FontSize="10"
-                               Foreground="{DynamicResource ThemeTextMutedBrush}"
-                               Margin="0,2,0,0"/>
+                <StackPanel>
+                    <TextBlock Text="🧪 Test Povrchu Disku" Classes="PageTitle"/>
+                    <TextBlock Text="Kompletní zápis a ověření celého povrchu disku" Classes="PageSubtitle"/>
+                    <TextBlock Text="{Binding StatusMessage}" Classes="PageMetaText" Margin="0,2,0,0"/>
                 </StackPanel>
                 <Button Grid.Column="1"
                         Content="← Zpět na přehled"
@@ -40,13 +30,13 @@
                         BorderBrush="{DynamicResource ThemeBorderBrush}"
                         VerticalAlignment="Center"
                         CornerRadius="6"
-                        Padding="14,8"
+                        Padding="12,6"
                         FontWeight="SemiBold"/>
             </Grid>
         </Border>
 
         <!-- ========== DISK SELECTION ========== -->
-        <Border Grid.Row="1" Padding="16,8">
+        <Border Grid.Row="1" Padding="16,6">
             <Grid ColumnDefinitions="*,Auto,Auto">
                 <!-- Disk Selection Card -->
                 <Border Background="{DynamicResource ThemeCardBackgroundBrush}" 
@@ -79,15 +69,17 @@
 
                 <!-- Temperature & Lock Status -->
                 <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="12" Margin="12,0">
-                    <Border Background="#FFF8E1" CornerRadius="6" Padding="10,6">
+                    <Border Background="{DynamicResource ThemeWarningBackgroundBrush}" CornerRadius="6" Padding="10,4">
                         <StackPanel Orientation="Horizontal" Spacing="4">
                             <TextBlock Text="🌡" FontSize="14"/>
-                            <TextBlock Text="{Binding CurrentTemperature, StringFormat='{}{0}°C'}" FontSize="14" FontWeight="Bold" Foreground="#D32F2F"/>
+                            <TextBlock Text="{Binding CurrentTemperature, StringFormat='{}{0}°C'}" FontSize="13" FontWeight="Bold" Foreground="{DynamicResource ThemeWarningTextBrush}"/>
                         </StackPanel>
                     </Border>
-                    <Border Background="#FFEBEE" CornerRadius="6" Padding="10,6"
+                    <Border Background="{DynamicResource ThemeWarningBackgroundBrush}" CornerRadius="6" Padding="10,4"
+                           BorderBrush="{DynamicResource ThemeWarningBorderBrush}"
+                           BorderThickness="1"
                            IsVisible="{Binding IsLocked}">
-                        <TextBlock Text="{Binding LockWarningText}" FontSize="11" FontWeight="Bold" Foreground="#C62828"/>
+                        <TextBlock Text="{Binding LockWarningText}" FontSize="11" FontWeight="Bold" Foreground="{DynamicResource ThemeWarningTextBrush}"/>
                     </Border>
                 </StackPanel>
 
@@ -150,53 +142,53 @@
                         <Border Grid.Row="1" Background="{DynamicResource ThemePanelBackgroundBrush}" CornerRadius="6" Padding="8" Margin="0,0,0,8">
                             <Grid RowDefinitions="Auto,4,Auto">
                                 <!-- Write Phase Statistics -->
-                                <Border Grid.Row="0" Background="#1A22C55E" CornerRadius="4" Padding="6,4">
+                                <Border Grid.Row="0" Background="{DynamicResource ThemeChartWriteBackgroundBrush}" CornerRadius="4" Padding="6,4">
                                     <Grid ColumnDefinitions="Auto,*,*,*,*">
                                         <StackPanel Grid.Column="0" Orientation="Horizontal" Margin="0,0,8,0">
-                                            <Ellipse Width="8" Height="8" Fill="#22C55E" Margin="0,0,4,0"/>
-                                            <TextBlock Text="ZÁPIS" FontSize="10" FontWeight="Bold" Foreground="#22C55E" VerticalAlignment="Center"/>
+                                            <Ellipse Width="8" Height="8" Fill="{DynamicResource ThemeChartWriteBrush}" Margin="0,0,4,0"/>
+                                            <TextBlock Text="ZÁPIS" FontSize="10" FontWeight="Bold" Foreground="{DynamicResource ThemeChartWriteBrush}" VerticalAlignment="Center"/>
                                         </StackPanel>
                                         <StackPanel Grid.Column="1" HorizontalAlignment="Center">
                                             <TextBlock Text="Akt" FontSize="8" Foreground="{DynamicResource ThemeTextMutedBrush}" HorizontalAlignment="Center"/>
-                                            <TextBlock Text="{Binding WriteCurrentSpeed, StringFormat='{}{0:F0}'}" FontSize="14" FontWeight="Bold" Foreground="#22C55E" HorizontalAlignment="Center"/>
+                                            <TextBlock Text="{Binding WriteCurrentSpeed, StringFormat='{}{0:F0}'}" FontSize="14" FontWeight="Bold" Foreground="{DynamicResource ThemeChartWriteBrush}" HorizontalAlignment="Center"/>
                                         </StackPanel>
                                         <StackPanel Grid.Column="2" HorizontalAlignment="Center">
                                             <TextBlock Text="Min" FontSize="8" Foreground="{DynamicResource ThemeTextMutedBrush}" HorizontalAlignment="Center"/>
-                                            <TextBlock Text="{Binding WriteMinSpeed, StringFormat='{}{0:F0}'}" FontSize="14" FontWeight="Bold" Foreground="#4ADE80" HorizontalAlignment="Center"/>
+                                            <TextBlock Text="{Binding WriteMinSpeed, StringFormat='{}{0:F0}'}" FontSize="14" FontWeight="Bold" Foreground="{DynamicResource ThemeChartWriteLightBrush}" HorizontalAlignment="Center"/>
                                         </StackPanel>
                                         <StackPanel Grid.Column="3" HorizontalAlignment="Center">
                                             <TextBlock Text="Max" FontSize="8" Foreground="{DynamicResource ThemeTextMutedBrush}" HorizontalAlignment="Center"/>
-                                            <TextBlock Text="{Binding WriteMaxSpeed, StringFormat='{}{0:F0}'}" FontSize="14" FontWeight="Bold" Foreground="#16A34A" HorizontalAlignment="Center"/>
+                                            <TextBlock Text="{Binding WriteMaxSpeed, StringFormat='{}{0:F0}'}" FontSize="14" FontWeight="Bold" Foreground="{DynamicResource ThemeChartWriteDarkBrush}" HorizontalAlignment="Center"/>
                                         </StackPanel>
                                         <StackPanel Grid.Column="4" HorizontalAlignment="Center">
                                             <TextBlock Text="Prům" FontSize="8" Foreground="{DynamicResource ThemeTextMutedBrush}" HorizontalAlignment="Center"/>
-                                            <TextBlock Text="{Binding WriteAvgSpeed, StringFormat='{}{0:F0}'}" FontSize="14" FontWeight="Bold" Foreground="#15803D" HorizontalAlignment="Center"/>
+                                            <TextBlock Text="{Binding WriteAvgSpeed, StringFormat='{}{0:F0}'}" FontSize="14" FontWeight="Bold" Foreground="{DynamicResource ThemeChartWriteDarkBrush}" HorizontalAlignment="Center"/>
                                         </StackPanel>
                                     </Grid>
                                 </Border>
                                 
                                 <!-- Read Phase Statistics -->
-                                <Border Grid.Row="2" Background="#1A3B82F6" CornerRadius="4" Padding="6,4">
+                                <Border Grid.Row="2" Background="{DynamicResource ThemeChartReadBackgroundBrush}" CornerRadius="4" Padding="6,4">
                                     <Grid ColumnDefinitions="Auto,*,*,*,*">
                                         <StackPanel Grid.Column="0" Orientation="Horizontal" Margin="0,0,8,0">
-                                            <Ellipse Width="8" Height="8" Fill="#3B82F6" Margin="0,0,4,0"/>
-                                            <TextBlock Text="ČTENÍ" FontSize="10" FontWeight="Bold" Foreground="#3B82F6" VerticalAlignment="Center"/>
+                                            <Ellipse Width="8" Height="8" Fill="{DynamicResource ThemeChartReadBrush}" Margin="0,0,4,0"/>
+                                            <TextBlock Text="ČTENÍ" FontSize="10" FontWeight="Bold" Foreground="{DynamicResource ThemeChartReadBrush}" VerticalAlignment="Center"/>
                                         </StackPanel>
                                         <StackPanel Grid.Column="1" HorizontalAlignment="Center">
                                             <TextBlock Text="Akt" FontSize="8" Foreground="{DynamicResource ThemeTextMutedBrush}" HorizontalAlignment="Center"/>
-                                            <TextBlock Text="{Binding ReadCurrentSpeed, StringFormat='{}{0:F0}'}" FontSize="14" FontWeight="Bold" Foreground="#3B82F6" HorizontalAlignment="Center"/>
+                                            <TextBlock Text="{Binding ReadCurrentSpeed, StringFormat='{}{0:F0}'}" FontSize="14" FontWeight="Bold" Foreground="{DynamicResource ThemeChartReadBrush}" HorizontalAlignment="Center"/>
                                         </StackPanel>
                                         <StackPanel Grid.Column="2" HorizontalAlignment="Center">
                                             <TextBlock Text="Min" FontSize="8" Foreground="{DynamicResource ThemeTextMutedBrush}" HorizontalAlignment="Center"/>
-                                            <TextBlock Text="{Binding ReadMinSpeed, StringFormat='{}{0:F0}'}" FontSize="14" FontWeight="Bold" Foreground="#60A5FA" HorizontalAlignment="Center"/>
+                                            <TextBlock Text="{Binding ReadMinSpeed, StringFormat='{}{0:F0}'}" FontSize="14" FontWeight="Bold" Foreground="{DynamicResource ThemeChartReadLightBrush}" HorizontalAlignment="Center"/>
                                         </StackPanel>
                                         <StackPanel Grid.Column="3" HorizontalAlignment="Center">
                                             <TextBlock Text="Max" FontSize="8" Foreground="{DynamicResource ThemeTextMutedBrush}" HorizontalAlignment="Center"/>
-                                            <TextBlock Text="{Binding ReadMaxSpeed, StringFormat='{}{0:F0}'}" FontSize="14" FontWeight="Bold" Foreground="#2563EB" HorizontalAlignment="Center"/>
+                                            <TextBlock Text="{Binding ReadMaxSpeed, StringFormat='{}{0:F0}'}" FontSize="14" FontWeight="Bold" Foreground="{DynamicResource ThemeChartReadDarkBrush}" HorizontalAlignment="Center"/>
                                         </StackPanel>
                                         <StackPanel Grid.Column="4" HorizontalAlignment="Center">
                                             <TextBlock Text="Prům" FontSize="8" Foreground="{DynamicResource ThemeTextMutedBrush}" HorizontalAlignment="Center"/>
-                                            <TextBlock Text="{Binding ReadAvgSpeed, StringFormat='{}{0:F0}'}" FontSize="14" FontWeight="Bold" Foreground="#1D4ED8" HorizontalAlignment="Center"/>
+                                            <TextBlock Text="{Binding ReadAvgSpeed, StringFormat='{}{0:F0}'}" FontSize="14" FontWeight="Bold" Foreground="{DynamicResource ThemeChartReadDarkBrush}" HorizontalAlignment="Center"/>
                                         </StackPanel>
                                     </Grid>
                                 </Border>
@@ -208,90 +200,42 @@
                             <Grid RowDefinitions="Auto,Auto,*">
                                 <!-- Legend -->
                                 <StackPanel Grid.Row="0" Orientation="Horizontal" Spacing="12" Margin="0,0,0,8">
-                                    <Border Background="#22C55E" Width="10" Height="10" CornerRadius="2"/>
-                                    <TextBlock Text="Zápis" FontSize="10" Foreground="#94A3B8" VerticalAlignment="Center"/>
-                                    <Border Background="#3B82F6" Width="10" Height="10" CornerRadius="2" Margin="8,0,0,0"/>
-                                    <TextBlock Text="Čtení" FontSize="10" Foreground="#94A3B8" VerticalAlignment="Center" Margin="4,0,0,0"/>
-                                    
-                                    <Border Background="#EF4444" Width="20" Height="2" Margin="12,0,0,0" Opacity="0.7"/>
-                                    <TextBlock Text="Max" FontSize="9" Foreground="#94A3B8" VerticalAlignment="Center" Margin="4,0,0,0"/>
-                                    <Border Background="#22C55E" Width="20" Height="2" Margin="8,0,0,0" Opacity="0.7"/>
-                                    <TextBlock Text="Min" FontSize="9" Foreground="#94A3B8" VerticalAlignment="Center" Margin="4,0,0,0"/>
-                                    <Border Background="#F59E0B" Width="20" Height="2" Margin="8,0,0,0" Opacity="0.7"/>
-                                    <TextBlock Text="Avg" FontSize="9" Foreground="#94A3B8" VerticalAlignment="Center" Margin="4,0,0,0"/>
+                                    <Border Background="{DynamicResource ThemeChartWriteBrush}" Width="10" Height="10" CornerRadius="2"/>
+                                    <TextBlock Text="Zápis" FontSize="10" Foreground="{DynamicResource ThemeTextMutedBrush}" VerticalAlignment="Center"/>
+                                    <Border Background="{DynamicResource ThemeChartReadBrush}" Width="10" Height="10" CornerRadius="2" Margin="8,0,0,0"/>
+                                    <TextBlock Text="Čtení" FontSize="10" Foreground="{DynamicResource ThemeTextMutedBrush}" VerticalAlignment="Center" Margin="4,0,0,0"/>
                                 </StackPanel>
 
                                 <!-- Stats Line -->
-                                <Border Grid.Row="1" Background="#1A1A2E" CornerRadius="4" Padding="8,4" Margin="0,0,0,8">
+                                <Border Grid.Row="1" Background="{DynamicResource ThemePanelBackgroundBrush}" CornerRadius="4" Padding="8,4" Margin="0,0,0,8">
                                     <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" Spacing="24">
                                         <StackPanel Orientation="Horizontal" Spacing="4">
-                                            <TextBlock Text="Y-osa:" FontSize="10" Foreground="#64748B"/>
-                                            <TextBlock Text="{Binding DisplayMaxSpeed, StringFormat='0 - {0:F0} MB/s'}" FontSize="10" Foreground="#94A3B8" FontWeight="SemiBold"/>
+                                            <TextBlock Text="Y-osa:" FontSize="10" Foreground="{DynamicResource ThemeTextMutedBrush}"/>
+                                            <TextBlock Text="{Binding DisplayMaxSpeed, StringFormat='0 - {0:F0} MB/s'}" FontSize="10" Foreground="{DynamicResource ThemeTextSecondaryBrush}" FontWeight="SemiBold"/>
                                         </StackPanel>
                                         <StackPanel Orientation="Horizontal" Spacing="4">
-                                            <TextBlock Text="Bodů:" FontSize="10" Foreground="#64748B"/>
-                                            <TextBlock Text="{Binding SpeedHistory.Count}" FontSize="10" Foreground="#94A3B8" FontWeight="SemiBold"/>
+                                            <TextBlock Text="Bodů:" FontSize="10" Foreground="{DynamicResource ThemeTextMutedBrush}"/>
+                                            <TextBlock Text="{Binding ChartPointCount}" FontSize="10" Foreground="{DynamicResource ThemeTextSecondaryBrush}" FontWeight="SemiBold"/>
                                         </StackPanel>
                                     </StackPanel>
                                 </Border>
 
-                                <!-- Speed Graph with reference lines -->
+                                <!-- Live speed chart -->
                                 <Grid Grid.Row="2">
-                                    <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="Auto"/>
-                                        <ColumnDefinition Width="*"/>
-                                    </Grid.ColumnDefinitions>
-                                    
-                                    <!-- Y-Axis Labels -->
-                                    <StackPanel Grid.Column="0" Orientation="Vertical" Margin="0,0,4,0" Width="28">
-                                        <TextBlock Text="{Binding DisplayMaxSpeed, StringFormat='{}{0:F0}'}" FontSize="7" Foreground="#64748B" TextAlignment="Right"/>
-                                        <TextBlock Text="0" FontSize="7" Foreground="#64748B" TextAlignment="Right" VerticalAlignment="Bottom"/>
-                                    </StackPanel>
-                                    
-                                    <!-- Graph Canvas -->
-                                    <Grid Grid.Column="1">
-                                        <!-- Reference Lines Canvas -->
-                                        <Canvas IsHitTestVisible="False" ZIndex="5">
-                                            <!-- Max speed reference line -->
-                                            <Rectangle Canvas.Top="0" Width="10000" Height="1" Fill="#EF4444" Opacity="0.5"
-                                                       IsVisible="{Binding SpeedHistory.Count, Converter={StaticResource IntToBoolConverter}}"/>
-                                        </Canvas>
-                                        
-                                        <!-- Write Speed Bars -->
-                                        <ItemsControl ItemsSource="{Binding VisibleWriteData}" VerticalAlignment="Stretch" HorizontalAlignment="Stretch">
-                                            <ItemsControl.ItemsPanel>
-                                                <ItemsPanelTemplate>
-                                                    <UniformGrid Rows="1"/>
-                                                </ItemsPanelTemplate>
-                                            </ItemsControl.ItemsPanel>
-                                            <ItemsControl.ItemTemplate>
-                                                <DataTemplate>
-                                                    <Border MinHeight="2" Height="{Binding Height}" Background="#22C55E" CornerRadius="1,1,0,0" Margin="0,0,1,0" VerticalAlignment="Bottom"
-                                                            ToolTip.Tip="{Binding Speed, StringFormat='{}{0:F1} MB/s - Zápis'}"/>
-                                                </DataTemplate>
-                                            </ItemsControl.ItemTemplate>
-                                        </ItemsControl>
-                                        
-                                        <!-- Read Speed Bars -->
-                                        <ItemsControl ItemsSource="{Binding VisibleReadData}" VerticalAlignment="Stretch" HorizontalAlignment="Stretch">
-                                            <ItemsControl.ItemsPanel>
-                                                <ItemsPanelTemplate>
-                                                    <UniformGrid Rows="1"/>
-                                                </ItemsPanelTemplate>
-                                            </ItemsControl.ItemsPanel>
-                                            <ItemsControl.ItemTemplate>
-                                                <DataTemplate>
-                                                    <Border MinHeight="2" Height="{Binding Height}" Background="#3B82F6" CornerRadius="1,1,0,0" Margin="0,0,1,0" VerticalAlignment="Bottom" Opacity="0.7"
-                                                            ToolTip.Tip="{Binding Speed, StringFormat='{}{0:F1} MB/s - Čtení'}"/>
-                                                </DataTemplate>
-                                            </ItemsControl.ItemTemplate>
-                                        </ItemsControl>
-                                        
-                                        <TextBlock Text="📈 Spusťte test pro zobrazení grafu"
-                                                VerticalAlignment="Center" HorizontalAlignment="Center"
-                                                FontSize="12" Foreground="#64748B"
-                                                IsVisible="{Binding SpeedHistory.Count, Converter={StaticResource InvertedIntToBoolConverter}}"/>
-                                    </Grid>
+                                    <lvc:CartesianChart Series="{Binding SpeedSeries}"
+                                                        XAxes="{Binding SpeedXAxes}"
+                                                        YAxes="{Binding SpeedYAxes}"
+                                                        ZoomMode="None"
+                                                        TooltipPosition="Top"
+                                                        LegendPosition="Hidden"
+                                                        AnimationsSpeed="0:0:0"/>
+
+                                    <TextBlock Text="📈 Spusťte test pro zobrazení grafu"
+                                               VerticalAlignment="Center"
+                                               HorizontalAlignment="Center"
+                                               FontSize="12"
+                                               Foreground="{DynamicResource ThemeTextMutedBrush}"
+                                               IsVisible="{Binding ChartPointCount, Converter={StaticResource InvertedIntToBoolConverter}}"/>
                                 </Grid>
                             </Grid>
                         </Border>
@@ -320,18 +264,28 @@
                                                HorizontalContentAlignment="Stretch"
                                                Padding="0"
                                                Cursor="Hand">
-                                            <Border Background="{Binding IsSelected, Converter={StaticResource BooleanToBrushConverter}, ConverterParameter=Selected:#E3F2FD;Normal:#FAFAFA}"
-                                                   BorderBrush="{Binding IsSelected, Converter={StaticResource BooleanToBrushConverter}, ConverterParameter=Selected:{DynamicResource ThemePrimaryBrush};Normal:{DynamicResource ThemeBorderBrush}}"
-                                                   BorderThickness="2"
-                                                   CornerRadius="8"
-                                                   Padding="12"
-                                                   Margin="0,0,0,6">
-                                                <Grid ColumnDefinitions="Auto,*">
-                                                    <TextBlock Grid.Column="0" Text="{Binding Name}" FontSize="11" FontWeight="SemiBold"
+                                            <Border BorderThickness="2" CornerRadius="8" Padding="12" Margin="0,0,0,8">
+                                                <Border.Background>
+                                                    <MultiBinding Converter="{StaticResource ProfileBackgroundConverter}">
+                                                        <Binding Path="IsSelected"/>
+                                                        <Binding Source="{DynamicResource ThemePrimaryLightBrush}"/>
+                                                        <Binding Source="{DynamicResource ThemeCardBackgroundBrush}"/>
+                                                    </MultiBinding>
+                                                </Border.Background>
+                                                <Border.BorderBrush>
+                                                    <MultiBinding Converter="{StaticResource ProfileBorderConverter}">
+                                                        <Binding Path="IsSelected"/>
+                                                        <Binding Source="{DynamicResource ThemePrimaryBrush}"/>
+                                                        <Binding Source="{DynamicResource ThemeBorderBrush}"/>
+                                                    </MultiBinding>
+                                                </Border.BorderBrush>
+                                                <StackPanel Spacing="4">
+                                                    <TextBlock Text="{Binding Name}" FontSize="12" FontWeight="SemiBold"
                                                              Foreground="{DynamicResource ThemeTextPrimaryBrush}"/>
-                                                    <TextBlock Grid.Column="1" Text="{Binding Description}" FontSize="9"
-                                                             Foreground="{DynamicResource ThemeTextMutedBrush}"/>
-                                                </Grid>
+                                                    <TextBlock Text="{Binding Description}" FontSize="10" TextWrapping="Wrap"
+                                                             Foreground="{DynamicResource ThemeTextSecondaryBrush}"
+                                                             MaxLines="2"/>
+                                                </StackPanel>
                                             </Border>
                                         </Button>
                                     </DataTemplate>
@@ -350,45 +304,45 @@
                                           Foreground="{DynamicResource ThemeTextPrimaryBrush}"/>
                                 
                                 <!-- Write Phase Stats -->
-                                <Border Background="#1A22C55E" CornerRadius="4" Padding="6,4">
+                                <Border Background="{DynamicResource ThemeChartWriteBackgroundBrush}" CornerRadius="4" Padding="6,4">
                                     <StackPanel Spacing="2">
                                         <StackPanel Orientation="Horizontal" Margin="0,0,0,2">
-                                            <Ellipse Width="6" Height="6" Fill="#22C55E" Margin="0,0,4,0"/>
-                                            <TextBlock Text="Zápis" FontSize="9" FontWeight="Bold" Foreground="#22C55E"/>
+                                            <Ellipse Width="6" Height="6" Fill="{DynamicResource ThemeChartWriteBrush}" Margin="0,0,4,0"/>
+                                            <TextBlock Text="Zápis" FontSize="9" FontWeight="Bold" Foreground="{DynamicResource ThemeChartWriteBrush}"/>
                                         </StackPanel>
                                         <Grid ColumnDefinitions="*,Auto" Margin="0,1">
                                             <TextBlock Text="Min:" FontSize="9" Foreground="{DynamicResource ThemeTextSecondaryBrush}"/>
-                                            <TextBlock Grid.Column="1" Text="{Binding WriteMinSpeed, StringFormat='{}{0:F0} MB/s'}" FontSize="9" FontWeight="Bold" Foreground="#22C55E"/>
+                                            <TextBlock Grid.Column="1" Text="{Binding WriteMinSpeed, StringFormat='{}{0:F0} MB/s'}" FontSize="9" FontWeight="Bold" Foreground="{DynamicResource ThemeChartWriteBrush}"/>
                                         </Grid>
                                         <Grid ColumnDefinitions="*,Auto" Margin="0,1">
                                             <TextBlock Text="Max:" FontSize="9" Foreground="{DynamicResource ThemeTextSecondaryBrush}"/>
-                                            <TextBlock Grid.Column="1" Text="{Binding WriteMaxSpeed, StringFormat='{}{0:F0} MB/s'}" FontSize="9" FontWeight="Bold" Foreground="#16A34A"/>
+                                            <TextBlock Grid.Column="1" Text="{Binding WriteMaxSpeed, StringFormat='{}{0:F0} MB/s'}" FontSize="9" FontWeight="Bold" Foreground="{DynamicResource ThemeChartWriteDarkBrush}"/>
                                         </Grid>
                                         <Grid ColumnDefinitions="*,Auto" Margin="0,1">
                                             <TextBlock Text="Průměr:" FontSize="9" Foreground="{DynamicResource ThemeTextSecondaryBrush}"/>
-                                            <TextBlock Grid.Column="1" Text="{Binding WriteAvgSpeed, StringFormat='{}{0:F0} MB/s'}" FontSize="9" FontWeight="Bold" Foreground="#15803D"/>
+                                            <TextBlock Grid.Column="1" Text="{Binding WriteAvgSpeed, StringFormat='{}{0:F0} MB/s'}" FontSize="9" FontWeight="Bold" Foreground="{DynamicResource ThemeChartWriteDarkBrush}"/>
                                         </Grid>
                                     </StackPanel>
                                 </Border>
                                 
                                 <!-- Read Phase Stats -->
-                                <Border Background="#1A3B82F6" CornerRadius="4" Padding="6,4">
+                                <Border Background="{DynamicResource ThemeChartReadBackgroundBrush}" CornerRadius="4" Padding="6,4">
                                     <StackPanel Spacing="2">
                                         <StackPanel Orientation="Horizontal" Margin="0,0,0,2">
-                                            <Ellipse Width="6" Height="6" Fill="#3B82F6" Margin="0,0,4,0"/>
-                                            <TextBlock Text="Čtení" FontSize="9" FontWeight="Bold" Foreground="#3B82F6"/>
+                                            <Ellipse Width="6" Height="6" Fill="{DynamicResource ThemeChartReadBrush}" Margin="0,0,4,0"/>
+                                            <TextBlock Text="Čtení" FontSize="9" FontWeight="Bold" Foreground="{DynamicResource ThemeChartReadBrush}"/>
                                         </StackPanel>
                                         <Grid ColumnDefinitions="*,Auto" Margin="0,1">
                                             <TextBlock Text="Min:" FontSize="9" Foreground="{DynamicResource ThemeTextSecondaryBrush}"/>
-                                            <TextBlock Grid.Column="1" Text="{Binding ReadMinSpeed, StringFormat='{}{0:F0} MB/s'}" FontSize="9" FontWeight="Bold" Foreground="#3B82F6"/>
+                                            <TextBlock Grid.Column="1" Text="{Binding ReadMinSpeed, StringFormat='{}{0:F0} MB/s'}" FontSize="9" FontWeight="Bold" Foreground="{DynamicResource ThemeChartReadBrush}"/>
                                         </Grid>
                                         <Grid ColumnDefinitions="*,Auto" Margin="0,1">
                                             <TextBlock Text="Max:" FontSize="9" Foreground="{DynamicResource ThemeTextSecondaryBrush}"/>
-                                            <TextBlock Grid.Column="1" Text="{Binding ReadMaxSpeed, StringFormat='{}{0:F0} MB/s'}" FontSize="9" FontWeight="Bold" Foreground="#2563EB"/>
+                                            <TextBlock Grid.Column="1" Text="{Binding ReadMaxSpeed, StringFormat='{}{0:F0} MB/s'}" FontSize="9" FontWeight="Bold" Foreground="{DynamicResource ThemeChartReadDarkBrush}"/>
                                         </Grid>
                                         <Grid ColumnDefinitions="*,Auto" Margin="0,1">
                                             <TextBlock Text="Průměr:" FontSize="9" Foreground="{DynamicResource ThemeTextSecondaryBrush}"/>
-                                            <TextBlock Grid.Column="1" Text="{Binding ReadAvgSpeed, StringFormat='{}{0:F0} MB/s'}" FontSize="9" FontWeight="Bold" Foreground="#1D4ED8"/>
+                                            <TextBlock Grid.Column="1" Text="{Binding ReadAvgSpeed, StringFormat='{}{0:F0} MB/s'}" FontSize="9" FontWeight="Bold" Foreground="{DynamicResource ThemeChartReadDarkBrush}"/>
                                         </Grid>
                                     </StackPanel>
                                 </Border>
@@ -416,7 +370,7 @@
                                    FontSize="12"
                                    HorizontalAlignment="Stretch"
                                    CornerRadius="8"
-                                   Padding="14,12">
+                                   Padding="12,8">
                                 <Button.Styles>
                                     <Style Selector="Button:pointerover">
                                         <Setter Property="Opacity" Value="0.9"/>
@@ -432,7 +386,7 @@
                                    FontSize="12"
                                    HorizontalAlignment="Stretch"
                                    CornerRadius="8"
-                                   Padding="14,12">
+                                   Padding="12,8">
                                 <Button.Styles>
                                     <Style Selector="Button:pointerover">
                                         <Setter Property="Opacity" Value="0.9"/>
@@ -446,15 +400,9 @@
         </Border>
 
         <!-- ========== STATUS BAR ========== -->
-        <Border Grid.Row="3" 
-                Background="{DynamicResource ThemePanelBackgroundBrush}"
-                BorderBrush="{DynamicResource ThemeBorderBrush}"
-                BorderThickness="0,1,0,0"
-                Height="28">
+        <Border Grid.Row="3" Classes="StatusBar">
             <TextBlock Text="{Binding StatusMessage}" 
-                      Foreground="{DynamicResource ThemeTextSecondaryBrush}"
-                      FontSize="10"
-                      VerticalAlignment="Center"
+                      Classes="StatusText"
                       Margin="16,0"/>
         </Border>
     </Grid>

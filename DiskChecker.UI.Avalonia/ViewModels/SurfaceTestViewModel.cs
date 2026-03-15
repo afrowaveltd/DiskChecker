@@ -11,11 +11,18 @@ using DiskChecker.Core.Interfaces;
 using DiskChecker.Core.Models;
 using DiskChecker.Infrastructure.Hardware.Sanitization;
 using DiskChecker.UI.Avalonia.Services.Interfaces;
+using LiveChartsCore;
+using LiveChartsCore.Defaults;
+using LiveChartsCore.SkiaSharpView;
+using LiveChartsCore.SkiaSharpView.Painting;
+using SkiaSharp;
 
 namespace DiskChecker.UI.Avalonia.ViewModels;
 
 public partial class SurfaceTestViewModel : ViewModelBase, INavigableViewModel, IDisposable
 {
+    private const int MaxGraphPoints = 240;
+
     private readonly INavigationService _navigationService;
     private readonly ISelectedDiskService _selectedDiskService;
     private readonly IDialogService _dialogService;
@@ -31,20 +38,25 @@ public partial class SurfaceTestViewModel : ViewModelBase, INavigableViewModel, 
     private double _currentSpeed;
     private double _minSpeed = double.MaxValue;
     private double _maxSpeed;
-    private bool _firstNonZeroSpeedRecorded;
     private double _avgSpeed;
+    private double _combinedSpeedSum;
+    private int _combinedSpeedSamples;
     
     // Write phase statistics
     private double _writeCurrentSpeed;
     private double _writeMinSpeed = double.MaxValue;
     private double _writeMaxSpeed;
     private double _writeAvgSpeed;
+    private double _writeSpeedSum;
+    private int _writeSpeedSamples;
     
     // Read phase statistics  
     private double _readCurrentSpeed;
     private double _readMinSpeed = double.MaxValue;
     private double _readMaxSpeed;
     private double _readAvgSpeed;
+    private double _readSpeedSum;
+    private int _readSpeedSamples;
     private int _currentTemperature = 35;
     private int _minTemperature = int.MaxValue;
     private int _maxTemperature;
@@ -61,6 +73,12 @@ public partial class SurfaceTestViewModel : ViewModelBase, INavigableViewModel, 
     private int _selectedZoomIndex = 1; // Default 5 min
     private int _currentPhase; // 0 = Write, 1 = Read (default is 0)
     private CancellationTokenSource? _testCancellation;
+    private double _writeBucketStart = -1;
+    private double _writeBucketSum;
+    private int _writeBucketCount;
+    private double _readBucketStart = -1;
+    private double _readBucketSum;
+    private int _readBucketCount;
 
     public SurfaceTestViewModel(
         INavigationService navigationService,
@@ -85,6 +103,58 @@ public partial class SurfaceTestViewModel : ViewModelBase, INavigableViewModel, 
         ReadSpeedHistory = new ObservableCollection<SurfaceTestDataPoint>();
         TemperatureHistory = new ObservableCollection<TemperatureDataPoint>();
         ZoomLevels = new ObservableCollection<GraphZoomLevel>(GraphZoomLevel.DefaultZoomLevels);
+        WriteSeriesValues = new ObservableCollection<ObservablePoint>();
+        ReadSeriesValues = new ObservableCollection<ObservablePoint>();
+
+        SpeedSeries =
+        [
+            new LineSeries<ObservablePoint>
+            {
+                Name = "Zápis",
+                Values = WriteSeriesValues,
+                Fill = null,
+                GeometrySize = 0,
+                Stroke = new SolidColorPaint(new SKColor(34, 197, 94), 2),
+                LineSmoothness = 0,
+                AnimationsSpeed = TimeSpan.Zero
+            },
+            new LineSeries<ObservablePoint>
+            {
+                Name = "Čtení",
+                Values = ReadSeriesValues,
+                Fill = null,
+                GeometrySize = 0,
+                Stroke = new SolidColorPaint(new SKColor(59, 130, 246), 2),
+                LineSmoothness = 0,
+                AnimationsSpeed = TimeSpan.Zero
+            }
+        ];
+
+        SpeedXAxes =
+        [
+            new Axis
+            {
+                Name = "čas (s)",
+                MinLimit = 0,
+                LabelsPaint = new SolidColorPaint(new SKColor(148, 163, 184)),
+                TextSize = 10,
+                Labeler = value => $"{value:F0}s"
+            }
+        ];
+
+        SpeedYAxes =
+        [
+            new Axis
+            {
+                Name = "MB/s",
+                MinLimit = 0,
+                MaxLimit = DisplayMaxSpeed,
+                LabelsPaint = new SolidColorPaint(new SKColor(148, 163, 184)),
+                SeparatorsPaint = new SolidColorPaint(new SKColor(100, 116, 139, 45)),
+                TextSize = 10,
+                Labeler = value => $"{value:F0}"
+            }
+        ];
         
         TestProfiles = new ObservableCollection<TestProfileItem>
         {
@@ -103,6 +173,12 @@ public partial class SurfaceTestViewModel : ViewModelBase, INavigableViewModel, 
     public ObservableCollection<SurfaceTestDataPoint> ReadSpeedHistory { get; }
     public ObservableCollection<TemperatureDataPoint> TemperatureHistory { get; }
     public ObservableCollection<GraphZoomLevel> ZoomLevels { get; }
+    public ObservableCollection<ObservablePoint> WriteSeriesValues { get; }
+    public ObservableCollection<ObservablePoint> ReadSeriesValues { get; }
+    public ISeries[] SpeedSeries { get; }
+    public Axis[] SpeedXAxes { get; }
+    public Axis[] SpeedYAxes { get; }
+    public int ChartPointCount => WriteSeriesValues.Count + ReadSeriesValues.Count;
     
     // Filtered collections for zoom display
     public IEnumerable<SurfaceTestDataPoint> VisibleWriteData => GetVisibleData(WriteSpeedHistory);
@@ -203,7 +279,7 @@ public partial class SurfaceTestViewModel : ViewModelBase, INavigableViewModel, 
             if (SetProperty(ref _selectedZoomIndex, value))
             {
                 OnPropertyChanged(nameof(SelectedZoomDuration));
-                UpdateGraphHeights();
+                UpdateXAxisLimits((DateTime.UtcNow - _testStartTime).TotalSeconds);
             }
         }
     }
@@ -213,7 +289,16 @@ public partial class SurfaceTestViewModel : ViewModelBase, INavigableViewModel, 
     public int CurrentPhase
     {
         get => _currentPhase;
-        set => SetProperty(ref _currentPhase, value);
+        set
+        {
+            if (_currentPhase == value)
+            {
+                return;
+            }
+
+            FlushPhaseBucket(_currentPhase);
+            SetProperty(ref _currentPhase, value);
+        }
     }
     public string StatusMessage { get => _statusMessage; set => SetProperty(ref _statusMessage, value); }
     public bool IsLoadingDrives
@@ -406,6 +491,7 @@ public partial class SurfaceTestViewModel : ViewModelBase, INavigableViewModel, 
         {
             var elapsed = DateTime.UtcNow - _testStartTime;
             var now = DateTime.UtcNow;
+            var elapsedSeconds = elapsed.TotalSeconds;
             
             // Add to legacy collection for compatibility
             SpeedHistory.Add(new SpeedDataPoint { Time = SpeedHistory.Count, Speed = speed });
@@ -417,222 +503,256 @@ public partial class SurfaceTestViewModel : ViewModelBase, INavigableViewModel, 
             
             if (_currentPhase == 0)
             {
-                WriteSpeedHistory.Add(dataPoint);
-                while (WriteSpeedHistory.Count > 300)
-                    WriteSpeedHistory.RemoveAt(0);
+                AppendCapped(WriteSpeedHistory, dataPoint);
+                AppendDownsampledPoint(
+                    WriteSeriesValues,
+                    elapsedSeconds,
+                    speed,
+                    ref _writeBucketStart,
+                    ref _writeBucketSum,
+                    ref _writeBucketCount);
             }
             else
             {
-                ReadSpeedHistory.Add(dataPoint);
-                while (ReadSpeedHistory.Count > 300)
-                    ReadSpeedHistory.RemoveAt(0);
+                AppendCapped(ReadSpeedHistory, dataPoint);
+                AppendDownsampledPoint(
+                    ReadSeriesValues,
+                    elapsedSeconds,
+                    speed,
+                    ref _readBucketStart,
+                    ref _readBucketSum,
+                    ref _readBucketCount);
             }
             
             // Add temperature point
             if (CurrentTemperature > 0)
             {
-                TemperatureHistory.Add(new TemperatureDataPoint(now, elapsed, CurrentTemperature));
-                while (TemperatureHistory.Count > 300)
-                    TemperatureHistory.RemoveAt(0);
+                AppendCapped(TemperatureHistory, new TemperatureDataPoint(now, elapsed, CurrentTemperature));
             }
-            
-            // Update statistics
-            UpdateStatistics();
-            
-            // Recalculate heights for display
-            UpdateGraphHeights();
+
+            UpdateStatisticsIncremental(speed);
+            UpdateXAxisLimits(elapsedSeconds);
+            OnPropertyChanged(nameof(ChartPointCount));
         });
     }
-    
-    private void UpdateStatistics()
+
+    private static void AppendCapped<T>(ObservableCollection<T> collection, T item)
     {
-        // Calculate separate statistics for Write and Read phases
-        // Also maintain combined statistics for backward compatibility
-        
-        // ===== WRITE PHASE STATISTICS =====
-        if (WriteSpeedHistory.Count > 0)
+        collection.Add(item);
+        while (collection.Count > MaxGraphPoints)
         {
-            var writeSpeeds = WriteSpeedHistory
-                .Select(p => p.Speed)
-                .Where(s => s > 1.0)  // Filter artifacts < 1 MB/s
-                .ToList();
-            
-            if (writeSpeeds.Count > 0)
+            collection.RemoveAt(0);
+        }
+    }
+
+    private void AppendDownsampledPoint(
+        ObservableCollection<ObservablePoint> target,
+        double elapsedSeconds,
+        double speed,
+        ref double bucketStart,
+        ref double bucketSum,
+        ref int bucketCount)
+    {
+        var bucketWindowSeconds = GetBucketWindowSeconds();
+
+        if (bucketStart < 0)
+        {
+            bucketStart = elapsedSeconds;
+        }
+
+        bucketSum += speed;
+        bucketCount++;
+
+        if ((elapsedSeconds - bucketStart) < bucketWindowSeconds)
+        {
+            return;
+        }
+
+        var averageSpeed = bucketSum / bucketCount;
+        var x = bucketStart + (bucketWindowSeconds / 2);
+        AppendCapped(target, new ObservablePoint(x, averageSpeed));
+
+        bucketStart = elapsedSeconds;
+        bucketSum = 0;
+        bucketCount = 0;
+    }
+
+    private double GetBucketWindowSeconds()
+    {
+        var zoomDuration = SelectedZoomDuration;
+
+        if (zoomDuration == TimeSpan.MaxValue)
+        {
+            return 1.0;
+        }
+
+        var zoomSeconds = zoomDuration.TotalSeconds;
+        return Math.Max(0.25, zoomSeconds / MaxGraphPoints);
+    }
+
+    private void FlushPhaseBucket(int phase)
+    {
+        if (phase == 0)
+        {
+            FlushBucket(WriteSeriesValues, ref _writeBucketStart, ref _writeBucketSum, ref _writeBucketCount);
+            return;
+        }
+
+        FlushBucket(ReadSeriesValues, ref _readBucketStart, ref _readBucketSum, ref _readBucketCount);
+    }
+
+    private static void FlushBucket(
+        ObservableCollection<ObservablePoint> target,
+        ref double bucketStart,
+        ref double bucketSum,
+        ref int bucketCount)
+    {
+        if (bucketCount <= 0)
+        {
+            return;
+        }
+
+        var averageSpeed = bucketSum / bucketCount;
+        target.Add(new ObservablePoint(bucketStart, averageSpeed));
+        while (target.Count > MaxGraphPoints)
+        {
+            target.RemoveAt(0);
+        }
+
+        bucketStart = -1;
+        bucketSum = 0;
+        bucketCount = 0;
+    }
+
+    private void UpdateStatisticsIncremental(double speed)
+    {
+        CurrentSpeed = speed;
+
+        if (speed > 1.0)
+        {
+
+            if (speed < _minSpeed || _minSpeed == double.MaxValue)
             {
-                // Update current write speed
-                WriteCurrentSpeed = writeSpeeds[^1];
-                
-                // Min speed
-                var newWriteMin = writeSpeeds.Min();
-                if (newWriteMin < _writeMinSpeed || _writeMinSpeed == double.MaxValue)
+                _minSpeed = speed;
+                OnPropertyChanged(nameof(MinSpeed));
+                OnPropertyChanged(nameof(MinSpeedLineY));
+            }
+
+            if (speed > _maxSpeed)
+            {
+                _maxSpeed = speed;
+                OnPropertyChanged(nameof(MaxSpeed));
+                OnPropertyChanged(nameof(MaxSpeedLineY));
+            }
+
+            _combinedSpeedSum += speed;
+            _combinedSpeedSamples++;
+            AvgSpeed = _combinedSpeedSum / _combinedSpeedSamples;
+            OnPropertyChanged(nameof(AvgSpeedLineY));
+
+            EnsureDisplayMaxSpeed(speed);
+
+            if (_currentPhase == 0)
+            {
+                WriteCurrentSpeed = speed;
+                if (speed < _writeMinSpeed || _writeMinSpeed == double.MaxValue)
                 {
-                    _writeMinSpeed = newWriteMin;
+                    _writeMinSpeed = speed;
                     OnPropertyChanged(nameof(WriteMinSpeed));
                 }
-                
-                // Max speed
-                var newWriteMax = writeSpeeds.Max();
-                if (newWriteMax > _writeMaxSpeed)
+
+                if (speed > _writeMaxSpeed)
                 {
-                    _writeMaxSpeed = newWriteMax;
+                    _writeMaxSpeed = speed;
                     OnPropertyChanged(nameof(WriteMaxSpeed));
                 }
-                
-                // Average speed
-                WriteAvgSpeed = writeSpeeds.Average();
-            }
-        }
-        
-        // ===== READ PHASE STATISTICS =====
-        if (ReadSpeedHistory.Count > 0)
-        {
-            var readSpeeds = ReadSpeedHistory
-                .Select(p => p.Speed)
-                .Where(s => s > 1.0)  // Filter artifacts < 1 MB/s
-                .ToList();
-            
-            if (readSpeeds.Count > 0)
-            {
-                // Update current read speed
-                ReadCurrentSpeed = readSpeeds[^1];
-                
-                // Min speed
-                var newReadMin = readSpeeds.Min();
-                if (newReadMin < _readMinSpeed || _readMinSpeed == double.MaxValue)
-                {
-                    _readMinSpeed = newReadMin;
-                    OnPropertyChanged(nameof(ReadMinSpeed));
-                }
-                
-                // Max speed
-                var newReadMax = readSpeeds.Max();
-                if (newReadMax > _readMaxSpeed)
-                {
-                    _readMaxSpeed = newReadMax;
-                    OnPropertyChanged(nameof(ReadMaxSpeed));
-                }
-                
-                // Average speed
-                ReadAvgSpeed = readSpeeds.Average();
-            }
-        }
-        
-        // ===== COMBINED STATISTICS (for graph and legacy display) =====
-        if (SpeedHistory.Count > 0)
-        {
-            var speeds = SpeedHistory.Select(s => s.Speed).ToList();
-            
-            // Find first non-zero speed index
-            int startIndex = 0;
-            if (!_firstNonZeroSpeedRecorded)
-            {
-                for (int i = 0; i < speeds.Count; i++)
-                {
-                    if (speeds[i] > 1.0)
-                    {
-                        startIndex = i;
-                        _firstNonZeroSpeedRecorded = true;
-                        break;
-                    }
-                }
+
+                _writeSpeedSum += speed;
+                _writeSpeedSamples++;
+                WriteAvgSpeed = _writeSpeedSum / _writeSpeedSamples;
             }
             else
             {
-                startIndex = 0;
-            }
-            
-            if (_firstNonZeroSpeedRecorded || speeds.Any(s => s > 1.0))
-            {
-                var validSpeeds = speeds
-                    .Skip(startIndex)
-                    .Where(s => s > 1.0)
-                    .ToList();
-                
-                if (validSpeeds.Count > 0)
+                ReadCurrentSpeed = speed;
+                if (speed < _readMinSpeed || _readMinSpeed == double.MaxValue)
                 {
-                    var newMin = validSpeeds.Min();
-                    if (newMin < _minSpeed || _minSpeed == double.MaxValue)
-                    {
-                        _minSpeed = newMin;
-                        OnPropertyChanged(nameof(MinSpeed));
-                        OnPropertyChanged(nameof(MinSpeedLineY));
-                    }
-                    
-                    var newMax = validSpeeds.Max();
-                    if (newMax > _maxSpeed)
-                    {
-                        _maxSpeed = newMax;
-                        OnPropertyChanged(nameof(MaxSpeed));
-                        OnPropertyChanged(nameof(MaxSpeedLineY));
-                        
-                        var requiredMax = newMax * 1.1;
-                        if (requiredMax > DisplayMaxSpeed)
-                        {
-                            DisplayMaxSpeed = Math.Ceiling(requiredMax / 10) * 10;
-                            OnPropertyChanged(nameof(MinSpeedLineY));
-                            OnPropertyChanged(nameof(AvgSpeedLineY));
-                        }
-                    }
-                    
-                    AvgSpeed = validSpeeds.Average();
-                    OnPropertyChanged(nameof(AvgSpeedLineY));
+                    _readMinSpeed = speed;
+                    OnPropertyChanged(nameof(ReadMinSpeed));
                 }
-            }
-            else if (speeds.Count > 0 && !_firstNonZeroSpeedRecorded)
-            {
-                var nonZeroSpeeds = speeds.Where(s => s > 0.1).ToList();
-                if (nonZeroSpeeds.Count > 0)
-                    AvgSpeed = nonZeroSpeeds.Average();
+
+                if (speed > _readMaxSpeed)
+                {
+                    _readMaxSpeed = speed;
+                    OnPropertyChanged(nameof(ReadMaxSpeed));
+                }
+
+                _readSpeedSum += speed;
+                _readSpeedSamples++;
+                ReadAvgSpeed = _readSpeedSum / _readSpeedSamples;
             }
         }
-        
-        // Temperature stats
-        if (TemperatureHistory.Count > 0)
+
+        if (CurrentTemperature > 0)
         {
-            var temps = TemperatureHistory.Select(t => (double)t.Temperature).ToList();
-            var newMinTemp = temps.Min();
-            var newMaxTemp = temps.Max();
-            
-            if (newMinTemp < _minTemperature || _minTemperature == int.MaxValue)
+            if (CurrentTemperature < _minTemperature || _minTemperature == int.MaxValue)
             {
-                _minTemperature = (int)newMinTemp;
+                _minTemperature = CurrentTemperature;
                 OnPropertyChanged(nameof(MinTemperature));
             }
-            
-            if (newMaxTemp > _maxTemperature)
+
+            if (CurrentTemperature > _maxTemperature)
             {
-                _maxTemperature = (int)newMaxTemp;
+                _maxTemperature = CurrentTemperature;
                 OnPropertyChanged(nameof(MaxTemperature));
             }
         }
     }
 
-    private void UpdateGraphHeights()
+    private void EnsureDisplayMaxSpeed(double observedSpeed)
     {
-        // Y-axis scale is set ONCE at the beginning of test based on first significant speed
-        // This ensures stable graph scale during test while adapting to different disk types
-        
-        var maxSpeedHeight = 160.0; // Max height in pixels for speed graph
-        var maxTempHeight = 100.0;  // Max height in pixels for temperature graph
-        var maxSpeed = Math.Max(DisplayMaxSpeed, 1); // Use dynamic scale (set once during test)
-        
-        // Speed heights
-        foreach (var point in WriteSpeedHistory)
-            point.Height = Math.Max(2, (point.Speed / maxSpeed) * maxSpeedHeight);
-        
-        foreach (var point in ReadSpeedHistory)
-            point.Height = Math.Max(2, (point.Speed / maxSpeed) * maxSpeedHeight);
-        
-        // Temperature graph: range from 15°C to 80°C (65°C range)
-        var minTemp = 15.0;
-        var maxTemp = 80.0;
-        var tempRange = maxTemp - minTemp; // 65°C range
-        
-        foreach (var point in TemperatureHistory)
+        var requiredMax = Math.Max(200, Math.Ceiling(observedSpeed * 1.15 / 10) * 10);
+        if (requiredMax <= DisplayMaxSpeed)
         {
-            var normalizedTemp = Math.Max(0, point.Temperature - minTemp);
-            point.Height = Math.Max(2, (normalizedTemp / tempRange) * maxTempHeight);
+            return;
         }
+
+        DisplayMaxSpeed = requiredMax;
+        OnPropertyChanged(nameof(DisplayMaxSpeed));
+        OnPropertyChanged(nameof(MinSpeedLineY));
+        OnPropertyChanged(nameof(MaxSpeedLineY));
+        OnPropertyChanged(nameof(AvgSpeedLineY));
+
+        if (SpeedYAxes.Length > 0)
+        {
+            SpeedYAxes[0].MaxLimit = DisplayMaxSpeed;
+            OnPropertyChanged(nameof(SpeedYAxes));
+        }
+    }
+
+    private void UpdateXAxisLimits(double elapsedSeconds)
+    {
+        if (SpeedXAxes.Length == 0)
+        {
+            return;
+        }
+
+        var axis = SpeedXAxes[0];
+        var zoomDuration = SelectedZoomDuration;
+
+        if (zoomDuration == TimeSpan.MaxValue)
+        {
+            axis.MinLimit = 0;
+            axis.MaxLimit = Math.Max(elapsedSeconds, zoomDuration == TimeSpan.MaxValue ? elapsedSeconds : zoomDuration.TotalSeconds);
+        }
+        else
+        {
+            var zoomSeconds = zoomDuration.TotalSeconds;
+            var max = Math.Max(zoomSeconds, elapsedSeconds);
+            axis.MaxLimit = max;
+            axis.MinLimit = Math.Max(0, max - zoomSeconds);
+        }
+
+        OnPropertyChanged(nameof(SpeedXAxes));
     }
 
     private void ClearSpeedHistory()
@@ -643,35 +763,57 @@ public partial class SurfaceTestViewModel : ViewModelBase, INavigableViewModel, 
             WriteSpeedHistory.Clear();
             ReadSpeedHistory.Clear();
             TemperatureHistory.Clear();
+            WriteSeriesValues.Clear();
+            ReadSeriesValues.Clear();
+            _writeBucketStart = -1;
+            _writeBucketSum = 0;
+            _writeBucketCount = 0;
+            _readBucketStart = -1;
+            _readBucketSum = 0;
+            _readBucketCount = 0;
             
             // Combined stats
             _minSpeed = double.MaxValue;
             _maxSpeed = 0;
             AvgSpeed = 0;
+            _combinedSpeedSum = 0;
+            _combinedSpeedSamples = 0;
             
             // Write phase stats
             _writeMinSpeed = double.MaxValue;
             _writeMaxSpeed = 0;
             _writeAvgSpeed = 0;
             _writeCurrentSpeed = 0;
+            _writeSpeedSum = 0;
+            _writeSpeedSamples = 0;
             
             // Read phase stats
             _readMinSpeed = double.MaxValue;
             _readMaxSpeed = 0;
             _readAvgSpeed = 0;
             _readCurrentSpeed = 0;
+            _readSpeedSum = 0;
+            _readSpeedSamples = 0;
             
             // Temperature
             _minTemperature = int.MaxValue;
             _maxTemperature = 0;
-            _firstNonZeroSpeedRecorded = false;
             DisplayMaxSpeed = 200;
             DisplayMaxTemperature = 80;
+
+            if (SpeedYAxes.Length > 0)
+            {
+                SpeedYAxes[0].MinLimit = 0;
+                SpeedYAxes[0].MaxLimit = DisplayMaxSpeed;
+            }
+
+            UpdateXAxisLimits(0);
             
             // Notify all properties
             OnPropertyChanged(nameof(MinSpeed));
             OnPropertyChanged(nameof(MaxSpeed));
             OnPropertyChanged(nameof(AvgSpeed));
+            OnPropertyChanged(nameof(DisplayMaxSpeed));
             OnPropertyChanged(nameof(WriteMinSpeed));
             OnPropertyChanged(nameof(WriteMaxSpeed));
             OnPropertyChanged(nameof(WriteAvgSpeed));
@@ -680,6 +822,8 @@ public partial class SurfaceTestViewModel : ViewModelBase, INavigableViewModel, 
             OnPropertyChanged(nameof(ReadMaxSpeed));
             OnPropertyChanged(nameof(ReadAvgSpeed));
             OnPropertyChanged(nameof(ReadCurrentSpeed));
+            OnPropertyChanged(nameof(ChartPointCount));
+            OnPropertyChanged(nameof(SpeedYAxes));
             OnPropertyChanged(nameof(MinSpeedLineY));
             OnPropertyChanged(nameof(MaxSpeedLineY));
             OnPropertyChanged(nameof(AvgSpeedLineY));
@@ -764,6 +908,13 @@ public partial class SurfaceTestViewModel : ViewModelBase, INavigableViewModel, 
         }
         finally 
         { 
+            await Dispatcher.UIThread.InvokeAsync(() =>
+            {
+                FlushPhaseBucket(0);
+                FlushPhaseBucket(1);
+                OnPropertyChanged(nameof(ChartPointCount));
+            });
+
             IsTesting = false;
             _testCancellation?.Dispose();
             _testCancellation = null;
@@ -884,6 +1035,7 @@ public partial class SurfaceTestViewModel : ViewModelBase, INavigableViewModel, 
         {
             "Rychlý test (100 MB)" => 5000,
             "Plný test (1 GB)" => 10000,
+            "Test celého disku" => 15000,
             _ => 5000
         };
         

@@ -33,4 +33,33 @@ namespace DiskChecker.UI.Avalonia.Converters
             throw new NotImplementedException();
         }
     }
+
+    public class FileSystemToForegroundBrushConverter : IValueConverter
+    {
+        public object Convert(object? value, Type targetType, object? parameter, CultureInfo culture)
+        {
+            var fs = (value as string) ?? string.Empty;
+            fs = fs.Trim().ToUpperInvariant();
+
+            if (fs.Contains("NTFS"))
+                return new SolidColorBrush(Color.Parse("#2E7D32"));
+            if (fs.Contains("FAT") || fs.Contains("FAT32"))
+                return new SolidColorBrush(Color.Parse("#B26A00"));
+            if (fs.Contains("EXFAT"))
+                return new SolidColorBrush(Color.Parse("#1565C0"));
+            if (fs.Contains("EXT") || fs.Contains("EXT4") || fs.Contains("EXT3"))
+                return new SolidColorBrush(Color.Parse("#6A1B9A"));
+            if (fs.Contains("ISO9660") || fs.Contains("UDF"))
+                return new SolidColorBrush(Color.Parse("#455A64"));
+            if (fs.Contains("LVM") || fs.Contains("BTRFS") || fs.Contains("XFS"))
+                return new SolidColorBrush(Color.Parse("#EF6C00"));
+
+            return new SolidColorBrush(Color.Parse("#6C757D"));
+        }
+
+        public object ConvertBack(object? value, Type targetType, object? parameter, CultureInfo culture)
+        {
+            throw new NotImplementedException();
+        }
+    }
 }

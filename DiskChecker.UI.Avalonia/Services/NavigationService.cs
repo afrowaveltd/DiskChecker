@@ -1,8 +1,8 @@
 using System;
-using System.Collections.Generic;
 using Avalonia.Controls;
 using DiskChecker.UI.Avalonia.ViewModels;
 using DiskChecker.UI.Avalonia.Services.Interfaces;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace DiskChecker.UI.Avalonia.Services;
 
@@ -11,8 +11,8 @@ namespace DiskChecker.UI.Avalonia.Services;
 /// </summary>
 public class NavigationService : INavigationService
 {
-    private readonly Dictionary<Type, object> _viewModels = new();
     private readonly IServiceProvider _serviceProvider;
+    private IServiceScope? _currentScope;
 
     public NavigationService(IServiceProvider serviceProvider)
     {
@@ -32,25 +32,23 @@ public class NavigationService : INavigationService
 
     public void NavigateTo<T>() where T : ViewModelBase
     {
-        var viewModelType = typeof(T);
-        
-        // Get or create ViewModel instance
-        if (!_viewModels.TryGetValue(viewModelType, out var instance))
+        // Dispose the current scope - this also disposes any IDisposable services
+        // (including transient ViewModels) that were resolved from it. Do NOT call
+        // disposable.Dispose() manually first to avoid double-disposal.
+        _currentScope?.Dispose();
+
+        var scope = _serviceProvider.CreateScope();
+        var viewModel = scope.ServiceProvider.GetService<T>() ?? Activator.CreateInstance<T>();
+
+        if (viewModel is null)
         {
-            instance = _serviceProvider.GetService(viewModelType) ?? Activator.CreateInstance(viewModelType);
-            _viewModels[viewModelType] = instance!;
+            scope.Dispose();
+            throw new InvalidOperationException($"Unable to create ViewModel instance for type {typeof(T).FullName}.");
         }
 
-        var viewModel = (T)instance!;
-        
-        // Dispose previous ViewModel if needed
-        if (CurrentViewModel is IDisposable disposable)
-        {
-            disposable.Dispose();
-        }
-
+        _currentScope = scope;
         CurrentViewModel = viewModel;
-        
+
         // Notify navigation
         if (viewModel is INavigableViewModel navigableViewModel)
         {

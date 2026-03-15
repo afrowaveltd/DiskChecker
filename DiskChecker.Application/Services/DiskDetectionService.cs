@@ -1,4 +1,3 @@
-
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
@@ -17,13 +16,14 @@ public class DiskDetectionService : IDiskDetectionService
 {
     // Cache for system disk path
     private string? _systemDiskPath;
+    private int? _systemDiskNumber;
     
     public async Task<IReadOnlyList<CoreDriveInfo>> GetDrivesAsync(CancellationToken cancellationToken = default)
     {
         var drives = new List<CoreDriveInfo>();
         
-        // Detect system disk path (C: drive physical path)
-        _systemDiskPath = await GetSystemDiskPathAsync();
+        // Detect system disk path/number (C: drive physical disk)
+        (_systemDiskPath, _systemDiskNumber) = await GetSystemDiskIdentityAsync();
         
         // Get physical drives on Windows
         if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
@@ -110,7 +110,7 @@ public class DiskDetectionService : IDiskDetectionService
             drives.Add(new CoreDriveInfo
             {
                 Id = Guid.NewGuid(),
-                Path = @"\\.\PHYSICALDRIVE0",
+                Path = _systemDiskPath ?? @"\\.\PHYSICALDRIVE0",
                 Name = "System Drive (C:)",
                 TotalSize = GetSystemDriveSize(),
                 IsPhysical = true,
@@ -118,6 +118,13 @@ public class DiskDetectionService : IDiskDetectionService
                 IsReady = true
             });
         }
+
+        // Order: system disk first, then by bus type, then by model/name
+        drives = drives
+            .OrderByDescending(d => d.IsSystemDisk)
+            .ThenBy(d => GetBusTypeSortOrder(d.BusType))
+            .ThenBy(d => d.Name, StringComparer.OrdinalIgnoreCase)
+            .ToList();
         
         return drives.AsReadOnly();
     }
@@ -130,6 +137,15 @@ public class DiskDetectionService : IDiskDetectionService
                 devicePath.Equals(_systemDiskPath, StringComparison.OrdinalIgnoreCase))
             {
                 return true;
+            }
+
+            if (_systemDiskNumber.HasValue)
+            {
+                var match = System.Text.RegularExpressions.Regex.Match(devicePath, @"PHYSICALDRIVE(\d+)", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+                if (match.Success && int.TryParse(match.Groups[1].Value, out var n) && n == _systemDiskNumber.Value)
+                {
+                    return true;
+                }
             }
             
             if (string.IsNullOrEmpty(_systemDiskPath) && 
@@ -148,6 +164,57 @@ public class DiskDetectionService : IDiskDetectionService
         return false;
     }
     
+    private async Task<(string? Path, int? Number)> GetSystemDiskIdentityAsync()
+    {
+        try
+        {
+            if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+            {
+                var psi = new ProcessStartInfo
+                {
+                    FileName = "powershell.exe",
+                    Arguments = "-NoProfile -ExecutionPolicy Bypass -Command \"$p = Get-Partition -DriveLetter C -ErrorAction SilentlyContinue; if ($p) { $d = $p | Get-Disk -ErrorAction SilentlyContinue; if ($d) { $d.Number } }\"",
+                    RedirectStandardOutput = true,
+                    RedirectStandardError = true,
+                    UseShellExecute = false,
+                    CreateNoWindow = true
+                };
+                
+                using var process = Process.Start(psi);
+                if (process == null) return (null, null);
+                
+                var output = await process.StandardOutput.ReadToEndAsync();
+                await process.WaitForExitAsync();
+                
+                var lines = output.Trim().Split('\n');
+                foreach (var line in lines)
+                {
+                    var trimmed = line.Trim();
+                    if (int.TryParse(trimmed, out var number))
+                    {
+                        return ($@"\\.\PHYSICALDRIVE{number}", number);
+                    }
+                }
+            }
+        }
+        catch { }
+        
+        return (null, null);
+    }
+
+    private static int GetBusTypeSortOrder(CoreBusType busType)
+    {
+        return busType switch
+        {
+            CoreBusType.Nvme => 0,
+            CoreBusType.Sata => 1,
+            CoreBusType.Sas => 2,
+            CoreBusType.Usb => 3,
+            CoreBusType.Ide => 4,
+            _ => 5
+        };
+    }
+
     private async Task<string?> GetSystemDiskPathAsync()
     {
         try

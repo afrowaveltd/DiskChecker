@@ -104,7 +104,12 @@ public class DiskCard
     /// All test sessions for this disk
     /// </summary>
     public List<TestSession> TestSessions { get; set; } = new();
-    
+
+    /// <summary>
+    /// Runtime seznam oddílů a přípojných bodů pro daný fyzický disk (není perzistováno v DB).
+    /// </summary>
+    public List<CoreDriveInfo> Volumes { get; set; } = new();
+
     /// <summary>
     /// Latest SMART data snapshot
     /// </summary>

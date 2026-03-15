@@ -1,5 +1,6 @@
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using DiskChecker.Application.Services;
 using DiskChecker.Core.Interfaces;
 using DiskChecker.Core.Models;
 using DiskChecker.UI.Avalonia.Services.Interfaces;
@@ -13,6 +14,7 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Avalonia.Threading;
+using Microsoft.EntityFrameworkCore;
 
 namespace DiskChecker.UI.Avalonia.ViewModels;
 
@@ -28,7 +30,11 @@ public partial class SmartCheckViewModel : ViewModelBase, INavigableViewModel, I
     private readonly IDialogService _dialogService;
     private readonly ISelectedDiskService _selectedDiskService;
     private readonly ISettingsService _settingsService;
-    
+    private readonly DiskCardTestService _cardTestService;
+
+    private DateTime _lastSmartPersistUtc;
+    private string? _lastSmartPersistDiskPath;
+
     private ObservableCollection<DiskStatusCardItem> _disks = new();
     private DiskStatusCardItem? _selectedDisk;
     private bool _isChecking;
@@ -49,7 +55,8 @@ public partial class SmartCheckViewModel : ViewModelBase, INavigableViewModel, I
         IQualityCalculator qualityCalculator, 
         IDialogService dialogService,
         ISelectedDiskService selectedDiskService,
-        ISettingsService settingsService)
+        ISettingsService settingsService,
+        DiskCardTestService cardTestService)
     {
         _smartaProvider = smartaProvider ?? throw new ArgumentNullException(nameof(smartaProvider));
         _diskDetectionService = diskDetectionService ?? throw new ArgumentNullException(nameof(diskDetectionService));
@@ -57,6 +64,7 @@ public partial class SmartCheckViewModel : ViewModelBase, INavigableViewModel, I
         _dialogService = dialogService ?? throw new ArgumentNullException(nameof(dialogService));
         _selectedDiskService = selectedDiskService ?? throw new ArgumentNullException(nameof(selectedDiskService));
         _settingsService = settingsService ?? throw new ArgumentNullException(nameof(settingsService));
+        _cardTestService = cardTestService ?? throw new ArgumentNullException(nameof(cardTestService));
         
         LoadDisksCommand = new AsyncRelayCommand(LoadDisksAsync);
         RefreshCommand = new AsyncRelayCommand(RefreshAsync, () => CanRunSelfTest);
@@ -212,7 +220,8 @@ public string SelectedTestType
     private CancellationTokenSource? _selfTestPollingCts;
     private bool _wasTestInProgress;
     private string _currentTestType = "";
-    
+    private bool _disposed;
+
     public int SelfTestProgress
     {
         get => _selfTestProgress;
@@ -632,6 +641,8 @@ public string SelectedTestType
             CurrentSmartData = smartData;
             CurrentQuality = _qualityCalculator.CalculateQuality(smartData);
 
+            await PersistSmartSnapshotAsync(SelectedDisk.Drive, smartData, CurrentQuality);
+
             // Build cache info text
             if (smartData.RetrievedAtUtc != null)
             {
@@ -749,6 +760,40 @@ public string SelectedTestType
     private async Task RefreshAsync()
     {
         await LoadSmartDataAsync();
+    }
+
+    private async Task PersistSmartSnapshotAsync(CoreDriveInfo drive, SmartaData smartData, QualityRating rating)
+    {
+        ArgumentNullException.ThrowIfNull(drive);
+        ArgumentNullException.ThrowIfNull(smartData);
+
+        if (smartData.IsFromCache)
+        {
+            return;
+        }
+
+        var now = DateTime.UtcNow;
+        if (string.Equals(_lastSmartPersistDiskPath, drive.Path, StringComparison.OrdinalIgnoreCase) &&
+            (now - _lastSmartPersistUtc) < TimeSpan.FromSeconds(30))
+        {
+            return;
+        }
+
+        try
+        {
+            var card = await _cardTestService.GetOrCreateCardAsync(drive);
+            await _cardTestService.SaveSmartCheckAsync(card, smartData, rating);
+            _lastSmartPersistDiskPath = drive.Path;
+            _lastSmartPersistUtc = now;
+        }
+        catch (DbUpdateException ex)
+        {
+            StatusMessage = $"SMART načten, ale uložení do karty selhalo: {ex.InnerException?.Message ?? ex.Message}";
+        }
+        catch (InvalidOperationException ex)
+        {
+            StatusMessage = $"SMART načten, ale uložení do karty selhalo: {ex.Message}";
+        }
     }
 
     private async Task ClearCacheForSelectedAsync()
@@ -1472,8 +1517,13 @@ private void UpdateComputedProperties()
 
     public void Dispose()
     {
-        _selfTestPollingCts?.Cancel();
-        _selfTestPollingCts?.Dispose();
+        if (_disposed) return;
+        _disposed = true;
+
+        var cts = Interlocked.Exchange(ref _selfTestPollingCts, null);
+        try { cts?.Cancel(); } catch (ObjectDisposedException) { }
+        cts?.Dispose();
+
         GC.SuppressFinalize(this);
     }
 }

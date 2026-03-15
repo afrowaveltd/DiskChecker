@@ -14,23 +14,12 @@
 
         <!-- ========== HEADER ========== -->
         <Border Grid.Row="0" 
-                Background="{DynamicResource ThemeSecondaryBackgroundBrush}" 
-                BorderBrush="{DynamicResource ThemeBorderBrush}" 
-                BorderThickness="0,0,0,1" 
-                Padding="20,16" Height="80">
+                Classes="PageHeader">
             <Grid ColumnDefinitions="*,Auto">
-                <StackPanel Margin="0,-4">
-                    <TextBlock Text="📜 Historie testů" 
-                               FontSize="26" FontWeight="Bold" 
-                               Foreground="{DynamicResource ThemeTextPrimaryBrush}"
-                               Margin="0,0,0,4"/>
-                    <TextBlock Text="Přehled všech provedených testů disku" 
-                               FontSize="12"
-                               Foreground="{DynamicResource ThemeTextSecondaryBrush}"/>
-                    <TextBlock Text="{Binding StatusMessage}" 
-                               FontSize="10"
-                               Foreground="{DynamicResource ThemeTextMutedBrush}"
-                               Margin="0,2,0,0"/>
+                <StackPanel>
+                    <TextBlock Text="📜 Historie testů" Classes="PageTitle"/>
+                    <TextBlock Text="Přehled všech provedených testů disku" Classes="PageSubtitle"/>
+                    <TextBlock Text="{Binding StatusMessage}" Classes="PageMetaText" Margin="0,2,0,0"/>
                 </StackPanel>
                 <Button Grid.Column="1"
                         Content="← Zpět"
@@ -137,11 +126,7 @@
         </Border>
 
         <!-- ========== STATUS BAR ========== -->
-        <Border Grid.Row="3" 
-               Background="{DynamicResource ThemePanelBackgroundBrush}"
-               BorderBrush="{DynamicResource ThemeBorderBrush}"
-               BorderThickness="0,1,0,0"
-               Height="28">
+        <Border Grid.Row="3" Classes="StatusBar">
             <StackPanel Orientation="Horizontal" Margin="16,0" Spacing="8">
                 <TextBlock FontSize="10" Foreground="{DynamicResource ThemeTextMutedBrush}" VerticalAlignment="Center">
                     <Run Text="Celkem testů: "/>

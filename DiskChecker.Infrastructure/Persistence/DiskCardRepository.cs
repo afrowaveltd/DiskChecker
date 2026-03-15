@@ -147,6 +147,108 @@ public class DiskCardRepository : IDiskCardRepository
         }
     }
 
+    public async Task<int> MergeDuplicateCardsAsync()
+    {
+        var cards = await _context.DiskCards
+            .Include(c => c.TestSessions)
+            .Include(c => c.Certificates)
+            .ToListAsync();
+
+        if (cards.Count < 2) return 0;
+
+        static string Normalize(string? s) => (s ?? string.Empty).Trim().ToUpperInvariant();
+
+        static string BuildIdentity(DiskCard c)
+        {
+            var serial = Normalize(c.SerialNumber);
+            if (!string.IsNullOrWhiteSpace(serial))
+                return $"SER:{serial}";
+
+            var device = Normalize(c.DevicePath);
+            var model = Normalize(c.ModelName);
+            if (!string.IsNullOrWhiteSpace(device) || !string.IsNullOrWhiteSpace(model))
+                return $"DEV:{device}|MOD:{model}";
+
+            return $"ID:{c.Id}";
+        }
+
+        var mergedCount = 0;
+        var groups = cards
+            .GroupBy(BuildIdentity)
+            .Where(g => g.Count() > 1)
+            .ToList();
+
+        foreach (var group in groups)
+        {
+            var ordered = group
+                .OrderByDescending(c => c.TestCount)
+                .ThenByDescending(c => c.LastTestedAt)
+                .ThenBy(c => c.CreatedAt)
+                .ToList();
+
+            var primary = ordered[0];
+            var duplicates = ordered.Skip(1).ToList();
+
+            foreach (var duplicate in duplicates)
+            {
+                var sessions = await _context.TestSessions
+                    .Where(t => t.DiskCardId == duplicate.Id)
+                    .ToListAsync();
+                foreach (var s in sessions)
+                {
+                    s.DiskCardId = primary.Id;
+                }
+
+                var certs = await _context.DiskCertificates
+                    .Where(c => c.DiskCardId == duplicate.Id)
+                    .ToListAsync();
+                foreach (var cert in certs)
+                {
+                    cert.DiskCardId = primary.Id;
+                }
+
+                var archives = await _context.DiskArchives
+                    .Where(a => a.DiskCardId == duplicate.Id)
+                    .ToListAsync();
+                if (archives.Count > 0)
+                {
+                    _context.DiskArchives.RemoveRange(archives);
+                }
+
+                _context.DiskCards.Remove(duplicate);
+                mergedCount++;
+            }
+
+            var primarySessions = await _context.TestSessions
+                .Where(t => t.DiskCardId == primary.Id)
+                .OrderByDescending(t => t.StartedAt)
+                .ToListAsync();
+
+            primary.TestCount = primarySessions.Count;
+            if (primarySessions.Count > 0)
+            {
+                primary.LastTestedAt = primarySessions[0].StartedAt;
+                var avg = primarySessions.Average(s => s.Score);
+                primary.OverallScore = avg;
+                primary.OverallGrade = avg switch
+                {
+                    >= 90 => "A",
+                    >= 80 => "B",
+                    >= 70 => "C",
+                    >= 60 => "D",
+                    _ => "F"
+                };
+            }
+        }
+
+        if (mergedCount > 0)
+        {
+            await _context.SaveChangesAsync();
+        }
+
+        return mergedCount;
+    }
+
     // ========== Test Sessions ==========
 
     public async Task<TestSession?> GetTestSessionAsync(int sessionId)

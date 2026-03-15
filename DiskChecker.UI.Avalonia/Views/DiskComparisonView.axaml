@@ -15,9 +15,9 @@
         </Grid.RowDefinitions>
 
         <!-- ========== HEADER ========== -->
-        <Border Grid.Row="0" Background="{DynamicResource ThemePanelBrush}"
+        <Border Grid.Row="0" Background="{DynamicResource ThemePanelBackgroundBrush}"
                 BorderBrush="{DynamicResource ThemeBorderBrush}"
-                BorderThickness="0,0,0,1" Padding="20">
+                BorderThickness="0,0,0,1" Padding="16,10" MinHeight="60">
             <Grid>
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="*"/>
@@ -25,55 +25,35 @@
                 </Grid.ColumnDefinitions>
 
                 <StackPanel Grid.Column="0">
-                    <TextBlock Text="⚖️ Porovnání Disků"
-                               FontSize="28" FontWeight="Bold"
-                               Foreground="#1a1a1a" Margin="0,0,0,5"/>
-                    <TextBlock Text="Srovnání parametrů a stavu vybraných disků"
-                               FontSize="13" Foreground="#444444"/>
+                    <TextBlock Text="⚖️ Porovnání Disků" Classes="PageTitle"/>
+                    <TextBlock Text="Srovnání parametrů a stavu vybraných disků" Classes="PageSubtitle"/>
                 </StackPanel>
 
                 <StackPanel Grid.Column="1" Orientation="Horizontal">
                     <Button Content="🔄 Porovnat vybrané"
                             Command="{Binding CompareCommand}"
                             IsEnabled="{Binding CanCompare}"
-                            Background="#27AE60" Foreground="White"
-                            FontWeight="Bold" Padding="15,8" Margin="0,0,10,0"
-                            Cursor="Hand">
-                        <Button.Styles>
-                            <Style Selector="Button">
-                                <Setter Property="BorderThickness" Value="0"/>
-                            </Style>
-                        </Button.Styles>
-                    </Button>
+                            Background="{DynamicResource ThemeSuccessBrush}" Foreground="White"
+                            FontWeight="Bold" Padding="12,6" Margin="0,0,8,0"
+                            Cursor="Hand"/>
                     <Button Content="📊 Exportovat"
                             Command="{Binding ExportCommand}"
                             IsEnabled="{Binding HasComparison}"
-                            Background="#3498DB" Foreground="White"
-                            FontWeight="Bold" Padding="15,8" Margin="0,0,10,0"
-                            Cursor="Hand">
-                        <Button.Styles>
-                            <Style Selector="Button">
-                                <Setter Property="BorderThickness" Value="0"/>
-                            </Style>
-                        </Button.Styles>
-                    </Button>
+                            Background="{DynamicResource ThemeInfoBrush}" Foreground="White"
+                            FontWeight="Bold" Padding="12,6" Margin="0,0,8,0"
+                            Cursor="Hand"/>
                     <Button Content="🏠 Zpět"
                             Command="{Binding NavigateBackCommand}"
-                            Background="#666666" Foreground="White"
-                            FontWeight="Bold" Padding="15,8"
-                            Cursor="Hand">
-                        <Button.Styles>
-                            <Style Selector="Button">
-                                <Setter Property="BorderThickness" Value="0"/>
-                            </Style>
-                        </Button.Styles>
-                    </Button>
+                            Background="{DynamicResource ThemeSecondaryBackgroundBrush}" Foreground="{DynamicResource ThemeTextPrimaryBrush}"
+                            BorderBrush="{DynamicResource ThemeBorderBrush}"
+                            FontWeight="Bold" Padding="12,6"
+                            Cursor="Hand"/>
                 </StackPanel>
             </Grid>
         </Border>
 
         <!-- ========== DISK SELECTION ========== -->
-        <Border Grid.Row="1" Background="#F8F9FA" Padding="20,15">
+        <Border Grid.Row="1" Background="{DynamicResource ThemeSecondaryBackgroundBrush}" Padding="16,10">
             <Grid>
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="*"/>
@@ -91,9 +71,9 @@
                             <DataTemplate>
                                 <StackPanel Orientation="Horizontal">
                                     <TextBlock Text="{Binding DisplayName}" FontWeight="Bold"/>
-                                    <TextBlock Text=" (" Foreground="#888"/>
-                                    <TextBlock Text="{Binding SerialNumber}" Foreground="#666" FontFamily="Consolas" FontSize="10"/>
-                                    <TextBlock Text=")" Foreground="#888"/>
+                                    <TextBlock Text=" (" Foreground="{DynamicResource ThemeTextMutedBrush}"/>
+                                    <TextBlock Text="{Binding SerialNumber}" Foreground="{DynamicResource ThemeTextSecondaryBrush}" FontFamily="Consolas" FontSize="10"/>
+                                    <TextBlock Text=")" Foreground="{DynamicResource ThemeTextMutedBrush}"/>
                                 </StackPanel>
                             </DataTemplate>
                         </ComboBox.ItemTemplate>
@@ -101,8 +81,8 @@
                 </StackPanel>
 
                 <!-- VS Label -->
-                <TextBlock Grid.Column="1" Text="VS" FontSize="24" FontWeight="Bold"
-                          Foreground="#999" VerticalAlignment="Center" Margin="20,10,20,0"/>
+                <TextBlock Grid.Column="1" Text="VS" FontSize="22" FontWeight="Bold"
+                          Foreground="{DynamicResource ThemeTextMutedBrush}" VerticalAlignment="Center" Margin="20,10,20,0"/>
 
                 <!-- Disk 2 Selection -->
                 <StackPanel Grid.Column="2">
@@ -114,9 +94,9 @@
                             <DataTemplate>
                                 <StackPanel Orientation="Horizontal">
                                     <TextBlock Text="{Binding DisplayName}" FontWeight="Bold"/>
-                                    <TextBlock Text=" (" Foreground="#888"/>
-                                    <TextBlock Text="{Binding SerialNumber}" Foreground="#666" FontFamily="Consolas" FontSize="10"/>
-                                    <TextBlock Text=")" Foreground="#888"/>
+                                    <TextBlock Text=" (" Foreground="{DynamicResource ThemeTextMutedBrush}"/>
+                                    <TextBlock Text="{Binding SerialNumber}" Foreground="{DynamicResource ThemeTextSecondaryBrush}" FontFamily="Consolas" FontSize="10"/>
+                                    <TextBlock Text=")" Foreground="{DynamicResource ThemeTextMutedBrush}"/>
                                 </StackPanel>
                             </DataTemplate>
                         </ComboBox.ItemTemplate>
@@ -127,10 +107,10 @@
 
         <!-- ========== COMPARISON RESULTS ========== -->
         <ScrollViewer Grid.Row="2">
-            <StackPanel Margin="20">
+            <StackPanel Margin="16">
                 <!-- Comparison Grid -->
                 <Panel IsVisible="{Binding HasComparison}">
-                    <Border Background="White" BorderBrush="#DEE2E6" BorderThickness="1" CornerRadius="8">
+                    <Border Background="{DynamicResource ThemeCardBackgroundBrush}" BorderBrush="{DynamicResource ThemeBorderBrush}" BorderThickness="1" CornerRadius="8">
                         <Grid>
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="2*"/>
@@ -158,8 +138,8 @@
                             </Grid.RowDefinitions>
 
                             <!-- Header Row -->
-                            <Border Grid.Row="0" Grid.ColumnSpan="4" Background="#F0F0F0" Padding="10,5"
-                                    BorderBrush="#DEE2E6" BorderThickness="0,0,0,1">
+                            <Border Grid.Row="0" Grid.ColumnSpan="4" Background="{DynamicResource ThemePanelBackgroundBrush}" Padding="10,5"
+                                    BorderBrush="{DynamicResource ThemeBorderBrush}" BorderThickness="0,0,0,1">
                                 <TextBlock Text="📊 Základní informace" FontWeight="Bold" FontSize="14"/>
                             </Border>
 
@@ -255,8 +235,8 @@
                             </StackPanel>
 
                             <!-- SMART Metrics Section -->
-                            <Border Grid.Row="9" Grid.ColumnSpan="4" Background="#F0F0F0" Padding="10,5"
-                                    BorderBrush="#DEE2E6" BorderThickness="1,1,0,1">
+                            <Border Grid.Row="9" Grid.ColumnSpan="4" Background="{DynamicResource ThemePanelBackgroundBrush}" Padding="10,5"
+                                    BorderBrush="{DynamicResource ThemeBorderBrush}" BorderThickness="1,1,0,1">
                                 <TextBlock Text="📈 SMART Metriky" FontWeight="Bold" FontSize="14"/>
                             </Border>
 
@@ -330,24 +310,24 @@
                 </Panel>
 
                 <!-- Recommendation -->
-                <Panel IsVisible="{Binding HasComparison}" Margin="0,20,0,0">
-                    <Border Background="#E8F5E9" BorderBrush="#27AE60" BorderThickness="1" CornerRadius="8" Padding="15">
+                <Panel IsVisible="{Binding HasComparison}" Margin="0,16,0,0">
+                    <Border Background="{DynamicResource ThemePrimaryLightBrush}" BorderBrush="{DynamicResource ThemeSuccessBrush}" BorderThickness="1" CornerRadius="8" Padding="12">
                         <StackPanel>
-                            <TextBlock Text="🏆 Doporučení:" FontWeight="Bold" FontSize="14" Margin="0,0,0,5"/>
-                            <TextBlock Text="{Binding Recommendation}" TextWrapping="Wrap" FontSize="12"/>
+                            <TextBlock Text="🏆 Doporučení:" FontWeight="Bold" FontSize="13" Margin="0,0,0,5"/>
+                            <TextBlock Text="{Binding Recommendation}" TextWrapping="Wrap" FontSize="11"/>
                         </StackPanel>
                     </Border>
                 </Panel>
 
                 <!-- Empty State -->
                 <Panel IsVisible="{Binding !HasComparison}">
-                    <Border Background="#F8F9FA" BorderBrush="#DEE2E6" BorderThickness="1" CornerRadius="8" Padding="40">
+                    <Border Background="{DynamicResource ThemeSecondaryBackgroundBrush}" BorderBrush="{DynamicResource ThemeBorderBrush}" BorderThickness="1" CornerRadius="8" Padding="36">
                         <StackPanel HorizontalAlignment="Center">
-                            <TextBlock Text="⚖️" FontSize="48" HorizontalAlignment="Center"/>
-                            <TextBlock Text="Vyberte dva disky k porovnání" FontSize="18" FontWeight="Bold"
+                            <TextBlock Text="⚖️" FontSize="42" HorizontalAlignment="Center"/>
+                            <TextBlock Text="Vyberte dva disky k porovnání" FontSize="17" FontWeight="Bold"
                                        HorizontalAlignment="Center" Margin="0,10,0,5"/>
                             <TextBlock Text="Zvolte disky z rozbalovacích seznamů nahoře"
-                                       FontSize="12" Foreground="#666" HorizontalAlignment="Center"/>
+                                       FontSize="12" Foreground="{DynamicResource ThemeTextSecondaryBrush}" HorizontalAlignment="Center"/>
                         </StackPanel>
                     </Border>
                 </Panel>
@@ -355,18 +335,18 @@
         </ScrollViewer>
 
         <!-- ========== STATUS BAR ========== -->
-        <Border Grid.Row="3" Background="#F0F0F0" Padding="20,10">
+        <Border Grid.Row="3" Classes="StatusBar" Padding="16,6">
             <Grid>
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="*"/>
                     <ColumnDefinition Width="Auto"/>
                 </Grid.ColumnDefinitions>
 
-                <TextBlock Grid.Column="0" Text="{Binding StatusMessage}" FontSize="11"/>
+                <TextBlock Grid.Column="0" Text="{Binding StatusMessage}" Classes="StatusText"/>
 
                 <StackPanel Grid.Column="1" Orientation="Horizontal">
                     <Panel IsVisible="{Binding IsComparing}">
-                        <TextBlock Text="⏳ Porovnávám..." FontSize="11" Foreground="#E67E22"/>
+                        <TextBlock Text="⏳ Porovnávám..." FontSize="10" Foreground="{DynamicResource ThemeWarningBrush}"/>
                     </Panel>
                 </StackPanel>
             </Grid>

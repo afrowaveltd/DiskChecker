@@ -388,7 +388,6 @@ public class DiskCardTestService
     {
         return result.ErrorCount switch
         {
-            0 when result.AverageSpeedMbps > 100 => "A+",
             0 when result.AverageSpeedMbps > 50 => "A",
             0 => "B",
             < 5 => "C",
@@ -439,18 +438,10 @@ public class DiskCardTestService
     {
         return score switch
         {
-            >= 95 => "A+",
             >= 90 => "A",
-            >= 85 => "A-",
-            >= 80 => "B+",
-            >= 75 => "B",
-            >= 70 => "B-",
-            >= 65 => "C+",
-            >= 60 => "C",
-            >= 55 => "C-",
-            >= 50 => "D+",
-            >= 45 => "D",
-            >= 40 => "D-",
+            >= 80 => "B",
+            >= 70 => "C",
+            >= 60 => "D",
             _ => "F"
         };
     }

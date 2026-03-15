@@ -115,6 +115,7 @@ public class SurfaceTestPersistenceService
          TimestampUtc = sample.TimestampUtc == default ? null : sample.TimestampUtc,
          ErrorCount = sample.ErrorCount,
          BytesProcessed = sample.OffsetBytes, // Use OffsetBytes as fallback
+         Temperature = result.CurrentTemperatureCelsius ?? 0, // Use drive temperature or default to 0
          Test = testRecord
       });
    }

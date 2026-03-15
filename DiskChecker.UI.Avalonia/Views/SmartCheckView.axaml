@@ -21,23 +21,12 @@
 
         <!-- ========== HEADER ========== -->
         <Border Grid.Row="0" 
-                Background="{DynamicResource ThemeSecondaryBackgroundBrush}" 
-                Padding="20,16" Height="80"
-                BorderBrush="{DynamicResource ThemeBorderBrush}" 
-                BorderThickness="0,0,0,1">
+                Classes="PageHeader">
             <Grid ColumnDefinitions="*,Auto">
-                <StackPanel Margin="0,-4">
-                    <TextBlock Text="🔧 SMART Kontrola" 
-                               FontSize="26" FontWeight="Bold" 
-                               Foreground="{DynamicResource ThemeTextPrimaryBrush}"
-                               Margin="0,0,0,4"/>
-                    <TextBlock Text="Komplexní přehled zdraví a parametrů disku" 
-                               FontSize="12"
-                               Foreground="{DynamicResource ThemeTextSecondaryBrush}"/>
-                    <TextBlock Text="{Binding StatusMessage}" 
-                               FontSize="10"
-                               Foreground="{DynamicResource ThemeTextMutedBrush}"
-                               Margin="0,2,0,0"/>
+                <StackPanel>
+                    <TextBlock Text="🔧 SMART Kontrola" Classes="PageTitle"/>
+                    <TextBlock Text="Komplexní přehled zdraví a parametrů disku" Classes="PageSubtitle"/>
+                    <TextBlock Text="{Binding StatusMessage}" Classes="PageMetaText" Margin="0,2,0,0"/>
                 </StackPanel>
                 <Button Grid.Column="1"
                         Content="← Zpět"
@@ -189,7 +178,7 @@
 
                 <!-- SMART Functions -->
                 <Border Grid.Row="1" 
-                       Background="#1E3A5F"
+                       Background="{DynamicResource ThemePrimaryLightBrush}"
                        BorderBrush="{DynamicResource ThemePrimaryBrush}"
                        BorderThickness="1"
                        CornerRadius="8"
@@ -197,16 +186,16 @@
                        Margin="0,0,0,8">
                     <StackPanel Spacing="8">
                         <TextBlock Text="🔧 SMART Funkce" FontSize="12" FontWeight="Bold" 
-                                  Foreground="White" Margin="0,0,0,6"/>
+                                  Foreground="{DynamicResource ThemeTextPrimaryBrush}" Margin="0,0,0,6"/>
                         <Grid ColumnDefinitions="*,Auto">
                             <ComboBox ItemsSource="{Binding SmartFeatures}"
                                       SelectedIndex="0"
                                       SelectedItem="{Binding SelectedSmartFeature}"
                                       HorizontalAlignment="Stretch"
                                       IsEnabled="{Binding !IsSelfTestRunning}"
-                                      Background="#2A4A6F"
-                                      Foreground="White"
-                                      BorderBrush="{DynamicResource ThemePrimaryBrush}"
+                                      Background="{DynamicResource ThemeCardBackgroundBrush}"
+                                      Foreground="{DynamicResource ThemeTextPrimaryBrush}"
+                                      BorderBrush="{DynamicResource ThemeBorderBrush}"
                                       Padding="10,6"/>
                             <Button Grid.Column="1" Content="▶ Spustit"
                                     Command="{Binding RunSmartFeatureCommand}"
@@ -224,15 +213,15 @@
                             </Button>
                         </Grid>
                         <TextBlock Text="{Binding SmartFeatureDescription}" 
-                                  FontSize="9" Foreground="#B0C4DE"
+                                  FontSize="9" Foreground="{DynamicResource ThemeTextSecondaryBrush}"
                                   TextWrapping="Wrap"/>
                     </StackPanel>
                 </Border>
 
                 <!-- Self-Test Result -->
                 <Border Grid.Row="2" 
-                       Background="#FFF8E1"
-                       BorderBrush="#FFA000"
+                       Background="{DynamicResource ThemeWarningBackgroundBrush}"
+                       BorderBrush="{DynamicResource ThemeWarningBorderBrush}"
                        BorderThickness="2"
                        CornerRadius="8"
                        Padding="12"
@@ -246,7 +235,7 @@
                                   VerticalAlignment="Center"/>
                         <Button Grid.Column="1" Content="✕"
                                 Command="{Binding ClearSelfTestResultCommand}"
-                                Background="Transparent" Foreground="#666"
+                                Background="Transparent" Foreground="{DynamicResource ThemeTextSecondaryBrush}"
                                 FontSize="12" Padding="4"
                                 BorderThickness="0"/>
                     </Grid>
@@ -366,7 +355,7 @@
                             </Button>
                         </StackPanel>
                         
-                        <Border Grid.Row="1" Background="#1E1E1E" CornerRadius="6" Padding="10">
+                        <Border Grid.Row="1" Background="{DynamicResource ThemeCodeBackgroundBrush}" CornerRadius="6" Padding="10">
                             <ScrollViewer>
                                 <TextBox Text="{Binding RawSmartOutput}" 
                                          IsReadOnly="True"
@@ -375,7 +364,7 @@
                                          FontFamily="Consolas"
                                          FontSize="10"
                                          Background="Transparent"
-                                         Foreground="#DCDCDC"
+                                         Foreground="{DynamicResource ThemeCodeForegroundBrush}"
                                          BorderThickness="0"
                                          MinHeight="180"/>
                             </ScrollViewer>
@@ -435,7 +424,7 @@
                         
                         <!-- Self-test progress -->
                         <Border Grid.Row="2" 
-                               Background="#E8F5E9" 
+                               Background="{DynamicResource ThemePrimaryLightBrush}" 
                                BorderBrush="{DynamicResource ThemeSuccessBrush}"
                                BorderThickness="1"
                                CornerRadius="6" 
@@ -444,10 +433,10 @@
                                IsVisible="{Binding IsSelfTestRunning}">
                             <StackPanel>
                                 <TextBlock Text="{Binding SelfTestTypeText}" FontSize="11" FontWeight="Bold"
-                                          Foreground="#2E7D32"/>
-                                <TextBlock Text="{Binding SelfTestProgressText}" FontSize="10" Foreground="#388E3C" Margin="0,2,0,6"/>
+                                          Foreground="{DynamicResource ThemeSuccessBrush}"/>
+                                <TextBlock Text="{Binding SelfTestProgressText}" FontSize="10" Foreground="{DynamicResource ThemeTextSecondaryBrush}" Margin="0,2,0,6"/>
                                 <ProgressBar Value="{Binding SelfTestProgress}" Maximum="100" Height="6"
-                                           Background="#C8E6C9" Foreground="{DynamicResource ThemeSuccessBrush}"/>
+                                           Background="{DynamicResource ThemeBorderLightBrush}" Foreground="{DynamicResource ThemeSuccessBrush}"/>
                             </StackPanel>
                         </Border>
                         
@@ -496,15 +485,9 @@
         </Grid>
 
         <!-- ========== STATUS BAR ========== -->
-        <Border Grid.Row="3" 
-               Background="{DynamicResource ThemePanelBackgroundBrush}"
-               BorderBrush="{DynamicResource ThemeBorderBrush}"
-               BorderThickness="0,1,0,0"
-               Height="28">
+        <Border Grid.Row="3" Classes="StatusBar">
             <StackPanel Orientation="Horizontal" Margin="16,0" Spacing="8">
-                <TextBlock Text="{Binding StatusMessage}" FontSize="10"
-                          Foreground="{DynamicResource ThemeTextSecondaryBrush}"
-                          VerticalAlignment="Center"/>
+                <TextBlock Text="{Binding StatusMessage}" Classes="StatusText"/>
                 <TextBlock Text="|" Foreground="{DynamicResource ThemeTextMutedBrush}" VerticalAlignment="Center"/>
                 <TextBlock Text="Počet disků: " FontSize="10" Foreground="{DynamicResource ThemeTextMutedBrush}" VerticalAlignment="Center"/>
                 <TextBlock Text="{Binding Disks.Count}" FontSize="10" FontWeight="Bold"

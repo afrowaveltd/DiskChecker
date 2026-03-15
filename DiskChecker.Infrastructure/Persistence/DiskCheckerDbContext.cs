@@ -76,6 +76,7 @@ public class DiskCheckerDbContext : DbContext
 
             // LatestSmartData is runtime data, not stored in DB
             entity.Ignore(e => e.LatestSmartData);
+            entity.Ignore(e => e.Volumes);
 
             entity.HasMany(e => e.TestSessions)
                 .WithOne(t => t.DiskCard)

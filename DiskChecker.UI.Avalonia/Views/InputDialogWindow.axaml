@@ -6,11 +6,11 @@
         SizeToContent="Height"
         MinHeight="180"
         WindowStartupLocation="CenterOwner"
-        Background="#F8FAFC"
+        Background="{DynamicResource ThemeBackgroundBrush}"
         CanResize="False">
     
-    <Border Background="#F8FAFC" 
-            BorderBrush="#E2E8F0" 
+    <Border Background="{DynamicResource ThemeBackgroundBrush}" 
+            BorderBrush="{DynamicResource ThemeBorderBrush}" 
             BorderThickness="1">
         <Grid>
             <Grid.RowDefinitions>
@@ -21,8 +21,8 @@
             
             <!-- Header -->
             <Border Grid.Row="0" 
-                    Background="#EFF6FF"
-                    Padding="20,16">
+                    Background="{DynamicResource ThemePrimaryLightBrush}"
+                    Padding="16,12">
                 <Grid>
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="Auto"/>
@@ -30,42 +30,42 @@
                     </Grid.ColumnDefinitions>
                     
                     <Border Grid.Column="0" 
-                            Background="#DBEAFE"
+                            Background="{DynamicResource ThemeCardBackgroundBrush}"
                             CornerRadius="8"
                             Padding="10"
-                            Margin="0,0,16,0">
+                            Margin="0,0,12,0">
                         <TextBlock Text="✎" 
-                                   FontSize="24"
-                                   Foreground="#2563EB"/>
+                                   FontSize="22"
+                                   Foreground="{DynamicResource ThemePrimaryBrush}"/>
                     </Border>
                     
                     <TextBlock Grid.Column="1" 
                                Text="{Binding DialogTitle}" 
-                               FontSize="18" 
+                               FontSize="16" 
                                FontWeight="Bold"
-                               Foreground="#1E293B"
+                               Foreground="{DynamicResource ThemeTextPrimaryBrush}"
                                VerticalAlignment="Center"/>
                 </Grid>
             </Border>
             
             <!-- Content -->
-            <Border Grid.Row="1" Padding="24,20">
-                <StackPanel Spacing="16">
+            <Border Grid.Row="1" Padding="20,16">
+                <StackPanel Spacing="12">
                     <TextBlock Text="{Binding Message}" 
-                               FontSize="14" 
-                               Foreground="#334155"
+                               FontSize="13" 
+                               Foreground="{DynamicResource ThemeTextSecondaryBrush}"
                                TextWrapping="Wrap"/>
                     
                     <TextBox Text="{Binding InputText}"
                              Watermark="{Binding Placeholder}"
-                             FontSize="14"
-                             Padding="12,8"
+                             FontSize="13"
+                             Padding="10,7"
                              CornerRadius="8"
-                             BorderBrush="#CBD5E1"
+                             BorderBrush="{DynamicResource ThemeBorderBrush}"
                              BorderThickness="1">
                         <TextBox.Styles>
                             <Style Selector="TextBox:focus">
-                                <Setter Property="BorderBrush" Value="#2563EB"/>
+                                <Setter Property="BorderBrush" Value="{DynamicResource ThemePrimaryBrush}"/>
                             </Style>
                         </TextBox.Styles>
                     </TextBox>
@@ -74,34 +74,34 @@
             
             <!-- Buttons -->
             <Border Grid.Row="2" 
-                    Background="#F1F5F9"
-                    Padding="20,16">
+                    Background="{DynamicResource ThemeSecondaryBackgroundBrush}"
+                    Padding="16,12">
                 <StackPanel Orientation="Horizontal" 
                             HorizontalAlignment="Right" 
-                            Spacing="12">
+                            Spacing="10">
                     
                     <Button Content="Zrušit"
                             Command="{Binding CancelCommand}"
-                            Background="#FFFFFF"
-                            Foreground="#475569"
-                            BorderBrush="#CBD5E1"
+                            Background="{DynamicResource ThemeCardBackgroundBrush}"
+                            Foreground="{DynamicResource ThemeTextSecondaryBrush}"
+                            BorderBrush="{DynamicResource ThemeBorderBrush}"
                             BorderThickness="1"
-                            Padding="20,10"
+                            Padding="16,8"
                             CornerRadius="8"
                             Cursor="Hand"/>
                     
                     <Button Content="OK"
                             Command="{Binding OkCommand}"
-                            Background="#2563EB"
+                            Background="{DynamicResource ThemePrimaryBrush}"
                             Foreground="White"
                             BorderThickness="0"
-                            Padding="24,10"
+                            Padding="18,8"
                             CornerRadius="8"
                             FontWeight="SemiBold"
                             Cursor="Hand">
                         <Button.Styles>
                             <Style Selector="Button:pointerover">
-                                <Setter Property="Background" Value="#1D4ED8"/>
+                                <Setter Property="Background" Value="{DynamicResource ThemePrimaryHoverBrush}"/>
                             </Style>
                         </Button.Styles>
                     </Button>

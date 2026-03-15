@@ -18,21 +18,41 @@ public class ViewLocator : IDataTemplate
     {
         if (param is null)
             return null;
-        
+
         var name = param.GetType().FullName!;
-        
+
         // Convert namespace from ViewModels to Views and class name from ViewModel to View
         name = name.Replace(".ViewModels.", ".Views.", StringComparison.Ordinal);
         name = name.Replace("ViewModel", "View", StringComparison.Ordinal);
-        
-        var type = Type.GetType(name);
 
-        if (type != null)
+        var type = typeof(ViewLocator).Assembly.GetType(name, throwOnError: false, ignoreCase: false);
+        if (type is null)
         {
-            return (Control)Activator.CreateInstance(type)!;
+            return new TextBlock { Text = "Not Found: " + name };
         }
-        
-        return new TextBlock { Text = "Not Found: " + name };
+
+        try
+        {
+            if (Activator.CreateInstance(type) is Control control)
+            {
+                return control;
+            }
+
+            return new TextBlock { Text = "Invalid View Type: " + name };
+        }
+        catch (InvalidOperationException ex)
+        {
+            return new TextBlock { Text = $"View init error: {name} ({ex.Message})" };
+        }
+        catch (MemberAccessException ex)
+        {
+            return new TextBlock { Text = $"View access error: {name} ({ex.Message})" };
+        }
+        catch (System.Reflection.TargetInvocationException ex)
+        {
+            var inner = ex.InnerException?.Message ?? ex.Message;
+            return new TextBlock { Text = $"View constructor error: {name} ({inner})" };
+        }
     }
 
     public bool Match(object? data)

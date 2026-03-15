@@ -66,9 +66,33 @@ internal static class Win32DiskInterop
         out uint lpBytesReturned,
         IntPtr lpOverlapped);
 
+    // ===== NEW: Volume management functions for exclusive disk access =====
+
+    [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+    internal static extern bool GetVolumeNameForVolumeMountPoint(
+        string lpszVolumeMountPoint,
+        [Out] char[] lpszVolumeName,
+        uint cchBufferLength);
+
+    [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+    internal static extern bool GetVolumePathNamesForVolumeName(
+        string lpszVolumeName,
+        [Out] char[] lpszVolumePathNames,
+        uint cchBufferLength,
+        out uint lpcchReturnLength);
+
+    [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+    internal static extern bool DeleteVolumeMountPoint(
+        string lpszVolumeMountPoint);
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    internal static extern bool CloseHandle(IntPtr hObject);
+
     // Constants
     internal const uint GENERIC_READ = 0x80000000;
     internal const uint GENERIC_WRITE = 0x40000000;
+    internal const uint FILE_SHARE_READ = 0x00000001;
+    internal const uint FILE_SHARE_WRITE = 0x00000002;
     internal const uint OPEN_EXISTING = 3;
     internal const uint FILE_ATTRIBUTE_NORMAL = 0x80;
     internal const uint FILE_ATTRIBUTE_NO_BUFFERING = 0x20000000;
@@ -81,6 +105,23 @@ internal static class Win32DiskInterop
     internal const uint METHOD_BUFFERED = 0;
     internal const uint FILE_ANY_ACCESS = 0;
     internal const uint FILE_SPECIAL_ACCESS = 0;
+
+    // ===== NEW: Volume lock/dismount control codes =====
+    internal const uint FSCTL_LOCK_VOLUME = 0x00090018;
+    internal const uint FSCTL_DISMOUNT_VOLUME = 0x00090020;
+    internal const uint FSCTL_UNLOCK_VOLUME = 0x00090024;
+    internal const uint IOCTL_VOLUME_SET_GPT_ATTRIBUTES = 0x000CC040;
+}
+
+/// <summary>
+/// Security attributes structure for advanced file operations
+/// </summary>
+[StructLayout(LayoutKind.Sequential)]
+internal struct SECURITY_ATTRIBUTES
+{
+    public uint nLength;
+    public IntPtr lpSecurityDescriptor;
+    public bool bInheritHandle;
 }
 
 /// <summary>

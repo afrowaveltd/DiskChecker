@@ -7,30 +7,19 @@
     <Grid>
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto"/>
-            <RowDefinition Height="2*"/>
-            <RowDefinition Height="7*"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
             <RowDefinition Height="Auto"/>
         </Grid.RowDefinitions>
 
         <!-- ========== HEADER ========== -->
         <Border Grid.Row="0" 
-                Background="{DynamicResource ThemeSecondaryBackgroundBrush}" 
-                Padding="20,16"
-                BorderBrush="{DynamicResource ThemeBorderBrush}" 
-                BorderThickness="0,0,0,1">
+                Classes="PageHeader">
             <Grid ColumnDefinitions="*,Auto">
-                <StackPanel Margin="0,-4">
-                    <TextBlock Text="💾 Vyberte Disk pro Testování" 
-                               FontSize="26" FontWeight="Bold" 
-                               Foreground="{DynamicResource ThemeTextPrimaryBrush}"
-                               Margin="0,0,0,2"/>
-                    <TextBlock Text="Zvolte disk pro diagnostiku a analýzu" 
-                               FontSize="12" 
-                               Foreground="{DynamicResource ThemeTextSecondaryBrush}"/>
-                    <TextBlock Text="{Binding LoadingState}" 
-                               FontSize="10" 
-                               Foreground="{DynamicResource ThemeTextMutedBrush}"
-                               Margin="0,4,0,0"/>
+                <StackPanel>
+                    <TextBlock Text="💾 Vyberte Disk pro Testování" Classes="PageTitle"/>
+                    <TextBlock Text="Zvolte disk pro diagnostiku a analýzu" Classes="PageSubtitle"/>
+                    <TextBlock Text="{Binding LoadingState}" Classes="PageMetaText" Margin="0,4,0,0"/>
                     <ProgressBar IsIndeterminate="True" 
                                 Width="200" Height="3"
                                 Margin="0,6,0,0"
@@ -49,7 +38,7 @@
                         Foreground="White"
                         VerticalAlignment="Center"
                         CornerRadius="6"
-                        Padding="14,8"
+                        Padding="12,6"
                         FontWeight="SemiBold"/>
             </Grid>
         </Border>
@@ -205,9 +194,11 @@
                                                               Foreground="{DynamicResource ThemePrimaryBrush}"/>
                                                 </Border>
                                             </StackPanel>
-                                            <Border Background="#FFF3CD" CornerRadius="4" Padding="4,2" HorizontalAlignment="Right"
+                                            <Border Background="{DynamicResource ThemeWarningBackgroundBrush}" CornerRadius="4" Padding="4,2" HorizontalAlignment="Right"
+                                                   BorderBrush="{DynamicResource ThemeWarningBorderBrush}"
+                                                   BorderThickness="1"
                                                    IsVisible="{Binding IsLocked}">
-                                                <TextBlock Text="🔒 Uzamčen" FontSize="9" FontWeight="Bold" Foreground="#856404"/>
+                                                <TextBlock Text="🔒 Uzamčen" FontSize="9" FontWeight="Bold" Foreground="{DynamicResource ThemeWarningTextBrush}"/>
                                             </Border>
                                         </Grid>
 
@@ -286,15 +277,17 @@
                                                 <ColumnDefinition Width="Auto"/>
                                             </Grid.ColumnDefinitions>
                                             <StackPanel Grid.Column="0" Spacing="2">
-                                                <Border Background="#FFF3CD" CornerRadius="3" Padding="6,2" HorizontalAlignment="Left"
+                                                <Border Background="{DynamicResource ThemeWarningBackgroundBrush}" CornerRadius="3" Padding="6,2" HorizontalAlignment="Left"
+                                                       BorderBrush="{DynamicResource ThemeWarningBorderBrush}"
+                                                       BorderThickness="1"
                                                        IsVisible="{Binding IsSystemDisk}">
                                                     <TextBlock Text="{Binding IsSystemDiskLabel}" 
                                                               FontSize="9" FontWeight="SemiBold"
-                                                              Foreground="#856404"/>
+                                                              Foreground="{DynamicResource ThemeWarningTextBrush}"/>
                                                 </Border>
                                                 <TextBlock Text="{Binding LockStatusText}" 
                                                           FontSize="9"
-                                                          Foreground="#E74C3C"
+                                                          Foreground="{DynamicResource ThemeDangerBrush}"
                                                           TextWrapping="Wrap"
                                                           IsVisible="{Binding IsLocked}"/>
                                             </StackPanel>
@@ -303,7 +296,7 @@
                                             <Button Grid.Column="1"
                                                     Command="{Binding $parent[ItemsControl].DataContext.ToggleLockDiskCommand}"
                                                     CommandParameter="{Binding}"
-                                                    Background="#607D8B" Foreground="White"
+                                                    Background="{DynamicResource ThemeInfoBrush}" Foreground="White"
                                                     FontSize="9" Padding="10,4"
                                                     HorizontalAlignment="Right"
                                                     VerticalAlignment="Bottom"
@@ -339,20 +332,15 @@
 
         <!-- ========== STATUS BAR ========== -->
         <Border Grid.Row="3" 
-                Background="{DynamicResource ThemePanelBackgroundBrush}"
-                BorderBrush="{DynamicResource ThemeBorderBrush}"
-                BorderThickness="0,1,0,0"
-                Height="36">
+                Classes="StatusBar">
             <Grid ColumnDefinitions="*,Auto">
                 <TextBlock Grid.Column="0" 
                            Text="{Binding StatusMessage}" 
-                           Foreground="{DynamicResource ThemeTextSecondaryBrush}" 
-                           VerticalAlignment="Center"
-                           Margin="16,0"
-                           FontSize="11"/>
+                           Classes="StatusText"
+                           Margin="16,0"/>
                 <StackPanel Grid.Column="1" Orientation="Horizontal" Margin="16,0" Spacing="8">
                     <Border Background="{DynamicResource ThemeSuccessBrush}" Width="8" Height="8" CornerRadius="4"/>
-                    <TextBlock FontSize="11" Foreground="{DynamicResource ThemeTextMutedBrush}">Aplikace připravena</TextBlock>
+                    <TextBlock FontSize="10" Foreground="{DynamicResource ThemeTextMutedBrush}">Aplikace připravena</TextBlock>
                 </StackPanel>
             </Grid>
         </Border>

@@ -11,7 +11,7 @@
         </Grid.RowDefinitions>
 
         <!-- ========== HEADER ========== -->
-        <Border Grid.Row="0" Background="{DynamicResource ThemePanelBrush}" BorderBrush="{DynamicResource ThemeBorderBrush}" BorderThickness="0,0,0,1" Padding="20">
+        <Border Grid.Row="0" Background="{DynamicResource ThemePanelBackgroundBrush}" BorderBrush="{DynamicResource ThemeBorderBrush}" BorderThickness="0,0,0,1" Padding="16,10" MinHeight="60">
             <Grid>
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="*"/>
@@ -19,39 +19,38 @@
                 </Grid.ColumnDefinitions>
 
                 <StackPanel Grid.Column="0">
-                    <TextBlock Text="📊 Reporty" 
-                               FontSize="28" FontWeight="Bold" Foreground="#1a1a1a" Margin="0,0,0,5"/>
-                    <TextBlock Text="Historie všech testů" 
-                               FontSize="13" Foreground="#444444"/>
-                    <TextBlock Text="{Binding StatusMessage}" FontSize="11" Foreground="#333333" Margin="0,4,0,0"/>
+                    <TextBlock Text="📊 Reporty" Classes="PageTitle"/>
+                    <TextBlock Text="Historie všech testů" Classes="PageSubtitle"/>
+                    <TextBlock Text="{Binding StatusMessage}" Classes="PageMetaText" Margin="0,2,0,0"/>
                 </StackPanel>
 
                 <Button Grid.Column="1"
                         Content="🏠 Zpět"
                         Command="{Binding $parent[UserControl].DataContext.NavigationService.NavigateToDiskCardsCommand}"
-                        Background="#666666" Foreground="White"
+                        Background="{DynamicResource ThemeSecondaryBackgroundBrush}" Foreground="{DynamicResource ThemeTextPrimaryBrush}"
+                        BorderBrush="{DynamicResource ThemeBorderBrush}"
                         VerticalAlignment="Center"/>
             </Grid>
         </Border>
 
         <!-- ========== MAIN CONTENT ========== -->
-        <Grid Grid.Row="1" Margin="20">
+        <Grid Grid.Row="1" Margin="16">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="1*"/>
                 <ColumnDefinition Width="2*"/>
             </Grid.ColumnDefinitions>
 
             <!-- ========== REPORT LIST ========== -->
-            <Border Grid.Column="0" Background="{DynamicResource ThemePanelBrush}" BorderBrush="{DynamicResource ThemeBorderBrush}" BorderThickness="1" Margin="0,0,10,0" Padding="15">
+            <Border Grid.Column="0" Background="{DynamicResource ThemePanelBackgroundBrush}" BorderBrush="{DynamicResource ThemeBorderBrush}" BorderThickness="1" Margin="0,0,8,0" Padding="12">
                 <Grid>
                     <Grid.RowDefinitions>
                         <RowDefinition Height="Auto"/>
                         <RowDefinition Height="*"/>
                     </Grid.RowDefinitions>
 
-                    <TextBlock Grid.Row="0" Text="📋 Seznam testů" FontSize="16" FontWeight="Bold" Foreground="#1a1a1a" Margin="0,0,0,15"/>
+                    <TextBlock Grid.Row="0" Text="📋 Seznam testů" FontSize="15" FontWeight="Bold" Foreground="{DynamicResource ThemeTextPrimaryBrush}" Margin="0,0,0,12"/>
 
-                    <ListBox Grid.Row="1" ItemsSource="{Binding Reports}" SelectedItem="{Binding SelectedReport}" Margin="0,0,0,15">
+                    <ListBox Grid.Row="1" ItemsSource="{Binding Reports}" SelectedItem="{Binding SelectedReport}" Margin="0,0,0,8">
                         <ListBox.ItemTemplate>
                             <DataTemplate>
                                 <StackPanel Orientation="Vertical">
@@ -67,20 +66,20 @@
                                             <TextBlock Text="{Binding Grade}" FontSize="10" FontWeight="Bold" Foreground="White" HorizontalAlignment="Center"/>
                                         </Border>
                                         
-                                        <TextBlock Grid.Column="1" Text="{Binding Title}" FontWeight="Bold" FontSize="14"/>
+                                        <TextBlock Grid.Column="1" Text="{Binding Title}" FontWeight="Bold" FontSize="13"/>
                                         <TextBlock Grid.Column="2" Text="{Binding Score, StringFormat='{}{0:F0}'}" FontWeight="Bold" FontSize="12" VerticalAlignment="Center"/>
                                     </Grid>
                                     
                                     <TextBlock Text="{Binding TestDate, StringFormat='{}{0:dd.MM.yyyy HH:mm}'}" 
-                                               FontSize="11" Foreground="#666666"/>
-                                    <TextBlock Text="{Binding DeviceName}" FontSize="12" Foreground="#444444"/>
+                                               FontSize="10" Foreground="{DynamicResource ThemeTextMutedBrush}"/>
+                                    <TextBlock Text="{Binding DeviceName}" FontSize="11" Foreground="{DynamicResource ThemeTextSecondaryBrush}"/>
                                     
                                     <StackPanel Orientation="Horizontal" Margin="0,4,0,0">
                                         <TextBlock Text="⚡" FontSize="10" Margin="0,0,4,0"/>
-                                        <TextBlock Text="{Binding AvgWriteSpeed, StringFormat='{}{0:F1} MB/s'}" FontSize="10" Foreground="#666666"/>
-                                        <TextBlock Text=" • " FontSize="10" Foreground="#999999"/>
+                                        <TextBlock Text="{Binding AvgWriteSpeed, StringFormat='{}{0:F1} MB/s'}" FontSize="10" Foreground="{DynamicResource ThemeTextMutedBrush}"/>
+                                        <TextBlock Text=" • " FontSize="10" Foreground="{DynamicResource ThemeTextMutedBrush}"/>
                                         <TextBlock Text="⚠️" FontSize="10" Margin="4,0,4,0"/>
-                                        <TextBlock Text="{Binding ErrorCount}" FontSize="10" Foreground="#666666"/>
+                                        <TextBlock Text="{Binding ErrorCount}" FontSize="10" Foreground="{DynamicResource ThemeTextMutedBrush}"/>
                                     </StackPanel>
                                 </StackPanel>
                             </DataTemplate>
@@ -90,14 +89,14 @@
             </Border>
 
             <!-- ========== REPORT DETAILS ========== -->
-            <Grid Grid.Column="1" Margin="10,0,0,0">
+            <Grid Grid.Column="1" Margin="8,0,0,0">
                 <Grid.RowDefinitions>
                     <RowDefinition Height="Auto"/>
                     <RowDefinition Height="*"/>
                     <RowDefinition Height="Auto"/>
                 </Grid.RowDefinitions>
 
-                <Border Grid.Row="0" Background="{DynamicResource ThemePanelBrush}" BorderBrush="{DynamicResource ThemeBorderBrush}" BorderThickness="1" Margin="0,0,0,10" Padding="15">
+                <Border Grid.Row="0" Background="{DynamicResource ThemePanelBackgroundBrush}" BorderBrush="{DynamicResource ThemeBorderBrush}" BorderThickness="1" Margin="0,0,0,8" Padding="12">
                     <StackPanel>
                         <Grid>
                             <Grid.ColumnDefinitions>
@@ -111,13 +110,13 @@
                                 <TextBlock Text="{Binding SelectedReport.Grade}" FontSize="14" FontWeight="Bold" Foreground="White"/>
                             </Border>
                             
-                            <TextBlock Grid.Column="1" Text="{Binding SelectedReport.Title}" FontSize="18" FontWeight="Bold" Foreground="#1a1a1a" VerticalAlignment="Center"/>
+                            <TextBlock Grid.Column="1" Text="{Binding SelectedReport.Title}" FontSize="16" FontWeight="Bold" Foreground="{DynamicResource ThemeTextPrimaryBrush}" VerticalAlignment="Center"/>
                             
                             <TextBlock Grid.Column="2" Text="{Binding SelectedReport.Score, StringFormat='{}{0:F0}/100'}" 
-                                       FontSize="16" FontWeight="Bold" Foreground="#1a1a1a" VerticalAlignment="Center"/>
+                                       FontSize="14" FontWeight="Bold" Foreground="{DynamicResource ThemeTextPrimaryBrush}" VerticalAlignment="Center"/>
                         </Grid>
                         
-                        <Grid Margin="0,10,0,0">
+                        <Grid Margin="0,8,0,0">
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="Auto"/>
                                 <ColumnDefinition Width="*"/>
@@ -125,54 +124,51 @@
                                 <ColumnDefinition Width="*"/>
                             </Grid.ColumnDefinitions>
                             
-                            <TextBlock Grid.Column="0" Text="_disk:" FontWeight="Bold" Margin="0,0,5,0"/>
+                            <TextBlock Grid.Column="0" Text="Disk:" FontWeight="Bold" Margin="0,0,5,0"/>
                             <TextBlock Grid.Column="1" Text="{Binding SelectedReport.DeviceName}" Margin="0,0,20,0"/>
-                            
-                            <TextBlock Grid.Column="2" Text="Datum:" FontWeight="Bold" Margin="0,0,5,0"/>
-                            <TextBlock Grid.Column="3" Text="{Binding SelectedReport.TestDate, StringFormat='{}{0:dd.MM.yyyy HH:mm}'}"/>
                         </Grid>
                     </StackPanel>
                 </Border>
 
-                <Border Grid.Row="1" Background="{DynamicResource ThemePanelBrush}" BorderBrush="{DynamicResource ThemeBorderBrush}" BorderThickness="1" Margin="0,0,0,10" Padding="15">
+                <Border Grid.Row="1" Background="{DynamicResource ThemePanelBackgroundBrush}" BorderBrush="{DynamicResource ThemeBorderBrush}" BorderThickness="1" Margin="0,0,0,8" Padding="12">
                     <Grid>
                         <Grid.RowDefinitions>
                             <RowDefinition Height="Auto"/>
                             <RowDefinition Height="*"/>
                         </Grid.RowDefinitions>
 
-                        <TextBlock Grid.Row="0" Text="📈 Metriky" FontSize="16" FontWeight="Bold" Foreground="#1a1a1a" Margin="0,0,0,10"/>
+                        <TextBlock Grid.Row="0" Text="📈 Metriky" FontSize="15" FontWeight="Bold" Foreground="{DynamicResource ThemeTextPrimaryBrush}" Margin="0,0,0,10"/>
 
                         <UniformGrid Grid.Row="1" Columns="2" Rows="3">
-                            <Border Background="#f8f9fa" Margin="2" Padding="10">
+                            <Border Background="{DynamicResource ThemeSecondaryBackgroundBrush}" Margin="2" Padding="10">
                                 <StackPanel>
-                                    <TextBlock Text="Průměr zápisu" FontSize="12" Foreground="#666666"/>
+                                    <TextBlock Text="Průměr zápisu" FontSize="12" Foreground="{DynamicResource ThemeTextMutedBrush}"/>
                                     <TextBlock Text="{Binding SelectedReport.AvgWriteSpeed, StringFormat='{}{0:F2} MB/s'}" 
-                                               FontSize="16" FontWeight="Bold" Foreground="#1a1a1a"/>
+                                               FontSize="16" FontWeight="Bold" Foreground="{DynamicResource ThemeTextPrimaryBrush}"/>
                                 </StackPanel>
                             </Border>
                             
-                            <Border Background="#f8f9fa" Margin="2" Padding="10">
+                            <Border Background="{DynamicResource ThemeSecondaryBackgroundBrush}" Margin="2" Padding="10">
                                 <StackPanel>
-                                    <TextBlock Text="Průměr čtení" FontSize="12" Foreground="#666666"/>
+                                    <TextBlock Text="Průměr čtení" FontSize="12" Foreground="{DynamicResource ThemeTextMutedBrush}"/>
                                     <TextBlock Text="{Binding SelectedReport.AvgReadSpeed, StringFormat='{}{0:F2} MB/s'}" 
-                                               FontSize="16" FontWeight="Bold" Foreground="#1a1a1a"/>
+                                               FontSize="16" FontWeight="Bold" Foreground="{DynamicResource ThemeTextPrimaryBrush}"/>
                                 </StackPanel>
                             </Border>
                             
-                            <Border Background="#f8f9fa" Margin="2" Padding="10">
+                            <Border Background="{DynamicResource ThemeSecondaryBackgroundBrush}" Margin="2" Padding="10">
                                 <StackPanel>
-                                    <TextBlock Text="Počet chyb" FontSize="12" Foreground="#666666"/>
+                                    <TextBlock Text="Počet chyb" FontSize="12" Foreground="{DynamicResource ThemeTextMutedBrush}"/>
                                     <TextBlock Text="{Binding SelectedReport.ErrorCount}" 
-                                               FontSize="16" FontWeight="Bold" Foreground="#1a1a1a"/>
+                                               FontSize="16" FontWeight="Bold" Foreground="{DynamicResource ThemeTextPrimaryBrush}"/>
                                 </StackPanel>
                             </Border>
                             
-                            <Border Background="#f8f9fa" Margin="2" Padding="10">
+                            <Border Background="{DynamicResource ThemeSecondaryBackgroundBrush}" Margin="2" Padding="10">
                                 <StackPanel>
-                                    <TextBlock Text="Sériové číslo" FontSize="12" Foreground="#666666"/>
+                                    <TextBlock Text="Sériové číslo" FontSize="12" Foreground="{DynamicResource ThemeTextMutedBrush}"/>
                                     <TextBlock Text="{Binding SelectedReport.SerialNumber}" 
-                                               FontSize="12" FontWeight="Bold" Foreground="#1a1a1a" TextTrimming="CharacterEllipsis"/>
+                                               FontSize="12" FontWeight="Bold" Foreground="{DynamicResource ThemeTextPrimaryBrush}" TextTrimming="CharacterEllipsis"/>
                                 </StackPanel>
                             </Border>
                         </UniformGrid>
@@ -183,38 +179,25 @@
                     <Button Content="💾 Exportovat" 
                             Command="{Binding ExportReportCommand}"
                             IsEnabled="{Binding SelectedReport}"
-                            Background="#004B93" Foreground="White" 
-                            Padding="15,10" Margin="0,0,10,0">
-                        <Button.Styles>
-                            <Style Selector="Button">
-                                <Setter Property="BorderThickness" Value="0"/>
-                                <Setter Property="FontWeight" Value="Bold"/>
-                                <Setter Property="Cursor" Value="Hand"/>
-                            </Style>
-                        </Button.Styles>
-                    </Button>
+                            Background="{DynamicResource ThemePrimaryBrush}" Foreground="White" 
+                            Padding="14,8" Margin="0,0,8,0"/>
                     
                     <Button Content="🗑️ Smazat" 
                             Command="{Binding DeleteReportCommand}"
                             IsEnabled="{Binding SelectedReport}"
-                            Background="#E74C3C" Foreground="White" 
-                            Padding="15,10">
-                        <Button.Styles>
-                            <Style Selector="Button">
-                                <Setter Property="BorderThickness" Value="0"/>
-                                <Setter Property="FontWeight" Value="Bold"/>
-                                <Setter Property="Cursor" Value="Hand"/>
-                            </Style>
-                        </Button.Styles>
-                    </Button>
+                            Background="{DynamicResource ThemeDangerBrush}" Foreground="White" 
+                            Padding="14,8"/>
                 </StackPanel>
             </Grid>
         </Grid>
 
         <!-- ========== STATUS BAR ========== -->
-        <TextBlock Grid.Row="2" Text="{Binding StatusMessage}" 
-                   Background="#F0F0F0" Padding="20,8" 
-                   FontSize="11" Foreground="#333333"
-                   TextTrimming="CharacterEllipsis"/>
+        <Border Grid.Row="2"
+                Classes="StatusBar"
+                Padding="16,6">
+            <TextBlock Text="{Binding StatusMessage}" 
+                       Classes="StatusText"
+                       TextTrimming="CharacterEllipsis"/>
+        </Border>
     </Grid>
 </UserControl>

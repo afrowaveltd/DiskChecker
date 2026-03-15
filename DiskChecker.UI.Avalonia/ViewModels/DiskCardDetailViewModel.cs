@@ -258,8 +258,14 @@ public partial class DiskCardDetailViewModel : ViewModelBase, INavigableViewMode
             IsLoading = true;
             StatusMessage = "Hledám kartu disku...";
 
-            // Try to find existing card by serial number (if available through SMART)
-            var card = await _diskCardRepository.GetByDevicePathAsync(disk.Path);
+            // Prefer identity by serial number if available, fallback to device path
+            DiskCard? card = null;
+            if (!string.IsNullOrWhiteSpace(disk.SerialNumber))
+            {
+                card = await _diskCardRepository.GetBySerialNumberAsync(disk.SerialNumber);
+            }
+
+            card ??= await _diskCardRepository.GetByDevicePathAsync(disk.Path);
 
             if (card == null)
             {
@@ -267,8 +273,10 @@ public partial class DiskCardDetailViewModel : ViewModelBase, INavigableViewMode
                 card = new DiskCard
                 {
                     ModelName = disk.Name ?? "Unknown",
+                    SerialNumber = disk.SerialNumber ?? string.Empty,
                     DevicePath = disk.Path,
                     Capacity = disk.TotalSize,
+                    FirmwareVersion = disk.FirmwareVersion ?? string.Empty,
                     DiskType = "Unknown",
                     InterfaceType = "Unknown",
                     IsLocked = _selectedDiskService.IsSelectedDiskLocked

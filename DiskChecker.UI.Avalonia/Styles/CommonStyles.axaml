@@ -3,7 +3,7 @@
          xmlns:dg="clr-namespace:Avalonia.Controls;assembly=Avalonia.Controls.DataGrid">
 
   <Styles.Resources>
-    <ResourceDictionary>
+    <ResourceDictionary x:Key="Light">
       <!-- Light Theme Colors (Default) -->
       <SolidColorBrush x:Key="ThemeBackgroundBrush" Color="#FFFFFF"/>
       <SolidColorBrush x:Key="ThemeSecondaryBackgroundBrush" Color="#F8F9FA"/>
@@ -24,6 +24,23 @@
       <SolidColorBrush x:Key="ThemeTextMutedBrush" Color="#6C757D"/>
       <SolidColorBrush x:Key="ThemeTextInverseBrush" Color="#FFFFFF"/>
       <SolidColorBrush x:Key="ThemeGraphBackgroundBrush" Color="#0F1F33"/>
+      <SolidColorBrush x:Key="ThemeCodeBackgroundBrush" Color="#1E1E1E"/>
+      <SolidColorBrush x:Key="ThemeCodeForegroundBrush" Color="#DCDCDC"/>
+      <SolidColorBrush x:Key="ThemeWarningBackgroundBrush" Color="#FFF8E1"/>
+      <SolidColorBrush x:Key="ThemeWarningBorderBrush" Color="#F59E0B"/>
+      <SolidColorBrush x:Key="ThemeWarningTextBrush" Color="#B45309"/>
+      <SolidColorBrush x:Key="ThemeChartWriteBrush" Color="#22C55E"/>
+      <SolidColorBrush x:Key="ThemeChartWriteLightBrush" Color="#4ADE80"/>
+      <SolidColorBrush x:Key="ThemeChartWriteDarkBrush" Color="#15803D"/>
+      <SolidColorBrush x:Key="ThemeChartWriteBackgroundBrush" Color="#1A22C55E"/>
+      <SolidColorBrush x:Key="ThemeChartReadBrush" Color="#3B82F6"/>
+      <SolidColorBrush x:Key="ThemeChartReadLightBrush" Color="#60A5FA"/>
+      <SolidColorBrush x:Key="ThemeChartReadDarkBrush" Color="#1D4ED8"/>
+      <SolidColorBrush x:Key="ThemeChartReadBackgroundBrush" Color="#1A3B82F6"/>
+      <SolidColorBrush x:Key="ThemeOverlayBrush" Color="#80000000"/>
+      <SolidColorBrush x:Key="ThemeHeaderGlassBrush" Color="#30FFFFFF"/>
+      <SolidColorBrush x:Key="ThemeHeaderSubtextBrush" Color="#CCFFFFFF"/>
+      <SolidColorBrush x:Key="ThemeDocumentPaperBrush" Color="#FFFFFF"/>
       <SolidColorBrush x:Key="ThemeNavActiveBrush" Color="#004B93"/>
       <SolidColorBrush x:Key="ThemeNavInactiveBrush" Color="Transparent"/>
       <SolidColorBrush x:Key="ThemeNavActiveTextBrush" Color="#FFFFFF"/>
@@ -33,7 +50,7 @@
         <GradientStop Color="#238636" Offset="1"/>
       </LinearGradientBrush>
     </ResourceDictionary>
-    
+
     <ResourceDictionary x:Key="Dark">
       <!-- Dark Theme Colors -->
       <SolidColorBrush x:Key="ThemeBackgroundBrush" Color="#0D1117"/>
@@ -55,6 +72,23 @@
       <SolidColorBrush x:Key="ThemeTextMutedBrush" Color="#8B949E"/>
       <SolidColorBrush x:Key="ThemeTextInverseBrush" Color="#0D1117"/>
       <SolidColorBrush x:Key="ThemeGraphBackgroundBrush" Color="#0A0F18"/>
+      <SolidColorBrush x:Key="ThemeCodeBackgroundBrush" Color="#0B0F15"/>
+      <SolidColorBrush x:Key="ThemeCodeForegroundBrush" Color="#E6EDF3"/>
+      <SolidColorBrush x:Key="ThemeWarningBackgroundBrush" Color="#3D2F08"/>
+      <SolidColorBrush x:Key="ThemeWarningBorderBrush" Color="#D29922"/>
+      <SolidColorBrush x:Key="ThemeWarningTextBrush" Color="#F8E3A1"/>
+      <SolidColorBrush x:Key="ThemeChartWriteBrush" Color="#3FB950"/>
+      <SolidColorBrush x:Key="ThemeChartWriteLightBrush" Color="#6BCF7A"/>
+      <SolidColorBrush x:Key="ThemeChartWriteDarkBrush" Color="#2E8B44"/>
+      <SolidColorBrush x:Key="ThemeChartWriteBackgroundBrush" Color="#1F3FB950"/>
+      <SolidColorBrush x:Key="ThemeChartReadBrush" Color="#58A6FF"/>
+      <SolidColorBrush x:Key="ThemeChartReadLightBrush" Color="#7AB8FF"/>
+      <SolidColorBrush x:Key="ThemeChartReadDarkBrush" Color="#2F81F7"/>
+      <SolidColorBrush x:Key="ThemeChartReadBackgroundBrush" Color="#1F58A6FF"/>
+      <SolidColorBrush x:Key="ThemeOverlayBrush" Color="#99000000"/>
+      <SolidColorBrush x:Key="ThemeHeaderGlassBrush" Color="#22FFFFFF"/>
+      <SolidColorBrush x:Key="ThemeHeaderSubtextBrush" Color="#DDE6F3FF"/>
+      <SolidColorBrush x:Key="ThemeDocumentPaperBrush" Color="#F5F7FA"/>
       <SolidColorBrush x:Key="ThemeNavActiveBrush" Color="#58A6FF"/>
       <SolidColorBrush x:Key="ThemeNavInactiveBrush" Color="Transparent"/>
       <SolidColorBrush x:Key="ThemeNavActiveTextBrush" Color="#FFFFFF"/>
@@ -69,7 +103,7 @@
   <!-- ==================== BUTTONS ==================== -->
   
   <Style Selector="Button">
-    <Setter Property="Padding" Value="12,8"/>
+    <Setter Property="Padding" Value="10,6"/>
     <Setter Property="Margin" Value="2"/>
     <Setter Property="CornerRadius" Value="6"/>
     <Setter Property="FontWeight" Value="SemiBold"/>
@@ -86,7 +120,7 @@
     <Setter Property="Foreground" Value="White"/>
     <Setter Property="FontWeight" Value="Bold"/>
     <Setter Property="CornerRadius" Value="8"/>
-    <Setter Property="Padding" Value="16,10"/>
+    <Setter Property="Padding" Value="14,8"/>
   </Style>
   
   <Style Selector="Button.Primary:pointerover">
@@ -155,6 +189,47 @@
   <Style Selector="TextBlock.Muted">
     <Setter Property="FontSize" Value="11"/>
     <Setter Property="Foreground" Value="{DynamicResource ThemeTextMutedBrush}"/>
+  </Style>
+
+  <!-- Utility typography for page chrome -->
+  <Style Selector="TextBlock.PageTitle">
+    <Setter Property="FontSize" Value="22"/>
+    <Setter Property="FontWeight" Value="Bold"/>
+    <Setter Property="Foreground" Value="{DynamicResource ThemeTextPrimaryBrush}"/>
+    <Setter Property="Margin" Value="0,0,0,4"/>
+  </Style>
+
+  <Style Selector="TextBlock.PageSubtitle">
+    <Setter Property="FontSize" Value="12"/>
+    <Setter Property="Foreground" Value="{DynamicResource ThemeTextSecondaryBrush}"/>
+  </Style>
+
+  <Style Selector="TextBlock.PageMetaText">
+    <Setter Property="FontSize" Value="10"/>
+    <Setter Property="Foreground" Value="{DynamicResource ThemeTextMutedBrush}"/>
+  </Style>
+
+  <Style Selector="TextBlock.StatusText">
+    <Setter Property="FontSize" Value="10"/>
+    <Setter Property="Foreground" Value="{DynamicResource ThemeTextSecondaryBrush}"/>
+    <Setter Property="VerticalAlignment" Value="Center"/>
+  </Style>
+
+  <!-- Utility containers for page chrome -->
+  <Style Selector="Border.PageHeader">
+    <Setter Property="Background" Value="{DynamicResource ThemeSecondaryBackgroundBrush}"/>
+    <Setter Property="BorderBrush" Value="{DynamicResource ThemeBorderBrush}"/>
+    <Setter Property="BorderThickness" Value="0,0,0,1"/>
+    <Setter Property="Padding" Value="16,10"/>
+    <Setter Property="MinHeight" Value="60"/>
+  </Style>
+
+  <Style Selector="Border.StatusBar">
+    <Setter Property="Background" Value="{DynamicResource ThemePanelBackgroundBrush}"/>
+    <Setter Property="BorderBrush" Value="{DynamicResource ThemeBorderBrush}"/>
+    <Setter Property="BorderThickness" Value="0,1,0,0"/>
+    <Setter Property="MinHeight" Value="24"/>
+    <Setter Property="Padding" Value="0,4"/>
   </Style>
 
   <!-- ==================== BORDERS ==================== -->
@@ -311,6 +386,38 @@
     <Setter Property="CornerRadius" Value="4"/>
     <Setter Property="Padding" Value="8,4"/>
     <Setter Property="FontSize" Value="12"/>
+  </Style>
+
+  <!-- ==================== PROFILE BUTTONS ==================== -->
+  
+  <!-- Base style for profile buttons -->
+  <Style Selector="Button.ProfileButton">
+    <Setter Property="Background" Value="Transparent"/>
+    <Setter Property="BorderThickness" Value="0"/>
+    <Setter Property="HorizontalAlignment" Value="Stretch"/>
+    <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+    <Setter Property="Padding" Value="0"/>
+    <Setter Property="Cursor" Value="Hand"/>
+  </Style>
+
+  <!-- Profile button content container - normal state -->
+  <Style Selector="Border.ProfileItem">
+    <Setter Property="Background" Value="{DynamicResource ThemeCardBackgroundBrush}"/>
+    <Setter Property="BorderBrush" Value="{DynamicResource ThemeBorderBrush}"/>
+    <Setter Property="BorderThickness" Value="2"/>
+    <Setter Property="CornerRadius" Value="8"/>
+    <Setter Property="Padding" Value="12"/>
+    <Setter Property="Margin" Value="0,0,0,8"/>
+  </Style>
+
+  <!-- Profile button content container - selected state -->
+  <Style Selector="Border.ProfileItemSelected">
+    <Setter Property="Background" Value="{DynamicResource ThemePrimaryLightBrush}"/>
+    <Setter Property="BorderBrush" Value="{DynamicResource ThemePrimaryBrush}"/>
+    <Setter Property="BorderThickness" Value="2"/>
+    <Setter Property="CornerRadius" Value="8"/>
+    <Setter Property="Padding" Value="12"/>
+    <Setter Property="Margin" Value="0,0,0,8"/>
   </Style>
 
 </Styles>

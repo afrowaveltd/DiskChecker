@@ -4,6 +4,7 @@ using System.Linq;
 using System.Threading.Tasks;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using DiskChecker.Application.Services;
 using DiskChecker.Core.Interfaces;
 using DiskChecker.Core.Models;
 using DiskChecker.UI.Avalonia.Services.Interfaces;
@@ -19,6 +20,7 @@ public partial class DiskCardsViewModel : ViewModelBase, INavigableViewModel
     private readonly INavigationService _navigationService;
     private readonly IDialogService _dialogService;
     private readonly ISelectedDiskService _selectedDiskService;
+    private readonly IDiskDetectionService _diskDetectionService;
     
     private ObservableCollection<DiskCard> _diskCards = new();
     private ObservableCollection<DiskCard> _filteredCards = new();
@@ -26,6 +28,8 @@ public partial class DiskCardsViewModel : ViewModelBase, INavigableViewModel
     private string _searchText = "";
     private string _selectedGradeFilter = "Všechny";
     private string _selectedStatusFilter = "Aktivní";
+    private bool _showLockedOnly;
+    private bool _showArchivedOnly;
     private bool _isLoading;
     private string _statusMessage = "Načítám karty disků...";
 
@@ -33,14 +37,18 @@ public partial class DiskCardsViewModel : ViewModelBase, INavigableViewModel
         IDiskCardRepository diskCardRepository,
         INavigationService navigationService,
         IDialogService dialogService,
-        ISelectedDiskService selectedDiskService)
+        ISelectedDiskService selectedDiskService,
+        IDiskDetectionService diskDetectionService)
     {
         _diskCardRepository = diskCardRepository;
         _navigationService = navigationService;
         _dialogService = dialogService;
         _selectedDiskService = selectedDiskService;
+        _diskDetectionService = diskDetectionService;
         
         NavigateToReportsCommand = new RelayCommand(NavigateToReports);
+        NavigateBackCommand = new RelayCommand(NavigateBack);
+        RefreshCommand = new AsyncRelayCommand(LoadDiskCardsAsync);
         
         GradeFilters = new ObservableCollection<string> { "Všechny", "A", "B", "C", "D", "E", "F" };
         StatusFilters = new ObservableCollection<string> { "Všechny", "Aktivní", "Archivované" };
@@ -111,6 +119,30 @@ public partial class DiskCardsViewModel : ViewModelBase, INavigableViewModel
         }
     }
 
+    public bool ShowLockedOnly
+    {
+        get => _showLockedOnly;
+        set
+        {
+            if (SetProperty(ref _showLockedOnly, value))
+            {
+                ApplyFilters();
+            }
+        }
+    }
+
+    public bool ShowArchivedOnly
+    {
+        get => _showArchivedOnly;
+        set
+        {
+            if (SetProperty(ref _showArchivedOnly, value))
+            {
+                ApplyFilters();
+            }
+        }
+    }
+
     public bool IsLoading
     {
         get => _isLoading;
@@ -127,11 +159,15 @@ public partial class DiskCardsViewModel : ViewModelBase, INavigableViewModel
     public ObservableCollection<string> StatusFilters { get; }
 
     public IRelayCommand NavigateToReportsCommand { get; }
+    public IRelayCommand NavigateBackCommand { get; }
+    public IAsyncRelayCommand RefreshCommand { get; }
     
     public bool HasSelectedCard => SelectedCard != null;
     public bool CanArchive => SelectedCard != null && !SelectedCard.IsArchived;
     public bool CanRestore => SelectedCard != null && SelectedCard.IsArchived;
     public bool CanGenerateCertificate => SelectedCard != null && !SelectedCard.IsArchived && SelectedCard.TestCount > 0;
+    public int CardCount => DiskCards.Count;
+    public int FilteredCount => FilteredCards.Count;
 
     #endregion
 
@@ -154,15 +190,14 @@ public partial class DiskCardsViewModel : ViewModelBase, INavigableViewModel
             IsLoading = true;
             StatusMessage = "Načítám karty disků...";
 
+            var merged = await _diskCardRepository.MergeDuplicateCardsAsync();
             var cards = await _diskCardRepository.GetAllAsync();
+            var drives = await _diskDetectionService.GetDrivesAsync();
+
             DiskCards.Clear();
             
             foreach (var card in cards.OrderByDescending(c => c.LastTestedAt))
             {
-                // Create a shallow copy to avoid accidental shared-reference issues
-                // between repository entities and UI-bound objects which can cause
-                // display problems in the DataGrid when EF proxies or tracked
-                // entities are reused.
                 var copy = new DiskCard
                 {
                     Id = card.Id,
@@ -186,14 +221,51 @@ public partial class DiskCardsViewModel : ViewModelBase, INavigableViewModel
                     LockReason = card.LockReason
                 };
 
+                var matchedDrive = drives.FirstOrDefault(d =>
+                    string.Equals(d.Path, copy.DevicePath, StringComparison.OrdinalIgnoreCase) ||
+                    (!string.IsNullOrWhiteSpace(d.SerialNumber) && string.Equals(
+                        DriveIdentityResolver.BuildIdentityKey(d.Path, d.SerialNumber, d.Name ?? "Unknown", d.FirmwareVersion),
+                        copy.SerialNumber,
+                        StringComparison.OrdinalIgnoreCase)));
+
+                if (matchedDrive?.Volumes != null)
+                {
+                    copy.Volumes = matchedDrive.Volumes
+                        .Select(v => new CoreDriveInfo
+                        {
+                            Id = v.Id,
+                            Path = v.Path,
+                            Name = v.Name,
+                            TotalSize = v.TotalSize,
+                            FreeSpace = v.FreeSpace,
+                            FileSystem = v.FileSystem,
+                            Interface = v.Interface,
+                            IsPhysical = v.IsPhysical,
+                            IsRemovable = v.IsRemovable,
+                            IsReady = v.IsReady,
+                            SerialNumber = v.SerialNumber,
+                            Model = v.Model,
+                            FirmwareVersion = v.FirmwareVersion,
+                            VolumeInfo = v.VolumeInfo,
+                            IsSystemDisk = v.IsSystemDisk,
+                            BusType = v.BusType,
+                            MediaType = v.MediaType
+                        })
+                        .ToList();
+                }
+
                 DiskCards.Add(copy);
             }
 
             ApplyFilters();
 
-            StatusMessage = $"Načteno {DiskCards.Count} karet disků";
+            StatusMessage = merged > 0
+                ? $"Načteno {DiskCards.Count} karet disků (sloučeno duplicit: {merged})"
+                : $"Načteno {DiskCards.Count} karet disků";
+            OnPropertyChanged(nameof(CardCount));
+            OnPropertyChanged(nameof(FilteredCount));
         }
-        catch (Exception ex)
+        catch (InvalidOperationException ex)
         {
             StatusMessage = $"Chyba: {ex.Message}";
             await _dialogService.ShowErrorAsync("Chyba", $"Nepodařilo se načíst karty: {ex.Message}");
@@ -222,9 +294,19 @@ public partial class DiskCardsViewModel : ViewModelBase, INavigableViewModel
     {
         if (card == null) return;
         
-        // Store selected card and navigate to detail
-        _selectedDiskService.SelectedDisk = new CoreDriveInfo { Path = card.DevicePath };
+        _selectedDiskService.SelectedDisk = new CoreDriveInfo
+        {
+            Path = card.DevicePath,
+            Name = card.ModelName,
+            TotalSize = card.Capacity,
+            SerialNumber = card.SerialNumber,
+            FirmwareVersion = card.FirmwareVersion
+        };
+        _selectedDiskService.SelectedDiskDisplayName = card.ModelName;
+        _selectedDiskService.IsSelectedDiskLocked = card.IsLocked;
+
         _navigationService.NavigateTo<DiskCardDetailViewModel>();
+        await Task.CompletedTask;
     }
 
     [RelayCommand]
@@ -365,6 +447,11 @@ public partial class DiskCardsViewModel : ViewModelBase, INavigableViewModel
         _navigationService.NavigateTo<ReportViewModel>();
     }
 
+    private void NavigateBack()
+    {
+        _navigationService.NavigateTo<DiskSelectionViewModel>();
+    }
+
     #endregion
 
     #region Private Methods
@@ -375,7 +462,6 @@ public partial class DiskCardsViewModel : ViewModelBase, INavigableViewModel
 
         foreach (var card in DiskCards)
         {
-            // Apply search filter
             if (!string.IsNullOrEmpty(SearchText))
             {
                 var searchLower = SearchText.ToLowerInvariant();
@@ -387,19 +473,27 @@ public partial class DiskCardsViewModel : ViewModelBase, INavigableViewModel
                 }
             }
 
-            // Apply grade filter
             if (SelectedGradeFilter != "Všechny" && card.OverallGrade != SelectedGradeFilter)
             {
                 continue;
             }
 
-            // Apply status filter
-            if (SelectedStatusFilter == "Aktivní" && card.IsArchived)
+            if (ShowArchivedOnly && !card.IsArchived)
+            {
+                continue;
+            }
+
+            if (!ShowArchivedOnly && SelectedStatusFilter == "Aktivní" && card.IsArchived)
             {
                 continue;
             }
             
-            if (SelectedStatusFilter == "Archivované" && !card.IsArchived)
+            if (!ShowArchivedOnly && SelectedStatusFilter == "Archivované" && !card.IsArchived)
+            {
+                continue;
+            }
+
+            if (ShowLockedOnly && !card.IsLocked)
             {
                 continue;
             }
@@ -408,6 +502,8 @@ public partial class DiskCardsViewModel : ViewModelBase, INavigableViewModel
         }
 
         StatusMessage = $"Zobrazeno {FilteredCards.Count} z {DiskCards.Count} disků";
+        OnPropertyChanged(nameof(FilteredCount));
+        OnPropertyChanged(nameof(CardCount));
     }
 
     #endregion
