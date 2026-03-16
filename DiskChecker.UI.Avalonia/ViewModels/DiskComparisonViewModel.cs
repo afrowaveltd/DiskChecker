@@ -370,19 +370,3 @@ public partial class DiskComparisonViewModel : ViewModelBase, INavigableViewMode
 
     #endregion
 }
-
-/// <summary>
-/// Item for disk comparison selection.
-/// </summary>
-public class DiskComparisonItem : ObservableObject
-{
-    private bool _isSelected;
-
-    public DiskCard Disk { get; set; } = null!;
-
-    public bool IsSelected
-    {
-        get => _isSelected;
-        set => SetProperty(ref _isSelected, value);
-    }
-}

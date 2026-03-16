@@ -10,15 +10,10 @@ using DiskChecker.Core.Models;
 using DiskChecker.UI.Avalonia.Services.Interfaces;
 
 namespace DiskChecker.UI.Avalonia.ViewModels;
-
-/// <summary>
-/// View model for disk selection view.
-/// Displays list of available disks with their health status.
-/// </summary>
 public partial class DiskSelectionViewModel : ViewModelBase, INavigableViewModel
 {
     private readonly INavigationService _navigationService;
-    private readonly IDiskDetectionService _diskDetectionService;
+    private readonly IDiskCacheService _diskCacheService;
     private readonly ISmartaProvider _smartaProvider;
     private readonly IQualityCalculator _qualityCalculator;
     private readonly ISettingsService _settingsService;
@@ -44,12 +39,9 @@ public partial class DiskSelectionViewModel : ViewModelBase, INavigableViewModel
     private string _healthSummary = "Načítám...";
     private bool _isSystemDiskHealthy;
 
-    /// <summary>
-    /// Initializes a new instance of the DiskSelectionViewModel.
-    /// </summary>
     public DiskSelectionViewModel(
         INavigationService navigationService, 
-        IDiskDetectionService diskDetectionService,
+        IDiskCacheService diskCacheService,
         ISmartaProvider smartaProvider, 
         IQualityCalculator qualityCalculator,
         ISettingsService settingsService,
@@ -58,7 +50,7 @@ public partial class DiskSelectionViewModel : ViewModelBase, INavigableViewModel
         IDialogService dialogService)
     {
         _navigationService = navigationService;
-        _diskDetectionService = diskDetectionService;
+        _diskCacheService = diskCacheService;
         _smartaProvider = smartaProvider;
         _qualityCalculator = qualityCalculator;
         _settingsService = settingsService;
@@ -200,21 +192,18 @@ public partial class DiskSelectionViewModel : ViewModelBase, INavigableViewModel
     public void OnNavigatedTo()
     {
         // Load data when navigated to
-        Task.Run(LoadDataAsync);
+        Task.Run(() => LoadDataAsync());
     }
 
-    private async Task LoadDataAsync()
+    private async Task LoadDataAsync(bool forceRefresh = false)
     {
         try
         {
             IsBusy = true;
             LoadingState = "Načítám disky...";
 
-            // Get list of locked disks from settings
             var lockedDisks = await _settingsService.GetLockedDisksAsync();
-
-            // Get list of drives from detection service
-            var drives = await _diskDetectionService.GetDrivesAsync();
+            var drives = await _diskCacheService.GetDrivesAsync(forceRefresh);
             
             // Clear existing items
             DiskCards.Clear();
@@ -524,7 +513,8 @@ public partial class DiskSelectionViewModel : ViewModelBase, INavigableViewModel
     private async Task ReloadDisks()
     {
         DiskCards.Clear();
-        await LoadDataAsync();
+        _diskCacheService.ClearCache();
+        await LoadDataAsync(forceRefresh: true);
     }
 
     /// <summary>

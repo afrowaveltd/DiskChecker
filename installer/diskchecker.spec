@@ -9,11 +9,13 @@ BuildArch:      x86_64
 Requires:       glibc >= 2.28
 Requires:       libicu
 Requires:       openssl-libs >= 3.0.0
+Requires:       smartmontools
 
 %description
 DiskChecker is a comprehensive disk diagnostics tool that provides:
 - SMART data analysis and health monitoring
 - Surface testing with performance benchmarking
+- Disk sanitization with verification
 - Detailed disk information and quality ratings
 - Export reports in multiple formats (PDF, CSV, JSON)
 - Beautiful cross-platform UI (Windows, Linux)
@@ -27,16 +29,9 @@ mkdir -p %{buildroot}/usr/bin
 mkdir -p %{buildroot}/usr/share/applications
 mkdir -p %{buildroot}/usr/share/icons/hicolor/256x256/apps
 
-# Copy application
-cp -r publish/avalonia-linux-x64/* %{buildroot}/opt/diskchecker/
-
-# Create symlink
+cp -r publish/linux-x64/* %{buildroot}/opt/diskchecker/
 ln -s /opt/diskchecker/DiskChecker.UI.Avalonia %{buildroot}/usr/bin/diskchecker
-
-# Copy desktop file
 cp installer/diskchecker.desktop %{buildroot}/usr/share/applications/
-
-# Set permissions
 chmod 755 %{buildroot}/opt/diskchecker/DiskChecker.UI.Avalonia
 chmod 755 %{buildroot}/var/lib/diskchecker
 
@@ -48,12 +43,10 @@ chmod 755 %{buildroot}/var/lib/diskchecker
 %dir /var/lib/diskchecker
 
 %post
-# Post-installation script
 echo "DiskChecker installed successfully!"
-echo "Run with: diskchecker"
+echo "Run with: sudo diskchecker (requires root for disk access)"
 
-%unpost
-# Post-uninstallation script
+%postun
 rm -rf /var/lib/diskchecker 2>/dev/null || true
 rm -f /usr/bin/diskchecker 2>/dev/null || true
 

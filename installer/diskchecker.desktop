@@ -1,0 +1,13 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=DiskChecker
+Name[cs]=DiskChecker
+Comment=Disk health monitoring and sanitization tool
+Comment[cs]=Nástroj pro kontrolu zdraví disků a sanitizaci
+Exec=pkexec /opt/diskchecker/DiskChecker.UI.Avalonia
+Icon=diskchecker
+Terminal=false
+Categories=System;Filesystem;Settings;
+Keywords=disk;health;smart;sanitization;ssd;hdd;
+StartupNotify=true

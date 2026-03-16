@@ -30,7 +30,7 @@ public partial class SurfaceTestViewModel : ViewModelBase, INavigableViewModel, 
     private readonly ISelectedDiskService _selectedDiskService;
     private readonly IDialogService _dialogService;
     private readonly ISettingsService _settingsService;
-    private readonly IDiskDetectionService _diskDetectionService;
+    private readonly IDiskCacheService _diskCacheService;
     private readonly IDiskSanitizationService _sanitizationService;
     private readonly DiskCardTestService _cardTestService;
     private readonly TestCompletionNotificationService _notificationService;
@@ -101,7 +101,7 @@ public partial class SurfaceTestViewModel : ViewModelBase, INavigableViewModel, 
         ISelectedDiskService selectedDiskService,
         IDialogService dialogService,
         ISettingsService settingsService,
-        IDiskDetectionService diskDetectionService,
+        IDiskCacheService diskCacheService,
         IDiskSanitizationService sanitizationService,
         DiskCardTestService cardTestService,
         TestCompletionNotificationService notificationService,
@@ -111,7 +111,7 @@ public partial class SurfaceTestViewModel : ViewModelBase, INavigableViewModel, 
         _selectedDiskService = selectedDiskService;
         _dialogService = dialogService;
         _settingsService = settingsService;
-        _diskDetectionService = diskDetectionService;
+        _diskCacheService = diskCacheService;
         _sanitizationService = sanitizationService;
         _cardTestService = cardTestService;
         _notificationService = notificationService;
@@ -512,8 +512,14 @@ public partial class SurfaceTestViewModel : ViewModelBase, INavigableViewModel, 
 
     public void OnNavigatedTo()
     {
-        // Start loading drives - fire and forget, don't block UI
-        _ = LoadDrivesAsync();
+        if (AvailableDrives.Count == 0)
+        {
+            _ = LoadDrivesAsync();
+        }
+        else if (SelectedDrive == null && AvailableDrives.Count > 0)
+        {
+            StatusMessage = $"Vybrán disk: {AvailableDrives[0].Name ?? AvailableDrives[0].Path}";
+        }
     }
 
     private async Task LoadDrivesAsync()
@@ -527,7 +533,7 @@ public partial class SurfaceTestViewModel : ViewModelBase, INavigableViewModel, 
                 AvailableDrives.Clear();
             });
             
-            var drives = await _diskDetectionService.GetDrivesAsync().ConfigureAwait(false);
+            var drives = await _diskCacheService.GetDrivesAsync().ConfigureAwait(false);
             var lockedDisks = await _settingsService.GetLockedDisksAsync().ConfigureAwait(false);
             
             await Dispatcher.UIThread.InvokeAsync(() =>
@@ -1118,24 +1124,27 @@ public partial class SurfaceTestViewModel : ViewModelBase, INavigableViewModel, 
                     StatusMessage = p.Phase;
                 }
                 
+                // Set phase BEFORE adding speed points
                 if (isReadPhase && _currentPhase != 1)
                 {
-                    CurrentPhase = 1; // Switch to read phase
+                    FlushPhaseBucket(_currentPhase);
+                    CurrentPhase = 1;
                 }
                 else if (isWritePhase && _currentPhase != 0)
                 {
-                    CurrentPhase = 0; // Ensure write phase
+                    FlushPhaseBucket(_currentPhase);
+                    CurrentPhase = 0;
                 }
                 
                 // Progress: Write is 0-50%, Read is 50-100%
                 if (isReadPhase)
                 {
-                    WriteProgress = 100; // Write complete
-                    VerifyProgress = p.ProgressPercent; // 0-100% of read
+                    WriteProgress = 100;
+                    VerifyProgress = p.ProgressPercent;
                 }
                 else if (isWritePhase)
                 {
-                    WriteProgress = p.ProgressPercent; // 0-100% of write
+                    WriteProgress = p.ProgressPercent;
                     VerifyProgress = 0;
                 }
                 
@@ -1247,10 +1256,10 @@ public partial class SurfaceTestViewModel : ViewModelBase, INavigableViewModel, 
         var profile = TestProfiles.FirstOrDefault(p => p.IsSelected);
         var testDurationMs = profile?.Name switch
         {
-            "Rychlý test (100 MB)" => 5000,
-            "Plný test (1 GB)" => 10000,
-            "Test celého disku" => 15000,
-            _ => 5000
+            "Rychlý test (100 MB)" => 30000,
+            "Plný test (1 GB)" => 60000,
+            "Test celého disku" => 120000,
+            _ => 30000
         };
         
         // Track test data for saving
@@ -1262,7 +1271,7 @@ public partial class SurfaceTestViewModel : ViewModelBase, INavigableViewModel, 
         var minReadSpeed = double.MaxValue;
         var maxReadSpeed = 0.0;
         
-        _currentPhase = 0;
+        CurrentPhase = 0;
         var writePhaseDuration = testDurationMs / 2;
         var readPhaseDuration = testDurationMs / 2;
         var syntheticTotalBytes = profile?.Name switch
@@ -1274,9 +1283,11 @@ public partial class SurfaceTestViewModel : ViewModelBase, INavigableViewModel, 
         };
         _currentPhaseTotalBytes = syntheticTotalBytes;
 
+        const int sampleIntervalMs = 20;
+        
         // Write phase (0-50%)
         StatusMessage = "Zápis dat...";
-        for (int i = 0; i <= writePhaseDuration; i += 100)
+        for (int i = 0; i <= writePhaseDuration; i += sampleIntervalMs)
         {
             cancellationToken.ThrowIfCancellationRequested();
             
@@ -1289,7 +1300,6 @@ public partial class SurfaceTestViewModel : ViewModelBase, INavigableViewModel, 
             CurrentTemperature = 35 + Random.Shared.Next(0, 5);
             AddSpeedPoint(speed, progress);
             
-            // Track write stats
             writeSamples.Add((speed, CurrentTemperature, DateTime.UtcNow));
             if (speed < minWriteSpeed) minWriteSpeed = speed;
             if (speed > maxWriteSpeed) maxWriteSpeed = speed;
@@ -1298,14 +1308,14 @@ public partial class SurfaceTestViewModel : ViewModelBase, INavigableViewModel, 
             var remaining = testDurationMs - totalProgress;
             TimeRemaining = TimeSpan.FromMilliseconds(remaining).ToString(@"mm\:ss");
             
-            await Task.Delay(100, cancellationToken);
+            await Task.Delay(sampleIntervalMs, cancellationToken);
         }
         
         // Read phase (50-100%)
         CurrentPhase = 1;
         _currentPhaseTotalBytes = syntheticTotalBytes;
         StatusMessage = "Čtení a ověřování...";
-        for (int i = 0; i <= readPhaseDuration; i += 100)
+        for (int i = 0; i <= readPhaseDuration; i += sampleIntervalMs)
         {
             cancellationToken.ThrowIfCancellationRequested();
             
@@ -1318,7 +1328,6 @@ public partial class SurfaceTestViewModel : ViewModelBase, INavigableViewModel, 
             CurrentTemperature = 35 + Random.Shared.Next(0, 5);
             AddSpeedPoint(speed, progress);
             
-            // Track read stats
             readSamples.Add((speed, CurrentTemperature, DateTime.UtcNow));
             if (speed < minReadSpeed) minReadSpeed = speed;
             if (speed > maxReadSpeed) maxReadSpeed = speed;
@@ -1326,7 +1335,7 @@ public partial class SurfaceTestViewModel : ViewModelBase, INavigableViewModel, 
             var remaining = readPhaseDuration - i;
             TimeRemaining = TimeSpan.FromMilliseconds(remaining).ToString(@"mm\:ss");
             
-            await Task.Delay(100, cancellationToken);
+            await Task.Delay(sampleIntervalMs, cancellationToken);
         }
         
         var testEndTime = DateTime.UtcNow;
@@ -1590,13 +1599,4 @@ public partial class SurfaceTestViewModel : ViewModelBase, INavigableViewModel, 
         _testCancellation?.Dispose();
         GC.SuppressFinalize(this);
     }
-}
-
-/// <summary>
-/// Data point for speed graph
-/// </summary>
-public class SpeedDataPoint
-{
-    public int Time { get; set; }
-    public double Speed { get; set; }
 }

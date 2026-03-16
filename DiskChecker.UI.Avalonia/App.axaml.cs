@@ -137,6 +137,9 @@ public partial class App : global::Avalonia.Application
         // Selected disk service for sharing between views
         services.AddSingleton<ISelectedDiskService, SelectedDiskService>();
         
+        // Disk cache service to avoid reloading disks on navigation
+        services.AddSingleton<IDiskCacheService, DiskCacheService>();
+        
         // Platform-specific
         // Load configuration (optional appsettings.json) and bind SMART cache options
         // Load simple appsettings.json (optional) to configure SMART cache TTL without
