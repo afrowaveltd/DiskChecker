@@ -23,7 +23,15 @@ namespace DiskChecker.UI.Avalonia.ViewModels;
 
 public partial class SurfaceTestViewModel : ViewModelBase, INavigableViewModel, IDisposable
 {
-    private const int MaxGraphPoints = 240;
+    private const int MaxGraphPoints = 10000;
+    
+    // Downsampling - track last X and Y values
+    private double _lastWriteX = double.MinValue;
+    private double _lastReadX = double.MinValue;
+    private double _lastWriteSpeed;
+    private double _lastReadSpeed;
+    private const double MinPointDistance = 0.1; // 0.1% distance between points = ~1000 points max
+    private const double SpeedChangeThreshold = 0.05; // 5% speed change triggers new point
     private const double GbInBytes = 1024d * 1024d * 1024d;
 
     private readonly INavigationService _navigationService;
@@ -134,7 +142,7 @@ public partial class SurfaceTestViewModel : ViewModelBase, INavigableViewModel, 
                 Values = WriteSeriesValues,
                 Fill = null,
                 GeometrySize = 0,
-                Stroke = new SolidColorPaint(new SKColor(34, 197, 94), 2),
+                Stroke = new SolidColorPaint(new SKColor(239, 68, 68), 2), // Red
                 LineSmoothness = 0,
                 AnimationsSpeed = TimeSpan.Zero
             },
@@ -144,7 +152,7 @@ public partial class SurfaceTestViewModel : ViewModelBase, INavigableViewModel, 
                 Values = ReadSeriesValues,
                 Fill = null,
                 GeometrySize = 0,
-                Stroke = new SolidColorPaint(new SKColor(59, 130, 246), 2),
+                Stroke = new SolidColorPaint(new SKColor(34, 197, 94), 2), // Green
                 LineSmoothness = 0,
                 AnimationsSpeed = TimeSpan.Zero
             }
@@ -680,10 +688,42 @@ public partial class SurfaceTestViewModel : ViewModelBase, INavigableViewModel, 
         ref double bucketSum,
         ref int bucketCount)
     {
-        // Add point directly for immediate visibility
-        target.Add(new ObservablePoint(xPosition, speed));
+        var isWrite = (target == WriteSeriesValues);
+        ref var lastX = ref (isWrite ? ref _lastWriteX : ref _lastReadX);
+        ref var lastSpeed = ref (isWrite ? ref _lastWriteSpeed : ref _lastReadSpeed);
         
-        // Cap to max points
+        // Always add first point
+        if (target.Count == 0)
+        {
+            target.Add(new ObservablePoint(xPosition, speed));
+            lastX = xPosition;
+            lastSpeed = speed;
+            return;
+        }
+        
+        // Check if we should add a new point:
+        // 1. Distance from last point exceeds minimum
+        // 2. Speed changed significantly (>5%)
+        var distance = xPosition - lastX;
+        var shouldAddPoint = distance >= MinPointDistance;
+        
+        // Also add if speed changed significantly (catch anomalies/drops)
+        if (!shouldAddPoint && lastSpeed > 0)
+        {
+            var speedChange = Math.Abs(speed - lastSpeed) / lastSpeed;
+            if (speedChange >= SpeedChangeThreshold)
+            {
+                shouldAddPoint = true;
+            }
+        }
+        
+        if (shouldAddPoint)
+        {
+            target.Add(new ObservablePoint(xPosition, speed));
+            lastX = xPosition;
+            lastSpeed = speed;
+        }
+        
         while (target.Count > MaxGraphPoints)
         {
             target.RemoveAt(0);
@@ -919,6 +959,10 @@ public partial class SurfaceTestViewModel : ViewModelBase, INavigableViewModel, 
             _readBucketStart = -1;
             _readBucketSum = 0;
             _readBucketCount = 0;
+            _lastWriteX = double.MinValue;
+            _lastReadX = double.MinValue;
+            _lastWriteSpeed = 0;
+            _lastReadSpeed = 0;
             _phaseStartedAtUtc = _testStartTime;
             _writePhaseMaxElapsedSeconds = 0;
             _readPhaseMaxElapsedSeconds = 0;
@@ -1278,8 +1322,8 @@ public partial class SurfaceTestViewModel : ViewModelBase, INavigableViewModel, 
         {
             cancellationToken.ThrowIfCancellationRequested();
             
-            var progress = (double)i / writePhaseDuration * 100;
-            WriteProgress = progress * 0.5;
+            var progress = (double)i / writePhaseDuration * 100; // 0-100% for write phase
+            WriteProgress = progress * 0.5; // 0-50% for overall progress bar
             VerifyProgress = 0;
             
             var speed = 45 + Random.Shared.NextDouble() * 15;
@@ -1291,9 +1335,8 @@ public partial class SurfaceTestViewModel : ViewModelBase, INavigableViewModel, 
             if (speed < minWriteSpeed) minWriteSpeed = speed;
             if (speed > maxWriteSpeed) maxWriteSpeed = speed;
             
-            var totalProgress = (i + writePhaseDuration) / 2.0;
-            var remaining = testDurationMs - totalProgress;
-            TimeRemaining = TimeSpan.FromMilliseconds(remaining).ToString(@"mm\:ss");
+            var remainingMs = testDurationMs - i - writePhaseDuration;
+            TimeRemaining = TimeSpan.FromMilliseconds(Math.Max(0, remainingMs)).ToString(@"mm\:ss");
             
             await Task.Delay(sampleIntervalMs, cancellationToken);
         }
@@ -1310,7 +1353,7 @@ public partial class SurfaceTestViewModel : ViewModelBase, INavigableViewModel, 
         {
             cancellationToken.ThrowIfCancellationRequested();
             
-            var progress = (double)i / readPhaseDuration * 100;
+            var progress = (double)i / readPhaseDuration * 100; // 0-100% for read phase (same X axis as write)
             WriteProgress = 100;
             VerifyProgress = progress;
             
