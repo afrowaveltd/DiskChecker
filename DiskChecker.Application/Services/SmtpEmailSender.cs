@@ -44,6 +44,16 @@ public class SmtpEmailSender : IEmailSender
             HtmlBody = message.HtmlBody
         };
 
+        foreach (var attachment in message.Attachments)
+        {
+            if (attachment == null || attachment.Content.Length == 0 || string.IsNullOrWhiteSpace(attachment.FileName))
+            {
+                continue;
+            }
+
+            bodyBuilder.Attachments.Add(attachment.FileName, attachment.Content, ContentType.Parse(attachment.ContentType));
+        }
+
         email.Body = bodyBuilder.ToMessageBody();
 
         using var client = new SmtpClient();

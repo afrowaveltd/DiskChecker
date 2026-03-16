@@ -19,6 +19,7 @@ public class CertificateGenerator : ICertificateGenerator
 {
     private readonly ILogger<CertificateGenerator>? _logger;
     private readonly string _certificatesDirectory;
+    private readonly string _labelsDirectory;
 
     public CertificateGenerator(ILogger<CertificateGenerator>? logger = null)
     {
@@ -27,8 +28,13 @@ public class CertificateGenerator : ICertificateGenerator
             Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
             "DiskChecker",
             "Certificates");
+        _labelsDirectory = Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
+            "DiskChecker",
+            "Labels");
         
         Directory.CreateDirectory(_certificatesDirectory);
+        Directory.CreateDirectory(_labelsDirectory);
     }
 
     public async Task<DiskCertificate> GenerateCertificateAsync(TestSession session, DiskCard diskCard)
@@ -80,7 +86,8 @@ public class CertificateGenerator : ICertificateGenerator
             
             // Recommendation
             Recommended = session.Result == TestResult.Pass && session.Score >= 70,
-            RecommendationNotes = GenerateRecommendation(session)
+            RecommendationNotes = GenerateRecommendation(session),
+            Notes = session.Notes
         };
 
         // Calculate grade and score using shared method
@@ -127,6 +134,81 @@ public class CertificateGenerator : ICertificateGenerator
         if (_logger != null && _logger.IsEnabled(LogLevel.Information))
         {
             _logger.LogInformation("Certificate PDF generated: {FilePath}", filePath);
+        }
+
+        return filePath;
+    }
+
+    /// <summary>
+    /// Generates a printable disk label image from certificate data.
+    /// </summary>
+    public async Task<string> GenerateLabelAsync(DiskCertificate certificate)
+    {
+        ArgumentNullException.ThrowIfNull(certificate);
+
+        var safeSerial = string.IsNullOrWhiteSpace(certificate.SerialNumber)
+            ? "UNKNOWN"
+            : certificate.SerialNumber.Replace(Path.DirectorySeparatorChar, '-').Replace(Path.AltDirectorySeparatorChar, '-');
+
+        var fileName = $"Label_{safeSerial}_{DateTime.UtcNow:yyyyMMdd_HHmmss}.png";
+        var filePath = Path.Combine(_labelsDirectory, fileName);
+
+        await Task.Run(() =>
+        {
+            using var bitmap = new Bitmap(900, 520);
+            using var graphics = Graphics.FromImage(bitmap);
+            graphics.Clear(Color.White);
+
+            using var borderPen = new Pen(Color.FromArgb(15, 76, 129), 3);
+            graphics.DrawRectangle(borderPen, 10, 10, 880, 500);
+
+            using var headerBrush = new SolidBrush(Color.FromArgb(15, 76, 129));
+            using var textBrush = new SolidBrush(Color.Black);
+            using var mutedBrush = new SolidBrush(Color.FromArgb(90, 90, 90));
+            using var headerFont = new Font("Segoe UI", 28, FontStyle.Bold);
+            using var valueFont = new Font("Segoe UI", 18, FontStyle.Regular);
+            using var labelFont = new Font("Segoe UI", 12, FontStyle.Bold);
+            using var serialFont = new Font("Consolas", 16, FontStyle.Bold);
+            using var gradeFont = new Font("Segoe UI", 90, FontStyle.Bold);
+            using var scoreFont = new Font("Segoe UI", 18, FontStyle.Bold);
+            using var footerFont = new Font("Segoe UI", 10, FontStyle.Regular);
+            using var gradeBrush = new SolidBrush(GetGradeColor(certificate.Grade));
+
+            graphics.DrawString("DISK LABEL", headerFont, headerBrush, 28, 24);
+
+            graphics.DrawString("Model", labelFont, mutedBrush, 32, 98);
+            graphics.DrawString(TrimValue(certificate.DiskModel, 34), valueFont, textBrush, 32, 120);
+
+            graphics.DrawString("Sériové číslo", labelFont, mutedBrush, 32, 170);
+            graphics.DrawString(TrimValue(certificate.SerialNumber, 40), serialFont, textBrush, 32, 194);
+
+            graphics.DrawString("Kapacita", labelFont, mutedBrush, 32, 244);
+            graphics.DrawString(TrimValue(certificate.Capacity, 20), valueFont, textBrush, 32, 266);
+
+            graphics.DrawString("Rozhraní", labelFont, mutedBrush, 32, 314);
+            graphics.DrawString(TrimValue(certificate.Interface, 20), valueFont, textBrush, 32, 336);
+
+            graphics.DrawString("Test", labelFont, mutedBrush, 32, 384);
+            graphics.DrawString(TrimValue(certificate.TestType, 24), valueFont, textBrush, 32, 406);
+
+            graphics.DrawString(certificate.Grade, gradeFont, gradeBrush, 680, 90);
+            graphics.DrawString($"Skóre: {certificate.Score:F0}/100", scoreFont, textBrush, 652, 220);
+            graphics.DrawString($"{certificate.GeneratedAt:dd.MM.yyyy}", scoreFont, textBrush, 675, 255);
+
+            graphics.DrawString(
+                $"Certifikát: {certificate.CertificateNumber}",
+                footerFont,
+                mutedBrush,
+                32,
+                468);
+            graphics.DrawString("DiskChecker", footerFont, mutedBrush, 805, 468);
+
+            bitmap.Save(filePath, ImageFormat.Png);
+        });
+
+        if (_logger != null && _logger.IsEnabled(LogLevel.Information))
+        {
+            _logger.LogInformation("Disk label generated: {FilePath}", filePath);
         }
 
         return filePath;
@@ -395,5 +477,16 @@ Volume Label:    {cert.VolumeLabel ?? "N/A"}
             "F" => Color.FromArgb(192, 57, 43),   // Red
             _ => Color.Gray
         };
+    }
+
+    private static string TrimValue(string? value, int maxLength)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return "-";
+        }
+
+        var normalized = value.Trim();
+        return normalized.Length <= maxLength ? normalized : $"{normalized[..(maxLength - 1)]}…";
     }
 }

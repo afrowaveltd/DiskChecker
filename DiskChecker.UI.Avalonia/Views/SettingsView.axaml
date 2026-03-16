@@ -79,6 +79,18 @@
                                      IsChecked="{Binding ShowNotifications}"
                                      FontSize="11"/>
                         </Grid>
+                        
+                        <Grid ColumnDefinitions="200,*">
+                            <TextBlock Grid.Column="0" Text="Příjemce reportů:" 
+                                      FontSize="11" VerticalAlignment="Center"
+                                      Foreground="{DynamicResource ThemeTextSecondaryBrush}"/>
+                            <TextBox Grid.Column="1"
+                                    Text="{Binding ReportRecipientEmail}"
+                                    Watermark="např. servis@firma.cz"
+                                    Background="{DynamicResource ThemeCardBackgroundBrush}"
+                                    BorderBrush="{DynamicResource ThemeBorderBrush}"
+                                    Padding="8,4"/>
+                        </Grid>
                     </StackPanel>
                 </Border>
 

@@ -178,4 +178,29 @@ public partial class DiskStatusCardItem : ViewModelBase
             };
         }
     }
+    
+    /// <summary>
+    /// Whether this disk has test history (disk card exists).
+    /// </summary>
+    public bool HasTestHistory { get; set; }
+    
+    /// <summary>
+    /// Information about the latest test session for this disk.
+    /// </summary>
+    public TestSession? LatestTest { get; set; }
+    
+    /// <summary>
+    /// Date of the last test for display.
+    /// </summary>
+    public string LastTestedDate => LatestTest?.TestedAt.ToString("dd.MM.yyyy HH:mm") ?? "Neznámý";
+    
+    /// <summary>
+    /// Type of the last test.
+    /// </summary>
+    public string LastTestType => LatestTest?.TestType.ToString() ?? "N/A";
+    
+    /// <summary>
+    /// Result/grade of the last test.
+    /// </summary>
+    public string LastTestGrade => LatestTest?.Grade ?? "?";
 }

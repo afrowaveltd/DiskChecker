@@ -27,7 +27,7 @@ public partial class DiskCardsViewModel : ViewModelBase, INavigableViewModel
     private DiskCard? _selectedCard;
     private string _searchText = "";
     private string _selectedGradeFilter = "Všechny";
-    private string _selectedStatusFilter = "Aktivní";
+    private string _selectedStatusFilter = "Všechny";
     private bool _showLockedOnly;
     private bool _showArchivedOnly;
     private bool _isLoading;
@@ -521,7 +521,22 @@ public partial class DiskCardsViewModel : ViewModelBase, INavigableViewModel
             FilteredCards.Add(card);
         }
 
-        StatusMessage = $"Zobrazeno {FilteredCards.Count} z {DiskCards.Count} disků";
+        var archivedCount = DiskCards.Count(c => c.IsArchived);
+        var activeCount = DiskCards.Count - archivedCount;
+        
+        if (FilteredCards.Count == 0 && DiskCards.Count > 0)
+        {
+            StatusMessage = $"Nalezeno {DiskCards.Count} karet disků (aktivní: {activeCount}, archivované: {archivedCount}), ale žádná neodpovídá filtru";
+        }
+        else if (FilteredCards.Count < DiskCards.Count)
+        {
+            StatusMessage = $"Zobrazeno {FilteredCards.Count} z {DiskCards.Count} disků (aktivní: {activeCount}, archivované: {archivedCount})";
+        }
+        else
+        {
+            StatusMessage = $"Celkem {DiskCards.Count} karet disků (aktivní: {activeCount}, archivované: {archivedCount})";
+        }
+        
         OnPropertyChanged(nameof(FilteredCount));
         OnPropertyChanged(nameof(CardCount));
     }

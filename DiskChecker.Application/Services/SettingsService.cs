@@ -19,6 +19,7 @@ public class SettingsService : ISettingsService
     private string _logLevel = "Information";
     private List<string> _lockedDisks = new();
     private bool _isDarkTheme;
+    private string _reportRecipientEmail = string.Empty;
     // SMART probe persisted settings
     private int _smartCacheTtlMinutes = 10;
     private int _smartProbeTimeoutSeconds = 4;
@@ -70,6 +71,15 @@ public class SettingsService : ISettingsService
     public Task<string> GetLogLevelAsync() => Task.FromResult(_logLevel);
     public Task SetLogLevelAsync(string level) { _logLevel = level; return Task.CompletedTask; }
     
+    public Task<string> GetReportRecipientEmailAsync() => Task.FromResult(_reportRecipientEmail);
+
+    public Task SetReportRecipientEmailAsync(string email)
+    {
+        _reportRecipientEmail = email?.Trim() ?? string.Empty;
+        SaveSettingsToFile();
+        return Task.CompletedTask;
+    }
+    
     public Task ResetToDefaultsAsync()
     {
         _autoCheckForUpdates = true;
@@ -84,6 +94,7 @@ public class SettingsService : ISettingsService
         _smartCacheTtlMinutes = 10;
         _smartProbeTimeoutSeconds = 4;
         _smartProbeParallelism = 0;
+        _reportRecipientEmail = string.Empty;
         SaveLockedDisksToFile();
         SaveSettingsToFile();
         return Task.CompletedTask;
@@ -170,6 +181,8 @@ public class SettingsService : ISettingsService
                         _smartProbeTimeoutSeconds = Math.Max(1, to);
                     if (doc.TryGetValue("SmartProbeParallelism", out var pObj) && int.TryParse(pObj.ToString(), out var p))
                         _smartProbeParallelism = Math.Max(0, p);
+                    if (doc.TryGetValue("ReportRecipientEmail", out var recipientObj))
+                        _reportRecipientEmail = recipientObj?.ToString()?.Trim() ?? string.Empty;
                 }
             }
         }
@@ -187,7 +200,8 @@ public class SettingsService : ISettingsService
             {
                 ["SmartCacheTtlMinutes"] = _smartCacheTtlMinutes,
                 ["SmartProbeTimeoutSeconds"] = _smartProbeTimeoutSeconds,
-                ["SmartProbeParallelism"] = _smartProbeParallelism
+                ["SmartProbeParallelism"] = _smartProbeParallelism,
+                ["ReportRecipientEmail"] = _reportRecipientEmail
             };
             var json = JsonSerializer.Serialize(dict, JsonOptions);
             File.WriteAllText(_settingsFilePath, json);

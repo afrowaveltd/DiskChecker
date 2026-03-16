@@ -23,6 +23,16 @@ public interface ISettingsService
     Task SetLogLevelAsync(string level);
     Task ResetToDefaultsAsync();
     
+    /// <summary>
+    /// Gets the e-mail address used as recipient for automatic test reports.
+    /// </summary>
+    Task<string> GetReportRecipientEmailAsync();
+
+    /// <summary>
+    /// Sets the e-mail address used as recipient for automatic test reports.
+    /// </summary>
+    Task SetReportRecipientEmailAsync(string email);
+    
     // Theme settings
     /// <summary>
     /// Gets whether dark theme is enabled.

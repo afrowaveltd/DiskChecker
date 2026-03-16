@@ -18,58 +18,95 @@ public class QualityCalculator : IQualityCalculator
         ArgumentNullException.ThrowIfNull(smartaData);
 
         var warnings = new List<string>();
-        double score = 100.0;
+        var score = 100.0;
 
-        // Penalize for reallocated sectors
-        if (smartaData.ReallocatedSectorCount.HasValue && smartaData.ReallocatedSectorCount.Value > 0)
+        if (smartaData.ReallocatedSectorCount is > 0)
         {
-            var penalty = Math.Min(30, smartaData.ReallocatedSectorCount.Value * 0.5);
+            var penalty = Math.Min(35, smartaData.ReallocatedSectorCount.Value * 0.8);
             score -= penalty;
             warnings.Add($"Reallocated sectors: {smartaData.ReallocatedSectorCount.Value}");
         }
 
-        // Penalize for pending sectors
-        if (smartaData.PendingSectorCount.HasValue && smartaData.PendingSectorCount.Value > 0)
+        if (smartaData.PendingSectorCount is > 0)
         {
-            var penalty = Math.Min(25, smartaData.PendingSectorCount.Value * 0.3);
+            var penalty = Math.Min(30, smartaData.PendingSectorCount.Value * 1.2);
             score -= penalty;
             warnings.Add($"Pending sectors: {smartaData.PendingSectorCount.Value}");
         }
 
-        // Penalize for uncorrectable errors
-        if (smartaData.UncorrectableErrorCount.HasValue && smartaData.UncorrectableErrorCount.Value > 0)
+        if (smartaData.UncorrectableErrorCount is > 0)
         {
-            var penalty = Math.Min(20, smartaData.UncorrectableErrorCount.Value * 0.2);
+            var penalty = Math.Min(24, smartaData.UncorrectableErrorCount.Value * 0.8);
             score -= penalty;
             warnings.Add($"Uncorrectable errors: {smartaData.UncorrectableErrorCount.Value}");
         }
 
-        // Penalize for high temperature
-        if (smartaData.Temperature.HasValue && smartaData.Temperature.Value > 50)
+        if (smartaData.Temperature is > 50)
         {
-            var penalty = Math.Min(10, (smartaData.Temperature.Value - 50) * 0.5);
-            score -= penalty;
+            var over = smartaData.Temperature.Value - 50;
+            var penalty = over <= 10
+                ? over * 1.0
+                : 10 + ((over - 10) * 1.8);
+
+            score -= Math.Min(22, penalty);
             warnings.Add($"High temperature: {smartaData.Temperature.Value}°C");
         }
 
-        // Penalize for low wear leveling count (SSD)
-        if (smartaData.WearLevelingCount.HasValue && smartaData.WearLevelingCount.Value < 20)
+        if (smartaData.WearLevelingCount is < 20)
         {
-            var penalty = (20 - smartaData.WearLevelingCount.Value) * 2;
-            score -= penalty;
+            var penalty = (20 - smartaData.WearLevelingCount.Value) * 1.8;
+            score -= Math.Min(18, penalty);
             warnings.Add($"Low wear leveling: {smartaData.WearLevelingCount.Value}%");
         }
 
-        // Clamp score to valid range
-        score = Math.Max(0, Math.Min(100, score));
+        if (smartaData.AvailableSpare is < 10)
+        {
+            var penalty = (10 - smartaData.AvailableSpare.Value) * 2.0;
+            score -= Math.Min(20, penalty);
+            warnings.Add($"NVMe available spare low: {smartaData.AvailableSpare.Value}%");
+        }
 
-        // Determine grade
+        if (smartaData.PercentageUsed is > 90)
+        {
+            var penalty = (smartaData.PercentageUsed.Value - 90) * 1.8;
+            score -= Math.Min(18, penalty);
+            warnings.Add($"NVMe wear high: {smartaData.PercentageUsed.Value}% used");
+        }
+
+        if (smartaData.MediaErrors is > 0)
+        {
+            var penalty = Math.Min(16, smartaData.MediaErrors.Value * 0.5);
+            score -= penalty;
+            warnings.Add($"NVMe media errors: {smartaData.MediaErrors.Value}");
+        }
+
+        if (smartaData.UnsafeShutdowns is > 200)
+        {
+            score -= 4;
+            warnings.Add($"Frequent unsafe shutdowns: {smartaData.UnsafeShutdowns.Value}");
+        }
+
+        if (smartaData.PowerOnHours is > 40000)
+        {
+            score -= 6;
+            warnings.Add($"High power-on time: {smartaData.PowerOnHours.Value} h");
+        }
+
+        if (!smartaData.IsHealthy)
+        {
+            score -= 12;
+            warnings.Add("Drive self-reported SMART health issue");
+        }
+
+        score = Math.Clamp(score, 0, 100);
+
         var grade = score switch
         {
-            >= 90 => QualityGrade.A,
-            >= 80 => QualityGrade.B,
-            >= 70 => QualityGrade.C,
-            >= 60 => QualityGrade.D,
+            >= 92 => QualityGrade.A,
+            >= 84 => QualityGrade.B,
+            >= 74 => QualityGrade.C,
+            >= 62 => QualityGrade.D,
+            >= 50 => QualityGrade.E,
             _ => QualityGrade.F
         };
 

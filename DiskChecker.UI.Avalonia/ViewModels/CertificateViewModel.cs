@@ -1,4 +1,7 @@
 using System;
+using System.ComponentModel;
+using System.Diagnostics;
+using System.IO;
 using System.Threading.Tasks;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
@@ -66,6 +69,8 @@ public partial class CertificateViewModel : ViewModelBase, INavigableViewModel
                 OnPropertyChanged(nameof(SmartPassed));
                 OnPropertyChanged(nameof(Recommended));
                 OnPropertyChanged(nameof(RecommendationText));
+                OnPropertyChanged(nameof(ScoringReasonsText));
+                OnPropertyChanged(nameof(HasScoringReasons));
             }
         }
     }
@@ -111,6 +116,10 @@ public partial class CertificateViewModel : ViewModelBase, INavigableViewModel
     public bool SmartPassed => Certificate?.SmartPassed ?? false;
     public bool Recommended => Certificate?.Recommended ?? false;
     public string RecommendationText => Certificate?.RecommendationNotes ?? "Není k dispozici";
+    public string ScoringReasonsText => string.IsNullOrWhiteSpace(Certificate?.Notes)
+        ? "Bez významných varování."
+        : Certificate.Notes;
+    public bool HasScoringReasons => !string.IsNullOrWhiteSpace(Certificate?.Notes);
 
     // Grade color
     public string GradeColor => Certificate?.Grade switch
@@ -264,6 +273,52 @@ public partial class CertificateViewModel : ViewModelBase, INavigableViewModel
         {
             StatusMessage = $"Chyba tisku: {ex.Message}";
             await _dialogService.ShowErrorAsync("Chyba", $"Nepodařilo se vytisknout: {ex.Message}");
+        }
+    }
+
+    [RelayCommand]
+    private async Task PrintLabelAsync()
+    {
+        if (Certificate == null)
+        {
+            StatusMessage = "Nejprve vygenerujte certifikát";
+            return;
+        }
+
+        try
+        {
+            IsLoading = true;
+            StatusMessage = "Generuji štítek...";
+
+            var labelPath = await _certificateGenerator.GenerateLabelAsync(Certificate);
+
+            Process.Start(new ProcessStartInfo
+            {
+                FileName = labelPath,
+                Verb = "print",
+                UseShellExecute = true
+            });
+
+            StatusMessage = "Tisk štítku spuštěn";
+        }
+        catch (InvalidOperationException ex)
+        {
+            StatusMessage = $"Chyba tisku štítku: {ex.Message}";
+            await _dialogService.ShowErrorAsync("Chyba", $"Nepodařilo se vytisknout štítek: {ex.Message}");
+        }
+        catch (IOException ex)
+        {
+            StatusMessage = $"Chyba tisku štítku: {ex.Message}";
+            await _dialogService.ShowErrorAsync("Chyba", $"Nepodařilo se vytisknout štítek: {ex.Message}");
+        }
+        catch (Win32Exception ex)
+        {
+            StatusMessage = $"Chyba tisku štítku: {ex.Message}";
+            await _dialogService.ShowErrorAsync("Chyba", $"Nepodařilo se vytisknout štítek: {ex.Message}");
+        }
+        finally
+        {
+            IsLoading = false;
         }
     }
 

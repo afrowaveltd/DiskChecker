@@ -4,6 +4,7 @@ using System.Linq;
 using System.Threading.Tasks;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using DiskChecker.Application.Services;
 using DiskChecker.Core.Interfaces;
 using DiskChecker.Core.Models;
 using DiskChecker.UI.Avalonia.Services.Interfaces;
@@ -22,6 +23,8 @@ public partial class DiskSelectionViewModel : ViewModelBase, INavigableViewModel
     private readonly IQualityCalculator _qualityCalculator;
     private readonly ISettingsService _settingsService;
     private readonly ISelectedDiskService _selectedDiskService;
+    private readonly IDiskCardRepository _diskCardRepository;
+    private readonly IDialogService _dialogService;
     
     private string _loadingState = "Načítám disky...";
     private bool _isBusy = true;
@@ -50,7 +53,9 @@ public partial class DiskSelectionViewModel : ViewModelBase, INavigableViewModel
         ISmartaProvider smartaProvider, 
         IQualityCalculator qualityCalculator,
         ISettingsService settingsService,
-        ISelectedDiskService selectedDiskService)
+        ISelectedDiskService selectedDiskService,
+        IDiskCardRepository diskCardRepository,
+        IDialogService dialogService)
     {
         _navigationService = navigationService;
         _diskDetectionService = diskDetectionService;
@@ -58,6 +63,8 @@ public partial class DiskSelectionViewModel : ViewModelBase, INavigableViewModel
         _qualityCalculator = qualityCalculator;
         _settingsService = settingsService;
         _selectedDiskService = selectedDiskService;
+        _diskCardRepository = diskCardRepository;
+        _dialogService = dialogService;
         DiskCards = new ObservableCollection<DiskStatusCardItem>();
         RecentTests = new ObservableCollection<TestHistoryItem>();
     }
@@ -307,6 +314,18 @@ public partial class DiskSelectionViewModel : ViewModelBase, INavigableViewModel
             _ => "Critical"
         };
         
+        // Check if disk has test history (disk card exists)
+        bool hasTestHistory = false;
+        TestSession? latestTest = null;
+
+        var diskCard = await FindDiskCardAsync(drive);
+        if (diskCard != null)
+        {
+            hasTestHistory = true;
+            var sessions = await _diskCardRepository.GetTestSessionsAsync(diskCard.Id);
+            latestTest = sessions.OrderByDescending(s => s.TestedAt).FirstOrDefault();
+        }
+        
         var card = new DiskStatusCardItem
         {
             Drive = drive,
@@ -326,12 +345,31 @@ public partial class DiskSelectionViewModel : ViewModelBase, INavigableViewModel
             Interface = drive.Interface,
             PartitionsDisplay = partitionsDisplay,
             PartitionCount = partitionCount,
-            HealthStatus = healthStatus
+            HealthStatus = healthStatus,
+            HasTestHistory = hasTestHistory,
+            LatestTest = latestTest
         };
         
         DiskCards.Add(card);
         
         return card;
+    }
+
+    private async Task<DiskCard?> FindDiskCardAsync(CoreDriveInfo drive)
+    {
+        var identityKey = DriveIdentityResolver.BuildIdentityKey(
+            drive.Path,
+            drive.SerialNumber,
+            drive.Name ?? "Unknown",
+            drive.FirmwareVersion);
+
+        var bySerial = await _diskCardRepository.GetBySerialNumberAsync(identityKey);
+        if (bySerial != null)
+        {
+            return bySerial;
+        }
+
+        return await _diskCardRepository.GetByDevicePathAsync(drive.Path);
     }
     
     private static string BuildPartitionsDisplay(CoreDriveInfo drive)
@@ -543,38 +581,91 @@ public partial class DiskSelectionViewModel : ViewModelBase, INavigableViewModel
             // Lock
             await _settingsService.LockDiskAsync(diskPath);
             card.IsLocked = true;
-            StatusMessage = $"Disk {card.DisplayName} zamčen 🔒";
+            StatusMessage = $"Disk {card.DisplayName} zamčen";
         }
     }
-
+    
     /// <summary>
-    /// Lock a disk.
+    /// Show last test preview for a disk with test history.
     /// </summary>
     [RelayCommand]
-    private async Task LockDisk(DiskStatusCardItem card)
+    private async Task ShowTestPreview(DiskStatusCardItem card)
     {
-        if (card?.Drive == null) return;
-        await _settingsService.LockDiskAsync(card.Drive.Path);
-        card.IsLocked = true;
-        StatusMessage = $"Disk {card.DisplayName} zamčen 🔒";
-    }
-
-    /// <summary>
-    /// Unlock a disk.
-    /// </summary>
-    [RelayCommand]
-    private async Task UnlockDisk(DiskStatusCardItem card)
-    {
-        if (card?.Drive == null) return;
-        
-        if (card.IsSystemDisk)
+        if (card?.Drive == null)
         {
-            StatusMessage = "Systémový disk nelze odemknout";
             return;
         }
-        
-        await _settingsService.UnlockDiskAsync(card.Drive.Path);
-        card.IsLocked = false;
-        StatusMessage = $"Disk {card.DisplayName} odemčen";
+
+        var diskCard = await FindDiskCardAsync(card.Drive);
+        if (diskCard == null)
+        {
+            await _dialogService.ShowInfoAsync("Žádná historie", "Tento disk ještě nemá uloženou kartu.");
+            return;
+        }
+
+        var sessions = (await _diskCardRepository.GetTestSessionsAsync(diskCard.Id))
+            .OrderByDescending(s => s.TestedAt)
+            .ToList();
+
+        if (sessions.Count == 0)
+        {
+            await _dialogService.ShowInfoAsync("Žádná historie", "Tento disk ještě nebyl testován.");
+            return;
+        }
+
+        var last = sessions[0];
+        var previous = sessions.Count > 1 ? sessions[1] : null;
+        card.HasTestHistory = true;
+        card.LatestTest = last;
+
+        var trendLine = "Trend: první uložený test";
+        if (previous != null)
+        {
+            var scoreDelta = last.Score - previous.Score;
+            var errorDelta = last.ErrorCount - previous.ErrorCount;
+            var tempDelta = last.Temperature - previous.Temperature;
+
+            var scoreTrend = scoreDelta > 0 ? "zlepšení" : scoreDelta < 0 ? "zhoršení" : "beze změny";
+            var errorsTrend = errorDelta < 0 ? "méně chyb" : errorDelta > 0 ? "více chyb" : "beze změny";
+            var tempTrend = tempDelta < 0 ? "nižší teplota" : tempDelta > 0 ? "vyšší teplota" : "stejná teplota";
+
+            trendLine =
+                $"Trend vs předchozí test: {scoreTrend} (Δ skóre {scoreDelta:+0;-0;0}), " +
+                $"{errorsTrend} (Δ chyb {errorDelta:+0;-0;0}), " +
+                $"{tempTrend} (Δ {tempDelta:+0;-0;0}°C)";
+        }
+
+        var timeline = string.Join(
+            Environment.NewLine,
+            sessions.Take(3).Select((s, i) =>
+                $"{i + 1}. {s.TestedAt:dd.MM.yyyy HH:mm} | {s.TestType} | {s.Grade} | {s.Score:F0}/100"));
+
+        var notesLine = string.IsNullOrWhiteSpace(last.Notes)
+            ? string.Empty
+            : $"{Environment.NewLine}Poznámky: {last.Notes}";
+
+        var message =
+            $"Poslední test:{Environment.NewLine}" +
+            $"Datum: {last.TestedAt:dd.MM.yyyy HH:mm}{Environment.NewLine}" +
+            $"Typ testu: {last.TestType}{Environment.NewLine}" +
+            $"Výsledek: {last.Grade} (Skóre: {last.Score:F0}/100){Environment.NewLine}" +
+            $"Teplota: {last.Temperature}°C{Environment.NewLine}" +
+            $"Chyby: {last.ErrorCount}{Environment.NewLine}" +
+            $"Sektory testovány: {last.SectorsTested:N0}{Environment.NewLine}" +
+            $"Trvání: {last.Duration} min" +
+            notesLine +
+            $"{Environment.NewLine}{Environment.NewLine}{trendLine}{Environment.NewLine}" +
+            $"{Environment.NewLine}Poslední 3 testy:{Environment.NewLine}{timeline}{Environment.NewLine}{Environment.NewLine}" +
+            "Chcete otevřít kompletní kartu disku?";
+
+        var viewCard = await _dialogService.ShowConfirmationAsync($"Historie testu - {card.DisplayName}", message);
+
+        if (viewCard)
+        {
+            _selectedDiskService.SelectedDisk = card.Drive;
+            _selectedDiskService.SelectedDiskDisplayName = card.DisplayName;
+            _selectedDiskService.IsSelectedDiskLocked = card.IsLocked;
+            _navigationService.NavigateTo<DiskCardDetailViewModel>();
+        }
     }
 }

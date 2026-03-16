@@ -1,3 +1,5 @@
+using System.Collections.Generic;
+
 namespace DiskChecker.Core.Models;
 
 /// <summary>
@@ -65,4 +67,30 @@ public class EmailMessage
     /// Gets or sets the HTML body.
     /// </summary>
     public string? HtmlBody { get; set; }
+
+    /// <summary>
+    /// Gets the attachments included in this message.
+    /// </summary>
+    public List<EmailAttachment> Attachments { get; } = new();
+}
+
+/// <summary>
+/// Represents a binary email attachment.
+/// </summary>
+public class EmailAttachment
+{
+    /// <summary>
+    /// Gets or sets the attachment file name.
+    /// </summary>
+    public string FileName { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Gets or sets the attachment content bytes.
+    /// </summary>
+    public byte[] Content { get; set; } = [];
+
+    /// <summary>
+    /// Gets or sets the MIME content type.
+    /// </summary>
+    public string ContentType { get; set; } = "application/octet-stream";
 }

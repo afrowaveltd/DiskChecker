@@ -108,6 +108,11 @@ public interface ICertificateGenerator
     /// Generate PDF from certificate.
     /// </summary>
     Task<string> GeneratePdfAsync(DiskCertificate certificate);
+
+    /// <summary>
+    /// Generate a printable disk label image from certificate.
+    /// </summary>
+    Task<string> GenerateLabelAsync(DiskCertificate certificate);
     
     /// <summary>
     /// Get certificate preview as image.

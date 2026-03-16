@@ -87,6 +87,11 @@
                           GridLinesVisibility="Horizontal"
                           BorderThickness="0"
                           FontSize="12"
+                          Background="{DynamicResource ThemeCardBackgroundBrush}"
+                          Foreground="{DynamicResource ThemeTextPrimaryBrush}"
+                          RowBackground="{DynamicResource ThemeCardBackgroundBrush}"
+                          HorizontalGridLinesBrush="{DynamicResource ThemeBorderLightBrush}"
+                          VerticalGridLinesBrush="{DynamicResource ThemeBorderLightBrush}"
                           DoubleTapped="CardsDataGrid_DoubleTapped">
                     <DataGrid.Columns>
                         <DataGridTextColumn Header="Model" Binding="{Binding ModelName}" Width="170"/>
@@ -166,12 +171,7 @@
                 </Panel>
 
                 <!-- Empty state -->
-                <Panel IsVisible="{Binding !IsLoading}">
-                    <Panel.IsVisible>
-                        <MultiBinding Converter="{x:Static converters:InverseBooleanMultiConverter.Instance}">
-                            <Binding Path="FilteredCards.Count"/>
-                        </MultiBinding>
-                    </Panel.IsVisible>
+                <Panel IsVisible="{Binding FilteredCount, Converter={StaticResource IntToBoolConverter}, ConverterParameter=Invert}">
                     <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center">
                         <TextBlock Text="📂" FontSize="48" HorizontalAlignment="Center"/>
                         <TextBlock Text="Žádné karty disků" FontSize="18" FontWeight="Bold"

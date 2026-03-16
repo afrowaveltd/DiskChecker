@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.ObjectModel;
+using System.IO;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
@@ -23,6 +24,7 @@ namespace DiskChecker.UI.Avalonia.ViewModels;
 public partial class SurfaceTestViewModel : ViewModelBase, INavigableViewModel, IDisposable
 {
     private const int MaxGraphPoints = 240;
+    private const double GbInBytes = 1024d * 1024d * 1024d;
 
     private readonly INavigationService _navigationService;
     private readonly ISelectedDiskService _selectedDiskService;
@@ -31,6 +33,8 @@ public partial class SurfaceTestViewModel : ViewModelBase, INavigableViewModel, 
     private readonly IDiskDetectionService _diskDetectionService;
     private readonly IDiskSanitizationService _sanitizationService;
     private readonly DiskCardTestService _cardTestService;
+    private readonly TestCompletionNotificationService _notificationService;
+    private readonly ICertificateGenerator _certificateGenerator;
     
     private double _writeProgress;
     private double _verifyProgress;
@@ -71,6 +75,9 @@ public partial class SurfaceTestViewModel : ViewModelBase, INavigableViewModel, 
     
     // Graph data
     private DateTime _testStartTime;
+    private DateTime _phaseStartedAtUtc;
+    private double _writePhaseMaxElapsedSeconds;
+    private double _readPhaseMaxElapsedSeconds;
     private int _selectedZoomIndex = 1; // Default 5 min
     private int _currentPhase; // 0 = Write, 1 = Read (default is 0)
     private CancellationTokenSource? _testCancellation;
@@ -80,6 +87,14 @@ public partial class SurfaceTestViewModel : ViewModelBase, INavigableViewModel, 
     private double _readBucketStart = -1;
     private double _readBucketSum;
     private int _readBucketCount;
+    private bool _isDataWindowZoomEnabled;
+    private int _zoomWindowModeIndex; // 0 = GB, 1 = %
+    private double _zoomWindowGb = 10;
+    private double _zoomWindowPercent = 10;
+    private double _selectedZoomPresetGb = 10;
+    private double _selectedZoomPresetPercent = 10;
+    private double _currentDataPercent;
+    private long _currentPhaseTotalBytes = 1;
 
     public SurfaceTestViewModel(
         INavigationService navigationService,
@@ -88,7 +103,9 @@ public partial class SurfaceTestViewModel : ViewModelBase, INavigableViewModel, 
         ISettingsService settingsService,
         IDiskDetectionService diskDetectionService,
         IDiskSanitizationService sanitizationService,
-        DiskCardTestService cardTestService)
+        DiskCardTestService cardTestService,
+        TestCompletionNotificationService notificationService,
+        ICertificateGenerator certificateGenerator)
     {
         _navigationService = navigationService;
         _selectedDiskService = selectedDiskService;
@@ -97,6 +114,8 @@ public partial class SurfaceTestViewModel : ViewModelBase, INavigableViewModel, 
         _diskDetectionService = diskDetectionService;
         _sanitizationService = sanitizationService;
         _cardTestService = cardTestService;
+        _notificationService = notificationService;
+        _certificateGenerator = certificateGenerator;
         
         AvailableDrives = new ObservableCollection<CoreDriveInfo>();
         SpeedHistory = new ObservableCollection<SpeedDataPoint>();
@@ -135,11 +154,12 @@ public partial class SurfaceTestViewModel : ViewModelBase, INavigableViewModel, 
         [
             new Axis
             {
-                Name = "čas (s)",
+                Name = "zaznamenaná data (%)",
                 MinLimit = 0,
+                MaxLimit = 100,
                 LabelsPaint = new SolidColorPaint(new SKColor(148, 163, 184)),
                 TextSize = 10,
-                Labeler = value => $"{value:F0}s"
+                Labeler = value => $"{value:F0}%"
             }
         ];
 
@@ -164,6 +184,9 @@ public partial class SurfaceTestViewModel : ViewModelBase, INavigableViewModel, 
             new() { Name = "Test celého disku", Description = "Zápis a ověření celého disku" },
             new() { Name = "⚡ SANITIZACE DISKU", Description = "DESTRUKTIVNÍ! Přepíše disk nulama", IsDestructive = true }
         };
+        
+        ZoomWindowPresetsGb = new ObservableCollection<double> { 1, 5, 10, 20, 50, 100 };
+        ZoomWindowPresetsPercent = new ObservableCollection<double> { 1, 2, 5, 10, 20, 50 };
     }
 
     public ObservableCollection<CoreDriveInfo> AvailableDrives { get; }
@@ -280,11 +303,99 @@ public partial class SurfaceTestViewModel : ViewModelBase, INavigableViewModel, 
             if (SetProperty(ref _selectedZoomIndex, value))
             {
                 OnPropertyChanged(nameof(SelectedZoomDuration));
-                UpdateXAxisLimits((DateTime.UtcNow - _testStartTime).TotalSeconds);
+                UpdateXAxisLimits(100);
             }
         }
     }
-    
+
+    public bool IsDataWindowZoomEnabled
+    {
+        get => _isDataWindowZoomEnabled;
+        set
+        {
+            if (SetProperty(ref _isDataWindowZoomEnabled, value))
+            {
+                UpdateXAxisLimits(100);
+            }
+        }
+    }
+
+    public ObservableCollection<double> ZoomWindowPresetsGb { get; }
+    public ObservableCollection<double> ZoomWindowPresetsPercent { get; }
+
+    public int ZoomWindowModeIndex
+    {
+        get => _zoomWindowModeIndex;
+        set
+        {
+            if (SetProperty(ref _zoomWindowModeIndex, value))
+            {
+                OnPropertyChanged(nameof(IsZoomByGb));
+                OnPropertyChanged(nameof(IsZoomByPercent));
+                UpdateXAxisLimits(100);
+            }
+        }
+    }
+
+    public bool IsZoomByGb => ZoomWindowModeIndex == 0;
+    public bool IsZoomByPercent => ZoomWindowModeIndex == 1;
+
+    public double SelectedZoomPresetGb
+    {
+        get => _selectedZoomPresetGb;
+        set
+        {
+            if (SetProperty(ref _selectedZoomPresetGb, value) && value > 0)
+            {
+                ZoomWindowGb = value;
+            }
+        }
+    }
+
+    public double SelectedZoomPresetPercent
+    {
+        get => _selectedZoomPresetPercent;
+        set
+        {
+            if (SetProperty(ref _selectedZoomPresetPercent, value) && value > 0)
+            {
+                ZoomWindowPercent = value;
+            }
+        }
+    }
+
+    public double ZoomWindowGb
+    {
+        get => _zoomWindowGb;
+        set
+        {
+            var normalized = Math.Max(0.1, value);
+            if (SetProperty(ref _zoomWindowGb, normalized))
+            {
+                UpdateXAxisLimits(100);
+            }
+        }
+    }
+
+    public double ZoomWindowPercent
+    {
+        get => _zoomWindowPercent;
+        set
+        {
+            var normalized = Math.Clamp(value, 0.5, 100);
+            if (SetProperty(ref _zoomWindowPercent, normalized))
+            {
+                UpdateXAxisLimits(100);
+            }
+        }
+    }
+
+    public double CurrentDataPercent
+    {
+        get => _currentDataPercent;
+        private set => SetProperty(ref _currentDataPercent, Math.Clamp(value, 0, 100));
+    }
+
     public TimeSpan SelectedZoomDuration => ZoomLevels[_selectedZoomIndex].Duration;
     
     public int CurrentPhase
@@ -298,7 +409,12 @@ public partial class SurfaceTestViewModel : ViewModelBase, INavigableViewModel, 
             }
 
             FlushPhaseBucket(_currentPhase);
-            SetProperty(ref _currentPhase, value);
+            if (SetProperty(ref _currentPhase, value))
+            {
+                _phaseStartedAtUtc = DateTime.UtcNow;
+                CurrentDataPercent = 0;
+                UpdateXAxisLimits(0);
+            }
         }
     }
     public string StatusMessage { get => _statusMessage; set => SetProperty(ref _statusMessage, value); }
@@ -486,28 +602,30 @@ public partial class SurfaceTestViewModel : ViewModelBase, INavigableViewModel, 
         return int.TryParse(digits, out var num) ? num : null;
     }
 
-    private void AddSpeedPoint(double speed)
+    private void AddSpeedPoint(double speed, double dataPercent)
     {
         Dispatcher.UIThread.Post(() =>
         {
-            var elapsed = DateTime.UtcNow - _testStartTime;
             var now = DateTime.UtcNow;
-            var elapsedSeconds = elapsed.TotalSeconds;
-            
+            var elapsed = now - _testStartTime;
+            var xPosition = Math.Clamp(dataPercent, 0d, 100d);
+            CurrentDataPercent = xPosition;
+
             // Add to legacy collection for compatibility
             SpeedHistory.Add(new SpeedDataPoint { Time = SpeedHistory.Count, Speed = speed });
             while (SpeedHistory.Count > 300)
                 SpeedHistory.RemoveAt(0);
-            
+
             // Add to phase-specific collection
             var dataPoint = new SurfaceTestDataPoint(now, elapsed, speed, CurrentTemperature, _currentPhase);
-            
+
             if (_currentPhase == 0)
             {
                 AppendCapped(WriteSpeedHistory, dataPoint);
+                _writePhaseMaxElapsedSeconds = Math.Max(_writePhaseMaxElapsedSeconds, xPosition);
                 AppendDownsampledPoint(
                     WriteSeriesValues,
-                    elapsedSeconds,
+                    xPosition,
                     speed,
                     ref _writeBucketStart,
                     ref _writeBucketSum,
@@ -516,15 +634,16 @@ public partial class SurfaceTestViewModel : ViewModelBase, INavigableViewModel, 
             else
             {
                 AppendCapped(ReadSpeedHistory, dataPoint);
+                _readPhaseMaxElapsedSeconds = Math.Max(_readPhaseMaxElapsedSeconds, xPosition);
                 AppendDownsampledPoint(
                     ReadSeriesValues,
-                    elapsedSeconds,
+                    xPosition,
                     speed,
                     ref _readBucketStart,
                     ref _readBucketSum,
                     ref _readBucketCount);
             }
-            
+
             // Add temperature point
             if (CurrentTemperature > 0)
             {
@@ -532,7 +651,7 @@ public partial class SurfaceTestViewModel : ViewModelBase, INavigableViewModel, 
             }
 
             UpdateStatisticsIncremental(speed);
-            UpdateXAxisLimits(elapsedSeconds);
+            UpdateXAxisLimits(100);
             OnPropertyChanged(nameof(ChartPointCount));
         });
     }
@@ -548,7 +667,7 @@ public partial class SurfaceTestViewModel : ViewModelBase, INavigableViewModel, 
 
     private void AppendDownsampledPoint(
         ObservableCollection<ObservablePoint> target,
-        double elapsedSeconds,
+        double xPosition,
         double speed,
         ref double bucketStart,
         ref double bucketSum,
@@ -558,13 +677,13 @@ public partial class SurfaceTestViewModel : ViewModelBase, INavigableViewModel, 
 
         if (bucketStart < 0)
         {
-            bucketStart = elapsedSeconds;
+            bucketStart = xPosition;
         }
 
         bucketSum += speed;
         bucketCount++;
 
-        if ((elapsedSeconds - bucketStart) < bucketWindowSeconds)
+        if ((xPosition - bucketStart) < bucketWindowSeconds)
         {
             return;
         }
@@ -573,22 +692,15 @@ public partial class SurfaceTestViewModel : ViewModelBase, INavigableViewModel, 
         var x = bucketStart + (bucketWindowSeconds / 2);
         AppendCapped(target, new ObservablePoint(x, averageSpeed));
 
-        bucketStart = elapsedSeconds;
+        bucketStart = xPosition;
         bucketSum = 0;
         bucketCount = 0;
     }
 
     private double GetBucketWindowSeconds()
     {
-        var zoomDuration = SelectedZoomDuration;
-
-        if (zoomDuration == TimeSpan.MaxValue)
-        {
-            return 1.0;
-        }
-
-        var zoomSeconds = zoomDuration.TotalSeconds;
-        return Math.Max(0.25, zoomSeconds / MaxGraphPoints);
+        // 100 % distributed across rendered points keeps both phases comparable.
+        return Math.Max(0.25, 100d / MaxGraphPoints);
     }
 
     private void FlushPhaseBucket(int phase)
@@ -735,7 +847,7 @@ public partial class SurfaceTestViewModel : ViewModelBase, INavigableViewModel, 
         }
     }
 
-    private void UpdateXAxisLimits(double elapsedSeconds)
+    private void UpdateXAxisLimits(double _)
     {
         if (SpeedXAxes.Length == 0)
         {
@@ -743,22 +855,59 @@ public partial class SurfaceTestViewModel : ViewModelBase, INavigableViewModel, 
         }
 
         var axis = SpeedXAxes[0];
-        var zoomDuration = SelectedZoomDuration;
 
-        if (zoomDuration == TimeSpan.MaxValue)
+        if (!IsDataWindowZoomEnabled)
         {
             axis.MinLimit = 0;
-            axis.MaxLimit = Math.Max(elapsedSeconds, zoomDuration == TimeSpan.MaxValue ? elapsedSeconds : zoomDuration.TotalSeconds);
-        }
-        else
-        {
-            var zoomSeconds = zoomDuration.TotalSeconds;
-            var max = Math.Max(zoomSeconds, elapsedSeconds);
-            axis.MaxLimit = max;
-            axis.MinLimit = Math.Max(0, max - zoomSeconds);
+            axis.MaxLimit = 100;
+            OnPropertyChanged(nameof(SpeedXAxes));
+            return;
         }
 
+        var windowPercent = GetZoomWindowPercent();
+        var halfWindow = windowPercent / 2d;
+
+        var min = CurrentDataPercent - halfWindow;
+        var max = CurrentDataPercent + halfWindow;
+
+        if (min < 0)
+        {
+            max = Math.Min(100, max - min);
+            min = 0;
+        }
+
+        if (max > 100)
+        {
+            min = Math.Max(0, min - (max - 100));
+            max = 100;
+        }
+
+        axis.MinLimit = min;
+        axis.MaxLimit = max;
+
         OnPropertyChanged(nameof(SpeedXAxes));
+    }
+
+    private double GetZoomWindowPercent()
+    {
+        if (IsZoomByPercent)
+        {
+            return Math.Clamp(ZoomWindowPercent, 0.5, 100);
+        }
+
+        if (_currentPhaseTotalBytes <= 0)
+        {
+            return 100;
+        }
+
+        var windowBytes = ZoomWindowGb * GbInBytes;
+        if (windowBytes <= 0)
+        {
+            return 100;
+        }
+
+        var percent = (windowBytes / _currentPhaseTotalBytes) * 100d;
+        return Math.Clamp(percent, 0.5, 100d);
     }
 
     private void ClearSpeedHistory()
@@ -777,7 +926,12 @@ public partial class SurfaceTestViewModel : ViewModelBase, INavigableViewModel, 
             _readBucketStart = -1;
             _readBucketSum = 0;
             _readBucketCount = 0;
-            
+            _phaseStartedAtUtc = _testStartTime;
+            _writePhaseMaxElapsedSeconds = 0;
+            _readPhaseMaxElapsedSeconds = 0;
+            _currentPhaseTotalBytes = 1;
+            CurrentDataPercent = 0;
+
             // Combined stats
             _minSpeed = double.MaxValue;
             _maxSpeed = 0;
@@ -869,7 +1023,7 @@ public partial class SurfaceTestViewModel : ViewModelBase, INavigableViewModel, 
         {
             var confirmed = await _dialogService.ShowDangerConfirmationAsync(
                 "☠ DESTRUKTIVNÍ OPERACE",
-                $"OPRAVDU CHCETE PŘEPSAT DISK: {SelectedDrive.Name ?? SelectedDrive.Path}?\n\n" +
+                $"OPRAVDU CHCETE PŘEPISAT DISK: {SelectedDrive.Name ?? SelectedDrive.Path}?\n\n" +
                 $"Všechna data na disku budou NAVŽDY SMAZÁNA!\n" +
                 $"Tato operace je NEVRATNÁ!");
             
@@ -892,6 +1046,11 @@ public partial class SurfaceTestViewModel : ViewModelBase, INavigableViewModel, 
         WriteProgress = 0;
         VerifyProgress = 0;
         _testStartTime = DateTime.UtcNow;
+        _phaseStartedAtUtc = _testStartTime;
+        _writePhaseMaxElapsedSeconds = 0;
+        _readPhaseMaxElapsedSeconds = 0;
+        _currentPhaseTotalBytes = 1;
+        CurrentDataPercent = 0;
         _currentPhase = 0; // Start with Write phase
         _testCancellation = new CancellationTokenSource();
         ClearSpeedHistory();
@@ -948,6 +1107,7 @@ public partial class SurfaceTestViewModel : ViewModelBase, INavigableViewModel, 
 
                 if ((isReadPhase || isWritePhase) && p.TotalBytes > 0)
                 {
+                    _currentPhaseTotalBytes = p.TotalBytes;
                     var phaseLabel = isReadPhase ? "Čtení/Ověření" : "Zápis";
                     var processedText = FormatDataSize(p.BytesProcessed);
                     var totalText = FormatDataSize(p.TotalBytes);
@@ -981,7 +1141,7 @@ public partial class SurfaceTestViewModel : ViewModelBase, INavigableViewModel, 
                 
                 CurrentSpeed = p.CurrentSpeedMBps;
                 ErrorCount = p.Errors;
-                AddSpeedPoint(p.CurrentSpeedMBps);
+                AddSpeedPoint(p.CurrentSpeedMBps, p.ProgressPercent);
                 if (p.EstimatedTimeRemaining.HasValue)
                     TimeRemaining = p.EstimatedTimeRemaining.Value.ToString(@"hh\:mm\:ss");
             });
@@ -1105,7 +1265,15 @@ public partial class SurfaceTestViewModel : ViewModelBase, INavigableViewModel, 
         _currentPhase = 0;
         var writePhaseDuration = testDurationMs / 2;
         var readPhaseDuration = testDurationMs / 2;
-        
+        var syntheticTotalBytes = profile?.Name switch
+        {
+            "Rychlý test (100 MB)" => 100L * 1024 * 1024,
+            "Plný test (1 GB)" => 1L * 1024 * 1024 * 1024,
+            "Test celého disku" => Math.Max(SelectedDrive?.TotalSize ?? 0, 1L),
+            _ => 100L * 1024 * 1024
+        };
+        _currentPhaseTotalBytes = syntheticTotalBytes;
+
         // Write phase (0-50%)
         StatusMessage = "Zápis dat...";
         for (int i = 0; i <= writePhaseDuration; i += 100)
@@ -1119,7 +1287,7 @@ public partial class SurfaceTestViewModel : ViewModelBase, INavigableViewModel, 
             var speed = 45 + Random.Shared.NextDouble() * 15;
             CurrentSpeed = speed;
             CurrentTemperature = 35 + Random.Shared.Next(0, 5);
-            AddSpeedPoint(speed);
+            AddSpeedPoint(speed, progress);
             
             // Track write stats
             writeSamples.Add((speed, CurrentTemperature, DateTime.UtcNow));
@@ -1135,6 +1303,7 @@ public partial class SurfaceTestViewModel : ViewModelBase, INavigableViewModel, 
         
         // Read phase (50-100%)
         CurrentPhase = 1;
+        _currentPhaseTotalBytes = syntheticTotalBytes;
         StatusMessage = "Čtení a ověřování...";
         for (int i = 0; i <= readPhaseDuration; i += 100)
         {
@@ -1147,7 +1316,7 @@ public partial class SurfaceTestViewModel : ViewModelBase, INavigableViewModel, 
             var speed = 50 + Random.Shared.NextDouble() * 20;
             CurrentSpeed = speed;
             CurrentTemperature = 35 + Random.Shared.Next(0, 5);
-            AddSpeedPoint(speed);
+            AddSpeedPoint(speed, progress);
             
             // Track read stats
             readSamples.Add((speed, CurrentTemperature, DateTime.UtcNow));
@@ -1240,8 +1409,10 @@ public partial class SurfaceTestViewModel : ViewModelBase, INavigableViewModel, 
             System.Diagnostics.Debug.WriteLine($"[SurfaceTest] Card created/found: ID={card.Id}, Model={card.ModelName}");
             
             System.Diagnostics.Debug.WriteLine($"[SurfaceTest] Saving surface test result...");
-            await _cardTestService.SaveSurfaceTestAsync(card, result, cancellationToken);
+            var testSession = await _cardTestService.SaveSurfaceTestAsync(card, result, cancellationToken);
             System.Diagnostics.Debug.WriteLine($"[SurfaceTest] Test result saved successfully");
+
+            await TrySendCompletionEmailAsync(result, card, testSession, cancellationToken);
             
             // Calculate overall stats for display
             var overallMaxSpeed = Math.Max(maxWriteSpeed, maxReadSpeed);
@@ -1283,6 +1454,60 @@ public partial class SurfaceTestViewModel : ViewModelBase, INavigableViewModel, 
                 $"Chyba: {ex.Message}\n\n" +
                 $"Typ: {ex.GetType().Name}");
         }
+    }
+
+    private async Task TrySendCompletionEmailAsync(
+        SurfaceTestResult result,
+        DiskCard card,
+        TestSession session,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            var recipient = await _settingsService.GetReportRecipientEmailAsync();
+            if (string.IsNullOrWhiteSpace(recipient))
+            {
+                return;
+            }
+
+            var certificate = await _certificateGenerator.GenerateCertificateAsync(session, card);
+            var certificatePath = await _certificateGenerator.GeneratePdfAsync(certificate);
+
+            if (!File.Exists(certificatePath))
+            {
+                StatusMessage = "Test dokončen, certifikát nebyl nalezen pro odesílání e-mailem";
+                return;
+            }
+
+            var certificateBytes = await File.ReadAllBytesAsync(certificatePath, cancellationToken);
+            var attachmentFileName = Path.GetFileName(certificatePath);
+
+            await _notificationService.SendTestCompletionWithReportAsync(
+                result,
+                recipient,
+                certificateBytes,
+                card.ModelName,
+                attachmentFileName,
+                cancellationToken);
+        }
+        catch (InvalidOperationException)
+        {
+            StatusMessage = "Test dokončen. E-mail nebyl odeslán (SMTP není nakonfigurované).";
+        }
+        catch (IOException)
+        {
+            StatusMessage = "Test dokončen. E-mail s certifikátem se nepodařilo připravit.";
+        }
+    }
+
+    private double GetCurrentPhaseElapsedSeconds()
+    {
+        if (!IsTesting)
+        {
+            return Math.Max(1, Math.Max(_writePhaseMaxElapsedSeconds, _readPhaseMaxElapsedSeconds));
+        }
+
+        return Math.Max(0, (DateTime.UtcNow - _phaseStartedAtUtc).TotalSeconds);
     }
 
     private static string FormatDataSize(long bytes)

@@ -20,6 +20,14 @@ public class DiskCardTestService
     private readonly DiskCheckerDbContext _dbContext;
     private readonly ILogger<DiskCardTestService>? _logger;
 
+    private sealed class SurfaceScoreBreakdown
+    {
+        public double Score { get; init; }
+        public string Grade { get; init; } = "F";
+        public HealthAssessment Health { get; init; } = HealthAssessment.Critical;
+        public List<string> Findings { get; init; } = new();
+    }
+
     private static readonly Action<ILogger, string, string, Exception?> LogCardCreated =
         LoggerMessage.Define<string, string>(
             LogLevel.Information,
@@ -246,6 +254,12 @@ public class DiskCardTestService
                        result.Operation == SurfaceTestOperation.WriteZeroFill ? TestType.Sanitization :
                        TestType.SurfaceScan;
 
+        var breakdown = BuildSurfaceScoreBreakdown(result);
+        if (breakdown.Findings.Count > 0)
+        {
+            result.Notes = string.Join("; ", breakdown.Findings);
+        }
+
         var session = new TestSession
         {
             DiskCardId = card.Id,
@@ -257,19 +271,23 @@ public class DiskCardTestService
             IsDestructive = result.Operation == SurfaceTestOperation.WriteZeroFill,
             BytesWritten = result.Operation == SurfaceTestOperation.ReadOnly ? 0 : result.TotalBytesTested,
             BytesRead = result.TotalBytesTested,
-            AverageWriteSpeedMBps = result.AverageSpeedMbps,  // Already in MB/s
-            AverageReadSpeedMBps = result.AverageSpeedMbps,   // Already in MB/s
-            MaxWriteSpeedMBps = result.PeakSpeedMbps,         // Already in MB/s
-            MaxReadSpeedMBps = result.PeakSpeedMbps,          // Already in MB/s
-            MinWriteSpeedMBps = result.MinSpeedMbps,          // Already in MB/s
-            MinReadSpeedMBps = result.MinSpeedMbps,          // Already in MB/s
+            AverageWriteSpeedMBps = result.AverageSpeedMbps,
+            AverageReadSpeedMBps = result.AverageSpeedMbps,
+            MaxWriteSpeedMBps = result.PeakSpeedMbps,
+            MaxReadSpeedMBps = result.PeakSpeedMbps,
+            MinWriteSpeedMBps = result.MinSpeedMbps,
+            MinReadSpeedMBps = result.MinSpeedMbps,
             WriteErrors = result.Operation == SurfaceTestOperation.ReadOnly ? 0 : result.ErrorCount,
             ReadErrors = result.ErrorCount,
             VerificationErrors = result.ErrorCount,
             Result = result.ErrorCount == 0 ? TestResult.Pass : TestResult.Fail,
-            Grade = CalculateGrade(result),
-            Score = CalculateScore(result),
-            HealthAssessment = AssessHealth(result)
+            Grade = breakdown.Grade,
+            Score = breakdown.Score,
+            HealthAssessment = breakdown.Health,
+            StartTemperature = result.CurrentTemperatureCelsius,
+            MaxTemperature = result.CurrentTemperatureCelsius,
+            AverageTemperature = result.CurrentTemperatureCelsius,
+            Notes = result.Notes
         };
 
         // Calculate duration
@@ -280,7 +298,7 @@ public class DiskCardTestService
         {
             var speedSample = new SpeedSample
             {
-                SpeedMBps = sample.ThroughputMbps,  // Already in MB/s
+                SpeedMBps = sample.ThroughputMbps,
                 Timestamp = sample.TimestampUtc
             };
 
@@ -294,6 +312,15 @@ public class DiskCardTestService
                 session.ReadSamples.Add(speedSample);
             }
         }
+
+        var speedValues = result.Samples
+            .Select(s => s.ThroughputMbps)
+            .Where(v => v > 0)
+            .ToArray();
+
+        var speedStdDev = CalculateStandardDeviation(speedValues);
+        session.WriteSpeedStdDev = speedStdDev;
+        session.ReadSpeedStdDev = speedStdDev;
 
         _dbContext.TestSessions.Add(session);
 
@@ -447,44 +474,6 @@ public class DiskCardTestService
         card.OverallGrade = ScoreToGrade(card.OverallScore);
     }
 
-    private static string CalculateGrade(SurfaceTestResult result)
-    {
-        return result.ErrorCount switch
-        {
-            0 when result.AverageSpeedMbps > 50 => "A",
-            0 => "B",
-            < 5 => "C",
-            < 20 => "D",
-            _ => "F"
-        };
-    }
-
-    private static double CalculateScore(SurfaceTestResult result)
-    {
-        var score = 100.0;
-
-        // Heavy penalty for errors
-        score -= result.ErrorCount * 5;
-
-        // Minor penalty for slow speed
-        if (result.AverageSpeedMbps < 30)
-            score -= 10;
-
-        return Math.Max(0, Math.Min(100, score));
-    }
-
-    private static HealthAssessment AssessHealth(SurfaceTestResult result)
-    {
-        return result.ErrorCount switch
-        {
-            0 => HealthAssessment.Excellent,
-            < 5 => HealthAssessment.Good,
-            < 20 => HealthAssessment.Fair,
-            < 100 => HealthAssessment.Poor,
-            _ => HealthAssessment.Critical
-        };
-    }
-
     private static HealthAssessment MapHealthAssessment(string grade)
     {
         return grade?.ToUpperInvariant() switch
@@ -492,7 +481,7 @@ public class DiskCardTestService
             "A+" or "A" => HealthAssessment.Excellent,
             "B" or "B+" or "B-" => HealthAssessment.Good,
             "C" or "C+" or "C-" => HealthAssessment.Fair,
-            "D" or "D+" or "D-" => HealthAssessment.Poor,
+            "D" or "D+" or "D-" or "E" => HealthAssessment.Poor,
             _ => HealthAssessment.Critical
         };
     }
@@ -507,6 +496,186 @@ public class DiskCardTestService
             >= 60 => "D",
             _ => "F"
         };
+    }
+
+    private static string CalculateGrade(double score)
+    {
+        return score switch
+        {
+            >= 92 => "A",
+            >= 84 => "B",
+            >= 74 => "C",
+            >= 62 => "D",
+            >= 50 => "E",
+            _ => "F"
+        };
+    }
+
+    private static double CalculateScore(SurfaceTestResult result)
+    {
+        return BuildSurfaceScoreBreakdown(result).Score;
+    }
+
+    private static SurfaceScoreBreakdown BuildSurfaceScoreBreakdown(SurfaceTestResult result)
+    {
+        var findings = new List<string>();
+        var score = 100d;
+
+        var errorWeight = result.Operation == SurfaceTestOperation.ReadOnly ? 10d : 14d;
+        if (result.ErrorCount > 0)
+        {
+            findings.Add($"Nalezené chyby bloků: {result.ErrorCount}");
+        }
+        score -= result.ErrorCount * errorWeight;
+
+        if (result.PeakSpeedMbps > 0)
+        {
+            var dropRatio = 1d - (result.MinSpeedMbps / result.PeakSpeedMbps);
+            if (dropRatio > 0.35d)
+            {
+                findings.Add($"Výrazný propad rychlosti (min/max): {result.MinSpeedMbps:F1}/{result.PeakSpeedMbps:F1} MB/s");
+            }
+            score -= Math.Clamp(dropRatio * 40d, 0d, 30d);
+        }
+
+        var speedFloor = GetExpectedMinimumAverageSpeed(result);
+        if (speedFloor > 0 && result.AverageSpeedMbps < speedFloor)
+        {
+            var deficitRatio = 1d - (result.AverageSpeedMbps / speedFloor);
+            findings.Add($"Průměrná rychlost pod očekáváním: {result.AverageSpeedMbps:F1} MB/s (cílově > {speedFloor:F0} MB/s)");
+            score -= Math.Clamp(deficitRatio * 24d, 0d, 24d);
+        }
+
+        var variation = GetSpeedVariationCoefficient(result.Samples);
+        if (variation > 0)
+        {
+            if (IsSolidStateDrive(result))
+            {
+                if (variation > 0.20d)
+                {
+                    findings.Add($"SSD/NVMe vykazuje nestabilní průběh rychlosti (CV {variation:P0})");
+                }
+                score -= Math.Clamp((variation - 0.20d) * 120d, 0d, 24d);
+            }
+            else
+            {
+                if (variation > 0.35d)
+                {
+                    findings.Add($"Nestabilní průběh rychlosti u HDD (CV {variation:P0})");
+                }
+                score -= Math.Clamp((variation - 0.35d) * 70d, 0d, 12d);
+            }
+        }
+
+        if (result.CurrentTemperatureCelsius is > 55)
+        {
+            findings.Add($"Vyšší teplota při testu: {result.CurrentTemperatureCelsius.Value}°C");
+            score -= Math.Clamp((result.CurrentTemperatureCelsius.Value - 55) * 1.5d, 0d, 15d);
+        }
+
+        if (result.ReallocatedSectors is > 0)
+        {
+            findings.Add($"SMART varování: přemapované sektory {result.ReallocatedSectors.Value}");
+            score -= Math.Clamp(result.ReallocatedSectors.Value * 0.20d, 0d, 12d);
+        }
+
+        score = Math.Clamp(score, 0d, 100d);
+        var grade = CalculateGrade(score);
+        var health = AssessHealth(result, score);
+
+        if (findings.Count == 0)
+        {
+            findings.Add("Bez významných varování, průběh testu stabilní.");
+        }
+
+        return new SurfaceScoreBreakdown
+        {
+            Score = score,
+            Grade = grade,
+            Health = health,
+            Findings = findings
+        };
+    }
+
+    private static HealthAssessment AssessHealth(SurfaceTestResult result, double score)
+    {
+        if (result.ErrorCount > 50 || score < 35)
+        {
+            return HealthAssessment.Critical;
+        }
+
+        if (result.ErrorCount > 0 || score < 55)
+        {
+            return HealthAssessment.Poor;
+        }
+
+        if (score < 72)
+        {
+            return HealthAssessment.Fair;
+        }
+
+        if (score < 88)
+        {
+            return HealthAssessment.Good;
+        }
+
+        return HealthAssessment.Excellent;
+    }
+
+    private static bool IsSolidStateDrive(SurfaceTestResult result)
+    {
+        var descriptor = string.Concat(result.DriveModel, " ", result.DriveInterface);
+        return descriptor.Contains("nvme", StringComparison.OrdinalIgnoreCase) ||
+               descriptor.Contains("ssd", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static double GetExpectedMinimumAverageSpeed(SurfaceTestResult result)
+    {
+        if (IsSolidStateDrive(result))
+        {
+            return 140d;
+        }
+
+        return 55d;
+    }
+
+    private static double GetSpeedVariationCoefficient(IReadOnlyCollection<SurfaceTestSample> samples)
+    {
+        if (samples.Count < 5)
+        {
+            return 0d;
+        }
+
+        var values = samples
+            .Select(s => s.ThroughputMbps)
+            .Where(v => v > 0)
+            .ToArray();
+
+        if (values.Length < 5)
+        {
+            return 0d;
+        }
+
+        var average = values.Average();
+        if (average <= 0)
+        {
+            return 0d;
+        }
+
+        var stdDev = CalculateStandardDeviation(values);
+        return stdDev / average;
+    }
+
+    private static double CalculateStandardDeviation(IReadOnlyCollection<double> values)
+    {
+        if (values.Count < 2)
+        {
+            return 0d;
+        }
+
+        var avg = values.Average();
+        var variance = values.Sum(v => Math.Pow(v - avg, 2)) / values.Count;
+        return Math.Sqrt(variance);
     }
 
     private static void ReactivateCardForTesting(DiskCard card)

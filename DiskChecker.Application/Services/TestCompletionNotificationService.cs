@@ -48,7 +48,9 @@ public partial class TestCompletionNotificationService
         string? diskName = null,
         CancellationToken cancellationToken = default)
     {
-        if (string.IsNullOrWhiteSpace(recipientEmail))
+        var emailSettings = await _emailSettingsService.GetAsync(cancellationToken);
+        var resolvedRecipient = ResolveRecipient(recipientEmail, emailSettings.FromAddress);
+        if (string.IsNullOrWhiteSpace(resolvedRecipient))
         {
             LogEmptyEmail();
             return;
@@ -56,24 +58,23 @@ public partial class TestCompletionNotificationService
 
         try
         {
-            var emailSettings = await _emailSettingsService.GetAsync(cancellationToken);
             var subject = $"🔍 Test disku {diskName ?? "Unknown"} - {GetResultStatus(result)}";
             var body = BuildEmailBody(result, diskName);
 
             var message = new EmailMessage
             {
-                ToAddress = recipientEmail,
+                ToAddress = resolvedRecipient,
                 Subject = subject,
                 HtmlBody = body
             };
 
             await _emailSender.SendAsync(message, cancellationToken);
 
-            LogNotificationSent(recipientEmail);
+            LogNotificationSent(resolvedRecipient);
         }
-        catch (Exception ex)
+        catch (InvalidOperationException ex)
         {
-            LogNotificationFailed(ex, recipientEmail);
+            LogNotificationFailed(ex, resolvedRecipient);
         }
     }
 
@@ -85,9 +86,12 @@ public partial class TestCompletionNotificationService
         string recipientEmail,
         byte[]? reportPdf,
         string? diskName = null,
+        string? attachmentFileName = null,
         CancellationToken cancellationToken = default)
     {
-        if (string.IsNullOrWhiteSpace(recipientEmail))
+        var emailSettings = await _emailSettingsService.GetAsync(cancellationToken);
+        var resolvedRecipient = ResolveRecipient(recipientEmail, emailSettings.FromAddress);
+        if (string.IsNullOrWhiteSpace(resolvedRecipient))
         {
             LogEmptyEmail();
             return;
@@ -95,24 +99,35 @@ public partial class TestCompletionNotificationService
 
         try
         {
-            var emailSettings = await _emailSettingsService.GetAsync(cancellationToken);
             var subject = $"📊 Test disku {diskName ?? "Unknown"} - Zpráva - {GetResultStatus(result)}";
             var body = BuildEmailBody(result, diskName, includeReport: true);
 
             var message = new EmailMessage
             {
-                ToAddress = recipientEmail,
+                ToAddress = resolvedRecipient,
                 Subject = subject,
                 HtmlBody = body
             };
 
+            if (reportPdf is { Length: > 0 })
+            {
+                message.Attachments.Add(new EmailAttachment
+                {
+                    FileName = string.IsNullOrWhiteSpace(attachmentFileName)
+                        ? $"DiskCertificate_{DateTime.UtcNow:yyyyMMdd_HHmmss}.pdf"
+                        : attachmentFileName,
+                    Content = reportPdf,
+                    ContentType = "application/pdf"
+                });
+            }
+
             await _emailSender.SendAsync(message, cancellationToken);
 
-            LogNotificationWithReportSent(recipientEmail);
+            LogNotificationWithReportSent(resolvedRecipient);
         }
-        catch (Exception ex)
+        catch (InvalidOperationException ex)
         {
-            LogNotificationWithReportFailed(ex, recipientEmail);
+            LogNotificationWithReportFailed(ex, resolvedRecipient);
         }
     }
 
@@ -197,5 +212,20 @@ public partial class TestCompletionNotificationService
             i++;
         }
         return $"{b:F1} {sizes[i]}";
+    }
+
+    private static string? ResolveRecipient(string? preferredRecipient, string? fallbackRecipient)
+    {
+        if (!string.IsNullOrWhiteSpace(preferredRecipient))
+        {
+            return preferredRecipient.Trim();
+        }
+
+        if (!string.IsNullOrWhiteSpace(fallbackRecipient))
+        {
+            return fallbackRecipient.Trim();
+        }
+
+        return null;
     }
 }

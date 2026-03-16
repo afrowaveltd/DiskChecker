@@ -19,6 +19,7 @@ namespace DiskChecker.UI.Avalonia.ViewModels
         private string _statusMessage = string.Empty;
         private bool _isLoadingBackups;
         private ObservableCollection<IBackupService.BackupInfo> _availableBackups = new();
+        private string _reportRecipientEmail = string.Empty;
         
         // Nastavení aplikace
         private bool _autoCheckForUpdates;
@@ -171,6 +172,12 @@ namespace DiskChecker.UI.Avalonia.ViewModels
         public IAsyncRelayCommand RestoreBackupCommand { get; }
         public IAsyncRelayCommand RefreshBackupsCommand { get; }
 
+        public string ReportRecipientEmail
+        {
+            get => _reportRecipientEmail;
+            set => SetProperty(ref _reportRecipientEmail, value);
+        }
+
         private async void LoadSettings()
         {
             try
@@ -186,15 +193,19 @@ namespace DiskChecker.UI.Avalonia.ViewModels
                 Language = await _settingsService.GetLanguageAsync();
                 EnableLogging = await _settingsService.GetEnableLoggingAsync();
                 LogLevel = await _settingsService.GetLogLevelAsync();
+                ReportRecipientEmail = await _settingsService.GetReportRecipientEmailAsync();
                 // SMART probe persisted settings
                 var ttl = await _settingsService.GetSmartCacheTtlMinutesAsync();
                 var timeout = await _settingsService.GetSmartProbeTimeoutSecondsAsync();
                 var parallel = await _settingsService.GetSmartProbeParallelismAsync();
-                // Expose them to UI if needed via StatusMessage or dedicated properties
+
+                SmartCacheTtlMinutes = ttl;
+                SmartProbeTimeoutSeconds = timeout;
+                SmartProbeParallelism = parallel;
                 
                 StatusMessage = "Nastavení načteno";
             }
-            catch (Exception ex)
+            catch (InvalidOperationException ex)
             {
                 StatusMessage = $"Chyba při načítání nastavení: {ex.Message}";
                 await _dialogService.ShowErrorAsync("Chyba", $"Nepodařilo se načíst nastavení: {ex.Message}");
@@ -217,6 +228,7 @@ namespace DiskChecker.UI.Avalonia.ViewModels
                 await _settingsService.SetLanguageAsync(Language);
                 await _settingsService.SetEnableLoggingAsync(EnableLogging);
                 await _settingsService.SetLogLevelAsync(LogLevel);
+                await _settingsService.SetReportRecipientEmailAsync(ReportRecipientEmail);
                 // Persist SMART probe settings
                 await _settingsService.SetSmartCacheTtlMinutesAsyncPersistent(SmartCacheTtlMinutes);
                 await _settingsService.SetSmartProbeTimeoutSecondsAsync(SmartProbeTimeoutSeconds);
@@ -224,7 +236,7 @@ namespace DiskChecker.UI.Avalonia.ViewModels
                 
                 StatusMessage = "Nastavení úspěšně uloženo";
             }
-            catch (Exception ex)
+            catch (InvalidOperationException ex)
             {
                 StatusMessage = $"Chyba při ukládání nastavení: {ex.Message}";
                 await _dialogService.ShowErrorAsync("Chyba", $"Nepodařilo se uložit nastavení: {ex.Message}");
