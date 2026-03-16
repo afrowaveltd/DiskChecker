@@ -610,6 +610,7 @@ public partial class SurfaceTestViewModel : ViewModelBase, INavigableViewModel, 
 
     private void AddSpeedPoint(double speed, double dataPercent)
     {
+        var phase = _currentPhase;
         Dispatcher.UIThread.Post(() =>
         {
             var now = DateTime.UtcNow;
@@ -623,9 +624,9 @@ public partial class SurfaceTestViewModel : ViewModelBase, INavigableViewModel, 
                 SpeedHistory.RemoveAt(0);
 
             // Add to phase-specific collection
-            var dataPoint = new SurfaceTestDataPoint(now, elapsed, speed, CurrentTemperature, _currentPhase);
+            var dataPoint = new SurfaceTestDataPoint(now, elapsed, speed, CurrentTemperature, phase);
 
-            if (_currentPhase == 0)
+            if (phase == 0)
             {
                 AppendCapped(WriteSpeedHistory, dataPoint);
                 _writePhaseMaxElapsedSeconds = Math.Max(_writePhaseMaxElapsedSeconds, xPosition);
@@ -679,28 +680,14 @@ public partial class SurfaceTestViewModel : ViewModelBase, INavigableViewModel, 
         ref double bucketSum,
         ref int bucketCount)
     {
-        var bucketWindowSeconds = GetBucketWindowSeconds();
-
-        if (bucketStart < 0)
+        // Add point directly for immediate visibility
+        target.Add(new ObservablePoint(xPosition, speed));
+        
+        // Cap to max points
+        while (target.Count > MaxGraphPoints)
         {
-            bucketStart = xPosition;
+            target.RemoveAt(0);
         }
-
-        bucketSum += speed;
-        bucketCount++;
-
-        if ((xPosition - bucketStart) < bucketWindowSeconds)
-        {
-            return;
-        }
-
-        var averageSpeed = bucketSum / bucketCount;
-        var x = bucketStart + (bucketWindowSeconds / 2);
-        AppendCapped(target, new ObservablePoint(x, averageSpeed));
-
-        bucketStart = xPosition;
-        bucketSum = 0;
-        bucketCount = 0;
     }
 
     private double GetBucketWindowSeconds()
@@ -1312,7 +1299,11 @@ public partial class SurfaceTestViewModel : ViewModelBase, INavigableViewModel, 
         }
         
         // Read phase (50-100%)
-        CurrentPhase = 1;
+        await Dispatcher.UIThread.InvokeAsync(() =>
+        {
+            FlushPhaseBucket(0);
+            CurrentPhase = 1;
+        });
         _currentPhaseTotalBytes = syntheticTotalBytes;
         StatusMessage = "Čtení a ověřování...";
         for (int i = 0; i <= readPhaseDuration; i += sampleIntervalMs)
