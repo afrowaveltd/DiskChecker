@@ -17,6 +17,7 @@ namespace DiskChecker.UI.Avalonia.ViewModels
         private readonly IDialogService _dialogService;
         private readonly INavigationService _navigationService;
         private readonly ISelectedDiskService _selectedDiskService;
+        private readonly ICertificateGenerator _certificateGenerator;
         private ObservableCollection<TestReportItem> _reports = new();
         private TestReportItem? _selectedReport;
         private bool _isLoading;
@@ -26,12 +27,14 @@ namespace DiskChecker.UI.Avalonia.ViewModels
             IDiskCardRepository diskCardRepository,
             IDialogService dialogService,
             INavigationService navigationService,
-            ISelectedDiskService selectedDiskService)
+            ISelectedDiskService selectedDiskService,
+            ICertificateGenerator certificateGenerator)
         {
             _diskCardRepository = diskCardRepository ?? throw new ArgumentNullException(nameof(diskCardRepository));
             _dialogService = dialogService ?? throw new ArgumentNullException(nameof(dialogService));
             _navigationService = navigationService ?? throw new ArgumentNullException(nameof(navigationService));
             _selectedDiskService = selectedDiskService ?? throw new ArgumentNullException(nameof(selectedDiskService));
+            _certificateGenerator = certificateGenerator ?? throw new ArgumentNullException(nameof(certificateGenerator));
             
             DeleteReportCommand = new AsyncRelayCommand(DeleteReportAsync, () => SelectedReport != null);
             ExportReportCommand = new AsyncRelayCommand(ExportReportAsync, () => SelectedReport != null);
@@ -115,14 +118,50 @@ namespace DiskChecker.UI.Avalonia.ViewModels
 
             try
             {
-                StatusMessage = "Exportuji report...";
-                // In a real implementation, we would export the selected report
-                StatusMessage = "Export není momentálně dostupný";
+                IsLoading = true;
+                StatusMessage = "Generuji certifikát...";
+
+                var card = await _diskCardRepository.GetByIdAsync(SelectedReport.DiskCardId);
+                if (card == null)
+                {
+                    await _dialogService.ShowErrorAsync("Chyba", "Karta disku pro vybraný report nebyla nalezena.");
+                    return;
+                }
+
+                var session = await _diskCardRepository.GetTestSessionAsync(SelectedReport.Id);
+                if (session == null)
+                {
+                    await _dialogService.ShowErrorAsync("Chyba", "Testová session pro vybraný report nebyla nalezena.");
+                    return;
+                }
+
+                var certificate = await _certificateGenerator.GenerateCertificateAsync(session, card);
+                var pdfPath = await _certificateGenerator.GeneratePdfAsync(certificate);
+                await _diskCardRepository.CreateCertificateAsync(certificate);
+
+                StatusMessage = $"Certifikát uložen: {certificate.CertificateNumber}";
+
+                var openPdf = await _dialogService.ShowConfirmationAsync(
+                    "Certifikát vytvořen",
+                    $"Certifikát byl uložen do PDF:\n{pdfPath}\n\nOtevřít soubor?");
+
+                if (openPdf)
+                {
+                    System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
+                    {
+                        FileName = pdfPath,
+                        UseShellExecute = true
+                    });
+                }
             }
-            catch (Exception ex)
+            catch (InvalidOperationException ex)
             {
-                StatusMessage = $"Chyba při exportu reportu: {ex.Message}";
-                await _dialogService.ShowErrorAsync("Chyba", $"Nepodařilo se exportovat report: {ex.Message}");
+                StatusMessage = $"Chyba při exportu certifikátu: {ex.Message}";
+                await _dialogService.ShowErrorAsync("Chyba", $"Nepodařilo se exportovat certifikát: {ex.Message}");
+            }
+            finally
+            {
+                IsLoading = false;
             }
         }
 
@@ -172,7 +211,8 @@ namespace DiskChecker.UI.Avalonia.ViewModels
                 
                 foreach (var card in cards)
                 {
-                    foreach (var session in card.TestSessions.OrderByDescending(s => s.StartedAt))
+                    var sessions = await _diskCardRepository.GetTestSessionsAsync(card.Id);
+                    foreach (var session in sessions.OrderByDescending(s => s.StartedAt))
                     {
                         reportItems.Add(new TestReportItem
                         {

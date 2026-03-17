@@ -29,7 +29,8 @@ public class TestHistoryService
 
         foreach (var card in cards)
         {
-            foreach (var session in card.TestSessions)
+            var sessions = await _diskCardRepository.GetTestSessionsAsync(card.Id);
+            foreach (var session in sessions)
             {
                 var report = CreateTestReportFromSession(session, card);
                 reports.Add(report);
@@ -49,7 +50,8 @@ public class TestHistoryService
         if (card == null)
             return new List<TestReport>();
 
-        return card.TestSessions
+        var sessions = await _diskCardRepository.GetTestSessionsAsync(card.Id);
+        return sessions
             .Select(session => CreateTestReportFromSession(session, card))
             .OrderByDescending(r => r.TestDate)
             .ToList();
@@ -65,7 +67,8 @@ public class TestHistoryService
 
         foreach (var card in cards)
         {
-            foreach (var session in card.TestSessions.Where(s => s.StartedAt >= startDate && s.StartedAt <= endDate))
+            var sessions = await _diskCardRepository.GetTestSessionsAsync(card.Id);
+            foreach (var session in sessions.Where(s => s.StartedAt >= startDate && s.StartedAt <= endDate))
             {
                 var report = CreateTestReportFromSession(session, card);
                 reports.Add(report);
@@ -85,7 +88,8 @@ public class TestHistoryService
 
         foreach (var card in cards)
         {
-            foreach (var session in card.TestSessions.Where(s => s.TestType == testType))
+            var sessions = await _diskCardRepository.GetTestSessionsAsync(card.Id);
+            foreach (var session in sessions.Where(s => s.TestType == testType))
             {
                 var report = CreateTestReportFromSession(session, card);
                 reports.Add(report);
@@ -105,7 +109,8 @@ public class TestHistoryService
 
         foreach (var card in cards)
         {
-            foreach (var session in card.TestSessions.Where(s => s.Result == TestResult.Fail))
+            var sessions = await _diskCardRepository.GetTestSessionsAsync(card.Id);
+            foreach (var session in sessions.Where(s => s.Result == TestResult.Fail))
             {
                 var report = CreateTestReportFromSession(session, card);
                 reports.Add(report);
@@ -138,7 +143,7 @@ public class TestHistoryService
     {
         return new TestReport
         {
-            ReportId = Guid.NewGuid(),
+            ReportId = session.SessionId,
             TestDate = session.StartedAt,
             TestType = session.TestType.ToString(),
             Grade = session.Grade,

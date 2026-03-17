@@ -167,7 +167,7 @@ public partial class SurfaceTestViewModel : ViewModelBase, INavigableViewModel, 
                 MaxLimit = 100,
                 LabelsPaint = new SolidColorPaint(new SKColor(148, 163, 184)),
                 TextSize = 10,
-                Labeler = value => $"{value:F0}%"
+                Labeler = value => FormatPercentWithCapacityLabel(value)
             }
         ];
 
@@ -468,6 +468,7 @@ public partial class SurfaceTestViewModel : ViewModelBase, INavigableViewModel, 
                     _ = UpdateLockStatusAsync(value);
                 }
                 OnPropertyChanged(nameof(CanStartTest));
+                OnPropertyChanged(nameof(SpeedXAxes));
             }
         }
     }
@@ -631,8 +632,8 @@ public partial class SurfaceTestViewModel : ViewModelBase, INavigableViewModel, 
             while (SpeedHistory.Count > 300)
                 SpeedHistory.RemoveAt(0);
 
-            // Add to phase-specific collection
-            var dataPoint = new SurfaceTestDataPoint(now, elapsed, speed, CurrentTemperature, phase);
+            // Add to phase-specific collection with dataPercent
+            var dataPoint = new SurfaceTestDataPoint(now, elapsed, speed, CurrentTemperature, phase, xPosition);
 
             if (phase == 0)
             {
@@ -1166,24 +1167,34 @@ public partial class SurfaceTestViewModel : ViewModelBase, INavigableViewModel, 
                     FlushPhaseBucket(_currentPhase);
                     CurrentPhase = 0;
                 }
-                
-                // Progress: Write is 0-50%, Read is 50-100%
-                if (isReadPhase)
+
+                // Plot speed only for write/read phases to avoid return line (e.g. GPT/formatování fáze s 0%)
+                if (isWritePhase || isReadPhase)
                 {
-                    WriteProgress = 100;
-                    VerifyProgress = p.ProgressPercent;
+                    // Draw both phases over the same 0-100% range
+                    var phaseProgress = Math.Clamp(p.ProgressPercent, 0, 100);
+
+                    if (isWritePhase)
+                    {
+                        WriteProgress = p.ProgressPercent;
+                        VerifyProgress = 0;
+                    }
+                    else
+                    {
+                        WriteProgress = 100;
+                        VerifyProgress = p.ProgressPercent;
+                    }
+
+                    CurrentSpeed = p.CurrentSpeedMBps;
+                    ErrorCount = p.Errors;
+                    AddSpeedPoint(p.CurrentSpeedMBps, phaseProgress);
+                    if (p.EstimatedTimeRemaining.HasValue)
+                        TimeRemaining = p.EstimatedTimeRemaining.Value.ToString(@"hh\:mm\:ss");
                 }
-                else if (isWritePhase)
+                else
                 {
-                    WriteProgress = p.ProgressPercent;
-                    VerifyProgress = 0;
+                    ErrorCount = p.Errors;
                 }
-                
-                CurrentSpeed = p.CurrentSpeedMBps;
-                ErrorCount = p.Errors;
-                AddSpeedPoint(p.CurrentSpeedMBps, p.ProgressPercent);
-                if (p.EstimatedTimeRemaining.HasValue)
-                    TimeRemaining = p.EstimatedTimeRemaining.Value.ToString(@"hh\:mm\:ss");
             });
         });
 
@@ -1215,27 +1226,39 @@ public partial class SurfaceTestViewModel : ViewModelBase, INavigableViewModel, 
             {
                 var card = await _cardTestService.GetOrCreateCardAsync(SelectedDrive!, cancellationToken);
 
+                // Collect write samples with proper timestamps and progress
                 var writeSamples = await Dispatcher.UIThread.InvokeAsync(() =>
-                    WriteSpeedHistory
-                        .Select((p, index) => new SpeedSample
+                {
+                    var samples = new List<SpeedSample>();
+                    foreach (var point in WriteSpeedHistory)
+                    {
+                        samples.Add(new SpeedSample
                         {
-                            Timestamp = p.Timestamp,
-                            SpeedMBps = p.Speed,
-                            ProgressPercent = WriteSpeedHistory.Count > 1 ? index * 100.0 / (WriteSpeedHistory.Count - 1) : 0,
-                            BytesProcessed = 0
-                        })
-                        .ToList());
+                            Timestamp = point.Timestamp,
+                            SpeedMBps = point.Speed,
+                            ProgressPercent = point.DataPercent,
+                            BytesProcessed = (long)(point.DataPercent / 100.0 * SelectedDrive!.TotalSize)
+                        });
+                    }
+                    return samples;
+                });
 
+                // Collect read samples with proper timestamps and progress
                 var readSamples = await Dispatcher.UIThread.InvokeAsync(() =>
-                    ReadSpeedHistory
-                        .Select((p, index) => new SpeedSample
+                {
+                    var samples = new List<SpeedSample>();
+                    foreach (var point in ReadSpeedHistory)
+                    {
+                        samples.Add(new SpeedSample
                         {
-                            Timestamp = p.Timestamp,
-                            SpeedMBps = p.Speed,
-                            ProgressPercent = ReadSpeedHistory.Count > 1 ? index * 100.0 / (ReadSpeedHistory.Count - 1) : 0,
-                            BytesProcessed = 0
-                        })
-                        .ToList());
+                            Timestamp = point.Timestamp,
+                            SpeedMBps = point.Speed,
+                            ProgressPercent = point.DataPercent,
+                            BytesProcessed = (long)(point.DataPercent / 100.0 * SelectedDrive!.TotalSize)
+                        });
+                    }
+                    return samples;
+                });
 
                 await _cardTestService.SaveSanitizationAsync(card, result, writeSamples, readSamples, cancellationToken);
                 
@@ -1632,5 +1655,33 @@ public partial class SurfaceTestViewModel : ViewModelBase, INavigableViewModel, 
     {
         _testCancellation?.Dispose();
         GC.SuppressFinalize(this);
+    }
+
+    private string FormatPercentWithCapacityLabel(double value)
+    {
+        var percent = Math.Clamp(value, 0d, 100d);
+        var totalBytes = SelectedDrive?.TotalSize > 0 ? SelectedDrive.TotalSize : _currentPhaseTotalBytes;
+
+        if (totalBytes <= 0)
+        {
+            return $"{percent:F0}%";
+        }
+
+        var bytesAtPoint = (long)(totalBytes * (percent / 100d));
+        const double tbInBytes = GbInBytes * 1024d;
+
+        string capacityText;
+        if (bytesAtPoint >= tbInBytes)
+        {
+            var tbAtPoint = bytesAtPoint / tbInBytes;
+            capacityText = $"{tbAtPoint:F2} TB";
+        }
+        else
+        {
+            var gbAtPoint = bytesAtPoint / GbInBytes;
+            capacityText = gbAtPoint > 100d ? $"{gbAtPoint:F0} GB" : $"{gbAtPoint:F1} GB";
+        }
+
+        return $"{percent:F0}% - {capacityText}";
     }
 }

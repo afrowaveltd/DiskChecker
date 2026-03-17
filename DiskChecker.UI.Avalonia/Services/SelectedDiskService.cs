@@ -11,4 +11,6 @@ public class SelectedDiskService : ISelectedDiskService
     public CoreDriveInfo? SelectedDisk { get; set; }
     public string? SelectedDiskDisplayName { get; set; }
     public bool IsSelectedDiskLocked { get; set; }
+    public int? SelectedTestSessionId { get; set; }
+    public int? SelectedCertificateId { get; set; }
 }

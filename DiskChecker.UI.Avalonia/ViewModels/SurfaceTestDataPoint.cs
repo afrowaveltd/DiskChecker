@@ -48,6 +48,11 @@ public class SurfaceTestDataPoint
     public string PhaseName => Phase == 0 ? "Zápis" : "Čtení";
 
     /// <summary>
+    /// Gets the data progress percentage (0-100).
+    /// </summary>
+    public double DataPercent { get; }
+
+    /// <summary>
     /// Gets the height for display (normalized to MaxSpeed).
     /// </summary>
     public double Height { get; set; }
@@ -55,13 +60,14 @@ public class SurfaceTestDataPoint
     /// <summary>
     /// Initializes a new instance.
     /// </summary>
-    public SurfaceTestDataPoint(DateTime timestamp, TimeSpan elapsed, double speed, int? temperature, int phase)
+    public SurfaceTestDataPoint(DateTime timestamp, TimeSpan elapsed, double speed, int? temperature, int phase, double dataPercent = 0)
     {
         Timestamp = timestamp;
         Elapsed = elapsed;
         Speed = speed;
         Temperature = temperature;
         Phase = phase;
+        DataPercent = dataPercent;
     }
 }
 

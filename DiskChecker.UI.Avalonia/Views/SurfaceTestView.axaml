@@ -201,9 +201,9 @@
                                 <!-- Legend -->
                                 <StackPanel Grid.Row="0" Orientation="Horizontal" Spacing="12" Margin="0,0,0,8">
                                     <Border Background="{DynamicResource ThemeChartWriteBrush}" Width="10" Height="10" CornerRadius="2"/>
-                                    <TextBlock Text="Zápis" FontSize="10" Foreground="{DynamicResource ThemeTextMutedBrush}" VerticalAlignment="Center"/>
+                                    <TextBlock Text="Zápis" FontSize="10" Foreground="{DynamicResource ThemeChartWriteBrush}" VerticalAlignment="Center"/>
                                     <Border Background="{DynamicResource ThemeChartReadBrush}" Width="10" Height="10" CornerRadius="2" Margin="8,0,0,0"/>
-                                    <TextBlock Text="Čtení" FontSize="10" Foreground="{DynamicResource ThemeTextMutedBrush}" VerticalAlignment="Center" Margin="4,0,0,0"/>
+                                    <TextBlock Text="Čtení" FontSize="10" Foreground="{DynamicResource ThemeChartReadBrush}" VerticalAlignment="Center" Margin="4,0,0,0"/>
                                 </StackPanel>
 
                                 <!-- Stats Line -->

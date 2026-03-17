@@ -26,31 +26,28 @@ public class DiskCardRepository : IDiskCardRepository
     public async Task<DiskCard?> GetByIdAsync(int id)
     {
         return await _context.DiskCards
-            .Include(c => c.TestSessions)
-            .Include(c => c.Certificates)
+            .AsNoTracking()
             .FirstOrDefaultAsync(c => c.Id == id);
     }
 
     public async Task<DiskCard?> GetBySerialNumberAsync(string serialNumber)
     {
         return await _context.DiskCards
-            .Include(c => c.TestSessions)
-            .Include(c => c.Certificates)
+            .AsNoTracking()
             .FirstOrDefaultAsync(c => c.SerialNumber == serialNumber);
     }
 
     public async Task<DiskCard?> GetByDevicePathAsync(string devicePath)
     {
         return await _context.DiskCards
-            .Include(c => c.TestSessions)
-            .Include(c => c.Certificates)
+            .AsNoTracking()
             .FirstOrDefaultAsync(c => c.DevicePath == devicePath);
     }
 
     public async Task<List<DiskCard>> GetAllAsync()
     {
         return await _context.DiskCards
-            .Include(c => c.TestSessions)
+            .AsNoTracking()
             .OrderByDescending(c => c.LastTestedAt)
             .ToListAsync();
     }
@@ -58,8 +55,8 @@ public class DiskCardRepository : IDiskCardRepository
     public async Task<List<DiskCard>> GetActiveAsync()
     {
         return await _context.DiskCards
+            .AsNoTracking()
             .Where(c => !c.IsArchived)
-            .Include(c => c.TestSessions)
             .OrderByDescending(c => c.LastTestedAt)
             .ToListAsync();
     }
@@ -266,8 +263,51 @@ public class DiskCardRepository : IDiskCardRepository
     public async Task<List<TestSession>> GetTestSessionsAsync(int diskCardId)
     {
         return await _context.TestSessions
+            .AsNoTracking()
             .Where(t => t.DiskCardId == diskCardId)
             .OrderByDescending(t => t.StartedAt)
+            .Select(t => new TestSession
+            {
+                Id = t.Id,
+                DiskCardId = t.DiskCardId,
+                SessionId = t.SessionId,
+                TestType = t.TestType,
+                StartedAt = t.StartedAt,
+                CompletedAt = t.CompletedAt,
+                Duration = t.Duration,
+                Status = t.Status,
+                IsDestructive = t.IsDestructive,
+                WasLocked = t.WasLocked,
+                BytesWritten = t.BytesWritten,
+                AverageWriteSpeedMBps = t.AverageWriteSpeedMBps,
+                MaxWriteSpeedMBps = t.MaxWriteSpeedMBps,
+                MinWriteSpeedMBps = t.MinWriteSpeedMBps,
+                WriteSpeedStdDev = t.WriteSpeedStdDev,
+                WriteDuration = t.WriteDuration,
+                WriteErrors = t.WriteErrors,
+                BytesRead = t.BytesRead,
+                AverageReadSpeedMBps = t.AverageReadSpeedMBps,
+                MaxReadSpeedMBps = t.MaxReadSpeedMBps,
+                MinReadSpeedMBps = t.MinReadSpeedMBps,
+                ReadSpeedStdDev = t.ReadSpeedStdDev,
+                ReadDuration = t.ReadDuration,
+                ReadErrors = t.ReadErrors,
+                VerificationErrors = t.VerificationErrors,
+                StartTemperature = t.StartTemperature,
+                MaxTemperature = t.MaxTemperature,
+                AverageTemperature = t.AverageTemperature,
+                PartitionCreated = t.PartitionCreated,
+                PartitionScheme = t.PartitionScheme,
+                WasFormatted = t.WasFormatted,
+                FileSystem = t.FileSystem,
+                VolumeLabel = t.VolumeLabel,
+                Result = t.Result,
+                Grade = t.Grade,
+                Score = t.Score,
+                HealthAssessment = t.HealthAssessment,
+                CertificateId = t.CertificateId,
+                Notes = t.Notes
+            })
             .ToListAsync();
     }
 

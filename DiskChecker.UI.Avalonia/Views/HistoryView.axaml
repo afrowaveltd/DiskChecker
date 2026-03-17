@@ -79,6 +79,7 @@
                Margin="16,0"
                CornerRadius="8">
             <dg:DataGrid ItemsSource="{Binding Tests}"
+                        SelectedItem="{Binding SelectedTest}"
                         IsReadOnly="True"
                         HeadersVisibility="Column"
                         AutoGenerateColumns="False"

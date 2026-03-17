@@ -99,6 +99,8 @@
                         <DataGridTextColumn Header="Kapacita" Binding="{Binding Capacity, StringFormat='{}{0:#,0} B'}" Width="110"/>
                         <DataGridTextColumn Header="Známka" Binding="{Binding OverallGrade}" Width="60"/>
                         <DataGridTextColumn Header="Skóre" Binding="{Binding OverallScore, StringFormat={}{0:F0}}" Width="60"/>
+                        <DataGridTextColumn Header="Hodin" Binding="{Binding PowerOnHours, StringFormat='{}{0:#,0}'}" Width="75"/>
+                        <DataGridTextColumn Header="Startů" Binding="{Binding PowerCycleCount, StringFormat='{}{0:#,0}'}" Width="75"/>
                         <DataGridTemplateColumn Header="Oddíly / přípojné body" Width="*">
                             <DataGridTemplateColumn.CellTemplate>
                                 <DataTemplate>

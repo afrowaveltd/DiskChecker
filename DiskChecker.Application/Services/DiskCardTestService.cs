@@ -226,6 +226,12 @@ public class DiskCardTestService
         ReactivateCardForTesting(card);
         card.TestCount++;
         card.LastTestedAt = DateTime.UtcNow;
+        if (session.SmartBefore?.PowerOnHours is { } poh)
+        {
+            card.PowerOnHours = poh;
+        }
+
+        card.PowerCycleCount = session.SmartBefore?.PowerCycleCount ?? card.PowerCycleCount;
         await UpdateCardGradeAsync(card, cancellationToken);
 
         await _dbContext.SaveChangesAsync(cancellationToken);
@@ -328,6 +334,12 @@ public class DiskCardTestService
         ReactivateCardForTesting(card);
         card.TestCount++;
         card.LastTestedAt = DateTime.UtcNow;
+        if (session.SmartBefore?.PowerOnHours is { } poh)
+        {
+            card.PowerOnHours = poh;
+        }
+
+        card.PowerCycleCount = session.SmartBefore?.PowerCycleCount ?? card.PowerCycleCount;
         await UpdateCardGradeAsync(card, cancellationToken);
 
         await _dbContext.SaveChangesAsync(cancellationToken);
@@ -398,6 +410,12 @@ public class DiskCardTestService
         ReactivateCardForTesting(card);
         card.TestCount++;
         card.LastTestedAt = DateTime.UtcNow;
+        if (session.SmartBefore?.PowerOnHours is { } poh)
+        {
+            card.PowerOnHours = poh;
+        }
+
+        card.PowerCycleCount = session.SmartBefore?.PowerCycleCount ?? card.PowerCycleCount;
         await UpdateCardGradeAsync(card, cancellationToken);
 
         await _dbContext.SaveChangesAsync(cancellationToken);

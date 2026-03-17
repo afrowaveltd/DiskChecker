@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Drawing;
 using System.Drawing.Imaging;
 using System.IO;
+using System.Linq;
 using System.Runtime.Versioning;
 using System.Threading.Tasks;
 using DiskChecker.Core.Interfaces;
@@ -70,8 +71,8 @@ public class CertificateGenerator : ICertificateGenerator
             
             // SMART summary
             SmartPassed = session.SmartBefore?.IsHealthy ?? true,
-            PowerOnHours = session.SmartBefore?.PowerOnHours ?? 0,
-            PowerCycles = session.SmartBefore?.PowerCycleCount ?? 0,
+            PowerOnHours = session.SmartBefore?.PowerOnHours ?? diskCard.PowerOnHours ?? 0,
+            PowerCycles = session.SmartBefore?.PowerCycleCount ?? diskCard.PowerCycleCount ?? 0,
             ReallocatedSectors = session.SmartBefore?.ReallocatedSectorCount ?? 0,
             PendingSectors = session.SmartBefore?.PendingSectorCount ?? 0,
             
@@ -89,6 +90,9 @@ public class CertificateGenerator : ICertificateGenerator
             RecommendationNotes = GenerateRecommendation(session),
             Notes = session.Notes
         };
+
+        certificate.WriteProfilePoints = DownsampleSpeeds(session.WriteSamples.Select(s => s.SpeedMBps), 32);
+        certificate.ReadProfilePoints = DownsampleSpeeds(session.ReadSamples.Select(s => s.SpeedMBps), 32);
 
         // Calculate grade and score using shared method
         var (grade, score) = CalculateGrade(session);
@@ -120,13 +124,19 @@ public class CertificateGenerator : ICertificateGenerator
 
     public async Task<string> GeneratePdfAsync(DiskCertificate certificate)
     {
+        ArgumentNullException.ThrowIfNull(certificate);
+
+        if (string.IsNullOrWhiteSpace(certificate.CertificateNumber))
+        {
+            certificate.CertificateNumber = $"TMP-{DateTime.UtcNow:yyyyMMddHHmmss}";
+        }
+
         var fileName = $"Certificate_{certificate.CertificateNumber}.pdf";
         var filePath = Path.Combine(_certificatesDirectory, fileName);
 
-        // For now, generate a simple PDF-like report
-        // In production, use a proper PDF library like iTextSharp or PdfSharp
-        var reportContent = GenerateTextReport(certificate);
-        await File.WriteAllTextAsync(filePath, reportContent);
+        var jpegBytes = await RenderCertificateJpegAsync(certificate);
+        var pdfBytes = BuildImagePdfDocument(jpegBytes, 1240, 1754);
+        await File.WriteAllBytesAsync(filePath, pdfBytes);
 
         certificate.PdfGenerated = true;
         certificate.PdfPath = filePath;
@@ -137,6 +147,331 @@ public class CertificateGenerator : ICertificateGenerator
         }
 
         return filePath;
+    }
+
+    private static async Task<byte[]> RenderCertificateJpegAsync(DiskCertificate cert)
+    {
+        await Task.Yield();
+
+        const int width = 1240;
+        const int height = 1754;
+
+        using var bitmap = new Bitmap(width, height);
+        using var graphics = Graphics.FromImage(bitmap);
+        graphics.Clear(Color.White);
+        graphics.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
+        graphics.TextRenderingHint = System.Drawing.Text.TextRenderingHint.ClearTypeGridFit;
+
+        using var titleFont = new Font("Segoe UI", 34, FontStyle.Bold);
+        using var sectionFont = new Font("Segoe UI", 16, FontStyle.Bold);
+        using var labelFont = new Font("Segoe UI", 12, FontStyle.Bold);
+        using var valueFont = new Font("Segoe UI", 12, FontStyle.Regular);
+        using var gradeFont = new Font("Segoe UI", 120, FontStyle.Bold);
+        using var scoreFont = new Font("Segoe UI", 22, FontStyle.Bold);
+        using var smallFont = new Font("Segoe UI", 10, FontStyle.Regular);
+
+        using var textBrush = new SolidBrush(Color.Black);
+        using var mutedBrush = new SolidBrush(Color.FromArgb(80, 80, 80));
+        using var accentBrush = new SolidBrush(Color.FromArgb(15, 76, 129));
+        using var panelBrush = new SolidBrush(Color.FromArgb(246, 248, 251));
+        using var borderPen = new Pen(Color.FromArgb(210, 215, 223), 2f);
+        using var writePen = new Pen(Color.FromArgb(220, 38, 38), 3f);
+        using var readPen = new Pen(Color.FromArgb(5, 150, 105), 3f);
+        using var axisPen = new Pen(Color.FromArgb(203, 213, 225), 1f);
+        using var gradeBrush = new SolidBrush(GetGradeColor(cert.Grade));
+
+        graphics.DrawRectangle(borderPen, 20, 20, width - 40, height - 40);
+        graphics.DrawString("CERTIFIKÁT KVALITY DISKU", titleFont, accentBrush, 48, 42);
+        graphics.DrawString("DiskChecker – Profesionální diagnóza disků", smallFont, mutedBrush, 52, 98);
+
+        var y = 140;
+        graphics.FillRectangle(panelBrush, 48, y, 760, 230);
+        graphics.DrawRectangle(borderPen, 48, y, 760, 230);
+
+        void DrawLine(string label, string value, int row)
+        {
+            var yy = y + 18 + row * 34;
+            graphics.DrawString(label, labelFont, textBrush, 64, yy);
+            graphics.DrawString(value, valueFont, textBrush, 250, yy);
+        }
+
+        DrawLine("Model:", cert.DiskModel, 0);
+        DrawLine("Sériové číslo:", cert.SerialNumber, 1);
+        DrawLine("Kapacita:", cert.Capacity, 2);
+        DrawLine("Typ disku:", cert.DiskType, 3);
+        DrawLine("Číslo certifikátu:", cert.CertificateNumber, 4);
+        DrawLine("Vygenerováno:", cert.GeneratedAt.ToString("dd.MM.yyyy HH:mm"), 5);
+
+        graphics.FillRectangle(panelBrush, 838, y, 350, 230);
+        graphics.DrawRectangle(borderPen, 838, y, 350, 230);
+        graphics.DrawString("KONEČNÁ ZNÁMKA", labelFont, textBrush, 926, y + 18);
+        graphics.DrawEllipse(new Pen(GetGradeColor(cert.Grade), 6f), 928, y + 54, 180, 180);
+        graphics.DrawString(cert.Grade, gradeFont, gradeBrush, 956, y + 58);
+        graphics.DrawString($"Skóre: {cert.Score:F0}/100", scoreFont, textBrush, 918, y + 185);
+
+        y += 260;
+        graphics.DrawString("Výsledky testu", sectionFont, accentBrush, 48, y);
+        y += 34;
+        graphics.FillRectangle(panelBrush, 48, y, width - 96, 170);
+        graphics.DrawRectangle(borderPen, 48, y, width - 96, 170);
+        graphics.DrawString($"Typ: {cert.TestType}", valueFont, textBrush, 64, y + 16);
+        graphics.DrawString($"Doba: {cert.TestDuration:hh\\:mm\\:ss}", valueFont, textBrush, 64, y + 46);
+        graphics.DrawString($"Chyby: {cert.ErrorCount}", valueFont, textBrush, 64, y + 76);
+        graphics.DrawString($"Teplota: {cert.TemperatureRange}", valueFont, textBrush, 64, y + 106);
+        graphics.DrawString($"Průměrný zápis: {cert.AvgWriteSpeed:F1} MB/s", valueFont, textBrush, 520, y + 16);
+        graphics.DrawString($"Průměrné čtení: {cert.AvgReadSpeed:F1} MB/s", valueFont, textBrush, 520, y + 46);
+        graphics.DrawString($"Stav: {cert.HealthStatus}", valueFont, textBrush, 520, y + 76);
+
+        y += 190;
+        graphics.DrawString("SMART souhrn", sectionFont, accentBrush, 48, y);
+        y += 34;
+        graphics.FillRectangle(panelBrush, 48, y, width - 96, 120);
+        graphics.DrawRectangle(borderPen, 48, y, width - 96, 120);
+        graphics.DrawString($"Provozní hodiny: {cert.PowerOnHours:#,0}", valueFont, textBrush, 64, y + 16);
+        graphics.DrawString($"Počet startů: {cert.PowerCycles:#,0}", valueFont, textBrush, 64, y + 44);
+        graphics.DrawString($"Realokované sektory: {cert.ReallocatedSectors}", valueFont, textBrush, 520, y + 16);
+        graphics.DrawString($"Čekající sektory: {cert.PendingSectors}", valueFont, textBrush, 520, y + 44);
+
+        y += 150;
+        graphics.DrawString("Výkonový profil testu", sectionFont, accentBrush, 48, y);
+        y += 34;
+
+        var chartX = 72f;
+        var chartY = y;
+        var chartW = width - 160f;
+        var chartH = 260f;
+        graphics.DrawRectangle(borderPen, chartX, chartY, chartW, chartH);
+        graphics.DrawLine(axisPen, chartX + 30, chartY + 14, chartX + 30, chartY + chartH - 26);
+        graphics.DrawLine(axisPen, chartX + 30, chartY + chartH - 26, chartX + chartW - 20, chartY + chartH - 26);
+
+        var (writePoints, readPoints) = GetProfilePointsForChart(cert);
+        var maxSpeed = Math.Max(writePoints.Count > 0 ? writePoints.Max() : 0, readPoints.Count > 0 ? readPoints.Max() : 0);
+        if (maxSpeed <= 0) maxSpeed = 1;
+
+        DrawProfilePolyline(graphics, writePen, writePoints, maxSpeed, chartX + 30, chartY + 14, chartW - 50, chartH - 40);
+        DrawProfilePolyline(graphics, readPen, readPoints, maxSpeed, chartX + 30, chartY + 14, chartW - 50, chartH - 40);
+
+        graphics.DrawString("MB/s", smallFont, mutedBrush, chartX - 4, chartY + 8);
+        graphics.DrawString("0 %", smallFont, mutedBrush, chartX + 26, chartY + chartH - 18);
+        graphics.DrawString("50 %", smallFont, mutedBrush, chartX + chartW / 2 - 8, chartY + chartH - 18);
+        graphics.DrawString("100 %", smallFont, mutedBrush, chartX + chartW - 40, chartY + chartH - 18);
+        graphics.DrawString("Zápis", smallFont, new SolidBrush(Color.FromArgb(220, 38, 38)), chartX + chartW - 150, chartY + 8);
+        graphics.DrawString("Čtení", smallFont, new SolidBrush(Color.FromArgb(5, 150, 105)), chartX + chartW - 90, chartY + 8);
+
+        y += 290;
+        graphics.DrawString("Doporučení", sectionFont, accentBrush, 48, y);
+        y += 34;
+        graphics.FillRectangle(panelBrush, 48, y, width - 96, 140);
+        graphics.DrawRectangle(borderPen, 48, y, width - 96, 140);
+        graphics.DrawString(cert.RecommendationNotes ?? "Není k dispozici", valueFont, textBrush, new RectangleF(64, y + 16, width - 130, 100));
+
+        using var stream = new MemoryStream();
+        var encoder = ImageCodecInfo.GetImageEncoders().First(e => e.FormatID == ImageFormat.Jpeg.Guid);
+        using var parameters = new EncoderParameters(1);
+        parameters.Param[0] = new EncoderParameter(Encoder.Quality, 92L);
+        bitmap.Save(stream, encoder, parameters);
+        return stream.ToArray();
+    }
+
+    private static byte[] BuildImagePdfDocument(byte[] jpegBytes, int imageWidth, int imageHeight)
+    {
+        using var ms = new MemoryStream();
+        using var writer = new StreamWriter(ms, System.Text.Encoding.ASCII, leaveOpen: true);
+        var offsets = new List<long> { 0 };
+
+        void WriteObject(int objectNumber, string body)
+        {
+            writer.Flush();
+            offsets.Add(ms.Position);
+            writer.Write($"{objectNumber} 0 obj\n");
+            writer.Write(body);
+            writer.Write("\nendobj\n");
+        }
+
+        writer.Write("%PDF-1.4\n");
+
+        WriteObject(1, "<< /Type /Catalog /Pages 2 0 R >>");
+        WriteObject(2, "<< /Type /Pages /Kids [3 0 R] /Count 1 >>");
+        WriteObject(3, $"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << /XObject << /Im1 5 0 R >> >> /Contents 4 0 R >>");
+
+        var content = "q\n595 0 0 842 0 0 cm\n/Im1 Do\nQ\n";
+        var contentBytes = System.Text.Encoding.ASCII.GetBytes(content);
+        writer.Flush();
+        offsets.Add(ms.Position);
+        writer.Write("4 0 obj\n");
+        writer.Write($"<< /Length {contentBytes.Length} >>\nstream\n");
+        writer.Flush();
+        ms.Write(contentBytes, 0, contentBytes.Length);
+        writer.Write("endstream\nendobj\n");
+
+        writer.Flush();
+        offsets.Add(ms.Position);
+        writer.Write("5 0 obj\n");
+        writer.Write($"<< /Type /XObject /Subtype /Image /Width {imageWidth} /Height {imageHeight} /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /DCTDecode /Length {jpegBytes.Length} >>\nstream\n");
+        writer.Flush();
+        ms.Write(jpegBytes, 0, jpegBytes.Length);
+        writer.Write("\nendstream\nendobj\n");
+
+        writer.Flush();
+        var xrefStart = ms.Position;
+        writer.Write($"xref\n0 {offsets.Count}\n");
+        writer.Write("0000000000 65535 f \n");
+        for (var i = 1; i < offsets.Count; i++)
+        {
+            writer.Write($"{offsets[i]:D10} 00000 n \n");
+        }
+
+        writer.Write("trailer\n");
+        writer.Write($"<< /Size {offsets.Count} /Root 1 0 R >>\n");
+        writer.Write("startxref\n");
+        writer.Write($"{xrefStart}\n");
+        writer.Write("%%EOF");
+        writer.Flush();
+
+        return ms.ToArray();
+    }
+
+    /// <summary>
+    /// Downsamples speed samples to a fixed number of points for chart rendering.
+    /// </summary>
+    private static List<double> DownsampleSpeeds(IEnumerable<double> speeds, int targetPoints)
+    {
+        var values = speeds.Where(v => v > 0).ToList();
+        if (values.Count == 0)
+        {
+            return new List<double>();
+        }
+
+        if (values.Count <= targetPoints)
+        {
+            return values;
+        }
+
+        var result = new List<double>(targetPoints);
+        var bucketSize = values.Count / (double)targetPoints;
+
+        for (var i = 0; i < targetPoints; i++)
+        {
+            var start = (int)Math.Floor(i * bucketSize);
+            var end = (int)Math.Floor((i + 1) * bucketSize);
+            end = Math.Clamp(end, start + 1, values.Count);
+
+            var sum = 0d;
+            var count = 0;
+            for (var j = start; j < end; j++)
+            {
+                sum += values[j];
+                count++;
+            }
+
+            result.Add(count > 0 ? sum / count : values[Math.Min(start, values.Count - 1)]);
+        }
+
+        return result;
+    }
+
+    /// <summary>
+    /// Appends a polyline stroke to PDF content stream in chart coordinates.
+    /// </summary>
+    private static void AppendPdfPolyline(
+        System.Text.StringBuilder builder,
+        IReadOnlyList<double> values,
+        double maxValue,
+        double xMin,
+        double xMax,
+        double yMin,
+        double yMax,
+        string strokeColor)
+    {
+        if (values.Count < 2)
+        {
+            return;
+        }
+
+        builder.AppendLine(strokeColor);
+        builder.AppendLine("1.4 w");
+
+        var step = (xMax - xMin) / (values.Count - 1);
+        for (var i = 0; i < values.Count; i++)
+        {
+            var x = xMin + (i * step);
+            var ratio = Math.Clamp(values[i] / maxValue, 0d, 1d);
+            var y = yMin + ((yMax - yMin) * ratio);
+
+            if (i == 0)
+            {
+                builder.AppendLine(FormattableString.Invariant($"{x:0.##} {y:0.##} m"));
+            }
+            else
+            {
+                builder.AppendLine(FormattableString.Invariant($"{x:0.##} {y:0.##} l"));
+            }
+        }
+
+        builder.AppendLine("S");
+    }
+
+    /// <summary>
+    /// Returns chart points for write/read profiles with sane fallback values.
+    /// </summary>
+    private static (List<double> Write, List<double> Read) GetProfilePointsForChart(DiskCertificate cert)
+    {
+        var writePoints = cert.WriteProfilePoints ?? new List<double>();
+        var readPoints = cert.ReadProfilePoints ?? new List<double>();
+
+        if (writePoints.Count == 0 && cert.AvgWriteSpeed > 0)
+        {
+            writePoints = new List<double>
+            {
+                cert.AvgWriteSpeed,
+                cert.MaxWriteSpeed > 0 ? cert.MaxWriteSpeed : cert.AvgWriteSpeed,
+                cert.AvgWriteSpeed
+            };
+        }
+
+        if (readPoints.Count == 0 && cert.AvgReadSpeed > 0)
+        {
+            readPoints = new List<double>
+            {
+                cert.AvgReadSpeed,
+                cert.MaxReadSpeed > 0 ? cert.MaxReadSpeed : cert.AvgReadSpeed,
+                cert.AvgReadSpeed
+            };
+        }
+
+        return (writePoints, readPoints);
+    }
+
+    /// <summary>
+    /// Draws profile polyline into GDI+ canvas.
+    /// </summary>
+    private static void DrawProfilePolyline(
+        Graphics graphics,
+        Pen pen,
+        IReadOnlyList<double> values,
+        double maxValue,
+        float chartX,
+        float chartY,
+        float chartWidth,
+        float chartHeight)
+    {
+        if (values.Count < 2)
+        {
+            return;
+        }
+
+        var points = new PointF[values.Count];
+        var step = chartWidth / (values.Count - 1);
+
+        for (var i = 0; i < values.Count; i++)
+        {
+            var x = chartX + (float)(i * step);
+            var ratio = (float)Math.Clamp(values[i] / maxValue, 0d, 1d);
+            var y = chartY + chartHeight - (ratio * chartHeight);
+            points[i] = new PointF(x, y);
+        }
+
+        graphics.DrawLines(pen, points);
     }
 
     /// <summary>
@@ -190,6 +525,49 @@ public class CertificateGenerator : ICertificateGenerator
 
             graphics.DrawString("Test", labelFont, mutedBrush, 32, 384);
             graphics.DrawString(TrimValue(certificate.TestType, 24), valueFont, textBrush, 32, 406);
+
+            // Mini výkonový graf (reálná data)
+            var chartX = 430f;
+            var chartY = 300f;
+            var chartW = 420f;
+            var chartH = 120f;
+
+            using var axisPen = new Pen(Color.FromArgb(203, 213, 225), 1f);
+            graphics.DrawLine(axisPen, chartX, chartY, chartX, chartY + chartH);
+            graphics.DrawLine(axisPen, chartX, chartY + chartH, chartX + chartW, chartY + chartH);
+
+            var (writePoints, readPoints) = GetProfilePointsForChart(certificate);
+            var maxSpeed = Math.Max(
+                writePoints.Count > 0 ? writePoints.Max() : 0,
+                readPoints.Count > 0 ? readPoints.Max() : 0);
+            if (maxSpeed <= 0)
+            {
+                maxSpeed = 1;
+            }
+
+            if (writePoints.Count > 1)
+            {
+                using var writePen = new Pen(Color.FromArgb(220, 38, 38), 2f);
+                DrawProfilePolyline(graphics, writePen, writePoints, maxSpeed, chartX, chartY, chartW, chartH);
+            }
+
+            if (readPoints.Count > 1)
+            {
+                using var readPen = new Pen(Color.FromArgb(5, 150, 105), 2f);
+                DrawProfilePolyline(graphics, readPen, readPoints, maxSpeed, chartX, chartY, chartW, chartH);
+            }
+
+            using var legendFont = new Font("Segoe UI", 9, FontStyle.Regular);
+            using var legendWriteBrush = new SolidBrush(Color.FromArgb(220, 38, 38));
+            using var legendReadBrush = new SolidBrush(Color.FromArgb(5, 150, 105));
+            graphics.DrawString("Zápis", legendFont, legendWriteBrush, chartX + 8, chartY - 18);
+            graphics.DrawString("Čtení", legendFont, legendReadBrush, chartX + 70, chartY - 18);
+
+            // Popisky os
+            graphics.DrawString("MB/s", legendFont, textBrush, chartX - 40, chartY - 2);
+            graphics.DrawString("0 %", legendFont, mutedBrush, chartX, chartY + chartH + 4);
+            graphics.DrawString("50 %", legendFont, mutedBrush, chartX + (chartW / 2) - 10, chartY + chartH + 4);
+            graphics.DrawString("100 %", legendFont, mutedBrush, chartX + chartW - 22, chartY + chartH + 4);
 
             graphics.DrawString(certificate.Grade, gradeFont, gradeBrush, 680, 90);
             graphics.DrawString($"Skóre: {certificate.Score:F0}/100", scoreFont, textBrush, 652, 220);
@@ -292,7 +670,7 @@ public class CertificateGenerator : ICertificateGenerator
 
         // Score
         y += 80;
-        graphics.DrawString($"Score: {certificate.Score:F0}/100", new Font("Arial", 16), textBrush,
+        graphics.DrawString($"Skóre: {certificate.Score:F0}/100", new Font("Arial", 16), textBrush,
             (800 - 200) / 2, y);
         graphics.DrawString($"Health: {certificate.HealthStatus}", new Font("Arial", 14), textBrush,
             (800 - 200) / 2, y + 30);
@@ -360,69 +738,70 @@ public class CertificateGenerator : ICertificateGenerator
     {
         return $@"
 ================================================================================
-                         DISK CERTIFICATE
+                         CERTIFIKÁT DISKU
 ================================================================================
 
-Certificate Number: {cert.CertificateNumber}
-Generated: {cert.GeneratedAt:yyyy-MM-dd HH:mm:ss} UTC
-Generated By: {cert.GeneratedBy}
+Číslo certifikátu: {cert.CertificateNumber}
+Vygenerováno:      {cert.GeneratedAt:yyyy-MM-dd HH:mm:ss} UTC
+Vygeneroval:       {cert.GeneratedBy}
 
 --------------------------------------------------------------------------------
-                              DISK INFORMATION
+                              INFORMACE O DISKU
 --------------------------------------------------------------------------------
-Model:           {cert.DiskModel}
-Serial Number:   {cert.SerialNumber}
-Capacity:        {cert.Capacity}
-Type:            {cert.DiskType}
-Interface:       {cert.Interface}
-Firmware:        {cert.Firmware}
+Model:             {cert.DiskModel}
+Sériové číslo:     {cert.SerialNumber}
+Kapacita:          {cert.Capacity}
+Typ:               {cert.DiskType}
+Rozhraní:          {cert.Interface}
+Firmware:          {cert.Firmware}
 
 --------------------------------------------------------------------------------
-                              TEST RESULTS
+                              VÝSLEDKY TESTU
 --------------------------------------------------------------------------------
-Test Type:       {cert.TestType}
-Duration:        {cert.TestDuration:hh\:mm\:ss}
-Errors:          {cert.ErrorCount}
+Typ testu:         {cert.TestType}
+Délka testu:       {cert.TestDuration:hh\:mm\:ss}
+Chyby:             {cert.ErrorCount}
 
-Grade:           {cert.Grade}
-Score:           {cert.Score:F0}/100
-Health Status:   {cert.HealthStatus}
-
---------------------------------------------------------------------------------
-                            PERFORMANCE METRICS
---------------------------------------------------------------------------------
-Write Speed:     {cert.AvgWriteSpeed:F1} MB/s (max: {cert.MaxWriteSpeed:F1} MB/s)
-Read Speed:      {cert.AvgReadSpeed:F1} MB/s (max: {cert.MaxReadSpeed:F1} MB/s)
-Temperature:     {cert.TemperatureRange}
+Známka:            {cert.Grade}
+Skóre:             {cert.Score:F0}/100
+Stav zdraví:       {cert.HealthStatus}
 
 --------------------------------------------------------------------------------
-                              SMART SUMMARY
+                            VÝKONNOSTNÍ METRIKY
 --------------------------------------------------------------------------------
-SMART Passed:    {(cert.SmartPassed ? "Yes" : "No")}
-Power On Hours:  {cert.PowerOnHours}
-Power Cycles:    {cert.PowerCycles}
-Reallocated:     {cert.ReallocatedSectors}
-Pending Sectors: {cert.PendingSectors}
+Rychlost zápisu:   {cert.AvgWriteSpeed:F1} MB/s (max: {cert.MaxWriteSpeed:F1} MB/s)
+Rychlost čtení:    {cert.AvgReadSpeed:F1} MB/s (max: {cert.MaxReadSpeed:F1} MB/s)
+Teplota:           {cert.TemperatureRange}
 
 --------------------------------------------------------------------------------
-                            SANITIZATION
+                               SMART SOUHRN
 --------------------------------------------------------------------------------
-Performed:       {(cert.SanitizationPerformed ? "Yes" : "No")}
-Method:          {cert.SanitizationMethod ?? "N/A"}
-Data Verified:   {(cert.DataVerified ? "Yes" : "No")}
-Partition:       {cert.PartitionScheme ?? "N/A"}
-File System:     {cert.FileSystem ?? "N/A"}
-Volume Label:    {cert.VolumeLabel ?? "N/A"}
+SMART v pořádku:   {(cert.SmartPassed ? "Ano" : "Ne")}
+Provozní hodiny:   {cert.PowerOnHours}
+Počet startů:      {cert.PowerCycles}
+Realokované sekt.: {cert.ReallocatedSectors}
+Čekající sektory:  {cert.PendingSectors}
 
 --------------------------------------------------------------------------------
-                            RECOMMENDATION
+                                SANITIZACE
 --------------------------------------------------------------------------------
-{(cert.Recommended ? "✓ This disk is RECOMMENDED for use." : "⚠ This disk has issues and is NOT recommended.")}
+Provedena:         {(cert.SanitizationPerformed ? "Ano" : "Ne")}
+Metoda:            {cert.SanitizationMethod ?? "N/A"}
+Data ověřena:      {(cert.DataVerified ? "Ano" : "Ne")}
+Schéma oddílů:     {cert.PartitionScheme ?? "N/A"}
+Souborový systém:  {cert.FileSystem ?? "N/A"}
+Název svazku:      {cert.VolumeLabel ?? "N/A"}
+
+--------------------------------------------------------------------------------
+                               DOPORUČENÍ
+--------------------------------------------------------------------------------
+{(cert.Recommended ? "✓ Tento disk je DOPORUČEN k použití." : "⚠ Tento disk má problémy a NENÍ doporučen k použití.")}
+
 {cert.RecommendationNotes}
 
-================================================================================
-                    Generated by DiskChecker
-                Professional Disk Testing Solution
+--------------------------------------------------------------------------------
+Tento certifikát byl automaticky vygenerován aplikací DiskChecker.
+Před nasazením disku do provozu doporučujeme ověřit aktuální stav.
 ================================================================================
 ";
     }

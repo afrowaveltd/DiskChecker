@@ -23,6 +23,14 @@ public class HistoricalTest
     public string? Model { get; set; }
 
     /// <summary>
+    /// Display name of the disk used in UI tables.
+    /// </summary>
+    public string DiskName =>
+        !string.IsNullOrWhiteSpace(Model)
+            ? Model
+            : (!string.IsNullOrWhiteSpace(SerialNumber) ? SerialNumber : "Neznámý disk");
+
+    /// <summary>
     /// When the test was performed.
     /// </summary>
     public DateTime TestDate { get; set; }

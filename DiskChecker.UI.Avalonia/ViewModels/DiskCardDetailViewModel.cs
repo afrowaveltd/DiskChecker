@@ -89,7 +89,6 @@ public partial class DiskCardDetailViewModel : ViewModelBase, INavigableViewMode
             if (SetProperty(ref _selectedSession, value))
             {
                 OnPropertyChanged(nameof(HasSelectedSession));
-                UpdateCharts();
             }
         }
     }
@@ -432,57 +431,6 @@ public partial class DiskCardDetailViewModel : ViewModelBase, INavigableViewMode
         }
 
         return drivePath;
-    }
-
-    private void UpdateCharts()
-    {
-        if (SelectedSession == null) return;
-
-        // Update speed chart
-        SpeedChartModel.Series.Clear();
-        SpeedChartModel.Axes.Clear();
-
-        var writeSeries = new LineSeries { Title = "Zápis (MB/s)", Color = OxyColors.Blue };
-        var readSeries = new LineSeries { Title = "Čtení (MB/s)", Color = OxyColors.Green };
-
-        // Use DataPoint correctly with (double x, double y)
-        int index = 0;
-        foreach (var sample in SelectedSession.WriteSamples)
-        {
-            writeSeries.Points.Add(new OxyPlot.DataPoint((double)index, sample.SpeedMBps));
-            index++;
-        }
-
-        index = 0;
-        foreach (var sample in SelectedSession.ReadSamples)
-        {
-            readSeries.Points.Add(new OxyPlot.DataPoint((double)index, sample.SpeedMBps));
-            index++;
-        }
-
-        SpeedChartModel.Series.Add(writeSeries);
-        SpeedChartModel.Series.Add(readSeries);
-        SpeedChartModel.Axes.Add(new LinearAxis { Position = AxisPosition.Bottom, Title = "Čas (vzorky)" });
-        SpeedChartModel.Axes.Add(new LinearAxis { Position = AxisPosition.Left, Title = "Rychlost (MB/s)" });
-        SpeedChartModel.InvalidatePlot(true);
-
-        // Update temperature chart
-        TemperatureChartModel.Series.Clear();
-        TemperatureChartModel.Axes.Clear();
-
-        var tempSeries = new LineSeries { Title = "Teplota (°C)", Color = OxyColors.Red };
-
-        index = 0;
-        foreach (var sample in SelectedSession.TemperatureSamples)
-        {
-            tempSeries.Points.Add(new OxyPlot.DataPoint((double)index, sample.TemperatureCelsius));
-            index++;
-        }
-
-        TemperatureChartModel.Series.Add(tempSeries);
-        TemperatureChartModel.Axes.Add(new LinearAxis { Position = AxisPosition.Bottom, Title = "Čas (vzorky)" });
-        TemperatureChartModel.Axes.Add(new LinearAxis { Position = AxisPosition.Left, Title = "Teplota (°C)" });
-        TemperatureChartModel.InvalidatePlot(true);
     }
 
     private static string FormatCapacity(long bytes)

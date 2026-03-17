@@ -83,6 +83,7 @@ public partial class App : global::Avalonia.Application
         using var scope = _serviceProvider!.CreateScope();
         var dbContext = scope.ServiceProvider.GetRequiredService<DiskCheckerDbContext>();
         dbContext.Database.EnsureCreated();
+        SchemaCompatibilityPatcher.Apply(dbContext);
     }
     
     private void ConfigureServices(IServiceCollection services)
@@ -105,6 +106,7 @@ public partial class App : global::Avalonia.Application
         // and expose it via the UI-facing IHistoryService interface using a factory to avoid
         // requiring the application service to implement the UI interface directly.
         services.AddScoped<DiskChecker.Application.Services.HistoryService>();
+        services.AddScoped<DiskChecker.Application.Services.TestHistoryService>();
         services.AddScoped<IHistoryService, HistoryServiceAdapter>();
         services.AddSingleton<SettingsService>();
         services.AddSingleton<SmartCheckService>();

@@ -5,37 +5,111 @@ using System.Threading.Tasks;
 using DiskChecker.UI.Avalonia.Services.Interfaces;
 using DiskChecker.Core.Models;
 using System.Linq;
+using DiskChecker.Core.Interfaces;
 
 namespace DiskChecker.UI.Avalonia.Services;
 
 /// <summary>
-/// Adapter that exposes the application HistoryService through the UI-facing IHistoryService interface.
-/// This avoids adding a project dependency from the application project to the UI project.
+/// Adapter that exposes history operations through the UI-facing IHistoryService interface.
 /// </summary>
 internal class HistoryServiceAdapter : IHistoryService
 {
-    private readonly DiskChecker.Application.Services.HistoryService _inner;
+    private readonly DiskChecker.Application.Services.HistoryService _legacyHistoryService;
+    private readonly DiskChecker.Application.Services.TestHistoryService _testHistoryService;
+    private readonly IDiskCardRepository _diskCardRepository;
 
-    public HistoryServiceAdapter(DiskChecker.Application.Services.HistoryService inner)
+    public HistoryServiceAdapter(
+        DiskChecker.Application.Services.HistoryService legacyHistoryService,
+        DiskChecker.Application.Services.TestHistoryService testHistoryService,
+        IDiskCardRepository diskCardRepository)
     {
-        _inner = inner ?? throw new ArgumentNullException(nameof(inner));
+        _legacyHistoryService = legacyHistoryService ?? throw new ArgumentNullException(nameof(legacyHistoryService));
+        _testHistoryService = testHistoryService ?? throw new ArgumentNullException(nameof(testHistoryService));
+        _diskCardRepository = diskCardRepository ?? throw new ArgumentNullException(nameof(diskCardRepository));
     }
 
     public async Task<IEnumerable<HistoricalTest>> GetHistoryAsync()
     {
-        var results = await _inner.GetHistoryAsync(CancellationToken.None);
-        return results.Select(r => r); // passthrough - types align via DiskChecker.Core.Models
+        var reports = await _testHistoryService.GetAllTestReportsAsync();
+        if (reports.Count > 0)
+        {
+            return reports.Select(MapToHistoricalTest);
+        }
+
+        var legacy = await _legacyHistoryService.GetHistoryAsync(CancellationToken.None);
+        return legacy;
     }
 
     public async Task<IEnumerable<HistoricalTest>> GetHistoryForDiskAsync(string serialNumber)
     {
-        var results = await _inner.GetHistoryForDiskAsync(serialNumber, CancellationToken.None);
-        return results.Select(r => r);
+        if (string.IsNullOrWhiteSpace(serialNumber))
+        {
+            return Enumerable.Empty<HistoricalTest>();
+        }
+
+        var reports = await _testHistoryService.GetReportsForDiskAsync(serialNumber);
+        if (reports.Count > 0)
+        {
+            return reports.Select(MapToHistoricalTest);
+        }
+
+        var legacy = await _legacyHistoryService.GetHistoryForDiskAsync(serialNumber, CancellationToken.None);
+        return legacy;
     }
 
-    public Task DeleteHistoryAsync(Guid testId)
-        => _inner.DeleteHistoryAsync(testId, CancellationToken.None);
+    public async Task DeleteHistoryAsync(Guid testId)
+    {
+        var cards = await _diskCardRepository.GetAllAsync();
+        foreach (var card in cards)
+        {
+            var sessions = await _diskCardRepository.GetTestSessionsAsync(card.Id);
+            var session = sessions.FirstOrDefault(s => s.SessionId == testId);
+            if (session != null)
+            {
+                await _diskCardRepository.DeleteTestSessionAsync(session.Id);
+                return;
+            }
+        }
 
-    public Task ClearHistoryAsync()
-        => _inner.ClearHistoryAsync(CancellationToken.None);
+        await _legacyHistoryService.DeleteHistoryAsync(testId, CancellationToken.None);
+    }
+
+    public async Task ClearHistoryAsync()
+    {
+        var cards = await _diskCardRepository.GetAllAsync();
+        foreach (var card in cards)
+        {
+            var sessions = await _diskCardRepository.GetTestSessionsAsync(card.Id);
+            foreach (var session in sessions)
+            {
+                await _diskCardRepository.DeleteTestSessionAsync(session.Id);
+            }
+        }
+
+        await _legacyHistoryService.ClearHistoryAsync(CancellationToken.None);
+    }
+
+    /// <summary>
+    /// Maps report data to history model consumed by the UI.
+    /// </summary>
+    private static HistoricalTest MapToHistoricalTest(TestReport report)
+    {
+        return new HistoricalTest
+        {
+            Id = report.ReportId,
+            SerialNumber = report.SerialNumber,
+            Model = report.DriveModel,
+            TestDate = report.TestDate,
+            TestType = report.TestType,
+            Grade = report.Grade,
+            Score = report.Score,
+            ErrorCount = report.Errors,
+            AverageThroughputMbps = report.AverageSpeed,
+            PeakThroughputMbps = report.PeakSpeed,
+            TotalBytesTested = 0,
+            HealthAssessment = report.IsCompleted ? "Completed" : "Incomplete",
+            Duration = 0,
+            Notes = null
+        };
+    }
 }

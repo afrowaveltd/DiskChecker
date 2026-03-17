@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.ComponentModel.DataAnnotations.Schema;
 
 namespace DiskChecker.Core.Models;
 
@@ -223,6 +224,18 @@ public class DiskCertificate
     /// </summary>
     public string? PdfPath { get; set; }
     
+    /// <summary>
+    /// Downsampled write speed points for certificate chart rendering (runtime only, not persisted).
+    /// </summary>
+    [NotMapped]
+    public List<double> WriteProfilePoints { get; set; } = new();
+
+    /// <summary>
+    /// Downsampled read speed points for certificate chart rendering (runtime only, not persisted).
+    /// </summary>
+    [NotMapped]
+    public List<double> ReadProfilePoints { get; set; } = new();
+
     /// <summary>
     /// Additional notes
     /// </summary>

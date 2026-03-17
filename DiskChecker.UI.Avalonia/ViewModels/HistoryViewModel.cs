@@ -1,5 +1,6 @@
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using DiskChecker.Core.Interfaces;
 using DiskChecker.Core.Models;
 using DiskChecker.UI.Avalonia.Services.Interfaces;
 using System;
@@ -9,25 +10,37 @@ using System.Threading.Tasks;
 
 namespace DiskChecker.UI.Avalonia.ViewModels
 {
-    public partial class HistoryViewModel : ViewModelBase
+    public partial class HistoryViewModel : ViewModelBase, INavigableViewModel
     {
         private readonly IHistoryService _historyService;
         private readonly IDialogService _dialogService;
+        private readonly INavigationService _navigationService;
+        private readonly ISelectedDiskService _selectedDiskService;
+        private readonly IDiskCardRepository _diskCardRepository;
         private ObservableCollection<HistoricalTest> _tests = new();
         private HistoricalTest? _selectedTest;
         private bool _isLoading;
         private string _statusMessage = string.Empty;
 
-        public HistoryViewModel(IHistoryService historyService, IDialogService dialogService)
+        public HistoryViewModel(
+            IHistoryService historyService,
+            IDialogService dialogService,
+            INavigationService navigationService,
+            ISelectedDiskService selectedDiskService,
+            IDiskCardRepository diskCardRepository)
         {
             _historyService = historyService ?? throw new ArgumentNullException(nameof(historyService));
             _dialogService = dialogService ?? throw new ArgumentNullException(nameof(dialogService));
+            _navigationService = navigationService ?? throw new ArgumentNullException(nameof(navigationService));
+            _selectedDiskService = selectedDiskService ?? throw new ArgumentNullException(nameof(selectedDiskService));
+            _diskCardRepository = diskCardRepository ?? throw new ArgumentNullException(nameof(diskCardRepository));
             
             LoadTestsCommand = new AsyncRelayCommand(LoadTestsAsync);
+            RefreshCommand = new AsyncRelayCommand(LoadTestsAsync);
+            ClearHistoryCommand = new AsyncRelayCommand(ClearHistoryAsync);
             DeleteTestCommand = new AsyncRelayCommand(DeleteTestAsync, () => SelectedTest != null);
             ViewDetailsCommand = new AsyncRelayCommand(ViewDetailsAsync, () => SelectedTest != null);
-            
-            _ = LoadTestsAsync();
+            GoBackCommand = new RelayCommand(GoBack);
         }
 
         public ObservableCollection<HistoricalTest> Tests
@@ -57,6 +70,8 @@ namespace DiskChecker.UI.Avalonia.ViewModels
                 if (SetProperty(ref _isLoading, value))
                 {
                     LoadTestsCommand.NotifyCanExecuteChanged();
+                    RefreshCommand.NotifyCanExecuteChanged();
+                    ClearHistoryCommand.NotifyCanExecuteChanged();
                 }
             }
         }
@@ -67,9 +82,19 @@ namespace DiskChecker.UI.Avalonia.ViewModels
             set => SetProperty(ref _statusMessage, value);
         }
 
+        public double AverageScore => Tests.Count == 0 ? 0 : Tests.Average(t => t.Score);
+
         public IAsyncRelayCommand LoadTestsCommand { get; }
+        public IAsyncRelayCommand RefreshCommand { get; }
+        public IAsyncRelayCommand ClearHistoryCommand { get; }
         public IAsyncRelayCommand DeleteTestCommand { get; }
         public IAsyncRelayCommand ViewDetailsCommand { get; }
+        public IRelayCommand GoBackCommand { get; }
+
+        public void OnNavigatedTo()
+        {
+            _ = LoadTestsAsync();
+        }
 
         private async Task LoadTestsAsync()
         {
@@ -78,12 +103,13 @@ namespace DiskChecker.UI.Avalonia.ViewModels
                 IsLoading = true;
                 StatusMessage = "Načítám historii testů...";
                 
-                var tests = await _historyService.GetHistoryAsync();
+                var tests = (await _historyService.GetHistoryAsync()).OrderByDescending(t => t.TestDate).ToList();
                 Tests = new ObservableCollection<HistoricalTest>(tests);
+                OnPropertyChanged(nameof(AverageScore));
                 
-                StatusMessage = $"Načteno {tests.Count()} testů z historie";
+                StatusMessage = $"Načteno {tests.Count} testů z historie";
             }
-            catch (Exception ex)
+            catch (InvalidOperationException ex)
             {
                 StatusMessage = $"Chyba při načítání historie: {ex.Message}";
                 await _dialogService.ShowErrorAsync("Chyba", $"Nepodařilo se načíst historii testů: {ex.Message}");
@@ -92,6 +118,21 @@ namespace DiskChecker.UI.Avalonia.ViewModels
             {
                 IsLoading = false;
             }
+        }
+
+        private async Task ClearHistoryAsync()
+        {
+            var confirmed = await _dialogService.ShowConfirmationAsync(
+                "Vymazat historii",
+                "Opravdu chcete vymazat celou historii testů?");
+
+            if (!confirmed)
+            {
+                return;
+            }
+
+            await _historyService.ClearHistoryAsync();
+            await LoadTestsAsync();
         }
 
         private async Task DeleteTestAsync()
@@ -109,10 +150,11 @@ namespace DiskChecker.UI.Avalonia.ViewModels
                     await _historyService.DeleteHistoryAsync(SelectedTest.Id);
                     Tests.Remove(SelectedTest);
                     SelectedTest = null;
+                    OnPropertyChanged(nameof(AverageScore));
                     StatusMessage = "Test úspěšně smazán z historie";
                 }
             }
-            catch (Exception ex)
+            catch (InvalidOperationException ex)
             {
                 StatusMessage = $"Chyba při mazání testu: {ex.Message}";
                 await _dialogService.ShowErrorAsync("Chyba", $"Nepodařilo se smazat test z historie: {ex.Message}");
@@ -121,27 +163,73 @@ namespace DiskChecker.UI.Avalonia.ViewModels
 
         private async Task ViewDetailsAsync()
         {
-            if (SelectedTest == null) return;
+            await ViewDetailsAsync(SelectedTest);
+        }
+
+        private async Task ViewDetailsAsync(HistoricalTest? test)
+        {
+            if (test == null)
+            {
+                return;
+            }
+
+            SelectedTest = test;
 
             try
             {
-                StatusMessage = "Načítám detaily testu...";
+                StatusMessage = "Načítám detail testu...";
+
+                if (!string.IsNullOrWhiteSpace(test.SerialNumber))
+                {
+                    var card = await _diskCardRepository.GetBySerialNumberAsync(test.SerialNumber);
+                    if (card != null)
+                    {
+                        _selectedDiskService.SelectedDisk = new CoreDriveInfo
+                        {
+                            Path = card.DevicePath,
+                            Name = card.ModelName,
+                            TotalSize = card.Capacity,
+                            SerialNumber = card.SerialNumber,
+                            FirmwareVersion = card.FirmwareVersion
+                        };
+                        _selectedDiskService.SelectedDiskDisplayName = card.ModelName;
+                        _selectedDiskService.IsSelectedDiskLocked = card.IsLocked;
+
+                        var sessions = await _diskCardRepository.GetTestSessionsAsync(card.Id);
+                        var targetSession = sessions
+                            .OrderBy(s => Math.Abs((s.StartedAt - test.TestDate).Ticks))
+                            .FirstOrDefault();
+
+                        _selectedDiskService.SelectedTestSessionId = targetSession?.Id;
+                        _selectedDiskService.SelectedCertificateId = null;
+
+                        _navigationService.NavigateTo<CertificateViewModel>();
+                        return;
+                    }
+                }
+
                 await _dialogService.ShowMessageAsync("Detaily testu", 
-                    $"Typ testu: {SelectedTest.TestType}\n" +
-                    $"Datum: {SelectedTest.TestDate:dd.MM.yyyy HH:mm}\n" +
-                    $"Hodnocení: {SelectedTest.Grade} ({SelectedTest.Score}%)\n" +
-                    $"Stav: {SelectedTest.HealthAssessment}\n" +
-                    $"Trvání: {SelectedTest.Duration}\n" +
-                    $"Chyby: {SelectedTest.ErrorCount}\n\n" +
-                    $"Poznámky: {SelectedTest.Notes ?? "Žádné"}");
+                    $"Disk: {test.DiskName}\n" +
+                    $"Typ testu: {test.TestType}\n" +
+                    $"Datum: {test.TestDate:dd.MM.yyyy HH:mm}\n" +
+                    $"Hodnocení: {test.Grade} ({test.Score}%)\n" +
+                    $"Stav: {test.HealthAssessment}\n" +
+                    $"Trvání: {test.Duration}\n" +
+                    $"Chyby: {test.ErrorCount}\n\n" +
+                    $"Poznámky: {test.Notes ?? "Žádné"}");
                 
                 StatusMessage = "Detaily testu zobrazeny";
             }
-            catch (Exception ex)
+            catch (InvalidOperationException ex)
             {
                 StatusMessage = $"Chyba při zobrazení detailů: {ex.Message}";
                 await _dialogService.ShowErrorAsync("Chyba", $"Nepodařilo se zobrazit detaily testu: {ex.Message}");
             }
+        }
+
+        private void GoBack()
+        {
+            _navigationService.NavigateTo<DiskSelectionViewModel>();
         }
     }
 }

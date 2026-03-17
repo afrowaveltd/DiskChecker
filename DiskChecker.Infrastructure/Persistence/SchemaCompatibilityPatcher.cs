@@ -20,17 +20,33 @@ public static class SchemaCompatibilityPatcher
             return;
         }
 
-        EnsureColumn(dbContext, "Tests", "IsCompleted");
-        EnsureColumn(dbContext, "Tests", "IsArchived");
-        EnsureColumn(dbContext, "Tests", "ArchiveBatchId");
-        // Older database versions may be missing error-related columns — ensure they exist
-        EnsureColumn(dbContext, "Tests", "ErrorCount");
-        EnsureColumn(dbContext, "Tests", "Errors");
+        // Support both legacy and current schema names.
+        var testsTable = TableExists(dbContext, "Tests")
+            ? "Tests"
+            : TableExists(dbContext, "TestRecords")
+                ? "TestRecords"
+                : null;
+
+        if (!string.IsNullOrWhiteSpace(testsTable))
+        {
+            EnsureColumn(dbContext, testsTable, "IsCompleted");
+            EnsureColumn(dbContext, testsTable, "IsArchived");
+            EnsureColumn(dbContext, testsTable, "ArchiveBatchId");
+            // Older database versions may be missing error-related columns — ensure they exist
+            EnsureColumn(dbContext, testsTable, "ErrorCount");
+            EnsureColumn(dbContext, testsTable, "Errors");
+        }
+
+        if (TableExists(dbContext, "DiskCards"))
+        {
+            EnsureColumn(dbContext, "DiskCards", "PowerOnHours");
+            EnsureColumn(dbContext, "DiskCards", "PowerCycleCount");
+        }
     }
 
     private static void EnsureColumn(DiskCheckerDbContext dbContext, string tableName, string columnName)
     {
-        if (ColumnExists(dbContext, tableName, columnName))
+        if (!TableExists(dbContext, tableName) || ColumnExists(dbContext, tableName, columnName))
         {
             return;
         }
@@ -41,15 +57,34 @@ public static class SchemaCompatibilityPatcher
             return;
         }
 
+        if (tableName == "TestRecords" && columnName == "IsCompleted")
+        {
+            dbContext.Database.ExecuteSqlRaw("ALTER TABLE TestRecords ADD COLUMN IsCompleted INTEGER NOT NULL DEFAULT 1;");
+            return;
+        }
+
         if (tableName == "Tests" && columnName == "IsArchived")
         {
             dbContext.Database.ExecuteSqlRaw("ALTER TABLE Tests ADD COLUMN IsArchived INTEGER NOT NULL DEFAULT 0;");
             return;
         }
 
+        if (tableName == "TestRecords" && columnName == "IsArchived")
+        {
+            dbContext.Database.ExecuteSqlRaw("ALTER TABLE TestRecords ADD COLUMN IsArchived INTEGER NOT NULL DEFAULT 0;");
+            return;
+        }
+
         if (tableName == "Tests" && columnName == "ArchiveBatchId")
         {
             dbContext.Database.ExecuteSqlRaw("ALTER TABLE Tests ADD COLUMN ArchiveBatchId TEXT NULL;");
+            return;
+        }
+
+        if (tableName == "TestRecords" && columnName == "ArchiveBatchId")
+        {
+            dbContext.Database.ExecuteSqlRaw("ALTER TABLE TestRecords ADD COLUMN ArchiveBatchId TEXT NULL;");
+            return;
         }
 
         if (tableName == "Tests" && columnName == "ErrorCount")
@@ -59,12 +94,56 @@ public static class SchemaCompatibilityPatcher
             return;
         }
 
+        if (tableName == "TestRecords" && columnName == "ErrorCount")
+        {
+            dbContext.Database.ExecuteSqlRaw("ALTER TABLE TestRecords ADD COLUMN ErrorCount INTEGER NOT NULL DEFAULT 0;");
+            return;
+        }
+
         if (tableName == "Tests" && columnName == "Errors")
         {
             // Older schemas may also lack the Errors column (legacy), add it as integer default 0
             dbContext.Database.ExecuteSqlRaw("ALTER TABLE Tests ADD COLUMN Errors INTEGER NOT NULL DEFAULT 0;");
             return;
         }
+
+        if (tableName == "TestRecords" && columnName == "Errors")
+        {
+            dbContext.Database.ExecuteSqlRaw("ALTER TABLE TestRecords ADD COLUMN Errors INTEGER NOT NULL DEFAULT 0;");
+            return;
+        }
+
+        if (tableName == "DiskCards" && columnName == "PowerOnHours")
+        {
+            dbContext.Database.ExecuteSqlRaw("ALTER TABLE DiskCards ADD COLUMN PowerOnHours INTEGER NULL;");
+            return;
+        }
+
+        if (tableName == "DiskCards" && columnName == "PowerCycleCount")
+        {
+            dbContext.Database.ExecuteSqlRaw("ALTER TABLE DiskCards ADD COLUMN PowerCycleCount INTEGER NULL;");
+            return;
+        }
+    }
+
+    private static bool TableExists(DiskCheckerDbContext dbContext, string tableName)
+    {
+        var connection = dbContext.Database.GetDbConnection();
+        if (connection.State != System.Data.ConnectionState.Open)
+        {
+            connection.Open();
+        }
+
+        using var command = connection.CreateCommand();
+        command.CommandText = "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = $name LIMIT 1;";
+
+        var parameter = command.CreateParameter();
+        parameter.ParameterName = "$name";
+        parameter.Value = tableName;
+        command.Parameters.Add(parameter);
+
+        var result = command.ExecuteScalar();
+        return result != null && result != DBNull.Value;
     }
 
     private static bool ColumnExists(DiskCheckerDbContext dbContext, string tableName, string columnName)

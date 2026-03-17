@@ -92,6 +92,16 @@ public class DiskCard
     public string? Notes { get; set; }
     
     /// <summary>
+    /// Number of power-on hours from the latest SMART snapshot.
+    /// </summary>
+    public int? PowerOnHours { get; set; }
+
+    /// <summary>
+    /// Number of power cycles (starts) from the latest SMART snapshot.
+    /// </summary>
+    public int? PowerCycleCount { get; set; }
+
+    /// <summary>
     /// Current lock status
     /// </summary>
     public bool IsLocked { get; set; }

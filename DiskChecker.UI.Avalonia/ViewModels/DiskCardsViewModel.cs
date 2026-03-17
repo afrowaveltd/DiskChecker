@@ -20,7 +20,7 @@ public partial class DiskCardsViewModel : ViewModelBase, INavigableViewModel
     private readonly INavigationService _navigationService;
     private readonly IDialogService _dialogService;
     private readonly ISelectedDiskService _selectedDiskService;
-    private readonly IDiskDetectionService _diskDetectionService;
+    private readonly IDiskCacheService _diskCacheService;
     
     private ObservableCollection<DiskCard> _diskCards = new();
     private ObservableCollection<DiskCard> _filteredCards = new();
@@ -32,23 +32,24 @@ public partial class DiskCardsViewModel : ViewModelBase, INavigableViewModel
     private bool _showArchivedOnly;
     private bool _isLoading;
     private string _statusMessage = "Načítám karty disků...";
+    private bool _isOpeningDetails;
 
     public DiskCardsViewModel(
         IDiskCardRepository diskCardRepository,
         INavigationService navigationService,
         IDialogService dialogService,
         ISelectedDiskService selectedDiskService,
-        IDiskDetectionService diskDetectionService)
+        IDiskCacheService diskCacheService)
     {
         _diskCardRepository = diskCardRepository;
         _navigationService = navigationService;
         _dialogService = dialogService;
         _selectedDiskService = selectedDiskService;
-        _diskDetectionService = diskDetectionService;
+        _diskCacheService = diskCacheService;
         
         NavigateToReportsCommand = new RelayCommand(NavigateToReports);
         NavigateBackCommand = new RelayCommand(NavigateBack);
-        RefreshCommand = new AsyncRelayCommand(LoadDiskCardsAsync);
+        RefreshCommand = new AsyncRelayCommand(() => LoadDiskCardsAsync(includeMaintenance: true));
         
         GradeFilters = new ObservableCollection<string> { "Všechny", "A", "B", "C", "D", "E", "F" };
         StatusFilters = new ObservableCollection<string> { "Všechny", "Aktivní", "Archivované" };
@@ -175,7 +176,7 @@ public partial class DiskCardsViewModel : ViewModelBase, INavigableViewModel
 
     public void OnNavigatedTo()
     {
-        _ = LoadDiskCardsAsync();
+        _ = LoadDiskCardsAsync(includeMaintenance: false);
     }
 
     #endregion
@@ -183,16 +184,26 @@ public partial class DiskCardsViewModel : ViewModelBase, INavigableViewModel
     #region Commands
 
     [RelayCommand]
-    private async Task LoadDiskCardsAsync()
+    private async Task LoadDiskCardsAsync(bool includeMaintenance = false)
     {
+        if (IsLoading)
+        {
+            return;
+        }
+
         try
         {
             IsLoading = true;
             StatusMessage = "Načítám karty disků...";
 
-            var merged = await _diskCardRepository.MergeDuplicateCardsAsync();
+            var merged = 0;
+            if (includeMaintenance)
+            {
+                merged = await _diskCardRepository.MergeDuplicateCardsAsync();
+            }
+
             var cards = await _diskCardRepository.GetAllAsync();
-            var drives = await _diskDetectionService.GetDrivesAsync();
+            var drives = await _diskCacheService.GetDrivesAsync(forceRefresh: includeMaintenance);
 
             DiskCards.Clear();
             
@@ -219,6 +230,8 @@ public partial class DiskCardsViewModel : ViewModelBase, INavigableViewModel
                     IsArchived = card.IsArchived,
                     ArchiveReason = card.ArchiveReason,
                     Notes = card.Notes,
+                    PowerOnHours = card.PowerOnHours,
+                    PowerCycleCount = card.PowerCycleCount,
                     IsLocked = card.IsLocked,
                     LockReason = card.LockReason
                 };
@@ -296,21 +309,30 @@ public partial class DiskCardsViewModel : ViewModelBase, INavigableViewModel
     [RelayCommand]
     private async Task ViewCardDetails(DiskCard card)
     {
-        if (card == null) return;
-        
-        _selectedDiskService.SelectedDisk = new CoreDriveInfo
-        {
-            Path = card.DevicePath,
-            Name = card.ModelName,
-            TotalSize = card.Capacity,
-            SerialNumber = card.SerialNumber,
-            FirmwareVersion = card.FirmwareVersion
-        };
-        _selectedDiskService.SelectedDiskDisplayName = card.ModelName;
-        _selectedDiskService.IsSelectedDiskLocked = card.IsLocked;
+        if (card == null || _isOpeningDetails) return;
 
-        _navigationService.NavigateTo<DiskCardDetailViewModel>();
-        await Task.CompletedTask;
+        try
+        {
+            _isOpeningDetails = true;
+
+            _selectedDiskService.SelectedDisk = new CoreDriveInfo
+            {
+                Path = card.DevicePath,
+                Name = card.ModelName,
+                TotalSize = card.Capacity,
+                SerialNumber = card.SerialNumber,
+                FirmwareVersion = card.FirmwareVersion
+            };
+            _selectedDiskService.SelectedDiskDisplayName = card.ModelName;
+            _selectedDiskService.IsSelectedDiskLocked = card.IsLocked;
+
+            _navigationService.NavigateTo<DiskCardDetailViewModel>();
+            await Task.CompletedTask;
+        }
+        finally
+        {
+            _isOpeningDetails = false;
+        }
     }
 
     [RelayCommand]
@@ -406,7 +428,6 @@ public partial class DiskCardsViewModel : ViewModelBase, INavigableViewModel
     {
         if (card == null || card.TestCount == 0) return;
 
-        // Get latest test session
         var sessions = await _diskCardRepository.GetTestSessionsAsync(card.Id);
         var latestSession = sessions.FirstOrDefault();
 
@@ -416,7 +437,19 @@ public partial class DiskCardsViewModel : ViewModelBase, INavigableViewModel
             return;
         }
 
-        // Navigate to certificate view
+        _selectedDiskService.SelectedDisk = new CoreDriveInfo
+        {
+            Path = card.DevicePath,
+            Name = card.ModelName,
+            TotalSize = card.Capacity,
+            SerialNumber = card.SerialNumber,
+            FirmwareVersion = card.FirmwareVersion
+        };
+        _selectedDiskService.SelectedDiskDisplayName = card.ModelName;
+        _selectedDiskService.IsSelectedDiskLocked = card.IsLocked;
+        _selectedDiskService.SelectedTestSessionId = latestSession.Id;
+        _selectedDiskService.SelectedCertificateId = null;
+
         _navigationService.NavigateTo<CertificateViewModel>();
     }
 
