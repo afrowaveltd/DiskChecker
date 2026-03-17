@@ -104,6 +104,11 @@ public partial class SurfaceTestViewModel : ViewModelBase, INavigableViewModel, 
     private double _currentDataPercent;
     private long _currentPhaseTotalBytes = 1;
 
+    // Sample pulse indicators
+    private long _samplePulseSequence;
+    private bool _isWriteSamplePulseVisible;
+    private bool _isReadSamplePulseVisible;
+
     public SurfaceTestViewModel(
         INavigationService navigationService,
         ISelectedDiskService selectedDiskService,
@@ -646,6 +651,7 @@ public partial class SurfaceTestViewModel : ViewModelBase, INavigableViewModel, 
                     ref _writeBucketStart,
                     ref _writeBucketSum,
                     ref _writeBucketCount);
+                TriggerSamplePulse(isWrite: true);
             }
             else
             {
@@ -658,6 +664,7 @@ public partial class SurfaceTestViewModel : ViewModelBase, INavigableViewModel, 
                     ref _readBucketStart,
                     ref _readBucketSum,
                     ref _readBucketCount);
+                TriggerSamplePulse(isWrite: false);
             }
 
             // Add temperature point
@@ -669,6 +676,54 @@ public partial class SurfaceTestViewModel : ViewModelBase, INavigableViewModel, 
             UpdateStatisticsIncremental(speed);
             UpdateXAxisLimits(100);
             OnPropertyChanged(nameof(ChartPointCount));
+        });
+    }
+
+    /// <summary>
+    /// Gets whether write sample pulse indicator is currently visible.
+    /// </summary>
+    public bool IsWriteSamplePulseVisible
+    {
+        get => _isWriteSamplePulseVisible;
+        private set => SetProperty(ref _isWriteSamplePulseVisible, value);
+    }
+
+    /// <summary>
+    /// Gets whether read sample pulse indicator is currently visible.
+    /// </summary>
+    public bool IsReadSamplePulseVisible
+    {
+        get => _isReadSamplePulseVisible;
+        private set => SetProperty(ref _isReadSamplePulseVisible, value);
+    }
+
+    private void TriggerSamplePulse(bool isWrite)
+    {
+        var token = Interlocked.Increment(ref _samplePulseSequence);
+
+        if (isWrite)
+        {
+            IsWriteSamplePulseVisible = true;
+        }
+        else
+        {
+            IsReadSamplePulseVisible = true;
+        }
+
+        _ = Task.Run(async () =>
+        {
+            await Task.Delay(180).ConfigureAwait(false);
+
+            if (token != Interlocked.Read(ref _samplePulseSequence))
+            {
+                return;
+            }
+
+            await Dispatcher.UIThread.InvokeAsync(() =>
+            {
+                IsWriteSamplePulseVisible = false;
+                IsReadSamplePulseVisible = false;
+            });
         });
     }
 
@@ -969,8 +1024,11 @@ public partial class SurfaceTestViewModel : ViewModelBase, INavigableViewModel, 
             _readPhaseMaxElapsedSeconds = 0;
             _currentPhaseTotalBytes = 1;
             CurrentDataPercent = 0;
+            _samplePulseSequence = 0;
+            IsWriteSamplePulseVisible = false;
+            IsReadSamplePulseVisible = false;
 
-            // Combined stats
+             // Combined stats
             _minSpeed = double.MaxValue;
             _maxSpeed = 0;
             AvgSpeed = 0;

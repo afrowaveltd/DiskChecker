@@ -204,6 +204,17 @@
                                     <TextBlock Text="Zápis" FontSize="10" Foreground="{DynamicResource ThemeChartWriteBrush}" VerticalAlignment="Center"/>
                                     <Border Background="{DynamicResource ThemeChartReadBrush}" Width="10" Height="10" CornerRadius="2" Margin="8,0,0,0"/>
                                     <TextBlock Text="Čtení" FontSize="10" Foreground="{DynamicResource ThemeChartReadBrush}" VerticalAlignment="Center" Margin="4,0,0,0"/>
+
+                                    <Ellipse Width="7" Height="7"
+                                             Fill="{DynamicResource ThemeChartWriteBrush}"
+                                             IsVisible="{Binding IsWriteSamplePulseVisible}"
+                                             Margin="14,0,0,0"
+                                             VerticalAlignment="Center"/>
+                                    <Ellipse Width="7" Height="7"
+                                             Fill="{DynamicResource ThemeChartReadBrush}"
+                                             IsVisible="{Binding IsReadSamplePulseVisible}"
+                                             Margin="2,0,0,0"
+                                             VerticalAlignment="Center"/>
                                 </StackPanel>
 
                                 <!-- Stats Line -->
