@@ -31,6 +31,7 @@ public partial class SmartCheckViewModel : ViewModelBase, INavigableViewModel, I
     private readonly ISelectedDiskService _selectedDiskService;
     private readonly ISettingsService _settingsService;
     private readonly DiskCardTestService _cardTestService;
+    private readonly INavigationService _navigationService;
 
     private DateTime _lastSmartPersistUtc;
     private string? _lastSmartPersistDiskPath;
@@ -48,6 +49,7 @@ public partial class SmartCheckViewModel : ViewModelBase, INavigableViewModel, I
     private string _selectedTestType = "Short";
     private string _smartCacheInfo = string.Empty;
     private string _smartCacheStats = string.Empty;
+    private CancellationTokenSource? _loadSmartDataCts;
 
     public SmartCheckViewModel(
         ISmartaProvider smartaProvider, 
@@ -56,7 +58,8 @@ public partial class SmartCheckViewModel : ViewModelBase, INavigableViewModel, I
         IDialogService dialogService,
         ISelectedDiskService selectedDiskService,
         ISettingsService settingsService,
-        DiskCardTestService cardTestService)
+        DiskCardTestService cardTestService,
+        INavigationService navigationService)
     {
         _smartaProvider = smartaProvider ?? throw new ArgumentNullException(nameof(smartaProvider));
         _diskDetectionService = diskDetectionService ?? throw new ArgumentNullException(nameof(diskDetectionService));
@@ -65,7 +68,8 @@ public partial class SmartCheckViewModel : ViewModelBase, INavigableViewModel, I
         _selectedDiskService = selectedDiskService ?? throw new ArgumentNullException(nameof(selectedDiskService));
         _settingsService = settingsService ?? throw new ArgumentNullException(nameof(settingsService));
         _cardTestService = cardTestService ?? throw new ArgumentNullException(nameof(cardTestService));
-        
+        _navigationService = navigationService ?? throw new ArgumentNullException(nameof(navigationService));
+
         LoadDisksCommand = new AsyncRelayCommand(LoadDisksAsync);
         RefreshCommand = new AsyncRelayCommand(RefreshAsync, () => CanRunSelfTest);
         RunShortTestCommand = new AsyncRelayCommand(RunShortTestAsync, () => CanRunSelfTest);
@@ -98,14 +102,24 @@ public partial class SmartCheckViewModel : ViewModelBase, INavigableViewModel, I
             if (SetProperty(ref _selectedDisk, value))
             {
                 OnPropertyChanged(nameof(CanRunSelfTest));
+                OnPropertyChanged(nameof(HasSelectedDisk));
+                OnPropertyChanged(nameof(DiskName));
+                OnPropertyChanged(nameof(DiskPath));
                 RefreshCommand.NotifyCanExecuteChanged();
                 RunShortTestCommand.NotifyCanExecuteChanged();
                 RunLongTestCommand.NotifyCanExecuteChanged();
                 AbortTestCommand.NotifyCanExecuteChanged();
-                _ = LoadSmartDataAsync();
+                ClearCacheForSelectedCommand.NotifyCanExecuteChanged();
+
+                if (value != null)
+                {
+                    _ = LoadSmartDataAsync();
+                }
             }
         }
     }
+
+    public bool HasSelectedDisk => SelectedDisk != null;
 
     public bool IsChecking
     {
@@ -387,33 +401,22 @@ public string SelectedTestType
 
     public void OnNavigatedTo()
     {
-        // Check if a disk was selected from disk selection view
-        if (_selectedDiskService.SelectedDisk != null)
-        {
-            // Create disk card from selected disk
-            var card = new DiskStatusCardItem
-            {
-                Drive = _selectedDiskService.SelectedDisk,
-                DisplayName = _selectedDiskService.SelectedDiskDisplayName ?? _selectedDiskService.SelectedDisk.Name ?? "Unknown",
-                DisplayPath = _selectedDiskService.SelectedDisk.Path,
-                IsLocked = _selectedDiskService.IsSelectedDiskLocked
-            };
+        _ = LoadDisksAsync();
+    }
 
-            Disks.Clear();
-            Disks.Add(card);
-            SelectedDisk = card;
-        }
-        else
-        {
-            _ = LoadDisksAsync();
-        }
+    [RelayCommand]
+    private void GoBack()
+    {
+        _navigationService.NavigateTo<DiskSelectionViewModel>();
     }
 
     private void SelectVolume(CoreDriveInfo? volume)
     {
-        if (volume == null) return;
+        if (volume == null)
+        {
+            return;
+        }
 
-        // Create a disk card for the selected volume and set it as SelectedDisk
         var card = new DiskStatusCardItem
         {
             Drive = volume,
@@ -424,53 +427,10 @@ public string SelectedTestType
             IsSystemDiskLabel = volume.IsSystemDisk ? "Systémový" : string.Empty
         };
 
-        // Update shared selected disk service
         _selectedDiskService.SelectedDisk = volume;
         _selectedDiskService.SelectedDiskDisplayName = card.DisplayName;
-
-        // Set selection which will trigger LoadSmartDataAsync
         SelectedDisk = card;
     }
-
-    #endregion
-
-    
-    private async Task<string> GetRawSmartctlOutputAsync(string devicePath)
-    {
-        try
-        {
-            var tempFile = Path.Combine(Path.GetTempPath(), $"smartctl_output_{Guid.NewGuid():N}.txt");
-            
-            // Extract drive number from path
-            var driveNumber = new string(devicePath.Where(char.IsDigit).ToArray());
-            if (string.IsNullOrEmpty(driveNumber)) return "Chyba: Nelze určit číslo disku";
-            
-            var psi = new ProcessStartInfo
-            {
-                FileName = "smartctl.exe",
-                Arguments = $"-a /dev/pd{driveNumber}",
-                RedirectStandardOutput = true,
-                RedirectStandardError = true,
-                UseShellExecute = false,
-                CreateNoWindow = true,
-                WorkingDirectory = @"C:\Program Files\smartmontools\bin"
-            };
-            
-            using var process = Process.Start(psi);
-            if (process == null) return "Chyba: Nelze spustit smartctl";
-            
-            var output = await process.StandardOutput.ReadToEndAsync();
-            await process.WaitForExitAsync();
-            
-            return output;
-        }
-        catch (Exception ex)
-        {
-            return $"Chyba při získávání SMART dat: {ex.Message}";
-        }
-    }
-
-#region Private Methods
 
     private async Task LoadDisksAsync()
     {
@@ -482,8 +442,8 @@ public string SelectedTestType
             var drives = (await _diskDetectionService.GetDrivesAsync()).ToList();
 
             Disks.Clear();
-            // Identify system disk (usually PhysicalDrive0)
-            var systemDiskPath = "\\\\.\\PhysicalDrive0";
+            var systemDiskPath = "\\.\\PhysicalDrive0";
+            var preferredDisk = _selectedDiskService.SelectedDisk;
 
             // Concurrency strategy: cores*2, unless cores >= 16 then cores*1
             var cores = Environment.ProcessorCount;
@@ -575,8 +535,17 @@ public string SelectedTestType
 
             await Task.WhenAll(tasks);
 
-            // Ensure selection after probes
-            SelectedDisk = Disks.FirstOrDefault(d => !d.IsSystemDisk) ?? Disks.FirstOrDefault();
+            var preferredSelection = preferredDisk != null
+                ? Disks.FirstOrDefault(d =>
+                    string.Equals(d.Drive?.Path, preferredDisk.Path, StringComparison.OrdinalIgnoreCase) ||
+                    (!string.IsNullOrWhiteSpace(preferredDisk.SerialNumber) &&
+                     string.Equals(d.Drive?.SerialNumber, preferredDisk.SerialNumber, StringComparison.OrdinalIgnoreCase)))
+                : null;
+
+            SelectedDisk = preferredSelection
+                ?? Disks.FirstOrDefault(d => !d.IsSystemDisk)
+                ?? Disks.FirstOrDefault();
+
             StatusMessage = $"Nalezeno {Disks.Count} disků";
         }
         catch (Exception ex)
@@ -594,6 +563,11 @@ public string SelectedTestType
     {
         Console.WriteLine($"[SMART] LoadSmartDataAsync called, SelectedDisk: {SelectedDisk?.DisplayName ?? "null"}");
         
+        _loadSmartDataCts?.Cancel();
+        _loadSmartDataCts?.Dispose();
+        _loadSmartDataCts = new CancellationTokenSource(TimeSpan.FromSeconds(8));
+        var cancellationToken = _loadSmartDataCts.Token;
+
         if (SelectedDisk?.Drive == null)
         {
             Console.WriteLine("[SMART] No disk selected, clearing data");
@@ -613,7 +587,7 @@ public string SelectedTestType
             IsChecking = true;
             StatusMessage = $"Načítám SMART data: {SelectedDisk.DisplayName}";
             
-            var smartData = await _smartaProvider.GetSmartaDataAsync(SelectedDisk.Drive.Path);
+            var smartData = await _smartaProvider.GetSmartaDataAsync(SelectedDisk.Drive.Path, cancellationToken);
             
             if (smartData == null)
             {
@@ -681,7 +655,7 @@ public string SelectedTestType
                 Console.WriteLine($"[SMART] Device path: {devicePath}");
                 try
                 {
-                    var attributes = await advancedProvider.GetSmartAttributesAsync(devicePath);
+                    var attributes = await advancedProvider.GetSmartAttributesAsync(devicePath, cancellationToken);
                     Console.WriteLine($"[SMART] GetSmartAttributesAsync returned {attributes?.Count ?? -1} attributes");
                     
                     // Update collections on UI thread for proper CollectionChanged events
@@ -711,6 +685,11 @@ public string SelectedTestType
                     });
                     System.Diagnostics.Debug.WriteLine($"Found {CriticalAttributes.Count} critical attributes");
                 }
+                catch (OperationCanceledException)
+                {
+                    StatusMessage = "Načtení SMART atributů vypršelo";
+                    return;
+                }
                 catch (Exception ex)
                 {
                     Console.WriteLine($"[SMART] ERROR loading attributes: {ex.Message}");
@@ -720,7 +699,7 @@ public string SelectedTestType
                 
                 try
                 {
-                    var log = await advancedProvider.GetSelfTestLogAsync(devicePath);
+                    var log = await advancedProvider.GetSelfTestLogAsync(devicePath, cancellationToken);
                     await Dispatcher.UIThread.InvokeAsync(() =>
                     {
                         SelfTestLog.Clear();
@@ -728,7 +707,7 @@ public string SelectedTestType
                             SelfTestLog.Add(entry);
                     });
                     
-                    var status = await advancedProvider.GetSelfTestStatusAsync(devicePath);
+                    var status = await advancedProvider.GetSelfTestStatusAsync(devicePath, cancellationToken);
                     if (status == SmartaSelfTestStatus.InProgress)
                     {
                         if (CurrentSmartData != null)
@@ -738,7 +717,15 @@ public string SelectedTestType
                         StatusMessage = "⚠️ Self-test právě běží...";
                     }
                 }
-                catch { /* Self-test log not supported */ }
+                catch (OperationCanceledException)
+                {
+                    StatusMessage = "Načtení SMART self-test logu vypršelo";
+                    return;
+                }
+                catch
+                {
+                    /* Self-test log not supported */
+                }
             }
             
             UpdateComputedProperties();
@@ -746,6 +733,10 @@ public string SelectedTestType
             
             // Load raw smartctl output
             _ = RefreshRawOutput();
+        }
+        catch (OperationCanceledException)
+        {
+            StatusMessage = "Načtení SMART dat trvalo příliš dlouho";
         }
         catch (Exception ex)
         {
@@ -1519,6 +1510,10 @@ private void UpdateComputedProperties()
     {
         if (_disposed) return;
         _disposed = true;
+
+        var loadCts = Interlocked.Exchange(ref _loadSmartDataCts, null);
+        try { loadCts?.Cancel(); } catch (ObjectDisposedException) { }
+        loadCts?.Dispose();
 
         var cts = Interlocked.Exchange(ref _selfTestPollingCts, null);
         try { cts?.Cancel(); } catch (ObjectDisposedException) { }

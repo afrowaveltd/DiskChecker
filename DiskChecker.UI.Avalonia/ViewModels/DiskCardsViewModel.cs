@@ -428,15 +428,6 @@ public partial class DiskCardsViewModel : ViewModelBase, INavigableViewModel
     {
         if (card == null || card.TestCount == 0) return;
 
-        var sessions = await _diskCardRepository.GetTestSessionsAsync(card.Id);
-        var latestSession = sessions.FirstOrDefault();
-
-        if (latestSession == null)
-        {
-            await _dialogService.ShowErrorAsync("Chyba", "Nebyl nalezen žádný test pro tento disk.");
-            return;
-        }
-
         _selectedDiskService.SelectedDisk = new CoreDriveInfo
         {
             Path = card.DevicePath,
@@ -447,10 +438,11 @@ public partial class DiskCardsViewModel : ViewModelBase, INavigableViewModel
         };
         _selectedDiskService.SelectedDiskDisplayName = card.ModelName;
         _selectedDiskService.IsSelectedDiskLocked = card.IsLocked;
-        _selectedDiskService.SelectedTestSessionId = latestSession.Id;
+        _selectedDiskService.SelectedTestSessionId = null;
         _selectedDiskService.SelectedCertificateId = null;
 
         _navigationService.NavigateTo<CertificateViewModel>();
+        await Task.CompletedTask;
     }
 
     [RelayCommand]

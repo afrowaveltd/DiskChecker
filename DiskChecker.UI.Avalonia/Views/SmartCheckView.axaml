@@ -30,7 +30,7 @@
                 </StackPanel>
                 <Button Grid.Column="1"
                         Content="← Zpět"
-                        Command="{Binding $parent[UserControl].DataContext.NavigationService.NavigateToDiskSelectionCommand}"
+                        Command="{Binding GoBackCommand}"
                         Background="{DynamicResource ThemeSecondaryBackgroundBrush}"
                         Foreground="{DynamicResource ThemeTextPrimaryBrush}"
                         BorderBrush="{DynamicResource ThemeBorderBrush}"
@@ -189,8 +189,7 @@
                                   Foreground="{DynamicResource ThemeTextPrimaryBrush}" Margin="0,0,0,6"/>
                         <Grid ColumnDefinitions="*,Auto">
                             <ComboBox ItemsSource="{Binding SmartFeatures}"
-                                      SelectedIndex="0"
-                                      SelectedItem="{Binding SelectedSmartFeature}"
+                                      SelectedIndex="{Binding SelectedSmartFeatureIndex}"
                                       HorizontalAlignment="Stretch"
                                       IsEnabled="{Binding !IsSelfTestRunning}"
                                       Background="{DynamicResource ThemeCardBackgroundBrush}"
@@ -306,7 +305,7 @@
                         <WrapPanel Orientation="Horizontal">
                             <Button Content="🧹 Vymazat disk"
                                     Command="{Binding ClearCacheForSelectedCommand}"
-                                    IsEnabled="{Binding SelectedDisk}"
+                                    IsEnabled="{Binding HasSelectedDisk}"
                                     FontSize="9" Padding="6,3"
                                     Background="{DynamicResource ThemeSecondaryBackgroundBrush}"
                                     Foreground="{DynamicResource ThemeTextPrimaryBrush}"

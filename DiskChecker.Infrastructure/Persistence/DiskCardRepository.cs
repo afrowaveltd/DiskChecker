@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Data.Common;
 using System.Globalization;
 using System.Linq;
 using System.Threading.Tasks;
@@ -311,21 +312,76 @@ public class DiskCardRepository : IDiskCardRepository
             .ToListAsync();
     }
 
+    /// <summary>
+    /// Načte uložené rychlostní vzorky pro zadanou test session bez načtení celé session.
+    /// </summary>
+    public async Task<(List<SpeedSample> WriteSamples, List<SpeedSample> ReadSamples)> GetSpeedSampleSeriesAsync(int sessionId)
+    {
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(sessionId);
+
+        var connection = _context.Database.GetDbConnection();
+        var shouldClose = connection.State != System.Data.ConnectionState.Open;
+        if (shouldClose)
+        {
+            await connection.OpenAsync();
+        }
+
+        try
+        {
+            var writeSamples = await LoadSpeedSeriesAsync(connection, "TestSessions_WriteSamples", sessionId);
+            var readSamples = await LoadSpeedSeriesAsync(connection, "TestSessions_ReadSamples", sessionId);
+            return (writeSamples, readSamples);
+        }
+        finally
+        {
+            if (shouldClose)
+            {
+                await connection.CloseAsync();
+            }
+        }
+    }
+
+    private static async Task<List<SpeedSample>> LoadSpeedSeriesAsync(DbConnection connection, string tableName, int sessionId)
+    {
+        await using var command = connection.CreateCommand();
+        command.CommandText = $"SELECT ProgressPercent, SpeedMBps FROM {tableName} WHERE TestSessionId = @sessionId AND SpeedMBps > 0 ORDER BY ProgressPercent, Id";
+
+        var parameter = command.CreateParameter();
+        parameter.ParameterName = "@sessionId";
+        parameter.Value = sessionId;
+        command.Parameters.Add(parameter);
+
+        var values = new List<SpeedSample>();
+        await using var reader = await command.ExecuteReaderAsync();
+        while (await reader.ReadAsync())
+        {
+            if (!reader.IsDBNull(0) && !reader.IsDBNull(1))
+            {
+                values.Add(new SpeedSample
+                {
+                    ProgressPercent = reader.GetDouble(0),
+                    SpeedMBps = reader.GetDouble(1)
+                });
+            }
+        }
+
+        return values;
+    }
+
     public async Task<TestSession> CreateTestSessionAsync(TestSession session)
     {
         session.SessionId = Guid.NewGuid();
         session.StartedAt = DateTime.UtcNow;
-        
+
         _context.TestSessions.Add(session);
-        
-        // Update disk card
+
         var card = await _context.DiskCards.FindAsync(session.DiskCardId);
         if (card != null)
         {
             card.TestCount++;
             card.LastTestedAt = DateTime.UtcNow;
         }
-        
+
         await _context.SaveChangesAsync();
         return session;
     }

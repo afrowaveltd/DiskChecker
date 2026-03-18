@@ -34,6 +34,11 @@ public interface IDiskCardRepository
     
     Task<TestSession?> GetTestSessionAsync(int sessionId);
     Task<List<TestSession>> GetTestSessionsAsync(int diskCardId);
+
+    /// <summary>
+    /// Načte uložené rychlostní vzorky pro zadanou test session bez načtení celé session.
+    /// </summary>
+    Task<(List<SpeedSample> WriteSamples, List<SpeedSample> ReadSamples)> GetSpeedSampleSeriesAsync(int sessionId);
     Task<TestSession> CreateTestSessionAsync(TestSession session);
     Task<TestSession> UpdateTestSessionAsync(TestSession session);
     Task DeleteTestSessionAsync(int sessionId);

@@ -174,7 +174,8 @@ public class DiskCardTestService
             Result = TestResult.Pass,
             Grade = rating.Grade.ToString(),
             Score = (int)rating.Score,
-            HealthAssessment = MapHealthAssessment(rating.Grade.ToString())
+            HealthAssessment = MapHealthAssessment(rating.Grade.ToString()),
+            SmartBefore = smartaData
         };
 
         // Add temperature samples if available
@@ -226,12 +227,8 @@ public class DiskCardTestService
         ReactivateCardForTesting(card);
         card.TestCount++;
         card.LastTestedAt = DateTime.UtcNow;
-        if (session.SmartBefore?.PowerOnHours is { } poh)
-        {
-            card.PowerOnHours = poh;
-        }
-
-        card.PowerCycleCount = session.SmartBefore?.PowerCycleCount ?? card.PowerCycleCount;
+        card.PowerOnHours = smartaData.PowerOnHours ?? card.PowerOnHours;
+        card.PowerCycleCount = smartaData.PowerCycleCount > 0 ? smartaData.PowerCycleCount : card.PowerCycleCount;
         await UpdateCardGradeAsync(card, cancellationToken);
 
         await _dbContext.SaveChangesAsync(cancellationToken);

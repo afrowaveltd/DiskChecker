@@ -118,10 +118,10 @@
                     <Border Background="{Binding PanelBackground}" Padding="12" CornerRadius="8">
                         <StackPanel Spacing="6">
                             <TextBlock Text="SMART souhrn" FontWeight="Bold" FontSize="13"/>
-                            <TextBlock Text="{Binding Certificate.PowerOnHours, StringFormat='Provozní hodiny: {0:#,0}'}"/>
-                            <TextBlock Text="{Binding Certificate.PowerCycles, StringFormat='Počet startů: {0:#,0}'}"/>
-                            <TextBlock Text="{Binding Certificate.ReallocatedSectors, StringFormat='Realokované sektory: {0}'}"/>
-                            <TextBlock Text="{Binding Certificate.PendingSectors, StringFormat='Čekající sektory: {0}'}"/>
+                            <TextBlock Text="{Binding SmartPowerOnHoursText, StringFormat='Provozní hodiny: {0}'}"/>
+                            <TextBlock Text="{Binding SmartPowerCyclesText, StringFormat='Počet startů: {0}'}"/>
+                            <TextBlock Text="{Binding SmartReallocatedSectorsText, StringFormat='Realokované sektory: {0}'}"/>
+                            <TextBlock Text="{Binding SmartPendingSectorsText, StringFormat='Čekající sektory: {0}'}"/>
                         </StackPanel>
                     </Border>
 
@@ -136,21 +136,25 @@
                                     <TextBlock Grid.Row="2" Text="{Binding ChartMinSpeedLabel}" FontSize="9" Foreground="{DynamicResource ThemeTextMutedBrush}" VerticalAlignment="Bottom"/>
                                 </Grid>
 
-                                <Canvas Grid.Row="0" Grid.Column="1" Height="120" Background="#FFFFFFFF" ClipToBounds="True">
-                                    <Line StartPoint="10,10" EndPoint="10,110" Stroke="#FFCBD5E1" StrokeThickness="1"/>
-                                    <Line StartPoint="10,60" EndPoint="520,60" Stroke="#FFF1F5F9" StrokeThickness="1"/>
-                                    <Line StartPoint="10,110" EndPoint="520,110" Stroke="#FFCBD5E1" StrokeThickness="1"/>
+                                <Viewbox Grid.Row="0" Grid.Column="1" Stretch="Fill" StretchDirection="Both">
+                                    <Canvas Width="520" Height="120" Background="#FFFFFFFF" ClipToBounds="True">
+                                        <Line StartPoint="10,10" EndPoint="10,110" Stroke="#FFCBD5E1" StrokeThickness="1"/>
+                                        <Line StartPoint="10,60" EndPoint="520,60" Stroke="#FFF1F5F9" StrokeThickness="1"/>
+                                        <Line StartPoint="10,110" EndPoint="520,110" Stroke="#FFCBD5E1" StrokeThickness="1"/>
 
-                                    <Polyline Points="{Binding WriteProfilePoints}"
-                                              Stroke="{Binding ChartStrokeWrite}" StrokeThickness="2"/>
-                                    <Polyline Points="{Binding ReadProfilePoints}"
-                                              Stroke="{Binding ChartStrokeRead}" StrokeThickness="2"/>
-                                </Canvas>
+                                        <Polyline Points="{Binding WriteProfilePoints}"
+                                                  Stroke="{Binding ChartStrokeWrite}" StrokeThickness="2"/>
+                                        <Polyline Points="{Binding ReadProfilePoints}"
+                                                  Stroke="{Binding ChartStrokeRead}" StrokeThickness="2"/>
+                                    </Canvas>
+                                </Viewbox>
 
-                                <Grid Grid.Row="1" Grid.Column="1" ColumnDefinitions="Auto,*,Auto">
-                                    <TextBlock Grid.Column="0" Text="{Binding ChartXAxisStartLabel}" FontSize="9" Foreground="{DynamicResource ThemeTextMutedBrush}"/>
-                                    <TextBlock Grid.Column="1" Text="{Binding ChartXAxisMidLabel}" FontSize="9" Foreground="{DynamicResource ThemeTextMutedBrush}" HorizontalAlignment="Center"/>
-                                    <TextBlock Grid.Column="2" Text="{Binding ChartXAxisEndLabel}" FontSize="9" Foreground="{DynamicResource ThemeTextMutedBrush}" HorizontalAlignment="Right"/>
+                                <Grid Grid.Row="1" Grid.Column="1" ColumnDefinitions="Auto,*,Auto,*,Auto,*,Auto,*,Auto">
+                                    <TextBlock Grid.Column="0" Text="0 %" FontSize="9" Foreground="{DynamicResource ThemeTextMutedBrush}"/>
+                                    <TextBlock Grid.Column="2" Text="25 %" FontSize="9" Foreground="{DynamicResource ThemeTextMutedBrush}" HorizontalAlignment="Center"/>
+                                    <TextBlock Grid.Column="4" Text="50 %" FontSize="9" Foreground="{DynamicResource ThemeTextMutedBrush}" HorizontalAlignment="Center"/>
+                                    <TextBlock Grid.Column="6" Text="75 %" FontSize="9" Foreground="{DynamicResource ThemeTextMutedBrush}" HorizontalAlignment="Center"/>
+                                    <TextBlock Grid.Column="8" Text="100 %" FontSize="9" Foreground="{DynamicResource ThemeTextMutedBrush}" HorizontalAlignment="Right"/>
                                 </Grid>
                             </Grid>
 
