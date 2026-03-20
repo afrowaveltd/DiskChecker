@@ -247,6 +247,7 @@ public class DiskCardTestService
     public async Task<TestSession> SaveSurfaceTestAsync(
         DiskCard card,
         SurfaceTestResult result,
+        SmartaData? smartaData = null,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(card);
@@ -290,7 +291,8 @@ public class DiskCardTestService
             StartTemperature = result.CurrentTemperatureCelsius,
             MaxTemperature = result.CurrentTemperatureCelsius,
             AverageTemperature = result.CurrentTemperatureCelsius,
-            Notes = result.Notes
+            Notes = result.Notes,
+            SmartBefore = smartaData  // Include SMART data if provided
         };
 
         // Calculate duration

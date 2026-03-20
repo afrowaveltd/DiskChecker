@@ -66,9 +66,9 @@ public class CertificateGenerator : ICertificateGenerator
                 GeneratedAt = DateTime.UtcNow,
                 GeneratedBy = Environment.UserName,
 
-                // Disk information
+                // Disk information - use real serial number from SMART data if available
                 DiskModel = diskCard.ModelName,
-                SerialNumber = diskCard.SerialNumber,
+                SerialNumber = session.SmartBefore?.SerialNumber ?? diskCard.SerialNumber,
                 Capacity = FormatCapacity(diskCard.Capacity),
                 DiskType = diskCard.DiskType,
                 Firmware = diskCard.FirmwareVersion,
@@ -289,12 +289,20 @@ public class CertificateGenerator : ICertificateGenerator
             DrawProfilePolyline(graphics, writePen, writePoints, maxSpeed, chartX + 30, chartY + 14, chartW - 50, chartH - 40);
             DrawProfilePolyline(graphics, readPen, readPoints, maxSpeed, chartX + 30, chartY + 14, chartW - 50, chartH - 40);
 
+            // Y-axis labels (MB/s)
             graphics.DrawString("MB/s", smallFont, mutedBrush, chartX - 4, chartY + 8);
+            graphics.DrawString($"{maxSpeed:F0}", smallFont, mutedBrush, chartX - 22, chartY + 14);
+            graphics.DrawString($"{maxSpeed / 2:F0}", smallFont, mutedBrush, chartX - 22, chartY + (chartH - 40) / 2 + 10);
+            graphics.DrawString("0", smallFont, mutedBrush, chartX - 12, chartY + chartH - 30);
+            
+            // X-axis labels (%)
             graphics.DrawString("0 %", smallFont, mutedBrush, chartX + 26, chartY + chartH - 18);
             graphics.DrawString("25 %", smallFont, mutedBrush, chartX + (chartW * 0.25f) - 8, chartY + chartH - 18);
             graphics.DrawString("50 %", smallFont, mutedBrush, chartX + chartW / 2 - 8, chartY + chartH - 18);
             graphics.DrawString("75 %", smallFont, mutedBrush, chartX + (chartW * 0.75f) - 8, chartY + chartH - 18);
             graphics.DrawString("100 %", smallFont, mutedBrush, chartX + chartW - 40, chartY + chartH - 18);
+            
+            // Legend
             using var pdfLegendWriteBrush = new SolidBrush(Color.FromArgb(220, 38, 38));
             using var pdfLegendReadBrush = new SolidBrush(Color.FromArgb(5, 150, 105));
             graphics.DrawString("Zápis", smallFont, pdfLegendWriteBrush, chartX + chartW - 150, chartY + 8);
@@ -853,21 +861,21 @@ Před nasazením disku do provozu doporučujeme ověřit aktuální stav.
     {
         if (session.Result == TestResult.Pass && session.Score >= 90)
         {
-            return "Excellent condition. Disk recommended for all purposes.";
+            return "Vynikající stav. Disk je doporučen pro všechny účely.";
         }
         if (session.Result == TestResult.Pass && session.Score >= 70)
         {
-            return "Good condition. Disk suitable for general use.";
+            return "Dobrý stav. Disk je vhodný pro běžné použití.";
         }
         if (session.Result == TestResult.Warning)
         {
-            return "Some issues detected. Use with caution. Not recommended for critical data.";
+            return "Byly zjištěny určité problémy. Používejte opatrně. Není doporučeno pro kritická data.";
         }
         if (session.Result == TestResult.Fail)
         {
-            return "Disk failed testing. Not recommended for use. Consider replacement.";
+            return "Disk selhal při testování. Není doporučen k použití. Zvažte jeho výměnu.";
         }
-        return "Condition uncertain. Additional testing recommended.";
+        return "Stav nejistý. Doporučujeme další testování.";
     }
 
     private static bool IsCriticalAttribute(int attributeId)

@@ -136,7 +136,7 @@ public class SurfaceTestPersistenceService
    try
    {
       var card = await _cardTestService.GetOrCreateCardAsync(drive, cancellationToken);
-      await _cardTestService.SaveSurfaceTestAsync(card, result, cancellationToken);
+      await _cardTestService.SaveSurfaceTestAsync(card, result, cancellationToken: cancellationToken);
    }
    catch(Exception ex)
    {

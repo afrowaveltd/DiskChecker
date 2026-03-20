@@ -1151,12 +1151,21 @@ public partial class SurfaceTestViewModel : ViewModelBase, INavigableViewModel, 
         _testCancellation = new CancellationTokenSource();
         ClearSpeedHistory();
 
+        SanitizationResult? sanitizationResult = null;
+        string? sanitizationSuccessMessage = null;
+        string? sanitizationErrorContext = null;
+
         try
         {
             if (profile.IsDestructive)
-                await RunSanitizationAsync(_testCancellation.Token);
+            {
+                (sanitizationResult, sanitizationSuccessMessage, sanitizationErrorContext) = 
+                    await RunSanitizationAsync(_testCancellation.Token);
+            }
             else
+            {
                 await RunTestAsync(_testCancellation.Token);
+            }
         }
         catch (OperationCanceledException)
         {
@@ -1180,11 +1189,34 @@ public partial class SurfaceTestViewModel : ViewModelBase, INavigableViewModel, 
             _testCancellation?.Dispose();
             _testCancellation = null;
         }
+
+        // Show sanitization result dialog AFTER all cleanup is done
+        if (sanitizationResult != null)
+        {
+            if (sanitizationResult.Success)
+            {
+                // Show error dialog first if card saving failed
+                if (!string.IsNullOrWhiteSpace(sanitizationErrorContext))
+                {
+                    await _dialogService.ShowErrorAsync("Uložení karty selhalo", sanitizationErrorContext);
+                }
+                
+                // Then show success dialog with results
+                if (!string.IsNullOrWhiteSpace(sanitizationSuccessMessage))
+                {
+                    await _dialogService.ShowSuccessAsync("Sanitizace dokončena", sanitizationSuccessMessage);
+                }
+            }
+            else
+            {
+                await _dialogService.ShowErrorAsync("Sanitizace selhala", sanitizationResult.ErrorMessage ?? "Neznámá chyba");
+            }
+        }
     }
 
-    private async Task RunSanitizationAsync(CancellationToken cancellationToken)
+    private async Task<(SanitizationResult? result, string? successMessage, string? errorContext)> RunSanitizationAsync(CancellationToken cancellationToken)
     {
-        if (SelectedDrive == null) return;
+        if (SelectedDrive == null) return (null, null, null);
 
         var progress = new Progress<SanitizationProgress>(p =>
         {
@@ -1280,6 +1312,7 @@ public partial class SurfaceTestViewModel : ViewModelBase, INavigableViewModel, 
             var usbWarning = GetUsbBottleneckWarning(result);
             
             // Save to disk card
+            string? errorContext = null;
             try
             {
                 var card = await _cardTestService.GetOrCreateCardAsync(SelectedDrive!, cancellationToken);
@@ -1324,22 +1357,23 @@ public partial class SurfaceTestViewModel : ViewModelBase, INavigableViewModel, 
             }
             catch (InvalidOperationException ex)
             {
+                errorContext = ex.Message;
                 StatusMessage = $"Sanitizace dokončena, ale uložení karty selhalo: {ex.Message}";
-                await _dialogService.ShowErrorAsync("Uložení karty selhalo", ex.Message);
             }
             catch (DbUpdateException ex)
             {
                 var message = ex.InnerException?.Message ?? ex.Message;
+                errorContext = message;
                 StatusMessage = $"Sanitizace dokončena, ale uložení karty selhalo: {message}";
-                await _dialogService.ShowErrorAsync("Uložení karty selhalo", message);
             }
             catch (Exception ex)
             {
+                errorContext = ex.Message;
                 StatusMessage = $"Sanitizace dokončena, ale uložení karty selhalo: {ex.Message}";
-                await _dialogService.ShowErrorAsync("Uložení karty selhalo", ex.Message);
             }
             
-            await _dialogService.ShowSuccessAsync("Sanitizace dokončena", 
+            // Build success message but don't show dialog yet
+            var successMessage = 
                 $"Disk byl úspěšně sanitizován a uložen.\n\n" +
                 $"📊 Výsledky sanitizace:\n" +
                 $"━━━━━━━━━━━━━━━━━━━━\n" +
@@ -1352,12 +1386,14 @@ public partial class SurfaceTestViewModel : ViewModelBase, INavigableViewModel, 
                 $"   Rychlost: {result.ReadSpeedMBps:F1} MB/s\n\n" +
                 $"✅ Stav: {(result.ErrorsDetected == 0 ? "Bez chyb" : $"{result.ErrorsDetected} chyb")}" +
                 (string.IsNullOrWhiteSpace(usbWarning) ? string.Empty : $"\n\n⚠ {usbWarning}") +
-                $"\n📁 Karta disku vytvořena/aktualizována");
+                $"\n📁 Karta disku vytvořena/aktualizována";
+                
+            return (result, successMessage, errorContext);
         }
         else
         {
             StatusMessage = $"Chyba: {result.ErrorMessage}";
-            await _dialogService.ShowErrorAsync("Sanitizace selhala", result.ErrorMessage ?? "Neznámá chyba");
+            return (result, null, null);
         }
     }
 
@@ -1533,7 +1569,7 @@ public partial class SurfaceTestViewModel : ViewModelBase, INavigableViewModel, 
             System.Diagnostics.Debug.WriteLine($"[SurfaceTest] Card created/found: ID={card.Id}, Model={card.ModelName}");
             
             System.Diagnostics.Debug.WriteLine($"[SurfaceTest] Saving surface test result...");
-            var testSession = await _cardTestService.SaveSurfaceTestAsync(card, result, cancellationToken);
+            var testSession = await _cardTestService.SaveSurfaceTestAsync(card, result, cancellationToken: cancellationToken);
             System.Diagnostics.Debug.WriteLine($"[SurfaceTest] Test result saved successfully");
 
             await TrySendCompletionEmailAsync(result, card, testSession, cancellationToken);
