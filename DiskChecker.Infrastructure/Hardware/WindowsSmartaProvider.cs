@@ -146,10 +146,13 @@ public class WindowsSmartaProvider : ISmartaProvider, IAdvancedSmartaProvider
             using var process = Process.Start(psi);
             if (process == null) return false;
             
-            var output = await process.StandardOutput.ReadToEndAsync(cancellationToken);
-            var error = await process.StandardError.ReadToEndAsync(cancellationToken);
+            // Read output and wait for exit in parallel to avoid deadlock
+            var outputTask = process.StandardOutput.ReadToEndAsync(cancellationToken);
+            var errorTask = process.StandardError.ReadToEndAsync(cancellationToken);
             await process.WaitForExitAsync(cancellationToken);
             
+            var output = await outputTask;
+            var error = await errorTask;
             Console.WriteLine($"[WindowsSmartaProvider] StartSelfTest exit code: {process.ExitCode}");
             Console.WriteLine($"[WindowsSmartaProvider] Output: {output.Substring(0, Math.Min(200, output.Length))}");
             if (!string.IsNullOrEmpty(error))
@@ -525,9 +528,13 @@ public class WindowsSmartaProvider : ISmartaProvider, IAdvancedSmartaProvider
                 return null;
             }
 
-            var output = await process.StandardOutput.ReadToEndAsync(cancellationToken);
-            var error = await process.StandardError.ReadToEndAsync(cancellationToken);
+            // Read output and wait for exit in parallel to avoid deadlock
+            var outputTask = process.StandardOutput.ReadToEndAsync(cancellationToken);
+            var errorTask = process.StandardError.ReadToEndAsync(cancellationToken);
             await process.WaitForExitAsync(cancellationToken);
+            
+            var output = await outputTask;
+            var error = await errorTask;
 
             var outputPreview = output.Length > 200 ? string.Concat(output.AsSpan(0, 200), "...") : output;
             Console.WriteLine($"[WindowsSmartaProvider] Exit code: {process.ExitCode}, Output: {outputPreview}");

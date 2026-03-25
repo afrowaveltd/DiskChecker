@@ -540,9 +540,13 @@ assign";
                     return result;
                 }
 
-                var output = await process.StandardOutput.ReadToEndAsync(cancellationToken);
-                var error = await process.StandardError.ReadToEndAsync(cancellationToken);
+                // Read output and wait for exit in parallel to avoid deadlock
+                var outputTask = process.StandardOutput.ReadToEndAsync(cancellationToken);
+                var errorTask = process.StandardError.ReadToEndAsync(cancellationToken);
                 await process.WaitForExitAsync(cancellationToken);
+                
+                var output = await outputTask;
+                var error = await errorTask;
 
                 if (_logger != null && _logger.IsEnabled(LogLevel.Information))
                 {
@@ -611,9 +615,13 @@ assign";
                 using var processAssign = Process.Start(psiAssign);
                 if (processAssign != null)
                 {
-                    var assignOutput = await processAssign.StandardOutput.ReadToEndAsync(cancellationToken);
-                    var assignError = await processAssign.StandardError.ReadToEndAsync(cancellationToken);
+                    // Read output and wait for exit in parallel to avoid deadlock
+                    var assignOutputTask = processAssign.StandardOutput.ReadToEndAsync(cancellationToken);
+                    var assignErrorTask = processAssign.StandardError.ReadToEndAsync(cancellationToken);
                     await processAssign.WaitForExitAsync(cancellationToken);
+                    
+                    var assignOutput = await assignOutputTask;
+                    var assignError = await assignErrorTask;
                     
                     if (_logger != null && _logger.IsEnabled(LogLevel.Information))
                     {
@@ -694,9 +702,13 @@ assign";
                 return result;
             }
 
-            var output = await process.StandardOutput.ReadToEndAsync(cancellationToken);
-            var error = await process.StandardError.ReadToEndAsync(cancellationToken);
+            // Read output and wait for exit in parallel to avoid deadlock
+            var outputTask = process.StandardOutput.ReadToEndAsync(cancellationToken);
+            var errorTask = process.StandardError.ReadToEndAsync(cancellationToken);
             await process.WaitForExitAsync(cancellationToken);
+            
+            var output = await outputTask;
+            var error = await errorTask;
 
             if (process.ExitCode != 0)
             {
@@ -750,9 +762,13 @@ if ($disk -and $disk.PartitionStyle -eq 'GPT') {{
             using var process = Process.Start(psi);
             if (process == null) return null;
 
-            var output = await process.StandardOutput.ReadToEndAsync(cancellationToken);
-            var error = await process.StandardError.ReadToEndAsync(cancellationToken);
+            // Read output and wait for exit in parallel to avoid deadlock
+            var outputTask = process.StandardOutput.ReadToEndAsync(cancellationToken);
+            var errorTask = process.StandardError.ReadToEndAsync(cancellationToken);
             await process.WaitForExitAsync(cancellationToken);
+            
+            var output = await outputTask;
+            var error = await errorTask;
 
             if (_logger != null && _logger.IsEnabled(LogLevel.Debug))
             {

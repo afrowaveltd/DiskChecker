@@ -1096,9 +1096,13 @@ private async Task AbortTestAsync()
             using var process = Process.Start(startInfo);
             if (process == null) return;
             
-            var stdout = await process.StandardOutput.ReadToEndAsync();
-            var stderr = await process.StandardError.ReadToEndAsync();
+            // Read output and wait for exit in parallel to avoid deadlock
+            var stdoutTask = process.StandardOutput.ReadToEndAsync();
+            var stderrTask = process.StandardError.ReadToEndAsync();
             await process.WaitForExitAsync();
+            
+            var stdout = await stdoutTask;
+            var stderr = await stderrTask;
             
             var output2 = stdout;
             if (!string.IsNullOrEmpty(stderr) && !stderr.Contains("smartctl"))
