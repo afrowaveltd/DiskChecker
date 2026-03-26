@@ -37,6 +37,12 @@ public static class SchemaCompatibilityPatcher
             EnsureColumn(dbContext, testsTable, "Errors");
         }
 
+        if (TableExists(dbContext, "TestSessions"))
+        {
+            EnsureColumn(dbContext, "TestSessions", "SmartBeforeJson");
+            EnsureColumn(dbContext, "TestSessions", "SmartAfterJson");
+        }
+
         if (TableExists(dbContext, "DiskCards"))
         {
             EnsureColumn(dbContext, "DiskCards", "PowerOnHours");
@@ -114,6 +120,18 @@ public static class SchemaCompatibilityPatcher
             return;
         }
 
+        if (tableName == "TestSessions" && columnName == "SmartBeforeJson")
+        {
+            dbContext.Database.ExecuteSqlRaw("ALTER TABLE TestSessions ADD COLUMN SmartBeforeJson TEXT NULL;");
+            return;
+        }
+
+        if (tableName == "TestSessions" && columnName == "SmartAfterJson")
+        {
+            dbContext.Database.ExecuteSqlRaw("ALTER TABLE TestSessions ADD COLUMN SmartAfterJson TEXT NULL;");
+            return;
+        }
+
         if (tableName == "DiskCards" && columnName == "PowerOnHours")
         {
             dbContext.Database.ExecuteSqlRaw("ALTER TABLE DiskCards ADD COLUMN PowerOnHours INTEGER NULL;");
@@ -178,6 +196,11 @@ public static class SchemaCompatibilityPatcher
             return;
         }
 
+        if (!IsSafeSqlIdentifier(indexName) || !IsSafeSqlIdentifier(tableName) || !IsSafeSqlIdentifier(columnName))
+        {
+            return;
+        }
+
         var connection = dbContext.Database.GetDbConnection();
         if (connection.State != System.Data.ConnectionState.Open)
         {
@@ -194,7 +217,27 @@ public static class SchemaCompatibilityPatcher
         var exists = command.ExecuteScalar() != null;
         if (!exists)
         {
-            dbContext.Database.ExecuteSqlRaw($"CREATE INDEX IF NOT EXISTS {indexName} ON {tableName}({columnName});");
+            using var createCommand = connection.CreateCommand();
+            createCommand.CommandText = "CREATE INDEX IF NOT EXISTS " + indexName + " ON " + tableName + "(" + columnName + ");";
+            createCommand.ExecuteNonQuery();
         }
+    }
+
+    private static bool IsSafeSqlIdentifier(string identifier)
+    {
+        if (string.IsNullOrWhiteSpace(identifier))
+        {
+            return false;
+        }
+
+        foreach (var ch in identifier)
+        {
+            if (!(char.IsLetterOrDigit(ch) || ch == '_'))
+            {
+                return false;
+            }
+        }
+
+        return true;
     }
 }

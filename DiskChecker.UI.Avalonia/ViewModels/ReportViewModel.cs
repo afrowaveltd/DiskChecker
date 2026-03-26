@@ -2,21 +2,26 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using DiskChecker.Core.Models;
 using DiskChecker.UI.Avalonia.Services.Interfaces;
-using DiskChecker.Application.Services;
 using System;
 using System.Collections.ObjectModel;
 using System.Linq;
 using System.Threading.Tasks;
 using DiskChecker.Core.Interfaces;
+using System.IO;
+using System.Text.Json;
 
 namespace DiskChecker.UI.Avalonia.ViewModels
 {
     public partial class ReportViewModel : ViewModelBase, INavigableViewModel
     {
+        private static readonly JsonSerializerOptions ReportJsonOptions = new()
+        {
+            WriteIndented = true
+        };
+
         private readonly IDiskCardRepository _diskCardRepository;
         private readonly IDialogService _dialogService;
         private readonly INavigationService _navigationService;
-        private readonly ISelectedDiskService _selectedDiskService;
         private readonly ICertificateGenerator _certificateGenerator;
         private ObservableCollection<TestReportItem> _reports = new();
         private TestReportItem? _selectedReport;
@@ -27,13 +32,11 @@ namespace DiskChecker.UI.Avalonia.ViewModels
             IDiskCardRepository diskCardRepository,
             IDialogService dialogService,
             INavigationService navigationService,
-            ISelectedDiskService selectedDiskService,
             ICertificateGenerator certificateGenerator)
         {
             _diskCardRepository = diskCardRepository ?? throw new ArgumentNullException(nameof(diskCardRepository));
             _dialogService = dialogService ?? throw new ArgumentNullException(nameof(dialogService));
             _navigationService = navigationService ?? throw new ArgumentNullException(nameof(navigationService));
-            _selectedDiskService = selectedDiskService ?? throw new ArgumentNullException(nameof(selectedDiskService));
             _certificateGenerator = certificateGenerator ?? throw new ArgumentNullException(nameof(certificateGenerator));
             
             DeleteReportCommand = new AsyncRelayCommand(DeleteReportAsync, () => SelectedReport != null);
@@ -59,6 +62,7 @@ namespace DiskChecker.UI.Avalonia.ViewModels
                 {
                     DeleteReportCommand.NotifyCanExecuteChanged();
                     ExportReportCommand.NotifyCanExecuteChanged();
+                    OpenFullReportCommand.NotifyCanExecuteChanged();
                 }
             }
         }
@@ -172,26 +176,155 @@ namespace DiskChecker.UI.Avalonia.ViewModels
                 return;
             }
 
-            var card = await _diskCardRepository.GetByIdAsync(SelectedReport.DiskCardId);
-            if (card == null)
+            try
             {
-                await _dialogService.ShowErrorAsync("Chyba", "Karta disku pro vybraný report nebyla nalezena.");
-                return;
+                IsLoading = true;
+                StatusMessage = "Generuji plný report...";
+
+                var card = await _diskCardRepository.GetByIdAsync(SelectedReport.DiskCardId);
+                if (card == null)
+                {
+                    await _dialogService.ShowErrorAsync("Chyba", "Karta disku pro vybraný report nebyla nalezena.");
+                    return;
+                }
+
+                var session = await _diskCardRepository.GetTestSessionAsync(SelectedReport.Id);
+                if (session == null)
+                {
+                    await _dialogService.ShowErrorAsync("Chyba", "Testová session pro vybraný report nebyla nalezena.");
+                    return;
+                }
+
+                var reportDirectory = Path.Combine(
+                    Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
+                    "DiskChecker",
+                    "Reports",
+                    "Full");
+                Directory.CreateDirectory(reportDirectory);
+
+                string? graphImagePath = null;
+                if (session.TestType == TestType.Sanitization &&
+                    (session.WriteSamples.Count > 0 || session.ReadSamples.Count > 0))
+                {
+                    var previewCertificate = await _certificateGenerator.GenerateCertificateAsync(session, card);
+                    var previewBytes = await _certificateGenerator.GeneratePreviewAsync(previewCertificate);
+                    graphImagePath = Path.Combine(
+                        reportDirectory,
+                        $"graph_{card.Id}_{session.Id}_{DateTime.UtcNow:yyyyMMddHHmmss}.png");
+                    await File.WriteAllBytesAsync(graphImagePath, previewBytes);
+                }
+
+                var fullReport = new
+                {
+                    generatedAtUtc = DateTime.UtcNow,
+                    disk = new
+                    {
+                        id = card.Id,
+                        model = card.ModelName,
+                        serial = card.SerialNumber,
+                        devicePath = card.DevicePath,
+                        diskType = card.DiskType,
+                        interfaceType = card.InterfaceType,
+                        capacityBytes = card.Capacity,
+                        firmware = card.FirmwareVersion,
+                        connectionType = card.ConnectionType
+                    },
+                    testSession = new
+                    {
+                        id = session.Id,
+                        sessionId = session.SessionId,
+                        testType = session.TestType.ToString(),
+                        startedAtUtc = session.StartedAt,
+                        completedAtUtc = session.CompletedAt,
+                        duration = session.Duration,
+                        status = session.Status.ToString(),
+                        result = session.Result.ToString(),
+                        grade = session.Grade,
+                        score = session.Score,
+                        notes = session.Notes,
+                        metrics = new
+                        {
+                            bytesWritten = session.BytesWritten,
+                            bytesRead = session.BytesRead,
+                            avgWriteSpeedMBps = session.AverageWriteSpeedMBps,
+                            maxWriteSpeedMBps = session.MaxWriteSpeedMBps,
+                            minWriteSpeedMBps = session.MinWriteSpeedMBps,
+                            avgReadSpeedMBps = session.AverageReadSpeedMBps,
+                            maxReadSpeedMBps = session.MaxReadSpeedMBps,
+                            minReadSpeedMBps = session.MinReadSpeedMBps,
+                            writeErrors = session.WriteErrors,
+                            readErrors = session.ReadErrors,
+                            verificationErrors = session.VerificationErrors
+                        },
+                        temperatures = new
+                        {
+                            start = session.StartTemperature,
+                            max = session.MaxTemperature,
+                            average = session.AverageTemperature
+                        },
+                        partitioning = new
+                        {
+                            created = session.PartitionCreated,
+                            scheme = session.PartitionScheme,
+                            formatted = session.WasFormatted,
+                            fileSystem = session.FileSystem,
+                            volumeLabel = session.VolumeLabel
+                        }
+                    },
+                    smartDump = new
+                    {
+                        before = session.SmartBefore,
+                        beforeRawJson = session.SmartBeforeJson,
+                        after = session.SmartAfter,
+                        afterRawJson = session.SmartAfterJson,
+                        attributeChanges = session.SmartChanges
+                    },
+                    speedSeries = new
+                    {
+                        writeSamples = session.WriteSamples,
+                        readSamples = session.ReadSamples
+                    },
+                    temperatureSeries = session.TemperatureSamples,
+                    errors = session.Errors,
+                    assets = new
+                    {
+                        graphImage = graphImagePath
+                    }
+                };
+
+                var filePath = Path.Combine(
+                    reportDirectory,
+                    $"FullReport_{card.Id}_{session.Id}_{DateTime.UtcNow:yyyyMMddHHmmss}.json");
+
+                var json = JsonSerializer.Serialize(fullReport, ReportJsonOptions);
+                await File.WriteAllTextAsync(filePath, json);
+
+                StatusMessage = $"Plný report uložen: {filePath}";
+
+                var openFile = await _dialogService.ShowConfirmationAsync(
+                    "Plný report připraven",
+                    $"Report byl uložen do:\n{filePath}\n\n" +
+                    (graphImagePath != null ? $"Graf (PNG):\n{graphImagePath}\n\n" : string.Empty) +
+                    "Otevřít report?");
+
+                if (openFile)
+                {
+                    System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
+                    {
+                        FileName = filePath,
+                        UseShellExecute = true
+                    });
+                }
             }
-
-            _selectedDiskService.SelectedDisk = new CoreDriveInfo
+            catch (Exception ex)
             {
-                Path = card.DevicePath,
-                Name = card.ModelName,
-                TotalSize = card.Capacity,
-                SerialNumber = card.SerialNumber,
-                FirmwareVersion = card.FirmwareVersion,
-                IsRemovable = string.Equals(card.ConnectionType, "External", StringComparison.OrdinalIgnoreCase)
-            };
-            _selectedDiskService.SelectedDiskDisplayName = card.ModelName;
-            _selectedDiskService.IsSelectedDiskLocked = card.IsLocked;
-
-            _navigationService.NavigateTo<DiskCardDetailViewModel>();
+                StatusMessage = $"Chyba při generování plného reportu: {ex.Message}";
+                await _dialogService.ShowErrorAsync("Chyba", $"Nepodařilo se vygenerovat plný report: {ex.Message}");
+            }
+            finally
+            {
+                IsLoading = false;
+            }
         }
 
         private void NavigateBack()

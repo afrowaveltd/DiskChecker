@@ -1,5 +1,7 @@
 using System;
 using System.Collections.Generic;
+using System.ComponentModel.DataAnnotations.Schema;
+using System.Text.Json;
 
 namespace DiskChecker.Core.Models;
 
@@ -8,6 +10,16 @@ namespace DiskChecker.Core.Models;
 /// </summary>
 public class TestSession
 {
+    private static readonly JsonSerializerOptions SmartJsonOptions = new()
+    {
+        WriteIndented = false
+    };
+
+    private SmartaData? _smartBefore;
+    private SmartaData? _smartAfter;
+    private string? _smartBeforeJson;
+    private string? _smartAfterJson;
+
     public int Id { get; set; }
     
     /// <summary>
@@ -48,12 +60,72 @@ public class TestSession
     /// <summary>
     /// SMART data before test
     /// </summary>
-    public SmartaData? SmartBefore { get; set; }
-    
+    [NotMapped]
+    public SmartaData? SmartBefore
+    {
+        get
+        {
+            if (_smartBefore == null && !string.IsNullOrWhiteSpace(_smartBeforeJson))
+            {
+                _smartBefore = DeserializeSmartSnapshot(_smartBeforeJson);
+            }
+
+            return _smartBefore;
+        }
+        set
+        {
+            _smartBefore = value;
+            _smartBeforeJson = SerializeSmartSnapshot(value);
+        }
+    }
+
     /// <summary>
     /// SMART data after test
     /// </summary>
-    public SmartaData? SmartAfter { get; set; }
+    [NotMapped]
+    public SmartaData? SmartAfter
+    {
+        get
+        {
+            if (_smartAfter == null && !string.IsNullOrWhiteSpace(_smartAfterJson))
+            {
+                _smartAfter = DeserializeSmartSnapshot(_smartAfterJson);
+            }
+
+            return _smartAfter;
+        }
+        set
+        {
+            _smartAfter = value;
+            _smartAfterJson = SerializeSmartSnapshot(value);
+        }
+    }
+
+    /// <summary>
+    /// Persisted SMART snapshot before test (JSON).
+    /// </summary>
+    public string? SmartBeforeJson
+    {
+        get => _smartBeforeJson;
+        set
+        {
+            _smartBeforeJson = value;
+            _smartBefore = null;
+        }
+    }
+
+    /// <summary>
+    /// Persisted SMART snapshot after test (JSON).
+    /// </summary>
+    public string? SmartAfterJson
+    {
+        get => _smartAfterJson;
+        set
+        {
+            _smartAfterJson = value;
+            _smartAfter = null;
+        }
+    }
     
     /// <summary>
     /// SMART attribute changes during test
@@ -271,6 +343,40 @@ public class TestSession
     /// Alias for UI bindings expecting current/average temperature.
     /// </summary>
     public int Temperature => (int)Math.Round(AverageTemperature ?? MaxTemperature ?? StartTemperature ?? 0);
+
+    private static string? SerializeSmartSnapshot(SmartaData? smartData)
+    {
+        if (smartData == null)
+        {
+            return null;
+        }
+
+        try
+        {
+            return JsonSerializer.Serialize(smartData, SmartJsonOptions);
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    private static SmartaData? DeserializeSmartSnapshot(string? json)
+    {
+        if (string.IsNullOrWhiteSpace(json))
+        {
+            return null;
+        }
+
+        try
+        {
+            return JsonSerializer.Deserialize<SmartaData>(json, SmartJsonOptions);
+        }
+        catch
+        {
+            return null;
+        }
+    }
 }
 
 /// <summary>

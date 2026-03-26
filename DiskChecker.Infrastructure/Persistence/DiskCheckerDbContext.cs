@@ -102,9 +102,8 @@ public class DiskCheckerDbContext : DbContext
             entity.Property(e => e.Grade).HasMaxLength(1);
             entity.Property(e => e.Notes).HasMaxLength(2000);
 
-            // SmartBefore and SmartAfter are runtime data, not stored in DB
-            entity.Ignore(e => e.SmartBefore);
-            entity.Ignore(e => e.SmartAfter);
+            entity.Property(e => e.SmartBeforeJson).HasColumnType("TEXT");
+            entity.Property(e => e.SmartAfterJson).HasColumnType("TEXT");
 
             entity.HasIndex(e => e.SessionId).IsUnique();
             entity.HasIndex(e => e.DiskCardId);

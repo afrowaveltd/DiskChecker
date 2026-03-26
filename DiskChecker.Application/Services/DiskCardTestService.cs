@@ -373,6 +373,50 @@ public class DiskCardTestService
         ArgumentNullException.ThrowIfNull(result);
 
         var breakdown = BuildSanitizationScoreBreakdown(result, smartaData);
+        var persistedWriteSamples = (writeSamples ?? Enumerable.Empty<SpeedSample>())
+            .Where(s => s.SpeedMBps > 0)
+            .OrderBy(s => s.ProgressPercent)
+            .Select(s => new SpeedSample
+            {
+                ProgressPercent = s.ProgressPercent,
+                SpeedMBps = s.SpeedMBps
+            })
+            .ToList();
+        var persistedReadSamples = (readSamples ?? Enumerable.Empty<SpeedSample>())
+            .Where(s => s.SpeedMBps > 0)
+            .OrderBy(s => s.ProgressPercent)
+            .Select(s => new SpeedSample
+            {
+                ProgressPercent = s.ProgressPercent,
+                SpeedMBps = s.SpeedMBps
+            })
+            .ToList();
+
+        var avgWriteSpeed = persistedWriteSamples.Count > 0
+            ? persistedWriteSamples.Average(s => s.SpeedMBps)
+            : result.WriteSpeedMBps;
+        var maxWriteSpeed = persistedWriteSamples.Count > 0
+            ? persistedWriteSamples.Max(s => s.SpeedMBps)
+            : result.WriteSpeedMBps;
+        var minWriteSpeed = persistedWriteSamples.Count > 0
+            ? persistedWriteSamples.Min(s => s.SpeedMBps)
+            : result.WriteSpeedMBps;
+        var writeStdDev = persistedWriteSamples.Count > 1
+            ? CalculateStandardDeviation(persistedWriteSamples.Select(s => s.SpeedMBps).ToArray())
+            : 0d;
+
+        var avgReadSpeed = persistedReadSamples.Count > 0
+            ? persistedReadSamples.Average(s => s.SpeedMBps)
+            : result.ReadSpeedMBps;
+        var maxReadSpeed = persistedReadSamples.Count > 0
+            ? persistedReadSamples.Max(s => s.SpeedMBps)
+            : result.ReadSpeedMBps;
+        var minReadSpeed = persistedReadSamples.Count > 0
+            ? persistedReadSamples.Min(s => s.SpeedMBps)
+            : result.ReadSpeedMBps;
+        var readStdDev = persistedReadSamples.Count > 1
+            ? CalculateStandardDeviation(persistedReadSamples.Select(s => s.SpeedMBps).ToArray())
+            : 0d;
 
         var session = new TestSession
         {
@@ -386,10 +430,16 @@ public class DiskCardTestService
             IsDestructive = true,
             BytesWritten = result.BytesWritten,
             BytesRead = result.BytesRead,
-            AverageWriteSpeedMBps = result.WriteSpeedMBps,
-            AverageReadSpeedMBps = result.ReadSpeedMBps,
-            MaxWriteSpeedMBps = result.WriteSpeedMBps,
-            MaxReadSpeedMBps = result.ReadSpeedMBps,
+            AverageWriteSpeedMBps = avgWriteSpeed,
+            AverageReadSpeedMBps = avgReadSpeed,
+            MaxWriteSpeedMBps = maxWriteSpeed,
+            MaxReadSpeedMBps = maxReadSpeed,
+            MinWriteSpeedMBps = minWriteSpeed,
+            MinReadSpeedMBps = minReadSpeed,
+            WriteSpeedStdDev = writeStdDev,
+            ReadSpeedStdDev = readStdDev,
+            WriteDuration = result.Duration,
+            ReadDuration = result.Duration,
             WriteErrors = result.ErrorsDetected,
             VerificationErrors = result.ErrorsDetected,
             PartitionCreated = result.PartitionCreated,
@@ -402,7 +452,9 @@ public class DiskCardTestService
             Score = breakdown.Score,
             HealthAssessment = breakdown.Health,
             Notes = breakdown.Findings.Count > 0 ? string.Join("; ", breakdown.Findings) : null,
-            SmartBefore = smartaData
+            SmartBefore = smartaData,
+            WriteSamples = persistedWriteSamples,
+            ReadSamples = persistedReadSamples
         };
 
         ApplySmartSnapshot(session, smartaData);
