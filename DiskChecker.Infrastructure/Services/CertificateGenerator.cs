@@ -68,7 +68,7 @@ public class CertificateGenerator : ICertificateGenerator
 
                 // Disk information - use real serial number from SMART data if available
                 DiskModel = diskCard.ModelName,
-                SerialNumber = session.SmartBefore?.SerialNumber ?? diskCard.SerialNumber,
+                SerialNumber = ResolveDisplaySerial(session.SmartBefore?.SerialNumber, diskCard.SerialNumber),
                 Capacity = FormatCapacity(diskCard.Capacity),
                 DiskType = diskCard.DiskType,
                 Firmware = diskCard.FirmwareVersion,
@@ -105,7 +105,7 @@ public class CertificateGenerator : ICertificateGenerator
                 Status = CertificateStatus.Active,
 
                 // Recommendation
-                Recommended = session.Result == TestResult.Pass && session.Score >= 70,
+                Recommended = session.Result == TestResult.Pass && !string.Equals(session.Grade, "E", StringComparison.OrdinalIgnoreCase) && !string.Equals(session.Grade, "F", StringComparison.OrdinalIgnoreCase),
                 RecommendationNotes = GenerateRecommendation(session),
                 Notes = session.Notes
             };
@@ -114,7 +114,8 @@ public class CertificateGenerator : ICertificateGenerator
             certificate.ReadProfilePoints = DownsampleSpeeds(session.ReadSamples.Select(s => s.SpeedMBps), 32);
 
             // Calculate grade and score using shared method
-            var (grade, score) = CalculateGrade(session);
+            var grade = string.IsNullOrWhiteSpace(session.Grade) ? CalculateGrade(session).grade : session.Grade;
+            var score = session.Score > 0 ? session.Score : CalculateGrade(session).score;
             certificate.Grade = grade;
             certificate.Score = score;
             certificate.HealthStatus = session.HealthAssessment.ToString();
@@ -859,6 +860,17 @@ Před nasazením disku do provozu doporučujeme ověřit aktuální stav.
 
     private static string GenerateRecommendation(TestSession session)
     {
+        var grade = session.Grade?.ToUpperInvariant();
+        if (grade == "F")
+        {
+            return "Disk selhal při testování nebo SMART diagnostice. Není doporučen k použití.";
+        }
+
+        if (grade == "E")
+        {
+            return "Disk vykazuje závažný SMART pre-fail stav. Doporučeno pouze k vyřazení nebo dalšímu detailnímu ověření.";
+        }
+
         if (session.Result == TestResult.Pass && session.Score >= 90)
         {
             return "Vynikající stav. Disk je doporučen pro všechny účely.";
@@ -876,6 +888,24 @@ Před nasazením disku do provozu doporučujeme ověřit aktuální stav.
             return "Disk selhal při testování. Není doporučen k použití. Zvažte jeho výměnu.";
         }
         return "Stav nejistý. Doporučujeme další testování.";
+    }
+
+    private static string ResolveDisplaySerial(string? smartSerial, string? storedSerial)
+    {
+        if (!string.IsNullOrWhiteSpace(smartSerial))
+        {
+            return smartSerial.Trim();
+        }
+
+        if (string.IsNullOrWhiteSpace(storedSerial) ||
+            storedSerial.StartsWith("NOSN-", StringComparison.OrdinalIgnoreCase) ||
+            storedSerial.Contains('|') ||
+            storedSerial.Contains('_'))
+        {
+            return "N/A";
+        }
+
+        return storedSerial;
     }
 
     private static bool IsCriticalAttribute(int attributeId)

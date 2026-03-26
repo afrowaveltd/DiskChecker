@@ -314,8 +314,11 @@ public partial class MainWindowViewModel : ViewModelBase
             using var process = Process.Start(psi);
             if (process == null) return null;
             
-            var output = await process.StandardOutput.ReadToEndAsync();
+            // Read output and wait for exit in parallel to avoid deadlock
+            var outputTask = process.StandardOutput.ReadToEndAsync();
             await process.WaitForExitAsync();
+            
+            var output = await outputTask;
             
             return output;
         }

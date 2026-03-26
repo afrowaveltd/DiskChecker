@@ -40,6 +40,7 @@ public partial class SurfaceTestViewModel : ViewModelBase, INavigableViewModel, 
     private readonly ISettingsService _settingsService;
     private readonly IDiskCacheService _diskCacheService;
     private readonly IDiskSanitizationService _sanitizationService;
+    private readonly SmartCheckService _smartCheckService;
     private readonly DiskCardTestService _cardTestService;
     private readonly TestCompletionNotificationService _notificationService;
     private readonly ICertificateGenerator _certificateGenerator;
@@ -116,6 +117,7 @@ public partial class SurfaceTestViewModel : ViewModelBase, INavigableViewModel, 
         ISettingsService settingsService,
         IDiskCacheService diskCacheService,
         IDiskSanitizationService sanitizationService,
+        SmartCheckService smartCheckService,
         DiskCardTestService cardTestService,
         TestCompletionNotificationService notificationService,
         ICertificateGenerator certificateGenerator)
@@ -126,6 +128,7 @@ public partial class SurfaceTestViewModel : ViewModelBase, INavigableViewModel, 
         _settingsService = settingsService;
         _diskCacheService = diskCacheService;
         _sanitizationService = sanitizationService;
+        _smartCheckService = smartCheckService;
         _cardTestService = cardTestService;
         _notificationService = notificationService;
         _certificateGenerator = certificateGenerator;
@@ -409,6 +412,18 @@ public partial class SurfaceTestViewModel : ViewModelBase, INavigableViewModel, 
         private set => SetProperty(ref _currentDataPercent, Math.Clamp(value, 0, 100));
     }
 
+    public bool IsWriteSamplePulseVisible
+    {
+        get => _isWriteSamplePulseVisible;
+        private set => SetProperty(ref _isWriteSamplePulseVisible, value);
+    }
+
+    public bool IsReadSamplePulseVisible
+    {
+        get => _isReadSamplePulseVisible;
+        private set => SetProperty(ref _isReadSamplePulseVisible, value);
+    }
+
     public TimeSpan SelectedZoomDuration => ZoomLevels[_selectedZoomIndex].Duration;
     
     public int CurrentPhase
@@ -625,106 +640,67 @@ public partial class SurfaceTestViewModel : ViewModelBase, INavigableViewModel, 
     private void AddSpeedPoint(double speed, double dataPercent)
     {
         var phase = _currentPhase;
-        Dispatcher.UIThread.Post(() =>
+
+        if (Dispatcher.UIThread.CheckAccess())
         {
-            var now = DateTime.UtcNow;
-            var elapsed = now - _testStartTime;
-            var xPosition = Math.Clamp(dataPercent, 0d, 100d);
-            CurrentDataPercent = xPosition;
+            AddSpeedPointCore(speed, dataPercent, phase);
+            return;
+        }
 
-            // Add to legacy collection for compatibility
-            SpeedHistory.Add(new SpeedDataPoint { Time = SpeedHistory.Count, Speed = speed });
-            while (SpeedHistory.Count > 300)
-                SpeedHistory.RemoveAt(0);
-
-            // Add to phase-specific collection with dataPercent
-            var dataPoint = new SurfaceTestDataPoint(now, elapsed, speed, CurrentTemperature, phase, xPosition);
-
-            if (phase == 0)
-            {
-                AppendCapped(WriteSpeedHistory, dataPoint);
-                _writePhaseMaxElapsedSeconds = Math.Max(_writePhaseMaxElapsedSeconds, xPosition);
-                AppendDownsampledPoint(
-                    WriteSeriesValues,
-                    xPosition,
-                    speed,
-                    ref _writeBucketStart,
-                    ref _writeBucketSum,
-                    ref _writeBucketCount);
-                TriggerSamplePulse(isWrite: true);
-            }
-            else
-            {
-                AppendCapped(ReadSpeedHistory, dataPoint);
-                _readPhaseMaxElapsedSeconds = Math.Max(_readPhaseMaxElapsedSeconds, xPosition);
-                AppendDownsampledPoint(
-                    ReadSeriesValues,
-                    xPosition,
-                    speed,
-                    ref _readBucketStart,
-                    ref _readBucketSum,
-                    ref _readBucketCount);
-                TriggerSamplePulse(isWrite: false);
-            }
-
-            // Add temperature point
-            if (CurrentTemperature > 0)
-            {
-                AppendCapped(TemperatureHistory, new TemperatureDataPoint(now, elapsed, CurrentTemperature));
-            }
-
-            UpdateStatisticsIncremental(speed);
-            UpdateXAxisLimits(100);
-            OnPropertyChanged(nameof(ChartPointCount));
-        });
+        Dispatcher.UIThread.Post(() => AddSpeedPointCore(speed, dataPercent, phase));
     }
 
-    /// <summary>
-    /// Gets whether write sample pulse indicator is currently visible.
-    /// </summary>
-    public bool IsWriteSamplePulseVisible
+    private void AddSpeedPointCore(double speed, double dataPercent, int phase)
     {
-        get => _isWriteSamplePulseVisible;
-        private set => SetProperty(ref _isWriteSamplePulseVisible, value);
-    }
+        var now = DateTime.UtcNow;
+        var elapsed = now - _testStartTime;
+        var xPosition = Math.Clamp(dataPercent, 0d, 100d);
+        CurrentDataPercent = xPosition;
 
-    /// <summary>
-    /// Gets whether read sample pulse indicator is currently visible.
-    /// </summary>
-    public bool IsReadSamplePulseVisible
-    {
-        get => _isReadSamplePulseVisible;
-        private set => SetProperty(ref _isReadSamplePulseVisible, value);
-    }
+        // Add to legacy collection for compatibility
+        SpeedHistory.Add(new SpeedDataPoint { Time = SpeedHistory.Count, Speed = speed });
+        while (SpeedHistory.Count > 300)
+            SpeedHistory.RemoveAt(0);
 
-    private void TriggerSamplePulse(bool isWrite)
-    {
-        var token = Interlocked.Increment(ref _samplePulseSequence);
+        // Add to phase-specific collection with dataPercent
+        var dataPoint = new SurfaceTestDataPoint(now, elapsed, speed, CurrentTemperature, phase, xPosition);
 
-        if (isWrite)
+        if (phase == 0)
         {
-            IsWriteSamplePulseVisible = true;
+            AppendCapped(WriteSpeedHistory, dataPoint);
+            _writePhaseMaxElapsedSeconds = Math.Max(_writePhaseMaxElapsedSeconds, xPosition);
+            AppendDownsampledPoint(
+                WriteSeriesValues,
+                xPosition,
+                speed,
+                ref _writeBucketStart,
+                ref _writeBucketSum,
+                ref _writeBucketCount);
+            TriggerSamplePulse(isWrite: true);
         }
         else
         {
-            IsReadSamplePulseVisible = true;
+            AppendCapped(ReadSpeedHistory, dataPoint);
+            _readPhaseMaxElapsedSeconds = Math.Max(_readPhaseMaxElapsedSeconds, xPosition);
+            AppendDownsampledPoint(
+                ReadSeriesValues,
+                xPosition,
+                speed,
+                ref _readBucketStart,
+                ref _readBucketSum,
+                ref _readBucketCount);
+            TriggerSamplePulse(isWrite: false);
         }
 
-        _ = Task.Run(async () =>
+        // Add temperature point
+        if (CurrentTemperature > 0)
         {
-            await Task.Delay(180).ConfigureAwait(false);
+            AppendCapped(TemperatureHistory, new TemperatureDataPoint(now, elapsed, CurrentTemperature));
+        }
 
-            if (token != Interlocked.Read(ref _samplePulseSequence))
-            {
-                return;
-            }
-
-            await Dispatcher.UIThread.InvokeAsync(() =>
-            {
-                IsWriteSamplePulseVisible = false;
-                IsReadSamplePulseVisible = false;
-            });
-        });
+        UpdateStatisticsIncremental(speed);
+        UpdateXAxisLimits(100);
+        OnPropertyChanged(nameof(ChartPointCount));
     }
 
     private static void AppendCapped<T>(ObservableCollection<T> collection, T item)
@@ -738,205 +714,166 @@ public partial class SurfaceTestViewModel : ViewModelBase, INavigableViewModel, 
 
     private void AppendDownsampledPoint(
         ObservableCollection<ObservablePoint> target,
-        double xPosition,
-        double speed,
+        double x,
+        double y,
         ref double bucketStart,
         ref double bucketSum,
         ref int bucketCount)
     {
-        var isWrite = (target == WriteSeriesValues);
-        ref var lastX = ref (isWrite ? ref _lastWriteX : ref _lastReadX);
-        ref var lastSpeed = ref (isWrite ? ref _lastWriteSpeed : ref _lastReadSpeed);
-        
-        // Always add first point
+        ref var lastX = ref GetLastXReference(target);
+        ref var lastSpeed = ref GetLastSpeedReference(target);
+
         if (target.Count == 0)
         {
-            target.Add(new ObservablePoint(xPosition, speed));
-            lastX = xPosition;
-            lastSpeed = speed;
+            AppendPoint(target, x, y, ref lastX, ref lastSpeed);
             return;
         }
-        
-        // Check if we should add a new point:
-        // 1. Distance from last point exceeds minimum
-        // 2. Speed changed significantly (>5%)
-        var distance = xPosition - lastX;
-        var shouldAddPoint = distance >= MinPointDistance;
-        
-        // Also add if speed changed significantly (catch anomalies/drops)
-        if (!shouldAddPoint && lastSpeed > 0)
-        {
-            var speedChange = Math.Abs(speed - lastSpeed) / lastSpeed;
-            if (speedChange >= SpeedChangeThreshold)
-            {
-                shouldAddPoint = true;
-            }
-        }
-        
-        if (shouldAddPoint)
-        {
-            target.Add(new ObservablePoint(xPosition, speed));
-            lastX = xPosition;
-            lastSpeed = speed;
-        }
-        
-        while (target.Count > MaxGraphPoints)
-        {
-            target.RemoveAt(0);
-        }
-    }
 
-    private double GetBucketWindowSeconds()
-    {
-        // 100 % distributed across rendered points keeps both phases comparable.
-        return Math.Max(0.25, 100d / MaxGraphPoints);
+        var xDistance = Math.Abs(x - lastX);
+        var speedChange = lastSpeed <= 0 ? 1d : Math.Abs(y - lastSpeed) / lastSpeed;
+
+        if (xDistance < MinPointDistance && speedChange < SpeedChangeThreshold)
+        {
+            if (bucketStart < 0)
+            {
+                bucketStart = lastX;
+            }
+
+            bucketSum += y;
+            bucketCount++;
+            return;
+        }
+
+        FlushBucket(target, ref bucketStart, ref bucketSum, ref bucketCount, ref lastX, ref lastSpeed);
+        AppendPoint(target, x, y, ref lastX, ref lastSpeed);
     }
 
     private void FlushPhaseBucket(int phase)
     {
         if (phase == 0)
         {
-            FlushBucket(WriteSeriesValues, ref _writeBucketStart, ref _writeBucketSum, ref _writeBucketCount);
+            FlushBucket(WriteSeriesValues, ref _writeBucketStart, ref _writeBucketSum, ref _writeBucketCount, ref _lastWriteX, ref _lastWriteSpeed);
             return;
         }
 
-        FlushBucket(ReadSeriesValues, ref _readBucketStart, ref _readBucketSum, ref _readBucketCount);
+        FlushBucket(ReadSeriesValues, ref _readBucketStart, ref _readBucketSum, ref _readBucketCount, ref _lastReadX, ref _lastReadSpeed);
     }
 
     private static void FlushBucket(
         ObservableCollection<ObservablePoint> target,
         ref double bucketStart,
         ref double bucketSum,
-        ref int bucketCount)
+        ref int bucketCount,
+        ref double lastX,
+        ref double lastSpeed)
     {
         if (bucketCount <= 0)
         {
+            bucketStart = -1;
+            bucketSum = 0;
             return;
         }
 
-        var averageSpeed = bucketSum / bucketCount;
-        target.Add(new ObservablePoint(bucketStart, averageSpeed));
-        while (target.Count > MaxGraphPoints)
-        {
-            target.RemoveAt(0);
-        }
-
+        var averagedY = bucketSum / bucketCount;
+        var bucketX = lastX == double.MinValue ? 0d : Math.Clamp(lastX + MinPointDistance, 0d, 100d);
+        AppendPoint(target, bucketX, averagedY, ref lastX, ref lastSpeed);
         bucketStart = -1;
         bucketSum = 0;
         bucketCount = 0;
     }
 
+    private static void AppendPoint(ObservableCollection<ObservablePoint> target, double x, double y, ref double lastX, ref double lastSpeed)
+    {
+        AppendCapped(target, new ObservablePoint(Math.Clamp(x, 0d, 100d), y));
+        lastX = Math.Clamp(x, 0d, 100d);
+        lastSpeed = y;
+    }
+
+    private ref double GetLastXReference(ObservableCollection<ObservablePoint> target)
+    {
+        if (ReferenceEquals(target, WriteSeriesValues))
+        {
+            return ref _lastWriteX;
+        }
+
+        return ref _lastReadX;
+    }
+
+    private ref double GetLastSpeedReference(ObservableCollection<ObservablePoint> target)
+    {
+        if (ReferenceEquals(target, WriteSeriesValues))
+        {
+            return ref _lastWriteSpeed;
+        }
+
+        return ref _lastReadSpeed;
+    }
+
+    private void TriggerSamplePulse(bool isWrite)
+    {
+        _samplePulseSequence++;
+        IsWriteSamplePulseVisible = isWrite;
+        IsReadSamplePulseVisible = !isWrite;
+    }
+
     private void UpdateStatisticsIncremental(double speed)
     {
         CurrentSpeed = speed;
+        _combinedSpeedSum += speed;
+        _combinedSpeedSamples++;
+        _minSpeed = Math.Min(_minSpeed, speed);
+        MaxSpeed = Math.Max(_maxSpeed, speed);
+        AvgSpeed = _combinedSpeedSamples == 0 ? 0 : _combinedSpeedSum / _combinedSpeedSamples;
 
-        if (speed > 1.0)
+        if (_currentPhase == 0)
         {
-
-            if (speed < _minSpeed || _minSpeed == double.MaxValue)
-            {
-                _minSpeed = speed;
-                OnPropertyChanged(nameof(MinSpeed));
-                OnPropertyChanged(nameof(MinSpeedLineY));
-            }
-
-            if (speed > _maxSpeed)
-            {
-                _maxSpeed = speed;
-                OnPropertyChanged(nameof(MaxSpeed));
-                OnPropertyChanged(nameof(MaxSpeedLineY));
-            }
-
-            _combinedSpeedSum += speed;
-            _combinedSpeedSamples++;
-            AvgSpeed = _combinedSpeedSum / _combinedSpeedSamples;
-            OnPropertyChanged(nameof(AvgSpeedLineY));
-
-            EnsureDisplayMaxSpeed(speed);
-
-            if (_currentPhase == 0)
-            {
-                WriteCurrentSpeed = speed;
-                if (speed < _writeMinSpeed || _writeMinSpeed == double.MaxValue)
-                {
-                    _writeMinSpeed = speed;
-                    OnPropertyChanged(nameof(WriteMinSpeed));
-                }
-
-                if (speed > _writeMaxSpeed)
-                {
-                    _writeMaxSpeed = speed;
-                    OnPropertyChanged(nameof(WriteMaxSpeed));
-                }
-
-                _writeSpeedSum += speed;
-                _writeSpeedSamples++;
-                WriteAvgSpeed = _writeSpeedSum / _writeSpeedSamples;
-            }
-            else
-            {
-                ReadCurrentSpeed = speed;
-                if (speed < _readMinSpeed || _readMinSpeed == double.MaxValue)
-                {
-                    _readMinSpeed = speed;
-                    OnPropertyChanged(nameof(ReadMinSpeed));
-                }
-
-                if (speed > _readMaxSpeed)
-                {
-                    _readMaxSpeed = speed;
-                    OnPropertyChanged(nameof(ReadMaxSpeed));
-                }
-
-                _readSpeedSum += speed;
-                _readSpeedSamples++;
-                ReadAvgSpeed = _readSpeedSum / _readSpeedSamples;
-            }
+            WriteCurrentSpeed = speed;
+            _writeSpeedSum += speed;
+            _writeSpeedSamples++;
+            _writeMinSpeed = Math.Min(_writeMinSpeed, speed);
+            WriteMaxSpeed = Math.Max(_writeMaxSpeed, speed);
+            WriteAvgSpeed = _writeSpeedSamples == 0 ? 0 : _writeSpeedSum / _writeSpeedSamples;
+            OnPropertyChanged(nameof(WriteMinSpeed));
+        }
+        else
+        {
+            ReadCurrentSpeed = speed;
+            _readSpeedSum += speed;
+            _readSpeedSamples++;
+            _readMinSpeed = Math.Min(_readMinSpeed, speed);
+            ReadMaxSpeed = Math.Max(_readMaxSpeed, speed);
+            ReadAvgSpeed = _readSpeedSamples == 0 ? 0 : _readSpeedSum / _readSpeedSamples;
+            OnPropertyChanged(nameof(ReadMinSpeed));
         }
 
         if (CurrentTemperature > 0)
         {
-            if (CurrentTemperature < _minTemperature || _minTemperature == int.MaxValue)
+            _minTemperature = Math.Min(_minTemperature, CurrentTemperature);
+            _maxTemperature = Math.Max(_maxTemperature, CurrentTemperature);
+            OnPropertyChanged(nameof(MinTemperature));
+            OnPropertyChanged(nameof(MaxTemperature));
+        }
+
+        var measuredMax = Math.Max(speed, Math.Max(_writeMaxSpeed, _readMaxSpeed));
+        var displayMax = Math.Max(50d, Math.Ceiling(measuredMax * 1.1d / 10d) * 10d);
+        if (Math.Abs(DisplayMaxSpeed - displayMax) > double.Epsilon)
+        {
+            DisplayMaxSpeed = displayMax;
+            if (SpeedYAxes.Length > 0)
             {
-                _minTemperature = CurrentTemperature;
-                OnPropertyChanged(nameof(MinTemperature));
+                SpeedYAxes[0].MaxLimit = displayMax;
             }
 
-            if (CurrentTemperature > _maxTemperature)
-            {
-                _maxTemperature = CurrentTemperature;
-                OnPropertyChanged(nameof(MaxTemperature));
-            }
-        }
-    }
-
-    private void EnsureDisplayMaxSpeed(double observedSpeed)
-    {
-        if (observedSpeed <= 0)
-        {
-            return;
+            OnPropertyChanged(nameof(DisplayMaxSpeed));
         }
 
-        var requiredMax = Math.Max(10, Math.Ceiling(observedSpeed * 1.10));
-        if (requiredMax <= DisplayMaxSpeed)
-        {
-            return;
-        }
-
-        DisplayMaxSpeed = requiredMax;
-        OnPropertyChanged(nameof(DisplayMaxSpeed));
-        OnPropertyChanged(nameof(MinSpeedLineY));
+        OnPropertyChanged(nameof(MinSpeed));
         OnPropertyChanged(nameof(MaxSpeedLineY));
+        OnPropertyChanged(nameof(MinSpeedLineY));
         OnPropertyChanged(nameof(AvgSpeedLineY));
-
-        if (SpeedYAxes.Length > 0)
-        {
-            SpeedYAxes[0].MaxLimit = DisplayMaxSpeed;
-            OnPropertyChanged(nameof(SpeedYAxes));
-        }
     }
 
-    private void UpdateXAxisLimits(double _)
+    private void UpdateXAxisLimits(double fallbackMaxPercent)
     {
         if (SpeedXAxes.Length == 0)
         {
@@ -944,291 +881,213 @@ public partial class SurfaceTestViewModel : ViewModelBase, INavigableViewModel, 
         }
 
         var axis = SpeedXAxes[0];
+        var maxObservedPercent = Math.Clamp(Math.Max(fallbackMaxPercent, CurrentDataPercent), 0d, 100d);
+        double minLimit = 0d;
+        double maxLimit = Math.Max(100d, maxObservedPercent);
 
-        if (!IsDataWindowZoomEnabled)
+        if (IsDataWindowZoomEnabled)
         {
-            axis.MinLimit = 0;
-            axis.MaxLimit = 100;
-            OnPropertyChanged(nameof(SpeedXAxes));
-            return;
+            var windowPercent = ZoomWindowModeIndex == 0
+                ? Math.Clamp((ZoomWindowGb * GbInBytes / Math.Max(_currentPhaseTotalBytes, 1L)) * 100d, 0.5d, 100d)
+                : Math.Clamp(ZoomWindowPercent, 0.5d, 100d);
+
+            minLimit = Math.Max(0d, CurrentDataPercent - windowPercent);
+            maxLimit = Math.Min(100d, minLimit + windowPercent);
+
+            if (maxLimit - minLimit < windowPercent)
+            {
+                minLimit = Math.Max(0d, maxLimit - windowPercent);
+            }
         }
 
-        var windowPercent = GetZoomWindowPercent();
-        var halfWindow = windowPercent / 2d;
-
-        var min = CurrentDataPercent - halfWindow;
-        var max = CurrentDataPercent + halfWindow;
-
-        if (min < 0)
-        {
-            max = Math.Min(100, max - min);
-            min = 0;
-        }
-
-        if (max > 100)
-        {
-            min = Math.Max(0, min - (max - 100));
-            max = 100;
-        }
-
-        axis.MinLimit = min;
-        axis.MaxLimit = max;
-
+        axis.MinLimit = minLimit;
+        axis.MaxLimit = maxLimit;
         OnPropertyChanged(nameof(SpeedXAxes));
     }
 
-    private double GetZoomWindowPercent()
+    private void ResetTestState()
     {
-        if (IsZoomByPercent)
+        SpeedHistory.Clear();
+        WriteSpeedHistory.Clear();
+        ReadSpeedHistory.Clear();
+        TemperatureHistory.Clear();
+        WriteSeriesValues.Clear();
+        ReadSeriesValues.Clear();
+
+        WriteProgress = 0;
+        VerifyProgress = 0;
+        CurrentSpeed = 0;
+        _minSpeed = double.MaxValue;
+        _maxSpeed = 0;
+        _avgSpeed = 0;
+        _combinedSpeedSum = 0;
+        _combinedSpeedSamples = 0;
+
+        WriteCurrentSpeed = 0;
+        _writeMinSpeed = double.MaxValue;
+        _writeMaxSpeed = 0;
+        _writeAvgSpeed = 0;
+        _writeSpeedSum = 0;
+        _writeSpeedSamples = 0;
+
+        ReadCurrentSpeed = 0;
+        _readMinSpeed = double.MaxValue;
+        _readMaxSpeed = 0;
+        _readAvgSpeed = 0;
+        _readSpeedSum = 0;
+        _readSpeedSamples = 0;
+
+        CurrentTemperature = 35;
+        _minTemperature = int.MaxValue;
+        _maxTemperature = 0;
+        ErrorCount = 0;
+        TimeRemaining = "00:00:00";
+        CurrentDataPercent = 0;
+        DisplayMaxSpeed = 50;
+        _currentPhase = 0;
+        _currentPhaseTotalBytes = Math.Max(SelectedDrive?.TotalSize ?? 0L, 1L);
+        _testStartTime = DateTime.UtcNow;
+        _phaseStartedAtUtc = _testStartTime;
+        _writePhaseMaxElapsedSeconds = 0;
+        _readPhaseMaxElapsedSeconds = 0;
+
+        _writeBucketStart = -1;
+        _writeBucketSum = 0;
+        _writeBucketCount = 0;
+        _readBucketStart = -1;
+        _readBucketSum = 0;
+        _readBucketCount = 0;
+        _lastWriteX = double.MinValue;
+        _lastReadX = double.MinValue;
+        _lastWriteSpeed = 0;
+        _lastReadSpeed = 0;
+        _samplePulseSequence = 0;
+        IsWriteSamplePulseVisible = false;
+        IsReadSamplePulseVisible = false;
+
+        if (SpeedYAxes.Length > 0)
         {
-            return Math.Clamp(ZoomWindowPercent, 0.5, 100);
+            SpeedYAxes[0].MaxLimit = DisplayMaxSpeed;
         }
 
-        if (_currentPhaseTotalBytes <= 0)
-        {
-            return 100;
-        }
-
-        var windowBytes = ZoomWindowGb * GbInBytes;
-        if (windowBytes <= 0)
-        {
-            return 100;
-        }
-
-        var percent = (windowBytes / _currentPhaseTotalBytes) * 100d;
-        return Math.Clamp(percent, 0.5, 100d);
-    }
-
-    private void ClearSpeedHistory()
-    {
-        Dispatcher.UIThread.Post(() => 
-        {
-            SpeedHistory.Clear();
-            WriteSpeedHistory.Clear();
-            ReadSpeedHistory.Clear();
-            TemperatureHistory.Clear();
-            WriteSeriesValues.Clear();
-            ReadSeriesValues.Clear();
-            _writeBucketStart = -1;
-            _writeBucketSum = 0;
-            _writeBucketCount = 0;
-            _readBucketStart = -1;
-            _readBucketSum = 0;
-            _readBucketCount = 0;
-            _lastWriteX = double.MinValue;
-            _lastReadX = double.MinValue;
-            _lastWriteSpeed = 0;
-            _lastReadSpeed = 0;
-            _phaseStartedAtUtc = _testStartTime;
-            _writePhaseMaxElapsedSeconds = 0;
-            _readPhaseMaxElapsedSeconds = 0;
-            _currentPhaseTotalBytes = 1;
-            CurrentDataPercent = 0;
-            _samplePulseSequence = 0;
-            IsWriteSamplePulseVisible = false;
-            IsReadSamplePulseVisible = false;
-
-             // Combined stats
-            _minSpeed = double.MaxValue;
-            _maxSpeed = 0;
-            AvgSpeed = 0;
-            _combinedSpeedSum = 0;
-            _combinedSpeedSamples = 0;
-            
-            // Write phase stats
-            _writeMinSpeed = double.MaxValue;
-            _writeMaxSpeed = 0;
-            _writeAvgSpeed = 0;
-            _writeCurrentSpeed = 0;
-            _writeSpeedSum = 0;
-            _writeSpeedSamples = 0;
-            
-            // Read phase stats
-            _readMinSpeed = double.MaxValue;
-            _readMaxSpeed = 0;
-            _readAvgSpeed = 0;
-            _readCurrentSpeed = 0;
-            _readSpeedSum = 0;
-            _readSpeedSamples = 0;
-            
-            // Temperature
-            _minTemperature = int.MaxValue;
-            _maxTemperature = 0;
-            DisplayMaxSpeed = 50;
-            DisplayMaxTemperature = 80;
-
-            if (SpeedYAxes.Length > 0)
-            {
-                SpeedYAxes[0].MinLimit = 0;
-                SpeedYAxes[0].MaxLimit = DisplayMaxSpeed;
-            }
-
-            UpdateXAxisLimits(0);
-            
-            // Notify all properties
-            OnPropertyChanged(nameof(MinSpeed));
-            OnPropertyChanged(nameof(MaxSpeed));
-            OnPropertyChanged(nameof(AvgSpeed));
-            OnPropertyChanged(nameof(DisplayMaxSpeed));
-            OnPropertyChanged(nameof(WriteMinSpeed));
-            OnPropertyChanged(nameof(WriteMaxSpeed));
-            OnPropertyChanged(nameof(WriteAvgSpeed));
-            OnPropertyChanged(nameof(WriteCurrentSpeed));
-            OnPropertyChanged(nameof(ReadMinSpeed));
-            OnPropertyChanged(nameof(ReadMaxSpeed));
-            OnPropertyChanged(nameof(ReadAvgSpeed));
-            OnPropertyChanged(nameof(ReadCurrentSpeed));
-            OnPropertyChanged(nameof(ChartPointCount));
-            OnPropertyChanged(nameof(SpeedYAxes));
-            OnPropertyChanged(nameof(MinSpeedLineY));
-            OnPropertyChanged(nameof(MaxSpeedLineY));
-            OnPropertyChanged(nameof(AvgSpeedLineY));
-        });
+        UpdateXAxisLimits(100);
+        OnPropertyChanged(nameof(MinSpeed));
+        OnPropertyChanged(nameof(MaxTemperature));
+        OnPropertyChanged(nameof(MinTemperature));
+        OnPropertyChanged(nameof(WriteMinSpeed));
+        OnPropertyChanged(nameof(ReadMinSpeed));
+        OnPropertyChanged(nameof(DisplayMaxSpeed));
+        OnPropertyChanged(nameof(ChartPointCount));
+        OnPropertyChanged(nameof(MaxSpeedLineY));
+        OnPropertyChanged(nameof(MinSpeedLineY));
+        OnPropertyChanged(nameof(AvgSpeedLineY));
     }
 
     [RelayCommand]
-    private async Task ChangeDisk()
+    private async Task StartTestAsync()
     {
-        if (IsTesting || SelectedDrive == null || IsLoadingDrives) return;
-        
-        var lockedDisks = await _settingsService.GetLockedDisksAsync();
-        IsLocked = lockedDisks.Any(p => IsSameDisk(p, SelectedDrive.Path)) || SelectedDrive.IsSystemDisk;
-        
-        _selectedDiskService.SelectedDisk = SelectedDrive;
-        _selectedDiskService.SelectedDiskDisplayName = SelectedDrive.Name;
-        _selectedDiskService.IsSelectedDiskLocked = IsLocked;
-    }
-
-    [RelayCommand]
-    private async Task StartTest()
-    {
-        if (IsTesting || SelectedDrive == null) return;
+        if (SelectedDrive == null || IsTesting || IsLoadingDrives || IsLocked)
+        {
+            return;
+        }
 
         var profile = TestProfiles.FirstOrDefault(p => p.IsSelected);
-        if (profile == null) { StatusMessage = "Vyberte typ testu"; return; }
-
-        var isLocked = await _settingsService.IsDiskLockedAsync(SelectedDrive.Path);
-        
-        if (profile.IsDestructive && isLocked)
+        if (profile == null)
         {
-            await _dialogService.ShowErrorAsync("Disk zamknut", "Tento disk je zamknut a nelze provést sanitizaci.");
+            StatusMessage = "Nebyl vybrán profil testu";
             return;
         }
 
         if (profile.IsDestructive)
         {
             var confirmed = await _dialogService.ShowDangerConfirmationAsync(
-                "☠ DESTRUKTIVNÍ OPERACE",
-                $"OPRAVDU CHCETE PŘEPISAT DISK: {SelectedDrive.Name ?? SelectedDrive.Path}?\n\n" +
-                $"Všechna data na disku budou NAVŽDY SMAZÁNA!\n" +
-                $"Tato operace je NEVRATNÁ!");
-            
+                "Potvrzení sanitizace",
+                $"Vybraný profil \"{profile.Name}\" přepíše obsah disku {SelectedDrive.Name ?? SelectedDrive.Path}. Pokračovat?");
             if (!confirmed)
             {
-                await _dialogService.ShowInfoAsync("Operace zrušena", "Sanitizace disku byla zrušena.");
+                StatusMessage = "Sanitizace byla zrušena uživatelem";
                 return;
             }
         }
 
-        if (!profile.IsDestructive && isLocked)
-        {
-            await _dialogService.ShowWarningAsync("Disk zamknut", "Tento disk je zamknut. Test nebude možné spustit.");
-            return;
-        }
-
-        IsTesting = true;
-        StatusMessage = "Spouštím test...";
-        ErrorCount = 0;
-        WriteProgress = 0;
-        VerifyProgress = 0;
-        _testStartTime = DateTime.UtcNow;
-        _phaseStartedAtUtc = _testStartTime;
-        _writePhaseMaxElapsedSeconds = 0;
-        _readPhaseMaxElapsedSeconds = 0;
-        _currentPhaseTotalBytes = 1;
-        CurrentDataPercent = 0;
-        _currentPhase = 0; // Start with Write phase
+        _testCancellation?.Dispose();
         _testCancellation = new CancellationTokenSource();
-        ClearSpeedHistory();
+        var cancellationToken = _testCancellation.Token;
 
-        SanitizationResult? sanitizationResult = null;
-        string? sanitizationSuccessMessage = null;
-        string? sanitizationErrorContext = null;
+        ResetTestState();
+        IsTesting = true;
+        StatusMessage = profile.IsDestructive ? "Spouštím sanitizaci disku..." : "Spouštím test povrchu...";
 
         try
         {
+            var smartSnapshot = await CaptureSmartSnapshotAsync(cancellationToken);
+
             if (profile.IsDestructive)
             {
-                (sanitizationResult, sanitizationSuccessMessage, sanitizationErrorContext) = 
-                    await RunSanitizationAsync(_testCancellation.Token);
+                var sanitizationOutcome = await RunSanitizationAsync(smartSnapshot, cancellationToken);
+                var result = sanitizationOutcome.result;
+                var successMessage = sanitizationOutcome.successMessage;
+                var errorContext = sanitizationOutcome.errorContext;
+                if (result?.Success == true && !string.IsNullOrWhiteSpace(successMessage))
+                {
+                    await _dialogService.ShowSuccessAsync("Sanitizace dokončena", successMessage);
+                }
+                else if (result?.Success == false)
+                {
+                    await _dialogService.ShowErrorAsync("Chyba sanitizace", errorContext ?? result.ErrorMessage ?? "Sanitizace selhala.");
+                }
             }
             else
             {
-                await RunTestAsync(_testCancellation.Token);
+                await RunTestAsync(smartSnapshot, cancellationToken);
             }
         }
         catch (OperationCanceledException)
         {
-            StatusMessage = "Test zrušen uživatelem";
+            StatusMessage = "Test zrušen";
         }
-        catch (Exception ex)
+        catch (InvalidOperationException ex)
         {
-            StatusMessage = $"Chyba: {ex.Message}";
+            StatusMessage = ex.Message;
             await _dialogService.ShowErrorAsync("Chyba", ex.Message);
         }
-        finally 
-        { 
-            await Dispatcher.UIThread.InvokeAsync(() =>
-            {
-                FlushPhaseBucket(0);
-                FlushPhaseBucket(1);
-                OnPropertyChanged(nameof(ChartPointCount));
-            });
-
+        catch (IOException ex)
+        {
+            StatusMessage = ex.Message;
+            await _dialogService.ShowErrorAsync("Chyba", ex.Message);
+        }
+        finally
+        {
+            FlushPhaseBucket(_currentPhase);
             IsTesting = false;
+            CurrentSpeed = 0;
+            IsWriteSamplePulseVisible = false;
+            IsReadSamplePulseVisible = false;
             _testCancellation?.Dispose();
             _testCancellation = null;
-        }
-
-        // Show sanitization result dialog AFTER all cleanup is done
-        if (sanitizationResult != null)
-        {
-            if (sanitizationResult.Success)
-            {
-                // Show error dialog first if card saving failed
-                if (!string.IsNullOrWhiteSpace(sanitizationErrorContext))
-                {
-                    await _dialogService.ShowErrorAsync("Uložení karty selhalo", sanitizationErrorContext);
-                }
-                
-                // Then show success dialog with results
-                if (!string.IsNullOrWhiteSpace(sanitizationSuccessMessage))
-                {
-                    await _dialogService.ShowSuccessAsync("Sanitizace dokončena", sanitizationSuccessMessage);
-                }
-            }
-            else
-            {
-                await _dialogService.ShowErrorAsync("Sanitizace selhala", sanitizationResult.ErrorMessage ?? "Neznámá chyba");
-            }
+            UpdateXAxisLimits(Math.Max(CurrentDataPercent, 100));
+            OnPropertyChanged(nameof(CanStartTest));
         }
     }
 
-    private async Task<(SanitizationResult? result, string? successMessage, string? errorContext)> RunSanitizationAsync(CancellationToken cancellationToken)
+    private async Task<(SanitizationResult? result, string? successMessage, string? errorContext)> RunSanitizationAsync(SmartaData? smartSnapshot, CancellationToken cancellationToken)
     {
         if (SelectedDrive == null) return (null, null, null);
 
-        var progress = new Progress<SanitizationProgress>(p =>
+        var progress = new CallbackProgress<SanitizationProgress>(p =>
         {
-            // Check for cancellation
             if (cancellationToken.IsCancellationRequested)
+            {
                 return;
-            
-            Dispatcher.UIThread.Post(() =>
+            }
+
+            void ApplyProgress()
             {
                 if (cancellationToken.IsCancellationRequested)
+                {
                     return;
-                
+                }
+
                 // Detect phase from status message
                 var isReadPhase = p.Phase.Contains("Čtení") || p.Phase.Contains("ověření") || p.Phase.Contains("Read");
                 var isWritePhase = p.Phase.Contains("Zápis") || p.Phase.Contains("Write");
@@ -1245,7 +1104,7 @@ public partial class SurfaceTestViewModel : ViewModelBase, INavigableViewModel, 
                 {
                     StatusMessage = p.Phase;
                 }
-                
+
                 // Set phase BEFORE adding speed points
                 if (isReadPhase && _currentPhase != 1)
                 {
@@ -1285,7 +1144,15 @@ public partial class SurfaceTestViewModel : ViewModelBase, INavigableViewModel, 
                 {
                     ErrorCount = p.Errors;
                 }
-            });
+            }
+
+            if (Dispatcher.UIThread.CheckAccess())
+            {
+                ApplyProgress();
+                return;
+            }
+
+            Dispatcher.UIThread.Post(ApplyProgress);
         });
 
         // Note: Sanitization cannot be safely cancelled once started
@@ -1315,7 +1182,7 @@ public partial class SurfaceTestViewModel : ViewModelBase, INavigableViewModel, 
             string? errorContext = null;
             try
             {
-                var card = await _cardTestService.GetOrCreateCardAsync(SelectedDrive!, cancellationToken);
+                var card = await _cardTestService.GetOrCreateCardAsync(SelectedDrive!, smartSnapshot, cancellationToken);
 
                 // Collect write samples with proper timestamps and progress
                 var writeSamples = await Dispatcher.UIThread.InvokeAsync(() =>
@@ -1351,7 +1218,7 @@ public partial class SurfaceTestViewModel : ViewModelBase, INavigableViewModel, 
                     return samples;
                 });
 
-                await _cardTestService.SaveSanitizationAsync(card, result, writeSamples, readSamples, cancellationToken);
+                await _cardTestService.SaveSanitizationAsync(card, result, writeSamples, readSamples, smartSnapshot, cancellationToken);
                 
                 StatusMessage = $"Sanitizace uložena - {card.ModelName}";
             }
@@ -1397,7 +1264,7 @@ public partial class SurfaceTestViewModel : ViewModelBase, INavigableViewModel, 
         }
     }
 
-    private async Task RunTestAsync(CancellationToken cancellationToken)
+    private async Task RunTestAsync(SmartaData? smartSnapshot, CancellationToken cancellationToken)
     {
         StatusMessage = "Spouštím test povrchu...";
         
@@ -1565,11 +1432,11 @@ public partial class SurfaceTestViewModel : ViewModelBase, INavigableViewModel, 
             
             // Save to disk card
             System.Diagnostics.Debug.WriteLine($"[SurfaceTest] Getting or creating disk card...");
-            var card = await _cardTestService.GetOrCreateCardAsync(SelectedDrive!, cancellationToken);
+            var card = await _cardTestService.GetOrCreateCardAsync(SelectedDrive!, smartSnapshot, cancellationToken);
             System.Diagnostics.Debug.WriteLine($"[SurfaceTest] Card created/found: ID={card.Id}, Model={card.ModelName}");
             
             System.Diagnostics.Debug.WriteLine($"[SurfaceTest] Saving surface test result...");
-            var testSession = await _cardTestService.SaveSurfaceTestAsync(card, result, cancellationToken: cancellationToken);
+            var testSession = await _cardTestService.SaveSurfaceTestAsync(card, result, smartSnapshot, cancellationToken);
             System.Diagnostics.Debug.WriteLine($"[SurfaceTest] Test result saved successfully");
 
             await TrySendCompletionEmailAsync(result, card, testSession, cancellationToken);
@@ -1657,6 +1524,52 @@ public partial class SurfaceTestViewModel : ViewModelBase, INavigableViewModel, 
         catch (IOException)
         {
             StatusMessage = "Test dokončen. E-mail s certifikátem se nepodařilo připravit.";
+        }
+    }
+
+    /// <summary>
+    /// Načte SMART snapshot před spuštěním testu pro správnou identitu disku a hodnocení.
+    /// </summary>
+    private async Task<SmartaData?> CaptureSmartSnapshotAsync(CancellationToken cancellationToken)
+    {
+        if (SelectedDrive == null)
+        {
+            return null;
+        }
+
+        try
+        {
+            var snapshot = await _smartCheckService.GetSmartaDataWithRetryAsync(SelectedDrive, cancellationToken: cancellationToken);
+            if (snapshot == null)
+            {
+                return null;
+            }
+
+            if (!string.IsNullOrWhiteSpace(snapshot.SerialNumber))
+            {
+                SelectedDrive.SerialNumber = snapshot.SerialNumber;
+            }
+
+            if (!string.IsNullOrWhiteSpace(snapshot.FirmwareVersion))
+            {
+                SelectedDrive.FirmwareVersion = snapshot.FirmwareVersion;
+            }
+
+            if (!string.IsNullOrWhiteSpace(snapshot.DeviceModel) && string.IsNullOrWhiteSpace(SelectedDrive.Model))
+            {
+                SelectedDrive.Model = snapshot.DeviceModel;
+            }
+
+            return snapshot;
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            StatusMessage = $"SMART snapshot před testem se nepodařilo načíst: {ex.Message}";
+            return null;
         }
     }
 
@@ -1777,5 +1690,15 @@ public partial class SurfaceTestViewModel : ViewModelBase, INavigableViewModel, 
         }
 
         return $"{percent:F0}% - {capacityText}";
+    }
+
+    private sealed class CallbackProgress<T>(Action<T> callback) : IProgress<T>
+    {
+        private readonly Action<T> _callback = callback ?? throw new ArgumentNullException(nameof(callback));
+
+        public void Report(T value)
+        {
+            _callback(value);
+        }
     }
 }

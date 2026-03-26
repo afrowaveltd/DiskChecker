@@ -503,10 +503,13 @@ start=2048, type=0FC63DAF-8483-4772-8E79-3D69D8477DE4, bootable
             await process.StandardInput.WriteAsync(script);
             process.StandardInput.Close();
 
-            var output = await process.StandardOutput.ReadToEndAsync(cancellationToken);
-            var error = await process.StandardError.ReadToEndAsync(cancellationToken);
+            // Read output and wait for exit in parallel to avoid deadlock
+            var outputTask = process.StandardOutput.ReadToEndAsync(cancellationToken);
+            var errorTask = process.StandardError.ReadToEndAsync(cancellationToken);
             await process.WaitForExitAsync(cancellationToken);
-
+            
+            var output = await outputTask;
+            var error = await errorTask;
             if (process.ExitCode != 0)
             {
                 result.ErrorMessage = $"sfdisk selhal: {error}";

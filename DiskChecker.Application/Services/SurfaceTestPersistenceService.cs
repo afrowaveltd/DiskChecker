@@ -135,7 +135,7 @@ public class SurfaceTestPersistenceService
    // Also save to disk card for card view
    try
    {
-      var card = await _cardTestService.GetOrCreateCardAsync(drive, cancellationToken);
+      var card = await _cardTestService.GetOrCreateCardAsync(drive, cancellationToken: cancellationToken);
       await _cardTestService.SaveSurfaceTestAsync(card, result, cancellationToken: cancellationToken);
    }
    catch(Exception ex)
