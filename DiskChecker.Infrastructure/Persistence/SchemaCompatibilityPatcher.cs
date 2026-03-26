@@ -41,6 +41,7 @@ public static class SchemaCompatibilityPatcher
         {
             EnsureColumn(dbContext, "DiskCards", "PowerOnHours");
             EnsureColumn(dbContext, "DiskCards", "PowerCycleCount");
+            EnsureIndex(dbContext, "IX_DiskCards_DevicePath", "DiskCards", "DevicePath");
         }
     }
 
@@ -168,5 +169,32 @@ public static class SchemaCompatibilityPatcher
         }
 
         return false;
+    }
+
+    private static void EnsureIndex(DiskCheckerDbContext dbContext, string indexName, string tableName, string columnName)
+    {
+        if (!TableExists(dbContext, tableName))
+        {
+            return;
+        }
+
+        var connection = dbContext.Database.GetDbConnection();
+        if (connection.State != System.Data.ConnectionState.Open)
+        {
+            connection.Open();
+        }
+
+        using var command = connection.CreateCommand();
+        command.CommandText = "SELECT 1 FROM sqlite_master WHERE type = 'index' AND name = $name LIMIT 1;";
+        var parameter = command.CreateParameter();
+        parameter.ParameterName = "$name";
+        parameter.Value = indexName;
+        command.Parameters.Add(parameter);
+
+        var exists = command.ExecuteScalar() != null;
+        if (!exists)
+        {
+            dbContext.Database.ExecuteSqlRaw($"CREATE INDEX IF NOT EXISTS {indexName} ON {tableName}({columnName});");
+        }
     }
 }

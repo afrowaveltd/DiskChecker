@@ -875,21 +875,19 @@ public class DiskCardTestService
 
     private static bool HasReliableSerialNumber(string? serialNumber)
     {
-        return !string.IsNullOrWhiteSpace(serialNumber) &&
-               !serialNumber.StartsWith("NOSN-", StringComparison.OrdinalIgnoreCase) &&
-               !string.Equals(serialNumber, "Unknown", StringComparison.OrdinalIgnoreCase);
+        return DriveIdentityResolver.IsReliableSerialNumber(serialNumber);
     }
 
     private static string GetPreferredSerialNumber(CoreDriveInfo drive, SmartaData? smartaData)
     {
         if (HasReliableSerialNumber(smartaData?.SerialNumber))
         {
-            return smartaData!.SerialNumber.Trim();
+            return DriveIdentityResolver.NormalizeSerial(smartaData!.SerialNumber);
         }
 
         if (HasReliableSerialNumber(drive.SerialNumber))
         {
-            return drive.SerialNumber!.Trim();
+            return DriveIdentityResolver.NormalizeSerial(drive.SerialNumber);
         }
 
         return string.Empty;

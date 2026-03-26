@@ -19,10 +19,8 @@ public static class SmartctlJsonParser
             using var doc = JsonDocument.Parse(json);
             return Parse(doc.RootElement);
         }
-        catch (Exception ex)
+        catch (Exception)
         {
-            Console.WriteLine($"[SmartctlJsonParser] Parse ERROR: {ex.Message}");
-            Console.WriteLine($"[SmartctlJsonParser] JSON preview: {(json.Length > 500 ? json.Substring(0, 500) : json)}");
             return null;
         }
     }
@@ -33,10 +31,6 @@ public static class SmartctlJsonParser
         {
             var result = new SmartCheckResult();
             
-            // Debug: Log JSON structure keys
-            var rootKeys = string.Join(", ", root.EnumerateObject().Select(p => p.Name).Take(20));
-            Console.WriteLine($"[SmartctlJsonParser] JSON root properties: {rootKeys}");
-            
             // Detect device type
             var deviceType = GetDeviceType(root);
             result.DeviceType = deviceType switch
@@ -46,7 +40,6 @@ public static class SmartctlJsonParser
                 _ => "SATA/ATA"
             };
             
-            Console.WriteLine($"[SmartctlJsonParser] DeviceType detected: {result.DeviceType}");
             
             // Parse SMART status
             if (root.TryGetProperty("smart_status", out var smartStatus) &&
@@ -114,10 +107,8 @@ public static class SmartctlJsonParser
             
             return result;
         }
-        catch (Exception ex)
+        catch (Exception)
         {
-            Console.WriteLine($"[SmartctlJsonParser] Parse(JsonElement) ERROR: {ex.Message}");
-            Console.WriteLine($"[SmartctlJsonParser] Stack: {ex.StackTrace}");
             return null;
         }
     }
@@ -180,13 +171,11 @@ public static class SmartctlJsonParser
         // Parse self-test log
         result.SelfTests = ParseAtaSelfTestLog(root);
         
-        Console.WriteLine($"[SmartctlJsonParser] ParseAtaData: SelfTests.Count = {result.SelfTests.Count}");
         
         // Check for currently running self-test in ata_smart_data.self_test.status
         if (root.TryGetProperty("ata_smart_data", out var smartData) &&
             smartData.TryGetProperty("self_test", out var selfTest))
         {
-            Console.WriteLine("[SmartctlJsonParser] Found ata_smart_data.self_test");
             
             if (selfTest.TryGetProperty("status", out var status))
             {
@@ -200,7 +189,6 @@ public static class SmartctlJsonParser
                 var statusVal = status.TryGetProperty("value", out var sv) ? sv.GetInt32() : 0;
                 var statusStr = status.TryGetProperty("string", out var ss) ? (ss.GetString() ?? "") : "";
                 
-                Console.WriteLine($"[SmartctlJsonParser] SELF_TEST: value={statusVal}, string='{statusStr}'");
                 
                 // NON-ZERO value means something is happening
                 // According to smartctl source code and ATA spec:
@@ -219,7 +207,6 @@ public static class SmartctlJsonParser
                      statusStr.ToLowerInvariant().Contains("incomplete")))
                 {
                     isInProgress = true;
-                    Console.WriteLine("[SmartctlJsonParser] Method 1: String indicates in-progress");
                 }
                 // Method 2: Value is non-zero (test running OR previous test error)
                 // For in-progress tests, value is typically 240-255 where lower bits = % remaining
@@ -231,7 +218,6 @@ public static class SmartctlJsonParser
                     {
                         remainingPercent = statusVal & 0x7F; // Lower 7 bits = % remaining (0-100)
                         isInProgress = true;
-                        Console.WriteLine($"[SmartctlJsonParser] Method 2: Value {statusVal} indicates in-progress with {remainingPercent}% remaining");
                     }
                     // Any non-zero value could indicate in-progress or error
                     // If string exists, it's describing the status
@@ -244,14 +230,12 @@ public static class SmartctlJsonParser
                             !statusStr.ToLowerInvariant().Contains("fail"))
                         {
                             isInProgress = true;
-                            Console.WriteLine($"[SmartctlJsonParser] Method 2b: Non-zero value {statusVal} with non-error string, treating as in-progress");
                         }
                     }
                 }
                 
                 if (isInProgress)
                 {
-                    Console.WriteLine($"[SmartctlJsonParser] Setting CurrentSelfTest to InProgress, remaining={remainingPercent}%");
                     
                     // Test is running - find it in the log or create entry
                     if (result.SelfTests.Count > 0)
@@ -286,14 +270,12 @@ public static class SmartctlJsonParser
         }
         else
         {
-            Console.WriteLine("[SmartctlJsonParser] NO ata_smart_data.self_test found");
         }
         
         // Fallback: check first entry in log for in-progress test
         if (result.CurrentSelfTest == null && result.SelfTests.Count > 0 && 
             result.SelfTests[0].Status == SmartaSelfTestStatus.InProgress)
         {
-            Console.WriteLine("[SmartctlJsonParser] Fallback: Found in-progress test in self-test log");
             result.CurrentSelfTest = result.SelfTests[0];
         }
         
@@ -304,7 +286,6 @@ public static class SmartctlJsonParser
             smartStatus.TryGetProperty("passed", out var passed) &&
             !passed.GetBoolean())
         {
-            Console.WriteLine("[SmartctlJsonParser] Fallback 2: smart_status.passed=false, creating InProgress entry");
             result.CurrentSelfTest = new SmartaSelfTestEntry
             {
                 Status = SmartaSelfTestStatus.InProgress,
@@ -388,7 +369,6 @@ public static class SmartctlJsonParser
                         if (val > 0 && val <= 255)
                         {
                             entry.RemainingPercent = val & 0x7F;
-                            Console.WriteLine($"[SmartctlJsonParser] ATA self-test entry: status.value={val}, remaining={entry.RemainingPercent}%");
                         }
                     }
                     
@@ -397,7 +377,6 @@ public static class SmartctlJsonParser
             }
         }
         
-        Console.WriteLine($"[SmartctlJsonParser] ParseAtaSelfTestLog: Found {tests.Count} entries");
         return tests;
     }
     
@@ -456,7 +435,6 @@ public static class SmartctlJsonParser
     {
         if (!root.TryGetProperty("nvme_smart_health_information_log", out var nvme)) return;
         
-        Console.WriteLine("[SmartctlJsonParser] ParseNvmeData: Found nvme_smart_health_information_log");
         
         // Temperature
         if (nvme.TryGetProperty("temperature", out var temp))
@@ -494,19 +472,16 @@ public static class SmartctlJsonParser
         // "nvme_self_test_log": { "current_self_test_operation": { "value": 0, "string": "No self-test in progress" } }
         if (root.TryGetProperty("nvme_self_test_log", out var log))
         {
-            Console.WriteLine("[SmartctlJsonParser] ParseNvmeData: Found nvme_self_test_log");
             
             // Try new format first: current_self_test_operation
             if (log.TryGetProperty("current_self_test_operation", out var currentOp))
             {
-                Console.WriteLine("[SmartctlJsonParser] ParseNvmeData: Found current_self_test_operation");
                 
                 var entry = new SmartaSelfTestEntry { Number = 0 };
                 
                 if (currentOp.TryGetProperty("value", out var valueEl))
                 {
                     var value = valueEl.GetInt32();
-                    Console.WriteLine($"[SmartctlJsonParser] ParseNvmeData: current_self_test_operation.value = {value}");
                     
                     // NVMe spec: value 0 = No test running, 1 = Short test in progress, 2 = Extended test in progress
                     // When value > 0, test is in progress
@@ -519,7 +494,6 @@ public static class SmartctlJsonParser
                         {
                             var completion = compPct.GetInt32();
                             entry.RemainingPercent = 100 - completion;
-                            Console.WriteLine($"[SmartctlJsonParser] ParseNvmeData: completion = {completion}%, remaining = {entry.RemainingPercent}%");
                         }
                         
                         // Get test type from value
@@ -530,7 +504,6 @@ public static class SmartctlJsonParser
                             _ => SmartaSelfTestType.Unknown
                         };
                         
-                        Console.WriteLine($"[SmartctlJsonParser] ParseNvmeData: Test IN PROGRESS, type = {entry.Type}");
                         result.CurrentSelfTest = entry;
                         
                         // Add to self-tests list as first entry
@@ -543,7 +516,6 @@ public static class SmartctlJsonParser
                     else if (currentOp.TryGetProperty("string", out var stringEl))
                     {
                         var statusString = stringEl.GetString() ?? "";
-                        Console.WriteLine($"[SmartctlJsonParser] ParseNvmeData: current_self_test_operation.string = '{statusString}'");
                         
                         // If string contains "in progress", test is running
                         if (statusString.ToLowerInvariant().Contains("in progress"))
@@ -557,7 +529,6 @@ public static class SmartctlJsonParser
                                 entry.RemainingPercent = 100 - pct;
                             }
                             
-                            Console.WriteLine($"[SmartctlJsonParser] ParseNvmeData: Found 'in progress' in string, setting InProgress");
                             result.CurrentSelfTest = entry;
                         }
                     }
@@ -566,7 +537,6 @@ public static class SmartctlJsonParser
             // Legacy format: current_self_test (older smartctl versions)
             else if (log.TryGetProperty("current_self_test", out var currentTest))
             {
-                Console.WriteLine("[SmartctlJsonParser] ParseNvmeData: Found current_self_test (legacy format)");
                 
                 var entry = new SmartaSelfTestEntry { Number = 0 };
                 
@@ -574,7 +544,6 @@ public static class SmartctlJsonParser
                     status.TryGetProperty("value", out var statusVal))
                 {
                     var statusCode = statusVal.GetInt32();
-                    Console.WriteLine($"[SmartctlJsonParser] ParseNvmeData: self_test_status.value = {statusCode}");
                     
                     // CRITICAL: status.value=0 means NO TEST RUNNING, not "completed without error"
                     entry.Status = statusCode switch
@@ -654,17 +623,14 @@ public static class SmartctlJsonParser
         var tests = new List<SmartaSelfTestEntry>();
         if (!root.TryGetProperty("nvme_self_test_log", out var log)) return tests;
         
-        Console.WriteLine("[SmartctlJsonParser] ParseNvmeSelfTestLog: Found nvme_self_test_log");
         
         // Check for current self-test operation (new format: current_self_test_operation)
         if (log.TryGetProperty("current_self_test_operation", out var currentOp))
         {
-            Console.WriteLine("[SmartctlJsonParser] ParseNvmeSelfTestLog: Found current_self_test_operation");
             
             if (currentOp.TryGetProperty("value", out var valueEl))
             {
                 var value = valueEl.GetInt32();
-                Console.WriteLine($"[SmartctlJsonParser] ParseNvmeSelfTestLog: current_self_test_operation.value = {value}");
                 
                 // value > 0 means test is in progress (1=Short, 2=Extended, etc.)
                 if (value > 0)
@@ -686,7 +652,6 @@ public static class SmartctlJsonParser
                         currentEntry.RemainingPercent = 100 - completion;
                     }
                     
-                    Console.WriteLine($"[SmartctlJsonParser] ParseNvmeSelfTestLog: Test IN PROGRESS, type={currentEntry.Type}, remaining={currentEntry.RemainingPercent}%");
                     tests.Insert(0, currentEntry);
                 }
             }
@@ -695,7 +660,6 @@ public static class SmartctlJsonParser
             if (currentOp.TryGetProperty("string", out var stringEl))
             {
                 var statusString = stringEl.GetString() ?? "";
-                Console.WriteLine($"[SmartctlJsonParser] ParseNvmeSelfTestLog: current_self_test_operation.string = '{statusString}'");
                 
                 // If text contains "in progress" but we haven't added a test yet
                 if (statusString.ToLowerInvariant().Contains("in progress") && tests.Count == 0)
@@ -716,7 +680,6 @@ public static class SmartctlJsonParser
         // Legacy format: current_self_test (older smartctl versions)
         else if (log.TryGetProperty("current_self_test", out var currentTest))
         {
-            Console.WriteLine("[SmartctlJsonParser] ParseNvmeSelfTestLog: Found current_self_test (legacy format)");
             
             var currentEntry = new SmartaSelfTestEntry { Number = 0 };
             bool isInProgress = false;
@@ -725,7 +688,6 @@ public static class SmartctlJsonParser
                 status.TryGetProperty("value", out var statusVal))
             {
                 var statusCode = statusVal.GetInt32();
-                Console.WriteLine($"[SmartctlJsonParser] ParseNvmeSelfTestLog: self_test_status.value = {statusCode}");
                 
                 // 0 = No test running, 1 = In progress, 2 = Aborted by user, etc.
                 currentEntry.Status = statusCode switch
@@ -759,7 +721,6 @@ public static class SmartctlJsonParser
             
             if (isInProgress)
             {
-                Console.WriteLine($"[SmartctlJsonParser] ParseNvmeSelfTestLog: Test IN PROGRESS (legacy), type={currentEntry.Type}");
                 tests.Insert(0, currentEntry);
             }
         }
@@ -767,7 +728,6 @@ public static class SmartctlJsonParser
         // Parse historical self-tests from table
         if (log.TryGetProperty("table", out var table))
         {
-            Console.WriteLine("[SmartctlJsonParser] ParseNvmeSelfTestLog: Parsing self_test_log table");
             
             foreach (var t in table.EnumerateArray())
             {
@@ -806,7 +766,6 @@ public static class SmartctlJsonParser
             }
         }
         
-        Console.WriteLine($"[SmartctlJsonParser] ParseNvmeSelfTestLog: Found {tests.Count} entries total");
         
         return tests;
     }

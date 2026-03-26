@@ -57,6 +57,11 @@ public class SmartCheckService
             return null;
         }
 
+        if (DriveIdentityResolver.IsReliableSerialNumber(smartaData.SerialNumber))
+        {
+            drive.SerialNumber = DriveIdentityResolver.NormalizeSerial(smartaData.SerialNumber);
+        }
+
         var rating = _qualityCalculator.CalculateQuality(smartaData);
         IReadOnlyList<SmartaAttributeItem> attributes = Array.Empty<SmartaAttributeItem>();
         SmartaSelfTestStatus? selfTestStatus = null;
@@ -158,7 +163,7 @@ public class SmartCheckService
         // Also save to disk card for card view
         try
         {
-            var card = await _cardTestService.GetOrCreateCardAsync(drive, cancellationToken: cancellationToken);
+            var card = await _cardTestService.GetOrCreateCardAsync(drive, smartaData, cancellationToken);
             await _cardTestService.SaveSmartCheckAsync(card, smartaData, rating, cancellationToken);
         }
         catch (Exception ex)

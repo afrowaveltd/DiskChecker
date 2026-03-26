@@ -71,6 +71,7 @@ public class DiskCheckerDbContext : DbContext
             entity.Property(e => e.LockReason).HasMaxLength(256);
 
             entity.HasIndex(e => e.SerialNumber).IsUnique();
+            entity.HasIndex(e => e.DevicePath);
             entity.HasIndex(e => e.IsArchived);
             entity.HasIndex(e => e.OverallScore);
 

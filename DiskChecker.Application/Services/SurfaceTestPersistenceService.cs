@@ -132,12 +132,19 @@ public class SurfaceTestPersistenceService
       throw;
    }
 
-   // Also save to disk card for card view
-   try
-   {
-      var card = await _cardTestService.GetOrCreateCardAsync(drive, cancellationToken: cancellationToken);
-      await _cardTestService.SaveSurfaceTestAsync(card, result, cancellationToken: cancellationToken);
-   }
+      // Also save to disk card for card view
+    try
+    {
+      var smartSnapshot = new SmartaData
+      {
+          SerialNumber = DriveIdentityResolver.NormalizeSerial(result.DriveSerialNumber),
+          DeviceModel = result.DriveModel ?? drive.Name ?? string.Empty,
+          FirmwareVersion = drive.FirmwareVersion ?? string.Empty
+      };
+
+      var card = await _cardTestService.GetOrCreateCardAsync(drive, smartSnapshot, cancellationToken);
+      await _cardTestService.SaveSurfaceTestAsync(card, result, smartSnapshot, cancellationToken);
+    }
    catch(Exception ex)
    {
       // Log but don't fail - the legacy test record was saved

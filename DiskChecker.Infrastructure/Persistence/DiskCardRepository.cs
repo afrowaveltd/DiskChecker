@@ -65,6 +65,7 @@ public class DiskCardRepository : IDiskCardRepository
     public async Task<List<DiskCard>> GetArchivedAsync()
     {
         return await _context.DiskCards
+            .AsNoTracking()
             .Where(c => c.IsArchived)
             .OrderByDescending(c => c.LastTestedAt)
             .ToListAsync();

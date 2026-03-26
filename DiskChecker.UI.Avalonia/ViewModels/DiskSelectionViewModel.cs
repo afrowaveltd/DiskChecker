@@ -271,6 +271,21 @@ public partial class DiskSelectionViewModel : ViewModelBase, INavigableViewModel
     {
         // Get SMART data for the drive
         var smartData = await _smartaProvider.GetSmartaDataAsync(drive.Path);
+
+        if (DriveIdentityResolver.IsReliableSerialNumber(smartData?.SerialNumber))
+        {
+            drive.SerialNumber = DriveIdentityResolver.NormalizeSerial(smartData!.SerialNumber);
+        }
+
+        if (!string.IsNullOrWhiteSpace(smartData?.FirmwareVersion))
+        {
+            drive.FirmwareVersion = smartData.FirmwareVersion;
+        }
+
+        if (!string.IsNullOrWhiteSpace(smartData?.DeviceModel))
+        {
+            drive.Model = smartData.DeviceModel;
+        }
         
         // Calculate quality rating
         var quality = smartData != null 
@@ -307,7 +322,7 @@ public partial class DiskSelectionViewModel : ViewModelBase, INavigableViewModel
         bool hasTestHistory = false;
         TestSession? latestTest = null;
 
-        var diskCard = await FindDiskCardAsync(drive);
+        var diskCard = await FindDiskCardAsync(drive, smartData);
         if (diskCard != null)
         {
             hasTestHistory = true;
@@ -344,13 +359,23 @@ public partial class DiskSelectionViewModel : ViewModelBase, INavigableViewModel
         return card;
     }
 
-    private async Task<DiskCard?> FindDiskCardAsync(CoreDriveInfo drive)
+    private async Task<DiskCard?> FindDiskCardAsync(CoreDriveInfo drive, SmartaData? smartData = null)
     {
+        var serial = DriveIdentityResolver.IsReliableSerialNumber(smartData?.SerialNumber)
+            ? smartData!.SerialNumber
+            : drive.SerialNumber;
+        var model = !string.IsNullOrWhiteSpace(smartData?.DeviceModel)
+            ? smartData.DeviceModel
+            : drive.Name ?? "Unknown";
+        var firmware = !string.IsNullOrWhiteSpace(smartData?.FirmwareVersion)
+            ? smartData.FirmwareVersion
+            : drive.FirmwareVersion;
+
         var identityKey = DriveIdentityResolver.BuildIdentityKey(
             drive.Path,
-            drive.SerialNumber,
-            drive.Name ?? "Unknown",
-            drive.FirmwareVersion);
+            serial,
+            model,
+            firmware);
 
         var bySerial = await _diskCardRepository.GetBySerialNumberAsync(identityKey);
         if (bySerial != null)

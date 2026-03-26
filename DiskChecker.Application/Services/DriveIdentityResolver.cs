@@ -1,5 +1,6 @@
 using System.Security.Cryptography;
 using System.Text;
+using System.Linq;
 
 namespace DiskChecker.Application.Services;
 
@@ -9,23 +10,33 @@ namespace DiskChecker.Application.Services;
 public static class DriveIdentityResolver
 {
     private const int MaxIdentityLength = 120;
+    private static readonly string[] UnreliableSerialTokens =
+    [
+        "UNKNOWN",
+        "N/A",
+        "NONE",
+        "NOTAVAILABLE",
+        "TOBEFILLED",
+        "NOTSPECIFIED",
+        "SERIALNUMBER"
+    ];
 
     /// <summary>
     /// Builds an identity key from drive information.
     /// </summary>
     public static string BuildIdentityKey(string drivePath, string? serialNumber, string deviceModel, string? firmwareVersion)
     {
-        var normalizedSerial = Normalize(serialNumber);
+        var normalizedSerial = NormalizeSerial(serialNumber);
 
-        if (!string.IsNullOrWhiteSpace(normalizedSerial))
+        if (IsReliableSerialNumber(normalizedSerial))
         {
             return LimitLength(normalizedSerial);
         }
 
         var fingerprint = string.Concat(
-            Normalize(drivePath), "|",
-            Normalize(deviceModel), "|",
-            Normalize(firmwareVersion));
+            NormalizeToken(drivePath), "|",
+            NormalizeToken(deviceModel), "|",
+            NormalizeToken(firmwareVersion));
 
         var hash = ComputeHashHex(fingerprint);
         return $"NOSN-{hash[..24]}";
@@ -34,22 +45,83 @@ public static class DriveIdentityResolver
     internal static string BuildLegacyIdentityKey(string drivePath, string? serialNumber, string deviceModel, string? firmwareVersion)
     {
         // Use serial number as primary identifier if available
-        if (!string.IsNullOrWhiteSpace(serialNumber))
+        var normalizedSerial = NormalizeSerial(serialNumber);
+        if (IsReliableSerialNumber(normalizedSerial))
         {
-            return $"{serialNumber}_{deviceModel}_{firmwareVersion ?? "unknown"}";
+            return $"{normalizedSerial}_{NormalizeToken(deviceModel)}_{NormalizeToken(firmwareVersion)}";
         }
         
         // Fall back to path-based identifier
         if (!string.IsNullOrWhiteSpace(deviceModel))
         {
-            return $"{deviceModel}_{drivePath.Replace("\\", "_").Replace("/", "_")}_{firmwareVersion ?? "unknown"}";
+            return $"{NormalizeToken(deviceModel)}_{NormalizeToken(drivePath).Replace("\\", "_").Replace("/", "_")}_{NormalizeToken(firmwareVersion)}";
         }
         
         // Final fallback to path only
-        return drivePath;
+        return NormalizeToken(drivePath);
     }
 
-    private static string Normalize(string? value) => (value ?? string.Empty).Trim();
+    public static string NormalizeSerial(string? serialNumber)
+    {
+        if (string.IsNullOrWhiteSpace(serialNumber))
+        {
+            return string.Empty;
+        }
+
+        var trimmed = serialNumber.Trim();
+        if (trimmed.Length == 0)
+        {
+            return string.Empty;
+        }
+
+        var sb = new StringBuilder(trimmed.Length);
+        foreach (var ch in trimmed)
+        {
+            if (!char.IsWhiteSpace(ch) && ch != '-' && ch != '_')
+            {
+                sb.Append(char.ToUpperInvariant(ch));
+            }
+        }
+
+        return sb.ToString();
+    }
+
+    public static bool IsReliableSerialNumber(string? serialNumber)
+    {
+        var normalized = NormalizeSerial(serialNumber);
+        if (string.IsNullOrWhiteSpace(normalized))
+        {
+            return false;
+        }
+
+        if (normalized.StartsWith("NOSN", StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
+        if (normalized.Length < 4)
+        {
+            return false;
+        }
+
+        if (UnreliableSerialTokens.Any(t => string.Equals(normalized, t, StringComparison.OrdinalIgnoreCase)))
+        {
+            return false;
+        }
+
+        // Reject obvious placeholders like 00000000 or XXXXXXXX.
+        if (normalized.All(ch => ch == normalized[0]))
+        {
+            return false;
+        }
+
+        return true;
+    }
+
+    private static string NormalizeToken(string? value)
+    {
+        return string.IsNullOrWhiteSpace(value) ? "unknown" : value.Trim();
+    }
 
     private static string LimitLength(string value)
     {

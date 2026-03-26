@@ -1,9 +1,12 @@
 using System.Collections.Concurrent;
 using System.Diagnostics;
+using System.Text.RegularExpressions;
 using System.Text.Json;
+using DiskChecker.Infrastructure.Configuration;
 using DiskChecker.Core.Interfaces;
 using DiskChecker.Core.Models;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 
 namespace DiskChecker.Infrastructure.Hardware;
 
@@ -35,6 +38,17 @@ public class WindowsSmartaProvider : ISmartaProvider, IAdvancedSmartaProvider
     public WindowsSmartaProvider(ILogger<WindowsSmartaProvider>? logger = null)
     {
         _logger = logger;
+    }
+
+    public WindowsSmartaProvider(
+        ILogger<WindowsSmartaProvider>? logger,
+        IOptions<SmartaCacheOptions> cacheOptions)
+    {
+        _logger = logger;
+        if (cacheOptions?.Value != null)
+        {
+            _cacheTtl = TimeSpan.FromMinutes(Math.Max(1, cacheOptions.Value.TtlMinutes));
+        }
     }
 
     public Task SetCacheTtlMinutesAsync(int minutes, CancellationToken cancellationToken = default)
@@ -120,7 +134,6 @@ public class WindowsSmartaProvider : ISmartaProvider, IAdvancedSmartaProvider
             {
                 _logger.LogError("smartctl not found. Cannot start self-test.");
             }
-            Console.WriteLine("[WindowsSmartaProvider] ERROR: smartctl not found");
             return false;
         }
 
@@ -129,7 +142,6 @@ public class WindowsSmartaProvider : ISmartaProvider, IAdvancedSmartaProvider
         var devPath = ConvertToDevicePath(devicePath);
         var args = BuildSmartctlArgs($"-t {smartTestArgument}", devPath, deviceType);
         
-        Console.WriteLine($"[WindowsSmartaProvider] StartSelfTest: {smartctlPath} {args}");
         
         var psi = new ProcessStartInfo
         {
@@ -153,13 +165,6 @@ public class WindowsSmartaProvider : ISmartaProvider, IAdvancedSmartaProvider
             
             var output = await outputTask;
             var error = await errorTask;
-            Console.WriteLine($"[WindowsSmartaProvider] StartSelfTest exit code: {process.ExitCode}");
-            Console.WriteLine($"[WindowsSmartaProvider] Output: {output.Substring(0, Math.Min(200, output.Length))}");
-            if (!string.IsNullOrEmpty(error))
-            {
-                Console.WriteLine($"[WindowsSmartaProvider] Error: {error.Substring(0, Math.Min(200, error.Length))}");
-            }
-            
             if (_logger != null && _logger.IsEnabled(LogLevel.Debug))
             {
                 _logger.LogDebug("smartctl self-test exit code: {ExitCode}, output: {Output}, error: {Error}", 
@@ -199,7 +204,6 @@ public class WindowsSmartaProvider : ISmartaProvider, IAdvancedSmartaProvider
             {
                 _logger.LogError(ex, "Failed to start self-test for {DevicePath}", devicePath);
             }
-            Console.WriteLine($"[WindowsSmartaProvider] EXCEPTION: {ex.Message}");
             return false;
         }
     }
@@ -211,16 +215,30 @@ public class WindowsSmartaProvider : ISmartaProvider, IAdvancedSmartaProvider
     /// </summary>
     private static string ConvertToDevicePath(string windowsPath)
     {
-        var driveNumber = new string(windowsPath.Where(char.IsDigit).ToArray());
-        if (string.IsNullOrEmpty(driveNumber))
+        if (string.IsNullOrWhiteSpace(windowsPath))
         {
-            driveNumber = "0";
+            return "/dev/pd0";
         }
-        
-        // Convert PhysicalDrive number to sdX letter (0=a, 1=b, 2=c, etc.)
-        var index = int.Parse(driveNumber);
-        var sdLetter = (char)('a' + index);
-        return $"/dev/sd{sdLetter}";
+
+        if (windowsPath.StartsWith("/dev/", StringComparison.OrdinalIgnoreCase))
+        {
+            return windowsPath.Trim();
+        }
+
+        // For smartctl on Windows, /dev/pdN maps directly to \\.\PhysicalDriveN.
+        var match = Regex.Match(windowsPath, @"PHYSICALDRIVE(\d+)", RegexOptions.IgnoreCase);
+        if (match.Success && int.TryParse(match.Groups[1].Value, out var physicalDriveNumber))
+        {
+            return $"/dev/pd{physicalDriveNumber}";
+        }
+
+        var digits = new string(windowsPath.Where(char.IsDigit).ToArray());
+        if (int.TryParse(digits, out var fallbackNumber))
+        {
+            return $"/dev/pd{fallbackNumber}";
+        }
+
+        return "/dev/pd0";
     }
     
     private static string DetectDeviceType(string devicePath)
@@ -245,19 +263,15 @@ public class WindowsSmartaProvider : ISmartaProvider, IAdvancedSmartaProvider
 
     public async Task<SmartaSelfTestStatus> GetSelfTestStatusAsync(string devicePath, CancellationToken cancellationToken = default)
     {
-        Console.WriteLine($"[WindowsSmartaProvider] GetSelfTestStatusAsync for: {devicePath}");
         
         var execution = await ExecuteSmartctlCommandAsync(devicePath, "-j -a", cancellationToken);
         if (execution == null || string.IsNullOrWhiteSpace(execution.Value.Output))
         {
-            Console.WriteLine("[WindowsSmartaProvider] GetSelfTestStatusAsync: No output from smartctl");
             return SmartaSelfTestStatus.Unknown;
         }
 
         var result = SmartctlJsonParser.Parse(execution.Value.Output);
         var status = result?.CurrentSelfTest?.Status ?? SmartaSelfTestStatus.Unknown;
-        Console.WriteLine($"[WindowsSmartaProvider] GetSelfTestStatusAsync: Parsed status = {status}");
-        Console.WriteLine($"[WindowsSmartaProvider] CurrentSelfTest = {result?.CurrentSelfTest?.Status}, SelfTests count = {result?.SelfTests?.Count ?? 0}");
         return status;
     }
 
@@ -413,7 +427,6 @@ public class WindowsSmartaProvider : ISmartaProvider, IAdvancedSmartaProvider
             }
         }
 
-        Console.WriteLine($"[WindowsSmartaProvider] ListDrivesAsync: Found {drives.Count} drives");
         return drives;
     }
 
@@ -442,44 +455,36 @@ public class WindowsSmartaProvider : ISmartaProvider, IAdvancedSmartaProvider
         {
             var execution = await ExecuteSmartctlCommandAsync(devicePath, "-j -a", cancellationToken);
             
-            Console.WriteLine($"[WindowsSmartaProvider] ExecuteSmartctlForSmartDataAsync: devicePath={devicePath}");
             
             if (execution == null)
             {
-                Console.WriteLine("[WindowsSmartaProvider] ERROR: execution is null (smartctl not found or crash)");
                 return null;
             }
             
-            Console.WriteLine($"[WindowsSmartaProvider] ExitCode={execution.Value.ExitCode}, Output length={execution.Value.Output?.Length ?? 0}");
             
             if (execution.Value.ExitCode != 0 && execution.Value.ExitCode != 1)
             {
                 if (execution.Value.ExitCode >= 2)
                 {
-                    Console.WriteLine($"[WindowsSmartaProvider] WARNING: smartctl exit code {execution.Value.ExitCode}, Error: {execution.Value.Error}");
                 }
             }
             
             if (string.IsNullOrWhiteSpace(execution.Value.Output))
             {
-                Console.WriteLine("[WindowsSmartaProvider] ERROR: Output is empty");
                 return null;
             }
 
             var result = SmartctlJsonParser.Parse(execution.Value.Output);
             if (result == null)
             {
-                Console.WriteLine("[WindowsSmartaProvider] ERROR: Parser returned null");
                 return null;
             }
             
-            Console.WriteLine($"[WindowsSmartaProvider] Parsed OK: Model={result.DeviceModel}, SelfTests={result.SelfTests?.Count ?? 0}");
             
             return SmartctlJsonParser.ToSmartaData(result);
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"[WindowsSmartaProvider] EXCEPTION: {ex.Message}");
             if (_logger != null && _logger.IsEnabled(LogLevel.Error))
             {
                 _logger.LogError(ex, "Failed to get SMART data for {DevicePath}", devicePath);
@@ -496,7 +501,6 @@ public class WindowsSmartaProvider : ISmartaProvider, IAdvancedSmartaProvider
             var smartctlPath = FindSmartctlPath();
             if (string.IsNullOrEmpty(smartctlPath))
             {
-                Console.WriteLine("[WindowsSmartaProvider] ERROR: smartctl path not found!");
                 if (_logger != null && _logger.IsEnabled(LogLevel.Error))
                 {
                     _logger.LogError("smartctl is not available. Please install smartmontools.");
@@ -509,7 +513,6 @@ public class WindowsSmartaProvider : ISmartaProvider, IAdvancedSmartaProvider
             var deviceType = DetectDeviceType(devicePath);
             var args = BuildSmartctlArgsForQuery(arguments, devPath, deviceType);
             
-            Console.WriteLine($"[WindowsSmartaProvider] Running: {smartctlPath} {args}");
             
             var psi = new ProcessStartInfo
             {
@@ -524,7 +527,6 @@ public class WindowsSmartaProvider : ISmartaProvider, IAdvancedSmartaProvider
             using var process = Process.Start(psi);
             if (process == null)
             {
-                Console.WriteLine("[WindowsSmartaProvider] ERROR: Failed to start smartctl process");
                 return null;
             }
 
@@ -536,13 +538,6 @@ public class WindowsSmartaProvider : ISmartaProvider, IAdvancedSmartaProvider
             var output = await outputTask;
             var error = await errorTask;
 
-            var outputPreview = output.Length > 200 ? string.Concat(output.AsSpan(0, 200), "...") : output;
-            Console.WriteLine($"[WindowsSmartaProvider] Exit code: {process.ExitCode}, Output: {outputPreview}");
-            if (!string.IsNullOrEmpty(error))
-            {
-                Console.WriteLine($"[WindowsSmartaProvider] Error: {error.Substring(0, Math.Min(200, error.Length))}");
-            }
-
             if (_logger != null && _logger.IsEnabled(LogLevel.Debug))
             {
                 _logger.LogDebug("smartctl {Args} exit code: {ExitCode}", args, process.ExitCode);
@@ -552,7 +547,6 @@ public class WindowsSmartaProvider : ISmartaProvider, IAdvancedSmartaProvider
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"[WindowsSmartaProvider] EXCEPTION in ExecuteSmartctlCommandAsync: {ex.Message}");
             if (_logger != null && _logger.IsEnabled(LogLevel.Error))
             {
                 _logger.LogError(ex, "Failed to execute smartctl for {DevicePath}", devicePath);
