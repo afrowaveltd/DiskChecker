@@ -153,9 +153,11 @@ public static class SmartctlJsonParser
                     Worst = item.TryGetProperty("worst", out var worst) ? worst.GetInt32() : 0,
                     Threshold = item.TryGetProperty("thresh", out var thresh) ? thresh.GetInt32() : 0,
                     RawValue = GetRawValue(item),
-                    IsOk = !item.TryGetProperty("when_failed", out var wf) || wf.ValueKind == JsonValueKind.Null,
+                    IsOk = !item.TryGetProperty("when_failed", out var wf) || wf.ValueKind == JsonValueKind.Null || string.IsNullOrWhiteSpace(wf.GetString()),
                     Current = (byte)(item.TryGetProperty("value", out var v) ? v.GetInt32() : 0),
-                    WhenFailed = ""
+                    WhenFailed = item.TryGetProperty("when_failed", out var failed) && failed.ValueKind != JsonValueKind.Null
+                        ? failed.GetString() ?? string.Empty
+                        : string.Empty
                 };
                 attrList.Add(attr);
                 

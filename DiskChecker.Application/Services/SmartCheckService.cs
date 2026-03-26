@@ -158,7 +158,7 @@ public class SmartCheckService
         // Also save to disk card for card view
         try
         {
-            var card = await _cardTestService.GetOrCreateCardAsync(drive, cancellationToken);
+            var card = await _cardTestService.GetOrCreateCardAsync(drive, cancellationToken: cancellationToken);
             await _cardTestService.SaveSmartCheckAsync(card, smartaData, rating, cancellationToken);
         }
         catch (Exception ex)

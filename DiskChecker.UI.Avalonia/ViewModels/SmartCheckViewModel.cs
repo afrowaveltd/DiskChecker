@@ -772,7 +772,7 @@ public string SelectedTestType
 
         try
         {
-            var card = await _cardTestService.GetOrCreateCardAsync(drive);
+            var card = await _cardTestService.GetOrCreateCardAsync(drive, smartData);
             await _cardTestService.SaveSmartCheckAsync(card, smartData, rating);
             _lastSmartPersistDiskPath = drive.Path;
             _lastSmartPersistUtc = now;

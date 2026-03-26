@@ -19,6 +19,8 @@ public class QualityCalculator : IQualityCalculator
 
         var warnings = new List<string>();
         var score = 100.0;
+        var hasSmartFailure = HasSmartFailure(smartaData);
+        var hasSmartPrefail = HasSmartPrefail(smartaData);
 
         if (smartaData.ReallocatedSectorCount is > 0)
         {
@@ -100,6 +102,13 @@ public class QualityCalculator : IQualityCalculator
 
         score = Math.Clamp(score, 0, 100);
 
+        if (hasSmartFailure)
+        {
+            score = Math.Min(score, 49);
+            warnings.Add("SMART failure detected");
+            return new QualityRating(QualityGrade.F, score) { Warnings = warnings };
+        }
+
         var grade = score switch
         {
             >= 92 => QualityGrade.A,
@@ -110,6 +119,29 @@ public class QualityCalculator : IQualityCalculator
             _ => QualityGrade.F
         };
 
+        if (hasSmartPrefail && grade < QualityGrade.E)
+        {
+            score = Math.Min(score, 59);
+            grade = QualityGrade.E;
+            warnings.Add("SMART pre-fail condition detected");
+        }
+
         return new QualityRating(grade, score) { Warnings = warnings };
+    }
+
+    private static bool HasSmartFailure(SmartaData smartaData)
+    {
+        return smartaData.Attributes.Any(a => !a.IsOk && !string.IsNullOrWhiteSpace(a.WhenFailed));
+    }
+
+    private static bool HasSmartPrefail(SmartaData smartaData)
+    {
+        return !smartaData.IsHealthy ||
+               smartaData.ReallocatedSectorCount is > 0 ||
+               smartaData.PendingSectorCount is > 0 ||
+               smartaData.UncorrectableErrorCount is > 0 ||
+               smartaData.MediaErrors is > 0 ||
+               smartaData.AvailableSpare is < 10 ||
+               smartaData.PercentageUsed is > 90;
     }
 }

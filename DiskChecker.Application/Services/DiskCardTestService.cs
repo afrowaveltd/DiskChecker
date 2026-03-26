@@ -18,6 +18,7 @@ namespace DiskChecker.Application.Services;
 public class DiskCardTestService
 {
     private readonly DiskCheckerDbContext _dbContext;
+    private readonly IQualityCalculator _qualityCalculator;
     private readonly ILogger<DiskCardTestService>? _logger;
 
     private sealed class SurfaceScoreBreakdown
@@ -52,44 +53,61 @@ public class DiskCardTestService
             new EventId(4, nameof(DiskCardTestService)),
             "Saved sanitization for disk card {CardId}: Success {Success}, Errors {Errors}");
 
-    public DiskCardTestService(DiskCheckerDbContext dbContext, ILogger<DiskCardTestService>? logger = null)
+    public DiskCardTestService(
+        DiskCheckerDbContext dbContext,
+        IQualityCalculator qualityCalculator,
+        ILogger<DiskCardTestService>? logger = null)
     {
         _dbContext = dbContext;
+        _qualityCalculator = qualityCalculator;
         _logger = logger;
     }
 
     /// <summary>
     /// Get or create a disk card for a drive.
     /// </summary>
-    public async Task<DiskCard> GetOrCreateCardAsync(CoreDriveInfo drive, CancellationToken cancellationToken = default)
+    public async Task<DiskCard> GetOrCreateCardAsync(CoreDriveInfo drive, SmartaData? smartaData = null, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(drive);
 
-        var serialKey = BuildIdentityKey(drive);
+        var serialKey = BuildIdentityKey(drive, smartaData);
         var legacyKey = DriveIdentityResolver.BuildLegacyIdentityKey(
             drive.Path,
-            drive.SerialNumber,
-            drive.Name ?? "Unknown",
-            null);
+            GetPreferredSerialNumber(drive, smartaData),
+            GetPreferredModelName(drive, smartaData),
+            GetPreferredFirmwareVersion(drive, smartaData));
+        var hasReliableIdentity = HasReliableSerialNumber(smartaData?.SerialNumber) || HasReliableSerialNumber(drive.SerialNumber);
 
-        var card = await _dbContext.DiskCards
-            .FirstOrDefaultAsync(c =>
-                c.SerialNumber == serialKey ||
-                c.SerialNumber == legacyKey ||
-                c.DevicePath == drive.Path,
-                cancellationToken);
+        DiskCard? card;
+        if (hasReliableIdentity)
+        {
+            card = await _dbContext.DiskCards
+                .FirstOrDefaultAsync(c =>
+                    c.SerialNumber == serialKey ||
+                    c.SerialNumber == legacyKey,
+                    cancellationToken);
+        }
+        else
+        {
+            card = await _dbContext.DiskCards
+                .FirstOrDefaultAsync(c =>
+                    c.SerialNumber == serialKey ||
+                    c.SerialNumber == legacyKey ||
+                    c.DevicePath == drive.Path,
+                    cancellationToken);
+        }
 
         if (card == null)
         {
             card = new DiskCard
             {
-                ModelName = drive.Name ?? "Unknown",
+                ModelName = GetPreferredModelName(drive, smartaData),
                 SerialNumber = serialKey,
                 DevicePath = drive.Path,
                 DiskType = DetermineDiskType(drive),
                 InterfaceType = DetermineInterfaceType(drive),
                 Capacity = drive.TotalSize,
-                FirmwareVersion = drive.FirmwareVersion ?? string.Empty,
+                FirmwareVersion = GetPreferredFirmwareVersion(drive, smartaData),
                 ConnectionType = drive.IsRemovable ? "External" : "Internal",
                 CreatedAt = DateTime.UtcNow,
                 LastTestedAt = DateTime.UtcNow,
@@ -124,15 +142,34 @@ public class DiskCardTestService
             }
         }
 
-        if (!string.Equals(card.DevicePath, drive.Path, StringComparison.OrdinalIgnoreCase))
+        if (!hasReliableIdentity && !string.Equals(card.DevicePath, drive.Path, StringComparison.OrdinalIgnoreCase))
+        {
+            card.DevicePath = drive.Path;
+            cardChanged = true;
+        }
+        else if (string.IsNullOrWhiteSpace(card.DevicePath))
         {
             card.DevicePath = drive.Path;
             cardChanged = true;
         }
 
-        if (!string.Equals(card.ModelName, drive.Name ?? "Unknown", StringComparison.Ordinal))
+        var preferredModelName = GetPreferredModelName(drive, smartaData);
+        if (!string.Equals(card.ModelName, preferredModelName, StringComparison.Ordinal))
         {
-            card.ModelName = drive.Name ?? "Unknown";
+            card.ModelName = preferredModelName;
+            cardChanged = true;
+        }
+
+        var preferredFirmwareVersion = GetPreferredFirmwareVersion(drive, smartaData);
+        if (!string.Equals(card.FirmwareVersion, preferredFirmwareVersion, StringComparison.Ordinal))
+        {
+            card.FirmwareVersion = preferredFirmwareVersion;
+            cardChanged = true;
+        }
+
+        if (card.Capacity <= 0 && drive.TotalSize > 0)
+        {
+            card.Capacity = drive.TotalSize;
             cardChanged = true;
         }
 
@@ -258,7 +295,7 @@ public class DiskCardTestService
                        result.Operation == SurfaceTestOperation.WriteZeroFill ? TestType.Sanitization :
                        TestType.SurfaceScan;
 
-        var breakdown = BuildSurfaceScoreBreakdown(result);
+        var breakdown = BuildCombinedSurfaceScoreBreakdown(result, smartaData);
         if (breakdown.Findings.Count > 0)
         {
             result.Notes = string.Join("; ", breakdown.Findings);
@@ -292,40 +329,10 @@ public class DiskCardTestService
             MaxTemperature = result.CurrentTemperatureCelsius,
             AverageTemperature = result.CurrentTemperatureCelsius,
             Notes = result.Notes,
-            SmartBefore = smartaData  // Include SMART data if provided
+            SmartBefore = smartaData
         };
 
-        // Calculate duration
-        session.Duration = session.CompletedAt.Value - session.StartedAt;
-
-        // Add speed samples from result
-        foreach (var sample in result.Samples)
-        {
-            var speedSample = new SpeedSample
-            {
-                SpeedMBps = sample.ThroughputMbps,
-                Timestamp = sample.TimestampUtc
-            };
-
-            // Assume write samples for destructive tests
-            if (result.Operation == SurfaceTestOperation.WriteZeroFill)
-            {
-                session.WriteSamples.Add(speedSample);
-            }
-            else
-            {
-                session.ReadSamples.Add(speedSample);
-            }
-        }
-
-        var speedValues = result.Samples
-            .Select(s => s.ThroughputMbps)
-            .Where(v => v > 0)
-            .ToArray();
-
-        var speedStdDev = CalculateStandardDeviation(speedValues);
-        session.WriteSpeedStdDev = speedStdDev;
-        session.ReadSpeedStdDev = speedStdDev;
+        ApplySmartSnapshot(session, smartaData);
 
         _dbContext.TestSessions.Add(session);
 
@@ -359,10 +366,13 @@ public class DiskCardTestService
         SanitizationResult result,
         IEnumerable<SpeedSample>? writeSamples = null,
         IEnumerable<SpeedSample>? readSamples = null,
+        SmartaData? smartaData = null,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(card);
         ArgumentNullException.ThrowIfNull(result);
+
+        var breakdown = BuildSanitizationScoreBreakdown(result, smartaData);
 
         var session = new TestSession
         {
@@ -388,20 +398,14 @@ public class DiskCardTestService
             FileSystem = "NTFS",
             VolumeLabel = "SCCM",
             Result = result.Success && result.ErrorsDetected == 0 ? TestResult.Pass : TestResult.Fail,
-            Grade = result.ErrorsDetected == 0 ? "A" : result.ErrorsDetected < 10 ? "B" : "F",
-            Score = result.ErrorsDetected == 0 ? 100 : Math.Max(0, 100 - result.ErrorsDetected * 5),
-            HealthAssessment = result.ErrorsDetected == 0 ? HealthAssessment.Excellent : HealthAssessment.Poor
+            Grade = breakdown.Grade,
+            Score = breakdown.Score,
+            HealthAssessment = breakdown.Health,
+            Notes = breakdown.Findings.Count > 0 ? string.Join("; ", breakdown.Findings) : null,
+            SmartBefore = smartaData
         };
 
-        if (writeSamples != null)
-        {
-            session.WriteSamples.AddRange(writeSamples);
-        }
-
-        if (readSamples != null)
-        {
-            session.ReadSamples.AddRange(readSamples);
-        }
+        ApplySmartSnapshot(session, smartaData);
 
         _dbContext.TestSessions.Add(session);
 
@@ -476,7 +480,6 @@ public class DiskCardTestService
 
         if (sessions.Count == 0) return;
 
-        // Calculate weighted average score
         var totalWeight = 0.0;
         var weightedScore = 0.0;
 
@@ -488,7 +491,23 @@ public class DiskCardTestService
         }
 
         card.OverallScore = totalWeight > 0 ? weightedScore / totalWeight : 0;
-        card.OverallGrade = ScoreToGrade(card.OverallScore);
+
+        var calculatedGrade = ScoreToGrade(card.OverallScore);
+        if (sessions.Any(s => string.Equals(NormalizeGrade(s.Grade), "F", StringComparison.Ordinal)))
+        {
+            card.OverallScore = Math.Min(card.OverallScore, 49);
+            card.OverallGrade = "F";
+            return;
+        }
+
+        if (sessions.Any(s => string.Equals(NormalizeGrade(s.Grade), "E", StringComparison.Ordinal)))
+        {
+            card.OverallScore = Math.Min(card.OverallScore, 59);
+            card.OverallGrade = GetWorseGrade(calculatedGrade, "E");
+            return;
+        }
+
+        card.OverallGrade = calculatedGrade;
     }
 
     private static HealthAssessment MapHealthAssessment(string grade)
@@ -507,10 +526,11 @@ public class DiskCardTestService
     {
         return score switch
         {
-            >= 90 => "A",
-            >= 80 => "B",
-            >= 70 => "C",
-            >= 60 => "D",
+            >= 92 => "A",
+            >= 84 => "B",
+            >= 74 => "C",
+            >= 62 => "D",
+            >= 50 => "E",
             _ => "F"
         };
     }
@@ -531,6 +551,12 @@ public class DiskCardTestService
     private static double CalculateScore(SurfaceTestResult result)
     {
         return BuildSurfaceScoreBreakdown(result).Score;
+    }
+
+    private SurfaceScoreBreakdown BuildCombinedSurfaceScoreBreakdown(SurfaceTestResult result, SmartaData? smartaData)
+    {
+        var breakdown = BuildSurfaceScoreBreakdown(result);
+        return ApplySmartQuality(breakdown, smartaData);
     }
 
     private static SurfaceScoreBreakdown BuildSurfaceScoreBreakdown(SurfaceTestResult result)
@@ -695,6 +721,99 @@ public class DiskCardTestService
         return Math.Sqrt(variance);
     }
 
+    private SurfaceScoreBreakdown BuildSanitizationScoreBreakdown(SanitizationResult result, SmartaData? smartaData)
+    {
+        var findings = new List<string>();
+        var score = 100d;
+
+        if (!result.Success)
+        {
+            findings.Add(string.IsNullOrWhiteSpace(result.ErrorMessage)
+                ? "Sanitizační test nebyl dokončen úspěšně."
+                : $"Sanitizační test selhal: {result.ErrorMessage}");
+            score = 0d;
+        }
+
+        if (result.ErrorsDetected > 0)
+        {
+            findings.Add($"Při sanitizaci bylo zjištěno {result.ErrorsDetected} chyb.");
+            score -= result.ErrorsDetected * 12d;
+        }
+
+        if (result.WriteSpeedMBps <= 0 || result.ReadSpeedMBps <= 0)
+        {
+            findings.Add("Při sanitizaci nebylo možné spolehlivě vyhodnotit rychlosti zápisu nebo čtení.");
+            score -= 20d;
+        }
+
+        score = Math.Clamp(score, 0d, 100d);
+
+        var breakdown = new SurfaceScoreBreakdown
+        {
+            Score = score,
+            Grade = !result.Success ? "F" : CalculateGrade(score),
+            Health = !result.Success ? HealthAssessment.Critical : result.ErrorsDetected == 0 ? HealthAssessment.Excellent : HealthAssessment.Poor,
+            Findings = findings
+        };
+
+        if (breakdown.Findings.Count == 0)
+        {
+            breakdown.Findings.Add("Sanitizace proběhla bez chyb a ověření bylo úspěšné.");
+        }
+
+        return ApplySmartQuality(breakdown, smartaData);
+    }
+
+    private SurfaceScoreBreakdown ApplySmartQuality(SurfaceScoreBreakdown breakdown, SmartaData? smartaData)
+    {
+        if (smartaData == null)
+        {
+            return breakdown;
+        }
+
+        var findings = new List<string>(breakdown.Findings);
+        var smartRating = _qualityCalculator.CalculateQuality(smartaData);
+        var score = Math.Min(breakdown.Score, smartRating.Score);
+        var grade = breakdown.Grade;
+        var health = breakdown.Health;
+
+        foreach (var warning in smartRating.Warnings.Distinct(StringComparer.Ordinal))
+        {
+            findings.Add($"SMART: {warning}");
+        }
+
+        if (HasSmartFailure(smartaData))
+        {
+            findings.Add("SMART hlásí selhání disku. Výsledná známka je degradována na F.");
+            return new SurfaceScoreBreakdown
+            {
+                Score = Math.Min(score, 49d),
+                Grade = "F",
+                Health = HealthAssessment.Critical,
+                Findings = findings
+            };
+        }
+
+        grade = GetWorseGrade(grade, smartRating.Grade.ToString());
+        health = GetWorseHealth(health, MapHealthAssessment(grade));
+
+        if (HasSmartPrefail(smartaData))
+        {
+            findings.Add("Byl detekován závažný SMART pre-fail stav. Výsledná známka je degradována maximálně na E.");
+            grade = GetWorseGrade(grade, "E");
+            score = Math.Min(score, 59d);
+            health = GetWorseHealth(health, HealthAssessment.Poor);
+        }
+
+        return new SurfaceScoreBreakdown
+        {
+            Score = score,
+            Grade = grade,
+            Health = health,
+            Findings = findings
+        };
+    }
+
     private static void ReactivateCardForTesting(DiskCard card)
     {
         if (!card.IsArchived)
@@ -706,18 +825,165 @@ public class DiskCardTestService
         card.ArchiveReason = null;
     }
 
-    private static string BuildIdentityKey(CoreDriveInfo drive)
+    private static void ApplySmartSnapshot(TestSession session, SmartaData? smartaData)
+    {
+        if (smartaData == null)
+        {
+            return;
+        }
+
+        session.SmartBefore = smartaData;
+
+        if (smartaData.Temperature is > 0)
+        {
+            session.StartTemperature ??= smartaData.Temperature.Value;
+            session.MaxTemperature = Math.Max(session.MaxTemperature ?? smartaData.Temperature.Value, smartaData.Temperature.Value);
+            session.AverageTemperature ??= smartaData.Temperature.Value;
+        }
+
+        AddSmartAttributeChange(session, 5, "Reallocated Sector Count", smartaData.ReallocatedSectorCount);
+        AddSmartAttributeChange(session, 197, "Current Pending Sector Count", smartaData.PendingSectorCount);
+        AddSmartAttributeChange(session, 198, "Uncorrectable Sector Count", smartaData.UncorrectableErrorCount);
+        AddSmartAttributeChange(session, 9, "Power-On Hours", smartaData.PowerOnHours);
+
+        if (smartaData.PowerCycleCount > 0)
+        {
+            AddSmartAttributeChange(session, 12, "Power Cycle Count", smartaData.PowerCycleCount);
+        }
+
+        AddSmartAttributeChange(session, 232, "Available Spare", smartaData.AvailableSpare);
+        AddSmartAttributeChange(session, 233, "Percentage Used", smartaData.PercentageUsed);
+        AddSmartAttributeChange(session, 187, "Media Errors", smartaData.MediaErrors);
+    }
+
+    private static void AddSmartAttributeChange(TestSession session, int attributeId, string attributeName, int? value)
+    {
+        if (!value.HasValue || session.SmartChanges.Any(c => c.AttributeId == attributeId))
+        {
+            return;
+        }
+
+        session.SmartChanges.Add(new SmartAttributeChange
+        {
+            AttributeId = attributeId,
+            AttributeName = attributeName,
+            ValueBefore = 0,
+            ValueAfter = value.Value,
+            Change = value.Value
+        });
+    }
+
+    private static bool HasReliableSerialNumber(string? serialNumber)
+    {
+        return !string.IsNullOrWhiteSpace(serialNumber) &&
+               !serialNumber.StartsWith("NOSN-", StringComparison.OrdinalIgnoreCase) &&
+               !string.Equals(serialNumber, "Unknown", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static string GetPreferredSerialNumber(CoreDriveInfo drive, SmartaData? smartaData)
+    {
+        if (HasReliableSerialNumber(smartaData?.SerialNumber))
+        {
+            return smartaData!.SerialNumber.Trim();
+        }
+
+        if (HasReliableSerialNumber(drive.SerialNumber))
+        {
+            return drive.SerialNumber!.Trim();
+        }
+
+        return string.Empty;
+    }
+
+    private static string GetPreferredModelName(CoreDriveInfo drive, SmartaData? smartaData)
+    {
+        if (!string.IsNullOrWhiteSpace(smartaData?.DeviceModel))
+        {
+            return smartaData.DeviceModel.Trim();
+        }
+
+        return drive.Name ?? "Unknown";
+    }
+
+    private static string GetPreferredFirmwareVersion(CoreDriveInfo drive, SmartaData? smartaData)
+    {
+        if (!string.IsNullOrWhiteSpace(smartaData?.FirmwareVersion))
+        {
+            return smartaData.FirmwareVersion.Trim();
+        }
+
+        return drive.FirmwareVersion ?? string.Empty;
+    }
+
+    private static string BuildIdentityKey(CoreDriveInfo drive, SmartaData? smartaData)
     {
         return DriveIdentityResolver.BuildIdentityKey(
             drive.Path,
-            drive.SerialNumber ?? string.Empty,
-            drive.Name ?? "Unknown",
-            null);
+            GetPreferredSerialNumber(drive, smartaData),
+            GetPreferredModelName(drive, smartaData),
+            GetPreferredFirmwareVersion(drive, smartaData));
+    }
+
+    private static bool HasSmartFailure(SmartaData smartaData)
+    {
+        return smartaData.Attributes.Any(a => !a.IsOk && !string.IsNullOrWhiteSpace(a.WhenFailed));
+    }
+
+    private static bool HasSmartPrefail(SmartaData smartaData)
+    {
+        return !smartaData.IsHealthy ||
+               smartaData.ReallocatedSectorCount is > 0 ||
+               smartaData.PendingSectorCount is > 0 ||
+               smartaData.UncorrectableErrorCount is > 0 ||
+               smartaData.MediaErrors is > 0 ||
+               smartaData.AvailableSpare is < 10 ||
+               smartaData.PercentageUsed is > 90;
+    }
+
+    private static HealthAssessment GetWorseHealth(HealthAssessment current, HealthAssessment candidate)
+    {
+        return Severity(candidate) > Severity(current) ? candidate : current;
+    }
+
+    private static string GetWorseGrade(string first, string second)
+    {
+        return GradeSeverity(NormalizeGrade(first)) >= GradeSeverity(NormalizeGrade(second)) ? second : first;
+    }
+
+    private static int GradeSeverity(string grade)
+    {
+        return NormalizeGrade(grade) switch
+        {
+            "F" => 6,
+            "E" => 5,
+            "D" => 4,
+            "C" => 3,
+            "B" => 2,
+            _ => 1
+        };
+    }
+
+    private static string NormalizeGrade(string? grade)
+    {
+        return string.IsNullOrWhiteSpace(grade) ? "F" : grade.Trim().ToUpperInvariant();
+    }
+
+    private static int Severity(HealthAssessment assessment)
+    {
+        return assessment switch
+        {
+            HealthAssessment.Critical => 5,
+            HealthAssessment.Poor => 4,
+            HealthAssessment.Fair => 3,
+            HealthAssessment.Good => 2,
+            HealthAssessment.Excellent => 1,
+            _ => 0
+        };
     }
 
     private static string DetermineDiskType(CoreDriveInfo drive)
     {
-        var name = (drive.Name ?? "").ToLowerInvariant();
+        var name = (drive.Name ?? string.Empty).ToLowerInvariant();
         if (name.Contains("nvme") || name.Contains("ssd"))
             return "SSD";
         if (name.Contains("hdd") || name.Contains("hard"))
