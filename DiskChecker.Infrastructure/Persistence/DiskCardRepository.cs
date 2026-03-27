@@ -262,6 +262,86 @@ public class DiskCardRepository : IDiskCardRepository
             .FirstOrDefaultAsync(t => t.Id == sessionId);
     }
 
+    /// <summary>
+    /// Načte test session bez velkých kolekcí vzorků (WriteSamples, ReadSamples, TemperatureSamples).
+    /// SmartChanges a Errors se nenačítají, aby se minimalizovala zátěž SQLite.
+    /// </summary>
+    public async Task<TestSession?> GetTestSessionWithoutSamplesAsync(int sessionId)
+    {
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(sessionId);
+
+        return await _context.TestSessions
+            .AsNoTracking()
+            .Where(t => t.Id == sessionId)
+            .Select(t => new TestSession
+            {
+                Id = t.Id,
+                DiskCardId = t.DiskCardId,
+                SessionId = t.SessionId,
+                TestType = t.TestType,
+                StartedAt = t.StartedAt,
+                CompletedAt = t.CompletedAt,
+                Duration = t.Duration,
+                Status = t.Status,
+                IsDestructive = t.IsDestructive,
+                WasLocked = t.WasLocked,
+                BytesWritten = t.BytesWritten,
+                AverageWriteSpeedMBps = t.AverageWriteSpeedMBps,
+                MaxWriteSpeedMBps = t.MaxWriteSpeedMBps,
+                MinWriteSpeedMBps = t.MinWriteSpeedMBps,
+                WriteSpeedStdDev = t.WriteSpeedStdDev,
+                WriteDuration = t.WriteDuration,
+                WriteErrors = t.WriteErrors,
+                BytesRead = t.BytesRead,
+                AverageReadSpeedMBps = t.AverageReadSpeedMBps,
+                MaxReadSpeedMBps = t.MaxReadSpeedMBps,
+                MinReadSpeedMBps = t.MinReadSpeedMBps,
+                ReadSpeedStdDev = t.ReadSpeedStdDev,
+                ReadDuration = t.ReadDuration,
+                ReadErrors = t.ReadErrors,
+                VerificationErrors = t.VerificationErrors,
+                StartTemperature = t.StartTemperature,
+                MaxTemperature = t.MaxTemperature,
+                AverageTemperature = t.AverageTemperature,
+                PartitionCreated = t.PartitionCreated,
+                PartitionScheme = t.PartitionScheme,
+                WasFormatted = t.WasFormatted,
+                FileSystem = t.FileSystem,
+                VolumeLabel = t.VolumeLabel,
+                Result = t.Result,
+                Grade = t.Grade,
+                Score = t.Score,
+                HealthAssessment = t.HealthAssessment,
+                CertificateId = t.CertificateId,
+                Notes = t.Notes,
+                SmartBeforeJson = t.SmartBeforeJson,
+                SmartAfterJson = t.SmartAfterJson
+            })
+            .FirstOrDefaultAsync();
+    }
+
+    /// <summary>
+    /// Načte omezený počet chyb z test session pro zobrazení v reportu.
+    /// </summary>
+    public async Task<List<TestError>> GetTestErrorsAsync(int sessionId, int maxErrors = 100)
+    {
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(sessionId);
+
+        if (maxErrors <= 0)
+        {
+            return new List<TestError>();
+        }
+
+        return await _context.TestSessions
+            .AsNoTracking()
+            .Where(t => t.Id == sessionId)
+            .SelectMany(t => t.Errors)
+            .OrderByDescending(e => e.IsCritical)
+            .ThenByDescending(e => e.Timestamp)
+            .Take(maxErrors)
+            .ToListAsync();
+    }
+
     public async Task<List<TestSession>> GetTestSessionsAsync(int diskCardId)
     {
         return await _context.TestSessions
@@ -329,6 +409,8 @@ public class DiskCardRepository : IDiskCardRepository
 
         try
         {
+            await ConfigureSqliteReadOptimizationsAsync(connection);
+
             var writeSamples = await LoadSpeedSeriesAsync(connection, "TestSessions_WriteSamples", sessionId);
             var readSamples = await LoadSpeedSeriesAsync(connection, "TestSessions_ReadSamples", sessionId);
             return (writeSamples, readSamples);
@@ -342,6 +424,50 @@ public class DiskCardRepository : IDiskCardRepository
         }
     }
 
+    /// <summary>
+    /// Načte podmnožinu uložených rychlostních vzorků pro zadanou test session pomocí modulárního výběru.
+    /// </summary>
+    public async Task<(List<SpeedSample> WriteSamples, List<SpeedSample> ReadSamples)> GetSpeedSampleSeriesChunkAsync(int sessionId, int modulo, int remainder)
+    {
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(sessionId);
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(modulo);
+
+        if (remainder < 0 || remainder >= modulo)
+        {
+            throw new ArgumentOutOfRangeException(nameof(remainder), "Remainder musí být v rozsahu 0 až modulo-1.");
+        }
+
+        var connection = _context.Database.GetDbConnection();
+        var shouldClose = connection.State != System.Data.ConnectionState.Open;
+        if (shouldClose)
+        {
+            await connection.OpenAsync();
+        }
+
+        try
+        {
+            await ConfigureSqliteReadOptimizationsAsync(connection);
+
+            var writeSamples = await LoadSpeedSeriesChunkAsync(connection, "TestSessions_WriteSamples", sessionId, modulo, remainder);
+            var readSamples = await LoadSpeedSeriesChunkAsync(connection, "TestSessions_ReadSamples", sessionId, modulo, remainder);
+            return (writeSamples, readSamples);
+        }
+        finally
+        {
+            if (shouldClose)
+            {
+                await connection.CloseAsync();
+            }
+        }
+    }
+
+    private static async Task ConfigureSqliteReadOptimizationsAsync(DbConnection connection)
+    {
+        await using var pragmaCommand = connection.CreateCommand();
+        pragmaCommand.CommandText = "PRAGMA temp_store=MEMORY; PRAGMA cache_size=-20000;";
+        await pragmaCommand.ExecuteNonQueryAsync();
+    }
+
     private static async Task<List<SpeedSample>> LoadSpeedSeriesAsync(DbConnection connection, string tableName, int sessionId)
     {
         await using var command = connection.CreateCommand();
@@ -351,6 +477,48 @@ public class DiskCardRepository : IDiskCardRepository
         parameter.ParameterName = "@sessionId";
         parameter.Value = sessionId;
         command.Parameters.Add(parameter);
+
+        var values = new List<SpeedSample>();
+        await using var reader = await command.ExecuteReaderAsync();
+        while (await reader.ReadAsync())
+        {
+            if (!reader.IsDBNull(0) && !reader.IsDBNull(1))
+            {
+                values.Add(new SpeedSample
+                {
+                    ProgressPercent = reader.GetDouble(0),
+                    SpeedMBps = reader.GetDouble(1)
+                });
+            }
+        }
+
+        return values;
+    }
+
+    private static async Task<List<SpeedSample>> LoadSpeedSeriesChunkAsync(
+        DbConnection connection,
+        string tableName,
+        int sessionId,
+        int modulo,
+        int remainder)
+    {
+        await using var command = connection.CreateCommand();
+        command.CommandText = $"SELECT ProgressPercent, SpeedMBps FROM {tableName} WHERE TestSessionId = @sessionId AND SpeedMBps > 0 AND (Id % @modulo) = @remainder ORDER BY Id";
+
+        var sessionParameter = command.CreateParameter();
+        sessionParameter.ParameterName = "@sessionId";
+        sessionParameter.Value = sessionId;
+        command.Parameters.Add(sessionParameter);
+
+        var moduloParameter = command.CreateParameter();
+        moduloParameter.ParameterName = "@modulo";
+        moduloParameter.Value = modulo;
+        command.Parameters.Add(moduloParameter);
+
+        var remainderParameter = command.CreateParameter();
+        remainderParameter.ParameterName = "@remainder";
+        remainderParameter.Value = remainder;
+        command.Parameters.Add(remainderParameter);
 
         var values = new List<SpeedSample>();
         await using var reader = await command.ExecuteReaderAsync();

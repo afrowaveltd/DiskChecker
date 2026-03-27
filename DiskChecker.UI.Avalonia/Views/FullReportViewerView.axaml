@@ -1,0 +1,109 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             x:Class="DiskChecker.UI.Avalonia.Views.FullReportViewerView"
+             Background="{DynamicResource ThemeBackgroundBrush}">
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+
+        <Border Grid.Row="0"
+                Background="{DynamicResource ThemePanelBackgroundBrush}"
+                BorderBrush="{DynamicResource ThemeBorderBrush}"
+                BorderThickness="0,0,0,1"
+                Padding="16,10"
+                MinHeight="60">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+
+                <StackPanel Grid.Column="0" Spacing="2">
+                    <TextBlock Text="📄 Náhled plného reportu" Classes="PageTitle"/>
+                    <TextBlock Text="{Binding ReportPath}" Classes="PageMetaText" TextTrimming="CharacterEllipsis" MaxWidth="760"/>
+                </StackPanel>
+
+                <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8">
+                    <Button Content="🖨️ Tisk"
+                            Command="{Binding PrintCommand}"
+                            Background="{DynamicResource ThemePrimaryBrush}"
+                            Foreground="White"
+                            Padding="12,8"/>
+                    <Button Content="📂 Otevřít externě"
+                            Command="{Binding OpenExternalCommand}"
+                            Background="{DynamicResource ThemeSecondaryBackgroundBrush}"
+                            Foreground="{DynamicResource ThemeTextPrimaryBrush}"
+                            BorderBrush="{DynamicResource ThemeBorderBrush}"
+                            Padding="12,8"/>
+                    <Button Content="🏠 Zpět"
+                            Command="{Binding BackCommand}"
+                            Background="{DynamicResource ThemeSecondaryBackgroundBrush}"
+                            Foreground="{DynamicResource ThemeTextPrimaryBrush}"
+                            BorderBrush="{DynamicResource ThemeBorderBrush}"
+                            Padding="12,8"/>
+                </StackPanel>
+            </Grid>
+        </Border>
+
+        <Border Grid.Row="1"
+                Margin="16"
+                Background="{DynamicResource ThemePanelBackgroundBrush}"
+                BorderBrush="{DynamicResource ThemeBorderBrush}"
+                BorderThickness="1"
+                Padding="12">
+            <TextBox Text="{Binding ReportContent}"
+                     IsReadOnly="True"
+                     AcceptsReturn="True"
+                     TextWrapping="Wrap"
+                     FontFamily="Consolas"
+                     FontSize="12"
+                     ScrollViewer.HorizontalScrollBarVisibility="Auto"
+                     ScrollViewer.VerticalScrollBarVisibility="Auto"
+                     Background="{DynamicResource ThemeBackgroundBrush}"
+                     Foreground="{DynamicResource ThemeTextPrimaryBrush}"/>
+        </Border>
+
+        <Border Grid.Row="2"
+                Classes="StatusBar"
+                Padding="16,6">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+
+                <TextBlock Grid.Column="0"
+                           Text="{Binding StatusMessage}"
+                           Classes="StatusText"
+                           TextTrimming="CharacterEllipsis"/>
+
+                <Button Grid.Column="1"
+                        Content="🔄 Obnovit"
+                        Command="{Binding ReloadCommand}"
+                        Background="{DynamicResource ThemeSecondaryBackgroundBrush}"
+                        Foreground="{DynamicResource ThemeTextPrimaryBrush}"
+                        BorderBrush="{DynamicResource ThemeBorderBrush}"
+                        Padding="10,4"/>
+            </Grid>
+        </Border>
+
+        <Border Grid.Row="0"
+                Grid.RowSpan="3"
+                Background="#99000000"
+                IsVisible="{Binding IsLoading}"
+                ZIndex="1000">
+            <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="10">
+                <TextBlock Text="⏳ Načítám report..."
+                           FontSize="16"
+                           FontWeight="Bold"
+                           Foreground="White"
+                           HorizontalAlignment="Center"/>
+                <ProgressBar Width="280" IsIndeterminate="True"/>
+            </StackPanel>
+        </Border>
+    </Grid>
+</UserControl>
+

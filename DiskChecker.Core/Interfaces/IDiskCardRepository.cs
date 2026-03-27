@@ -33,12 +33,31 @@ public interface IDiskCardRepository
     // ========== Test Sessions ==========
     
     Task<TestSession?> GetTestSessionAsync(int sessionId);
+    
+    /// <summary>
+    /// Načte test session bez velkých kolekcí (WriteSamples, ReadSamples).
+    /// Vhodné pro optimalizované načítání, kde se kolekce načítají dodatečně.
+    /// </summary>
+    Task<TestSession?> GetTestSessionWithoutSamplesAsync(int sessionId);
+    
+    /// <summary>
+    /// Načte omezený počet chyb z test session pro zobrazení v reportu.
+    /// </summary>
+    Task<List<TestError>> GetTestErrorsAsync(int sessionId, int maxErrors = 100);
+    
     Task<List<TestSession>> GetTestSessionsAsync(int diskCardId);
 
     /// <summary>
     /// Načte uložené rychlostní vzorky pro zadanou test session bez načtení celé session.
     /// </summary>
     Task<(List<SpeedSample> WriteSamples, List<SpeedSample> ReadSamples)> GetSpeedSampleSeriesAsync(int sessionId);
+    
+    /// <summary>
+    /// Načte podmnožinu rychlostních vzorků pro zadanou test session pomocí modulárního výběru.
+    /// Umožňuje progresivní vykreslení grafu po dávkách bez načtení celé série najednou.
+    /// </summary>
+    Task<(List<SpeedSample> WriteSamples, List<SpeedSample> ReadSamples)> GetSpeedSampleSeriesChunkAsync(int sessionId, int modulo, int remainder);
+    
     Task<TestSession> CreateTestSessionAsync(TestSession session);
     Task<TestSession> UpdateTestSessionAsync(TestSession session);
     Task DeleteTestSessionAsync(int sessionId);

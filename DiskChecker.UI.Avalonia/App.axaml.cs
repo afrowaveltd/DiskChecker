@@ -142,6 +142,9 @@ public partial class App : global::Avalonia.Application
         // Disk cache service to avoid reloading disks on navigation
         services.AddSingleton<IDiskCacheService, DiskCacheService>();
         
+        // Shared state for full report preview/print
+        services.AddSingleton<ReportDocumentState>();
+        
         // Platform-specific
         // Load configuration (optional appsettings.json) and bind SMART cache options
         // Load simple appsettings.json (optional) to configure SMART cache TTL without
@@ -201,6 +204,7 @@ public partial class App : global::Avalonia.Application
         services.AddTransient<SmartCheckViewModel>();
         services.AddTransient<AnalysisViewModel>();
         services.AddTransient<ReportViewModel>();
+        services.AddTransient<FullReportViewerViewModel>();
         services.AddTransient<HistoryViewModel>();
         services.AddTransient<SettingsViewModel>();
         

@@ -306,8 +306,14 @@ public class MetricsCollector : IMetricsCollector
             return TestResult.Fail;
         }
         
-        // No errors and good speeds = pass
-        if (session.Errors.Count == 0 && session.VerificationErrors == 0)
+        // ANY write/read errors = FAIL (disk failure)
+        if (session.WriteErrors > 0 || session.ReadErrors > 0)
+        {
+            return TestResult.Fail;
+        }
+        
+        // No data integrity errors and good speeds = pass
+        if (session.VerificationErrors == 0)
         {
             if (session.AverageWriteSpeedMBps > 30 && session.AverageReadSpeedMBps > 30)
             {
@@ -315,8 +321,8 @@ public class MetricsCollector : IMetricsCollector
             }
         }
         
-        // Some issues but not critical = warning
-        if (session.Errors.Count <= 3 && session.VerificationErrors <= 5)
+        // Verification errors but not too many = warning
+        if (session.VerificationErrors <= 5)
         {
             return TestResult.Warning;
         }
@@ -331,9 +337,15 @@ public class MetricsCollector : IMetricsCollector
             return HealthAssessment.Critical;
         }
         
-        if (session.Errors.Count > 0 || session.VerificationErrors > 0)
+        // Write/Read errors = poor health (disk may be failing)
+        if (session.WriteErrors > 0 || session.ReadErrors > 0)
         {
             return HealthAssessment.Poor;
+        }
+        
+        if (session.Errors.Count > 0 || session.VerificationErrors > 0)
+        {
+            return HealthAssessment.Fair;
         }
         
         if (session.MaxTemperature > 60 || session.AverageWriteSpeedMBps < 30)
