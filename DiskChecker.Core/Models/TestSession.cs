@@ -287,8 +287,6 @@ public class TestSession
     /// </summary>
     public string? VolumeLabel { get; set; }
     
-    // ========== Results and Grading ==========
-    
     /// <summary>
     /// Overall test result
     /// </summary>
@@ -310,6 +308,11 @@ public class TestSession
     public HealthAssessment HealthAssessment { get; set; } = HealthAssessment.Unknown;
     
     /// <summary>
+    /// Absolute path to a cached chart image generated for this test session.
+    /// </summary>
+    public string? ChartImagePath { get; set; }
+
+    /// <summary>
     /// Certificate ID if one was generated
     /// </summary>
     public int? CertificateId { get; set; }
@@ -324,6 +327,94 @@ public class TestSession
     /// </summary>
     public string? Notes { get; set; }
     
+    /// <summary>
+    /// Gets compact diagnostic flags derived from session notes.
+    /// </summary>
+    [NotMapped]
+    public string DiagnosticFlagsText
+    {
+        get
+        {
+            if (string.IsNullOrWhiteSpace(Notes))
+            {
+                return "OK";
+            }
+
+            var flags = new List<string>();
+            if (Notes.Contains("kritické", StringComparison.OrdinalIgnoreCase) || Notes.Contains("kritický", StringComparison.OrdinalIgnoreCase))
+            {
+                flags.Add("KRIT");
+            }
+
+            if (Notes.Contains("propad", StringComparison.OrdinalIgnoreCase))
+            {
+                flags.Add("DROP");
+            }
+
+            if (Notes.Contains("nestabil", StringComparison.OrdinalIgnoreCase))
+            {
+                flags.Add("CV");
+            }
+
+            if (Notes.Contains("histor", StringComparison.OrdinalIgnoreCase))
+            {
+                flags.Add("HIST");
+            }
+
+            if (Notes.Contains("SMART", StringComparison.OrdinalIgnoreCase))
+            {
+                flags.Add("SMART");
+            }
+
+            return flags.Count == 0 ? "OK" : string.Join(" | ", flags);
+        }
+    }
+
+    /// <summary>
+    /// Gets a concise diagnostic badge caption derived from session notes.
+    /// </summary>
+    [NotMapped]
+    public string DiagnosticBadgeText =>
+        HasCriticalDiagnosticSignals ? "KRITICKÉ SIGNÁLY" :
+        HasWarningDiagnosticSignals ? "VAROVNÉ SIGNÁLY" :
+        "STABILNÍ PRŮBĚH";
+
+    /// <summary>
+    /// Gets a background color for the diagnostic badge.
+    /// </summary>
+    [NotMapped]
+    public string DiagnosticBadgeBackground =>
+        HasCriticalDiagnosticSignals ? "#FDECEC" :
+        HasWarningDiagnosticSignals ? "#FFF4DB" :
+        "#EAF7EE";
+
+    /// <summary>
+    /// Gets a foreground color for the diagnostic badge.
+    /// </summary>
+    [NotMapped]
+    public string DiagnosticBadgeForeground =>
+        HasCriticalDiagnosticSignals ? "#B42318" :
+        HasWarningDiagnosticSignals ? "#B54708" :
+        "#027A48";
+
+    /// <summary>
+    /// Gets whether critical diagnostic signals were detected.
+    /// </summary>
+    [NotMapped]
+    public bool HasCriticalDiagnosticSignals =>
+        !string.IsNullOrWhiteSpace(Notes) &&
+        (Notes.Contains("kritické", StringComparison.OrdinalIgnoreCase) || Notes.Contains("kritický", StringComparison.OrdinalIgnoreCase));
+
+    /// <summary>
+    /// Gets whether warning-level diagnostic signals were detected.
+    /// </summary>
+    [NotMapped]
+    public bool HasWarningDiagnosticSignals =>
+        !string.IsNullOrWhiteSpace(Notes) &&
+        (Notes.Contains("propad", StringComparison.OrdinalIgnoreCase) ||
+         Notes.Contains("nestabil", StringComparison.OrdinalIgnoreCase) ||
+         Notes.Contains("histor", StringComparison.OrdinalIgnoreCase));
+
     /// <summary>
     /// Alias for UI bindings expecting test timestamp.
     /// </summary>
@@ -343,6 +434,36 @@ public class TestSession
     /// Alias for UI bindings expecting current/average temperature.
     /// </summary>
     public int Temperature => (int)Math.Round(AverageTemperature ?? MaxTemperature ?? StartTemperature ?? 0);
+
+    /// <summary>
+    /// Indicates whether test data suggests thermal throttling.
+    /// </summary>
+    [NotMapped]
+    public bool IsThermalThrottlingSuspected
+    {
+        get
+        {
+            var baselineTemp = StartTemperature ?? AverageTemperature ?? MaxTemperature;
+            var peakTemp = MaxTemperature ?? AverageTemperature ?? StartTemperature;
+            if (!baselineTemp.HasValue || !peakTemp.HasValue)
+            {
+                return false;
+            }
+
+            var tempRise = peakTemp.Value - baselineTemp.Value;
+            var writeDrop = MaxWriteSpeedMBps > 0
+                ? (1d - (MinWriteSpeedMBps / MaxWriteSpeedMBps)) * 100d
+                : 0d;
+
+            return tempRise >= 8 && writeDrop >= 20;
+        }
+    }
+
+    /// <summary>
+    /// User-friendly throttling status for tabular UI.
+    /// </summary>
+    [NotMapped]
+    public string ThermalThrottlingText => IsThermalThrottlingSuspected ? "⚠ Podezření" : "OK";
 
     private static string? SerializeSmartSnapshot(SmartaData? smartData)
     {

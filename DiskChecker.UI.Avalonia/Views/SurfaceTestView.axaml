@@ -20,7 +20,26 @@
                 <StackPanel>
                     <TextBlock Text="🧪 Test Povrchu Disku" Classes="PageTitle"/>
                     <TextBlock Text="Kompletní zápis a ověření celého povrchu disku" Classes="PageSubtitle"/>
-                    <TextBlock Text="{Binding StatusMessage}" Classes="PageMetaText" Margin="0,2,0,0"/>
+                    <Border Margin="0,4,0,0" Padding="8,4" CornerRadius="6"
+                            BorderBrush="{DynamicResource ThemeBorderBrush}" BorderThickness="1"
+                            Classes.status-error="{Binding IsStatusError}"
+                            Classes.status-warning="{Binding IsStatusWarning}">
+                         <Border.Styles>
+                             <Style Selector="Border">
+                                <Setter Property="Background" Value="{DynamicResource ThemeSecondaryBackgroundBrush}"/>
+                            </Style>
+                            <Style Selector="Border.status-error">
+                                <Setter Property="Background" Value="{DynamicResource ThemeDangerBackgroundBrush}"/>
+                                <Setter Property="BorderBrush" Value="{DynamicResource ThemeDangerBrush}"/>
+                            </Style>
+                            <Style Selector="Border.status-warning">
+                                <Setter Property="Background" Value="{DynamicResource ThemeWarningBackgroundBrush}"/>
+                                <Setter Property="BorderBrush" Value="{DynamicResource ThemeWarningBorderBrush}"/>
+                            </Style>
+                         </Border.Styles>
+
+                         <TextBlock Text="{Binding StatusMessage}" Classes="PageMetaText" TextWrapping="Wrap"/>
+                     </Border>
                 </StackPanel>
                 <Button Grid.Column="1"
                         Content="← Zpět na přehled"
@@ -38,7 +57,7 @@
         <!-- ========== DISK SELECTION ========== -->
         <Border Grid.Row="1" Padding="16,6">
             <Grid ColumnDefinitions="*,Auto,Auto">
-                <!-- Disk Selection Card -->
+                 <!-- Disk Selection Card -->
                 <Border Background="{DynamicResource ThemeCardBackgroundBrush}" 
                         BorderBrush="{DynamicResource ThemeBorderBrush}"
                         CornerRadius="8" Padding="12">
@@ -47,11 +66,11 @@
                         <StackPanel Grid.Column="1" VerticalAlignment="Center">
                             <TextBlock Text="Vybraný disk" FontSize="10" Foreground="{DynamicResource ThemeTextMutedBrush}"/>
                             <ComboBox ItemsSource="{Binding AvailableDrives}"
-                                     SelectedItem="{Binding SelectedDrive}"
-                                     IsEnabled="{Binding CanChangeDisk}"
-                                     HorizontalAlignment="Stretch"
-                                     Padding="8,4"
-                                     FontSize="12">
+                                      SelectedItem="{Binding SelectedDrive}"
+                                      IsEnabled="{Binding CanChangeDisk}"
+                                      HorizontalAlignment="Stretch"
+                                      Padding="8,4"
+                                      FontSize="12">
                                 <ComboBox.ItemTemplate>
                                     <DataTemplate>
                                         <StackPanel Orientation="Horizontal" Spacing="6">
@@ -66,8 +85,43 @@
                         </StackPanel>
                     </Grid>
                 </Border>
+                
+                <!-- Disk Partitions -->
+                <Border Grid.Row="2" Margin="0,6,0,0" Padding="12" CornerRadius="8"
+                        Background="{DynamicResource ThemeSecondaryBackgroundBrush}"
+                        BorderBrush="{DynamicResource ThemeBorderBrush}"
+                        BorderThickness="1"
+                        IsVisible="{Binding Volumes.Count, Converter={StaticResource IntToBoolConverter}}">
+                    <StackPanel>
+                        <TextBlock Text="Oddíly disku" FontSize="12" FontWeight="Bold"/>
+                        <ItemsControl ItemsSource="{Binding Volumes}" Margin="0,6,0,0">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <Border Background="{Binding FileSystem, Converter={StaticResource FileSystemToBrushConverter}}"
+                                            BorderBrush="{DynamicResource ThemeBorderBrush}"
+                                            BorderThickness="1"
+                                            CornerRadius="4"
+                                            Padding="6,4"
+                                            Margin="0,0,0,4">
+                                        <StackPanel Orientation="Horizontal" Spacing="8">
+                                            <TextBlock Text="{Binding FileSystem}" FontWeight="Bold"
+                                                       Foreground="{Binding FileSystem, Converter={StaticResource FileSystemToForegroundBrushConverter}}"/>
+                                            <TextBlock Text="•" Foreground="{DynamicResource ThemeTextMutedBrush}"/>
+                                            <TextBlock Text="{Binding Name}" Foreground="{DynamicResource ThemeTextPrimaryBrush}"/>
+                                            <TextBlock Text="•" Foreground="{DynamicResource ThemeTextMutedBrush}"/>
+                                            <TextBlock Text="{Binding Path}" Foreground="{DynamicResource ThemeTextSecondaryBrush}"/>
+                                            <TextBlock Text="(" Foreground="{DynamicResource ThemeTextMutedBrush}"/>
+                                            <TextBlock Text="{Binding TotalSize, StringFormat='{}{0:#,0} B'}" Foreground="{DynamicResource ThemeTextSecondaryBrush}"/>
+                                            <TextBlock Text=")" Foreground="{DynamicResource ThemeTextMutedBrush}"/>
+                                        </StackPanel>
+                                    </Border>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </StackPanel>
+                </Border>
 
-                <!-- Temperature & Lock Status -->
+                 <!-- Temperature & Lock Status -->
                 <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="12" Margin="12,0">
                     <Border Background="{DynamicResource ThemeWarningBackgroundBrush}" CornerRadius="6" Padding="10,4">
                         <StackPanel Orientation="Horizontal" Spacing="4">
@@ -81,6 +135,11 @@
                            IsVisible="{Binding IsLocked}">
                         <TextBlock Text="{Binding LockWarningText}" FontSize="11" FontWeight="Bold" Foreground="{DynamicResource ThemeWarningTextBrush}"/>
                     </Border>
+                    <Button Content="{Binding IsLocked, Converter={StaticResource LockTextConverter}}"
+                            Command="{Binding ToggleLockDiskCommand}"
+                            Background="{DynamicResource ThemeInfoBrush}" Foreground="White"
+                            FontSize="10" Padding="8,4" CornerRadius="4"
+                            IsEnabled="{Binding SelectedDrive.IsSystemDisk, Converter={StaticResource InverseBooleanConverter}}"/>
                 </StackPanel>
 
                 <!-- Error Count -->

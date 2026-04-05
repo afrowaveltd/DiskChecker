@@ -9,5 +9,7 @@ public class SmartHistoryItem
     public int PendingSectors { get; set; }
     public int ReadErrors { get; set; }
     public int ReallocEvents { get; set; }
+    public string Grade { get; set; } = "?";
+    public double Score { get; set; }
     public string Notes { get; set; } = string.Empty;
 }

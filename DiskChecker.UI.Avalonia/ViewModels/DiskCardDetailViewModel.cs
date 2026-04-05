@@ -1,12 +1,16 @@
 using System;
+using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Linq;
+using System.Text;
+using System.Text.Json;
 using System.Threading.Tasks;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using DiskChecker.Application.Services;
 using DiskChecker.Core.Interfaces;
 using DiskChecker.Core.Models;
+using DiskChecker.UI.Avalonia.Services;
 using DiskChecker.UI.Avalonia.Services.Interfaces;
 using OxyPlot;
 using OxyPlot.Axes;
@@ -19,6 +23,11 @@ namespace DiskChecker.UI.Avalonia.ViewModels;
 /// </summary>
 public partial class DiskCardDetailViewModel : ViewModelBase, INavigableViewModel
 {
+    private static readonly JsonSerializerOptions SmartJsonFormattingOptions = new()
+    {
+        WriteIndented = true
+    };
+
     private readonly IDiskCardRepository _diskCardRepository;
     private readonly INavigationService _navigationService;
     private readonly IDialogService _dialogService;
@@ -33,6 +42,12 @@ public partial class DiskCardDetailViewModel : ViewModelBase, INavigableViewMode
     private string _statusMessage = "Detail karty disku";
 
     private string _notes = string.Empty;
+    private string _selectedSessionSmartSummary = "Vyberte test pro zobrazení SMART snapshotu.";
+    private string _selectedSessionSmartJson = string.Empty;
+    private string _selectedSessionDegradationSummary = "Porovnání degradace bude dostupné po výběru testu.";
+    private string _selectedSessionErrorSummary = "Vyberte test pro zobrazení detailu chyb.";
+    private string _selectedSessionDiagnosticSummary = "Vyberte test pro diagnostický rozbor průběhu výkonu.";
+    private string _selectedSessionDiagnosticHighlights = string.Empty;
 
     public DiskCardDetailViewModel(
         IDiskCardRepository diskCardRepository,
@@ -88,7 +103,14 @@ public partial class DiskCardDetailViewModel : ViewModelBase, INavigableViewMode
         {
             if (SetProperty(ref _selectedSession, value))
             {
+                UpdateSelectedSessionDetails();
                 OnPropertyChanged(nameof(HasSelectedSession));
+                OnPropertyChanged(nameof(SelectedSessionHasCriticalDiagnostics));
+                OnPropertyChanged(nameof(SelectedSessionHasWarningDiagnostics));
+                OnPropertyChanged(nameof(SelectedSessionDiagnosticBadgeText));
+                OnPropertyChanged(nameof(SelectedSessionDiagnosticBadgeBackground));
+                OnPropertyChanged(nameof(SelectedSessionDiagnosticBadgeForeground));
+                OnPropertyChanged(nameof(SelectedSessionHistoryFlags));
             }
         }
     }
@@ -123,6 +145,97 @@ public partial class DiskCardDetailViewModel : ViewModelBase, INavigableViewMode
         get => _notes;
         set => SetProperty(ref _notes, value);
     }
+
+    public string SelectedSessionSmartSummary
+    {
+        get => _selectedSessionSmartSummary;
+        private set => SetProperty(ref _selectedSessionSmartSummary, value);
+    }
+
+    public string SelectedSessionSmartJson
+    {
+        get => _selectedSessionSmartJson;
+        private set
+        {
+            if (SetProperty(ref _selectedSessionSmartJson, value))
+            {
+                OnPropertyChanged(nameof(HasSelectedSessionSmartJson));
+            }
+        }
+    }
+
+    public bool HasSelectedSessionSmartJson => !string.IsNullOrWhiteSpace(SelectedSessionSmartJson);
+
+    public string SelectedSessionDegradationSummary
+    {
+        get => _selectedSessionDegradationSummary;
+        private set => SetProperty(ref _selectedSessionDegradationSummary, value);
+    }
+
+    public string SelectedSessionErrorSummary
+    {
+        get => _selectedSessionErrorSummary;
+        private set => SetProperty(ref _selectedSessionErrorSummary, value);
+    }
+
+    /// <summary>
+    /// Gets high-level diagnostics summary for the selected session.
+    /// </summary>
+    public string SelectedSessionDiagnosticSummary
+    {
+        get => _selectedSessionDiagnosticSummary;
+        private set => SetProperty(ref _selectedSessionDiagnosticSummary, value);
+    }
+
+    /// <summary>
+    /// Gets diagnostic highlights extracted from session notes.
+    /// </summary>
+    public string SelectedSessionDiagnosticHighlights
+    {
+        get => _selectedSessionDiagnosticHighlights;
+        private set
+        {
+            if (SetProperty(ref _selectedSessionDiagnosticHighlights, value))
+            {
+                OnPropertyChanged(nameof(HasSelectedSessionDiagnosticHighlights));
+            }
+        }
+    }
+
+    public bool HasSelectedSessionDiagnosticHighlights => !string.IsNullOrWhiteSpace(SelectedSessionDiagnosticHighlights);
+
+    /// <summary>
+    /// Gets whether the selected session contains critical diagnostic signals.
+    /// </summary>
+    public bool SelectedSessionHasCriticalDiagnostics => ContainsDiagnosticMarker(SelectedSession?.Notes, "kritické") || ContainsDiagnosticMarker(SelectedSession?.Notes, "kritický");
+
+    /// <summary>
+    /// Gets whether the selected session contains warning-level diagnostic signals.
+    /// </summary>
+    public bool SelectedSessionHasWarningDiagnostics =>
+        ContainsDiagnosticMarker(SelectedSession?.Notes, "propad") ||
+        ContainsDiagnosticMarker(SelectedSession?.Notes, "nestabil") ||
+        ContainsDiagnosticMarker(SelectedSession?.Notes, "histor");
+
+    public string SelectedSessionDiagnosticBadgeText => SelectedSessionHasCriticalDiagnostics
+        ? "KRITICKÉ SIGNÁLY"
+        : SelectedSessionHasWarningDiagnostics
+            ? "VAROVNÉ SIGNÁLY"
+            : "STABILNÍ PRŮBĚH";
+
+    public string SelectedSessionDiagnosticBadgeBackground => SelectedSessionHasCriticalDiagnostics
+        ? "#FDECEC"
+        : SelectedSessionHasWarningDiagnostics
+            ? "#FFF4DB"
+            : "#EAF7EE";
+
+    public string SelectedSessionDiagnosticBadgeForeground => SelectedSessionHasCriticalDiagnostics
+        ? "#B42318"
+        : SelectedSessionHasWarningDiagnostics
+            ? "#B54708"
+            : "#027A48";
+
+    public string SelectedSessionHistoryFlags => BuildHistoryFlags(SelectedSession?.Notes);
 
     // Compatibility aliases for XAML bindings
     public DiskCard? Card => CurrentCard;
@@ -242,12 +355,7 @@ public partial class DiskCardDetailViewModel : ViewModelBase, INavigableViewMode
 
             if (openPdf)
             {
-                // Open PDF with default application
-                System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
-                {
-                    FileName = pdfPath,
-                    UseShellExecute = true
-                });
+                DocumentLauncher.OpenFile(pdfPath);
             }
         }
         catch (Exception ex)
@@ -259,6 +367,31 @@ public partial class DiskCardDetailViewModel : ViewModelBase, INavigableViewMode
         {
             IsLoading = false;
         }
+    }
+
+    [RelayCommand]
+    private void OpenCertificateViewer()
+    {
+        if (CurrentCard == null)
+        {
+            StatusMessage = "Karta disku není načtena.";
+            return;
+        }
+
+        _selectedDiskService.SelectedDisk = new CoreDriveInfo
+        {
+            Path = CurrentCard.DevicePath,
+            Name = CurrentCard.ModelName,
+            TotalSize = CurrentCard.Capacity,
+            SerialNumber = CurrentCard.SerialNumber,
+            FirmwareVersion = CurrentCard.FirmwareVersion
+        };
+        _selectedDiskService.SelectedDiskDisplayName = CurrentCard.ModelName;
+        _selectedDiskService.IsSelectedDiskLocked = CurrentCard.IsLocked;
+        _selectedDiskService.SelectedTestSessionId = SelectedSession?.Id ?? TestSessions.FirstOrDefault()?.Id;
+        _selectedDiskService.SelectedCertificateId = LatestCertificate?.Id;
+
+        _navigationService.NavigateTo<CertificateViewModel>();
     }
 
     [RelayCommand]
@@ -373,15 +506,18 @@ public partial class DiskCardDetailViewModel : ViewModelBase, INavigableViewMode
                 {
                     TestSessions.Add(session);
 
+                    var smartSnapshot = session.SmartBefore;
                     SmartHistory.Add(new SmartHistoryItem
                     {
                         TestedAt = session.StartedAt,
-                        Temperature = session.Temperature,
-                        PowerOnHours = 0,
-                        ReallocatedSectors = 0,
-                        PendingSectors = 0,
-                        ReadErrors = session.ReadErrors,
-                        ReallocEvents = session.VerificationErrors,
+                        Temperature = smartSnapshot?.Temperature ?? session.Temperature,
+                        PowerOnHours = smartSnapshot?.PowerOnHours ?? 0,
+                        ReallocatedSectors = smartSnapshot?.ReallocatedSectorCount ?? 0,
+                        PendingSectors = smartSnapshot?.PendingSectorCount ?? 0,
+                        ReadErrors = smartSnapshot?.UncorrectableErrorCount ?? session.ReadErrors,
+                        ReallocEvents = smartSnapshot?.MediaErrors ?? session.VerificationErrors,
+                        Grade = session.Grade,
+                        Score = session.Score,
                         Notes = session.Notes ?? string.Empty
                     });
                 }
@@ -439,6 +575,241 @@ public partial class DiskCardDetailViewModel : ViewModelBase, INavigableViewMode
         var gb = bytes / (1024.0 * 1024.0 * 1024.0);
         if (gb >= 1000) return $"{gb / 1024.0:F2} TB";
         return $"{gb:F0} GB";
+    }
+
+    private void UpdateSelectedSessionDetails()
+    {
+        if (SelectedSession == null)
+        {
+            SelectedSessionSmartSummary = "Vyberte test pro zobrazení SMART snapshotu.";
+            SelectedSessionSmartJson = string.Empty;
+            SelectedSessionDegradationSummary = "Porovnání degradace bude dostupné po výběru testu.";
+            SelectedSessionErrorSummary = "Vyberte test pro zobrazení detailu chyb.";
+            SelectedSessionDiagnosticSummary = "Vyberte test pro diagnostický rozbor průběhu výkonu.";
+            SelectedSessionDiagnosticHighlights = string.Empty;
+            return;
+        }
+
+        SelectedSessionDiagnosticSummary = BuildDiagnosticSummary(SelectedSession);
+        SelectedSessionDiagnosticHighlights = BuildDiagnosticHighlights(SelectedSession.Notes);
+
+        var smartSnapshot = SelectedSession.SmartBefore;
+        if (smartSnapshot == null)
+        {
+            SelectedSessionSmartSummary = "K vybranému testu není uložen SMART snapshot. Test ale může být jinak platný a hodnocení tím není zhoršeno.";
+            SelectedSessionSmartJson = string.Empty;
+            SelectedSessionDegradationSummary = "Nelze porovnat degradaci bez SMART snapshotu.";
+            SelectedSessionErrorSummary = BuildErrorSummary(SelectedSession);
+            return;
+        }
+
+        SelectedSessionSmartSummary = BuildSmartSummary(smartSnapshot);
+        SelectedSessionSmartJson = !string.IsNullOrWhiteSpace(SelectedSession.SmartBeforeJson)
+            ? FormatSmartJson(SelectedSession.SmartBeforeJson)
+            : string.Empty;
+        SelectedSessionDegradationSummary = BuildDegradationSummary(SelectedSession, smartSnapshot);
+        SelectedSessionErrorSummary = BuildErrorSummary(SelectedSession);
+        SelectedSessionDiagnosticSummary = BuildDiagnosticSummary(SelectedSession);
+        SelectedSessionDiagnosticHighlights = BuildDiagnosticHighlights(SelectedSession.Notes);
+    }
+    
+    private static string BuildErrorSummary(TestSession session)
+    {
+        if (session.Errors.Count == 0)
+        {
+            return "Pro vybraný test nejsou evidované detailní chyby.";
+        }
+
+        var builder = new StringBuilder();
+        foreach (var error in session.Errors.OrderBy(e => e.Timestamp))
+        {
+            builder.AppendLine($"[{error.Phase}] {error.ErrorCode}: {error.Message}");
+            if (!string.IsNullOrWhiteSpace(error.Details))
+            {
+                builder.AppendLine($"  {error.Details}");
+            }
+        }
+
+        return builder.ToString().TrimEnd();
+    }
+
+    private string BuildDegradationSummary(TestSession selectedSession, SmartaData selectedSmart)
+    {
+        var previousSession = TestSessions
+            .Where(s => s.Id != selectedSession.Id && s.StartedAt < selectedSession.StartedAt)
+            .OrderByDescending(s => s.StartedAt)
+            .FirstOrDefault();
+
+        var previousSmart = previousSession?.SmartBefore;
+        if (previousSession == null || previousSmart == null)
+        {
+            return "K vybranému testu není starší SMART snapshot pro porovnání degradace.";
+        }
+
+        var lines = new List<string>
+        {
+            $"Porovnání proti testu {previousSession.StartedAt:dd.MM.yyyy HH:mm}:"
+        };
+
+        AppendDelta(lines, "Power-On Hours", selectedSmart.PowerOnHours, previousSmart.PowerOnHours);
+        AppendDelta(lines, "Reallocated Sector Count", selectedSmart.ReallocatedSectorCount, previousSmart.ReallocatedSectorCount);
+        AppendDelta(lines, "Pending Sector Count", selectedSmart.PendingSectorCount, previousSmart.PendingSectorCount);
+        AppendDelta(lines, "Uncorrectable Error Count", selectedSmart.UncorrectableErrorCount, previousSmart.UncorrectableErrorCount);
+        AppendDelta(lines, "Media Errors", selectedSmart.MediaErrors, previousSmart.MediaErrors);
+        AppendDelta(lines, "Percentage Used", selectedSmart.PercentageUsed, previousSmart.PercentageUsed, suffix: "%");
+
+        return string.Join(Environment.NewLine, lines);
+    }
+
+    private static void AppendDelta(List<string> lines, string name, int? current, int? previous, string suffix = "")
+    {
+        if (!current.HasValue || !previous.HasValue)
+        {
+            lines.Add($"• {name}: N/A");
+            return;
+        }
+
+        var delta = current.Value - previous.Value;
+        var suffixWithSpace = string.IsNullOrEmpty(suffix) ? string.Empty : suffix;
+        lines.Add($"• {name}: {current.Value}{suffixWithSpace} (Δ {delta:+#;-#;0}{suffixWithSpace})");
+    }
+
+    private static string BuildSmartSummary(SmartaData snapshot)
+    {
+        var builder = new StringBuilder();
+        builder.AppendLine($"Model: {snapshot.DeviceModel}");
+        builder.AppendLine($"Sériové číslo: {snapshot.SerialNumber}");
+        builder.AppendLine($"Firmware: {snapshot.FirmwareVersion}");
+        builder.AppendLine($"Teplota: {(snapshot.Temperature.HasValue ? $"{snapshot.Temperature}°C" : "N/A")}");
+        builder.AppendLine($"Power-On Hours: {snapshot.PowerOnHours?.ToString() ?? "N/A"}");
+        builder.AppendLine($"Reallocated: {snapshot.ReallocatedSectorCount?.ToString() ?? "N/A"}");
+        builder.AppendLine($"Pending: {snapshot.PendingSectorCount?.ToString() ?? "N/A"}");
+        builder.AppendLine($"Uncorrectable: {snapshot.UncorrectableErrorCount?.ToString() ?? "N/A"}");
+        builder.Append($"Media Errors: {snapshot.MediaErrors?.ToString() ?? "N/A"}");
+        return builder.ToString();
+    }
+
+    private static string BuildDiagnosticSummary(TestSession session)
+    {
+        var notes = session.Notes ?? string.Empty;
+        var flags = new List<string>();
+
+        if (notes.Contains("kritické", StringComparison.OrdinalIgnoreCase) || notes.Contains("kritický", StringComparison.OrdinalIgnoreCase))
+        {
+            flags.Add("kritické signály výkonu");
+        }
+
+        if (notes.Contains("propad", StringComparison.OrdinalIgnoreCase))
+        {
+            flags.Add("výrazné propady rychlosti");
+        }
+
+        if (notes.Contains("nestabil", StringComparison.OrdinalIgnoreCase))
+        {
+            flags.Add("nestabilní průběh");
+        }
+
+        if (notes.Contains("histor", StringComparison.OrdinalIgnoreCase))
+        {
+            flags.Add("odchylka od historie");
+        }
+
+        if (notes.Contains("SMART", StringComparison.OrdinalIgnoreCase))
+        {
+            flags.Add("SMART kontext");
+        }
+
+        if (flags.Count == 0)
+        {
+            return "Diagnostika neodhalila výrazné signály mimo standardní výsledek testu.";
+        }
+
+        return "Detekované diagnostické signály: " + string.Join(", ", flags) + ".";
+    }
+
+    private static string BuildDiagnosticHighlights(string? notes)
+    {
+        if (string.IsNullOrWhiteSpace(notes))
+        {
+            return string.Empty;
+        }
+
+        var parts = notes
+            .Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Where(p =>
+                p.Contains("propad", StringComparison.OrdinalIgnoreCase) ||
+                p.Contains("kritické", StringComparison.OrdinalIgnoreCase) ||
+                p.Contains("nestabil", StringComparison.OrdinalIgnoreCase) ||
+                p.Contains("histor", StringComparison.OrdinalIgnoreCase) ||
+                p.Contains("SMART", StringComparison.OrdinalIgnoreCase) ||
+                p.Contains("thermal", StringComparison.OrdinalIgnoreCase) ||
+                p.Contains("teplot", StringComparison.OrdinalIgnoreCase))
+            .Distinct(StringComparer.Ordinal)
+            .ToList();
+
+        if (parts.Count == 0)
+        {
+            parts = notes
+                .Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                .Take(4)
+                .ToList();
+        }
+
+        return string.Join(Environment.NewLine, parts.Select(p => $"• {p}"));
+    }
+
+    private static bool ContainsDiagnosticMarker(string? notes, string marker)
+    {
+        return !string.IsNullOrWhiteSpace(notes) && notes.Contains(marker, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static string BuildHistoryFlags(string? notes)
+    {
+        if (string.IsNullOrWhiteSpace(notes))
+        {
+            return "OK";
+        }
+
+        var flags = new List<string>();
+        if (notes.Contains("kritické", StringComparison.OrdinalIgnoreCase) || notes.Contains("kritický", StringComparison.OrdinalIgnoreCase))
+        {
+            flags.Add("KRIT");
+        }
+
+        if (notes.Contains("propad", StringComparison.OrdinalIgnoreCase))
+        {
+            flags.Add("DROP");
+        }
+
+        if (notes.Contains("nestabil", StringComparison.OrdinalIgnoreCase))
+        {
+            flags.Add("CV");
+        }
+
+        if (notes.Contains("histor", StringComparison.OrdinalIgnoreCase))
+        {
+            flags.Add("HIST");
+        }
+
+        if (notes.Contains("SMART", StringComparison.OrdinalIgnoreCase))
+        {
+            flags.Add("SMART");
+        }
+
+        return flags.Count == 0 ? "OK" : string.Join(" | ", flags);
+    }
+
+    private static string FormatSmartJson(string json)
+    {
+        try
+        {
+            using var document = JsonDocument.Parse(json);
+            return JsonSerializer.Serialize(document.RootElement, SmartJsonFormattingOptions);
+        }
+        catch (JsonException)
+        {
+            return json;
+        }
     }
 
     #endregion

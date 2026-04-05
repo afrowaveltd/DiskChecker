@@ -58,6 +58,7 @@ public class EmailSettingsService : IEmailSettingsService
         record.Password = settings.Password;
         record.FromName = settings.FromName;
         record.FromAddress = settings.FromAddress;
+        record.IncludeCertificateAttachment = settings.IncludeCertificateAttachment;
         record.UpdatedAtUtc = DateTime.UtcNow;
 
         await _dbContext.SaveChangesAsync(cancellationToken);
@@ -73,7 +74,8 @@ public class EmailSettingsService : IEmailSettingsService
             UserName = record.UserName,
             Password = record.Password,
             FromName = record.FromName ?? "DiskChecker",
-            FromAddress = record.FromAddress
+            FromAddress = record.FromAddress,
+            IncludeCertificateAttachment = record.IncludeCertificateAttachment
         };
     }
 }

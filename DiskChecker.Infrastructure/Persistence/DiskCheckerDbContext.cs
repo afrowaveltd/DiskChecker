@@ -99,6 +99,7 @@ public class DiskCheckerDbContext : DbContext
             entity.Property(e => e.PartitionScheme).HasMaxLength(32);
             entity.Property(e => e.FileSystem).HasMaxLength(32);
             entity.Property(e => e.VolumeLabel).HasMaxLength(256);
+            entity.Property(e => e.ChartImagePath).HasMaxLength(512);
             entity.Property(e => e.Grade).HasMaxLength(1);
             entity.Property(e => e.Notes).HasMaxLength(2000);
 

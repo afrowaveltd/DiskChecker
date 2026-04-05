@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Threading;
 using System.Threading.Tasks;
 using DiskChecker.Core.Models;
 
@@ -128,6 +129,16 @@ public interface ICertificateGenerator
     /// </summary>
     Task<DiskCertificate> GenerateCertificateAsync(TestSession session, DiskCard diskCard);
     
+    /// <summary>
+    /// Generates and stores a cached chart image for the specified test session.
+    /// </summary>
+    Task<string?> GenerateAndStoreChartImageAsync(TestSession session, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Ensures a cached chart image exists for the specified test session and returns its path.
+    /// </summary>
+    Task<string?> EnsureChartImageAsync(TestSession session, CancellationToken cancellationToken = default);
+
     /// <summary>
     /// Generate PDF from certificate.
     /// </summary>

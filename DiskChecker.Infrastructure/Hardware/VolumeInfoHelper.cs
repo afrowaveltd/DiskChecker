@@ -44,15 +44,17 @@ public static class VolumeInfoHelper
         try
         {
             // Extract the drive number (e.g., "1" from "PhysicalDrive1")
-            var driveMatch = Regex.Match(physicalDrivePath, @"PhysicalDrive(\d+)");
+            var driveMatch = Regex.Match(physicalDrivePath, @"PhysicalDrive(\d+)", RegexOptions.IgnoreCase);
             if (!driveMatch.Success)
                 return result;
 
             var driveNumber = driveMatch.Groups[1].Value;
             
             // Get the system/boot drive letter
-            var systemDrive = Environment.GetFolderPath(Environment.SpecialFolder.Windows).Substring(0, 1);
-            var bootDrive = Environment.GetFolderPath(Environment.SpecialFolder.System).Substring(0, 1);
+            var windowsPath = Environment.GetFolderPath(Environment.SpecialFolder.Windows);
+            var systemPath = Environment.GetFolderPath(Environment.SpecialFolder.System);
+            var systemDrive = windowsPath.Length > 0 ? string.Concat(windowsPath.AsSpan(0, 1), ":") : string.Empty;
+            var bootDrive = systemPath.Length > 0 ? string.Concat(systemPath.AsSpan(0, 1), ":") : string.Empty;
             
             // Query WMI for partitions on this physical disk
             var partitionQuery = $"ASSOCIATORS OF {{Win32_DiskDrive.DeviceID='\\\\.\\PhysicalDrive{driveNumber}'}} WHERE AssocClass = Win32_DiskDriveToDiskPartition";
@@ -61,31 +63,57 @@ public static class VolumeInfoHelper
             
             foreach (ManagementObject partition in searcher.Get())
             {
+                var partitionDeviceId = partition["DeviceID"]?.ToString() ?? string.Empty;
+                var partitionName = partition["Name"]?.ToString() ?? string.Empty;
+                var partitionType = partition["Type"]?.ToString() ?? string.Empty;
+                var partitionIndex = partition["Index"]?.ToString() ?? "?";
+                var hasLogicalVolume = false;
+
                 // Get volumes on this partition
                 using var volumeQuery = new ManagementObjectSearcher(
                     "root\\CIMV2", 
-                    $"ASSOCIATORS OF {{Win32_DiskPartition.DeviceID='{partition["DeviceID"]}'}} WHERE AssocClass = Win32_LogicalDiskToPartition");
+                    $"ASSOCIATORS OF {{Win32_DiskPartition.DeviceID='{partitionDeviceId}'}} WHERE AssocClass = Win32_LogicalDiskToPartition");
+            
+            foreach (ManagementObject volume in volumeQuery.Get())
+            {
+                hasLogicalVolume = true;
+
+                var driveLetter = volume["DeviceID"]?.ToString() ?? string.Empty;
+                var volumeLabel = volume["VolumeName"]?.ToString() ?? string.Empty;
+                var fileSystem = volume["FileSystem"]?.ToString() ?? string.Empty;
+
+                var displayName = !string.IsNullOrWhiteSpace(volumeLabel)
+                    ? volumeLabel
+                    : !string.IsNullOrWhiteSpace(partitionName)
+                        ? partitionName
+                        : driveLetter;
                 
-                foreach (ManagementObject volume in volumeQuery.Get())
+                if (!string.IsNullOrEmpty(driveLetter))
                 {
-                    var driveLetter = volume["DeviceID"]?.ToString() ?? "";
-                    var volumeLabel = volume["VolumeName"]?.ToString() ?? "";
-                    var fileSystem = volume["FileSystem"]?.ToString() ?? "";
-                    
-                    if (!string.IsNullOrEmpty(driveLetter))
+                    var details = new VolumeDetails
                     {
-                        var details = new VolumeDetails
-                        {
-                            DriveLetter = driveLetter,
-                            VolumeLabel = volumeLabel,
-                            FileSystem = fileSystem,
-                            IsSystemDisk = driveLetter.Equals(systemDrive, StringComparison.OrdinalIgnoreCase),
-                            IsBootDisk = driveLetter.Equals(bootDrive, StringComparison.OrdinalIgnoreCase)
-                        };
-                        result.Add(details);
-                    }
+                        DriveLetter = driveLetter,
+                        VolumeLabel = displayName,
+                        FileSystem = fileSystem,
+                        IsSystemDisk = driveLetter.Equals(systemDrive, StringComparison.OrdinalIgnoreCase),
+                        IsBootDisk = driveLetter.Equals(bootDrive, StringComparison.OrdinalIgnoreCase)
+                    };
+                    result.Add(details);
                 }
             }
+
+            if (!hasLogicalVolume)
+            {
+                result.Add(new VolumeDetails
+                {
+                    DriveLetter = $"Partition {partitionIndex}",
+                    VolumeLabel = !string.IsNullOrWhiteSpace(partitionName) ? partitionName : partitionDeviceId,
+                    FileSystem = !string.IsNullOrWhiteSpace(partitionType) ? partitionType : "Unknown",
+                    IsSystemDisk = false,
+                    IsBootDisk = false
+                });
+            }
+        }
         }
         catch (Exception ex)
         {

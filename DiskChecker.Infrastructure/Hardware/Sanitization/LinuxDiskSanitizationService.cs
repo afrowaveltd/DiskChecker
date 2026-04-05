@@ -330,6 +330,13 @@ public class LinuxDiskSanitizationService : IDiskSanitizationService
                 chunkStopwatch.Stop();
                 bytesWritten += bytesToWrite;
 
+                if (result.Errors >= 10)
+                {
+                    result.Success = false;
+                    result.ErrorMessage = "Test byl ukončen: nalezeno 10 nebo více chyb. Disk je pravděpodobně vadný.";
+                    return result;
+                }
+
                 var chunkSeconds = chunkStopwatch.Elapsed.TotalSeconds;
                 var instantSpeed = chunkSeconds > 0
                     ? bytesToWrite / (1024.0 * 1024.0) / chunkSeconds
@@ -425,6 +432,13 @@ public class LinuxDiskSanitizationService : IDiskSanitizationService
                             _logger.LogWarning("Non-zero byte found at offset {Offset}", bytesRead + i);
                         }
                     }
+                }
+
+                if (result.Errors >= 10)
+                {
+                    result.Success = false;
+                    result.ErrorMessage = "Test byl ukončen: nalezeno 10 nebo více chyb. Disk je pravděpodobně vadný.";
+                    return result;
                 }
 
                 bytesRead += bytesReadThisChunk;

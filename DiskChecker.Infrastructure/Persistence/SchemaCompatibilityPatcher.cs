@@ -41,13 +41,18 @@ public static class SchemaCompatibilityPatcher
         {
             EnsureColumn(dbContext, "TestSessions", "SmartBeforeJson");
             EnsureColumn(dbContext, "TestSessions", "SmartAfterJson");
+            EnsureColumn(dbContext, "TestSessions", "ChartImagePath");
         }
-
         if (TableExists(dbContext, "DiskCards"))
         {
             EnsureColumn(dbContext, "DiskCards", "PowerOnHours");
             EnsureColumn(dbContext, "DiskCards", "PowerCycleCount");
             EnsureIndex(dbContext, "IX_DiskCards_DevicePath", "DiskCards", "DevicePath");
+        }
+
+        if (TableExists(dbContext, "EmailSettings"))
+        {
+            EnsureColumn(dbContext, "EmailSettings", "IncludeCertificateAttachment");
         }
     }
 
@@ -131,7 +136,11 @@ public static class SchemaCompatibilityPatcher
             dbContext.Database.ExecuteSqlRaw("ALTER TABLE TestSessions ADD COLUMN SmartAfterJson TEXT NULL;");
             return;
         }
-
+        if (tableName == "TestSessions" && columnName == "ChartImagePath")
+        {
+            dbContext.Database.ExecuteSqlRaw("ALTER TABLE TestSessions ADD COLUMN ChartImagePath TEXT NULL;");
+            return;
+        }
         if (tableName == "DiskCards" && columnName == "PowerOnHours")
         {
             dbContext.Database.ExecuteSqlRaw("ALTER TABLE DiskCards ADD COLUMN PowerOnHours INTEGER NULL;");
@@ -141,6 +150,12 @@ public static class SchemaCompatibilityPatcher
         if (tableName == "DiskCards" && columnName == "PowerCycleCount")
         {
             dbContext.Database.ExecuteSqlRaw("ALTER TABLE DiskCards ADD COLUMN PowerCycleCount INTEGER NULL;");
+            return;
+        }
+
+        if (tableName == "EmailSettings" && columnName == "IncludeCertificateAttachment")
+        {
+            dbContext.Database.ExecuteSqlRaw("ALTER TABLE EmailSettings ADD COLUMN IncludeCertificateAttachment INTEGER NOT NULL DEFAULT 1;");
             return;
         }
     }

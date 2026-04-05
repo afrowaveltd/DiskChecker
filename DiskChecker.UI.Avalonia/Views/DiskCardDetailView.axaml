@@ -36,6 +36,12 @@
                             Background="{DynamicResource ThemeSuccessBrush}" Foreground="White"
                             FontWeight="Bold" Padding="12,6" Margin="0,0,8,0"
                             Cursor="Hand"/>
+                    <Button Content="🧭 Interní prohlížeč"
+                            Command="{Binding OpenCertificateViewerCommand}"
+                            IsEnabled="{Binding HasTestSessions}"
+                            Background="{DynamicResource ThemeInfoBrush}" Foreground="White"
+                            FontWeight="Bold" Padding="12,6" Margin="0,0,8,0"
+                            Cursor="Hand"/>
                     <Button Content="🏠 Zpět na přehled"
                             Command="{Binding NavigateBackCommand}"
                             Background="{DynamicResource ThemeSecondaryBackgroundBrush}" Foreground="{DynamicResource ThemeTextPrimaryBrush}"
@@ -138,9 +144,27 @@
                             <DataGridTextColumn Header="Typ testu" Binding="{Binding TestType}" Width="120"/>
                             <DataGridTextColumn Header="Známka" Binding="{Binding Grade}" Width="60"/>
                             <DataGridTextColumn Header="Skóre" Binding="{Binding Score, StringFormat={}{0:F0}}" Width="60"/>
+                            <dg:DataGridTemplateColumn Header="Signály" Width="170">
+                                <dg:DataGridTemplateColumn.CellTemplate>
+                                    <DataTemplate>
+                                        <Border Background="{Binding DiagnosticBadgeBackground}"
+                                                CornerRadius="999"
+                                                Padding="10,4"
+                                                HorizontalAlignment="Left"
+                                                VerticalAlignment="Center">
+                                            <TextBlock Text="{Binding DiagnosticBadgeText}"
+                                                       Foreground="{Binding DiagnosticBadgeForeground}"
+                                                       FontSize="10"
+                                                       FontWeight="Bold"/>
+                                        </Border>
+                                    </DataTemplate>
+                                </dg:DataGridTemplateColumn.CellTemplate>
+                            </dg:DataGridTemplateColumn>
+                            <DataGridTextColumn Header="Flagy" Binding="{Binding DiagnosticFlagsText}" Width="120"/>
                             <DataGridTextColumn Header="Sektory" Binding="{Binding SectorsTested}" Width="80"/>
                             <DataGridTextColumn Header="Chyby" Binding="{Binding ErrorCount}" Width="60"/>
                             <DataGridTextColumn Header="Teplota" Binding="{Binding Temperature, StringFormat={}{0}°C}" Width="80"/>
+                            <DataGridTextColumn Header="Throttle" Binding="{Binding ThermalThrottlingText}" Width="90"/>
                             <DataGridTextColumn Header="Trvání" Binding="{Binding Duration, StringFormat={}{0} min}" Width="70"/>
                             <DataGridTextColumn Header="Poznámky" Binding="{Binding Notes}" Width="*"/>
                         </DataGrid.Columns>
@@ -165,18 +189,63 @@
                               GridLinesVisibility="Horizontal"
                               FontSize="12">
                         <DataGrid.Columns>
-                            <DataGridTextColumn Header="Datum" Binding="{Binding TestedAt, StringFormat={}{0:dd.MM.yyyy}}" Width="100"/>
-                            <DataGridTextColumn Header="Teplota" Binding="{Binding Temperature}" Width="70"/>
+                            <DataGridTextColumn Header="Datum" Binding="{Binding TestedAt, StringFormat={}{0:dd.MM.yyyy HH:mm}}" Width="130"/>
+                            <DataGridTextColumn Header="Známka" Binding="{Binding Grade}" Width="65"/>
+                            <DataGridTextColumn Header="Skóre" Binding="{Binding Score, StringFormat={}{0:F0}}" Width="65"/>
+                            <DataGridTextColumn Header="Teplota" Binding="{Binding Temperature, StringFormat={}{0}°C}" Width="80"/>
                             <DataGridTextColumn Header="Provozní hodiny" Binding="{Binding PowerOnHours}" Width="110"/>
                             <DataGridTextColumn Header="Reallocated" Binding="{Binding ReallocatedSectors}" Width="90"/>
                             <DataGridTextColumn Header="Pending" Binding="{Binding PendingSectors}" Width="70"/>
-                            <DataGridTextColumn Header="Chyby čtení" Binding="{Binding ReadErrors}" Width="80"/>
-                            <DataGridTextColumn Header="Realloc. události" Binding="{Binding ReallocEvents}" Width="100"/>
+                            <DataGridTextColumn Header="Uncorrectable" Binding="{Binding ReadErrors}" Width="95"/>
+                            <DataGridTextColumn Header="Media errors" Binding="{Binding ReallocEvents}" Width="90"/>
                             <DataGridTextColumn Header="Poznámky" Binding="{Binding Notes}" Width="*"/>
                         </DataGrid.Columns>
                     </DataGrid>
                 </Grid>
             </TabItem>
+
+            <TabItem Header="🧾 SMART snapshot">
+                <Grid Margin="10" RowDefinitions="Auto,Auto,Auto,Auto,Auto,*">
+                    <Border Grid.Row="0" Background="{DynamicResource ThemeSecondaryBackgroundBrush}" Padding="10" CornerRadius="6" Margin="0,0,0,10">
+                        <StackPanel Spacing="8">
+                            <Border Background="{Binding SelectedSessionDiagnosticBadgeBackground}" CornerRadius="999" Padding="10,4" HorizontalAlignment="Left">
+                                <TextBlock Text="{Binding SelectedSessionDiagnosticBadgeText}" FontSize="11" FontWeight="Bold"
+                                           Foreground="{Binding SelectedSessionDiagnosticBadgeForeground}"/>
+                            </Border>
+                            <TextBlock Text="{Binding SelectedSessionDiagnosticSummary}" TextWrapping="Wrap" FontSize="11" FontWeight="SemiBold"/>
+                        </StackPanel>
+                    </Border>
+
+                    <Border Grid.Row="1" Background="{DynamicResource ThemeSecondaryBackgroundBrush}" Padding="10" CornerRadius="6" Margin="0,0,0,10"
+                            IsVisible="{Binding HasSelectedSessionDiagnosticHighlights}">
+                        <TextBlock Text="{Binding SelectedSessionDiagnosticHighlights}" TextWrapping="Wrap" FontFamily="Consolas" FontSize="11"/>
+                    </Border>
+
+                    <Border Grid.Row="2" Background="{DynamicResource ThemeSecondaryBackgroundBrush}" Padding="10" CornerRadius="6" Margin="0,0,0,10">
+                        <TextBlock Text="{Binding SelectedSessionSmartSummary}" TextWrapping="Wrap" FontFamily="Consolas" FontSize="11"/>
+                    </Border>
+
+                    <Border Grid.Row="3" Background="{DynamicResource ThemeSecondaryBackgroundBrush}" Padding="10" CornerRadius="6" Margin="0,0,0,10">
+                        <TextBlock Text="{Binding SelectedSessionDegradationSummary}" TextWrapping="Wrap" FontFamily="Consolas" FontSize="11"/>
+                    </Border>
+
+                    <Border Grid.Row="4" Background="{DynamicResource ThemeSecondaryBackgroundBrush}" Padding="10" CornerRadius="6" Margin="0,0,0,10">
+                        <TextBlock Text="{Binding SelectedSessionErrorSummary}" TextWrapping="Wrap" FontFamily="Consolas" FontSize="11"/>
+                    </Border>
+
+                    <Border Grid.Row="5" Background="{DynamicResource ThemeSecondaryBackgroundBrush}" Padding="10" CornerRadius="6">
+                         <TextBox Text="{Binding SelectedSessionSmartJson}"
+                                  IsReadOnly="True"
+                                  AcceptsReturn="True"
+                                  TextWrapping="NoWrap"
+                                  FontFamily="Consolas"
+                                  FontSize="11"
+                                  ScrollViewer.VerticalScrollBarVisibility="Auto"
+                                  ScrollViewer.HorizontalScrollBarVisibility="Auto"
+                                  Watermark="Vyberte test se SMART snapshotem"/>
+                     </Border>
+                 </Grid>
+             </TabItem>
 
             <!-- Notes Tab -->
             <TabItem Header="📝 Poznámky">

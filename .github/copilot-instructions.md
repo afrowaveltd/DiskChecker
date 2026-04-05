@@ -9,6 +9,8 @@
 - User wants the ability to select/switch disks directly on each relevant page (e.g., Surface Test and SMART), independently of the default selection.
 - User wants to clean up the structure of the WPF project first: each class in its own file, remove outdated and redundant files (including unnecessary .md files), and only then address further UX improvements (graphs/gauges).
 - User wants a visually attractive certificate (colorful and suitable for black-and-white printing), featuring a graph and a prominent large seal; the next step should focus on usability and final UX of the Avalonia project.
+- User prefers an in-app, richer certificate viewer (beyond PDF) that shows complete key test data, speed graph, improved disk type detection (HDD vs SSD), and temperature-over-progress correlation for SSD slowdown analysis.
+  This preference should be remembered and applied continuously.
 
 ## UI Design Preferences
 - User wants to debug the UI step-by-step in Czech, with better contrast and visual inspiration from the colors of Česká pošta; they also prefer functional feedback during the SMART quick test process.

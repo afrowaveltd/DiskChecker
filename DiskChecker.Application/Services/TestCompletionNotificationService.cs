@@ -1,6 +1,9 @@
 using DiskChecker.Core.Models;
 using DiskChecker.Core.Interfaces;
 using Microsoft.Extensions.Logging;
+using System.Globalization;
+using System.Net;
+using System.Text;
 
 namespace DiskChecker.Application.Services;
 
@@ -86,6 +89,7 @@ public partial class TestCompletionNotificationService
         string recipientEmail,
         byte[]? reportPdf,
         string? diskName = null,
+        DiskCertificate? certificate = null,
         string? attachmentFileName = null,
         CancellationToken cancellationToken = default)
     {
@@ -100,7 +104,9 @@ public partial class TestCompletionNotificationService
         try
         {
             var subject = $"📊 Test disku {diskName ?? "Unknown"} - Zpráva - {GetResultStatus(result)}";
-            var body = BuildEmailBody(result, diskName, includeReport: true);
+            var body = certificate != null
+                ? BuildCertificateEmailBody(certificate, result)
+                : BuildEmailBody(result, diskName, includeReport: true);
 
             var message = new EmailMessage
             {
@@ -109,7 +115,7 @@ public partial class TestCompletionNotificationService
                 HtmlBody = body
             };
 
-            if (reportPdf is { Length: > 0 })
+            if (emailSettings.IncludeCertificateAttachment && reportPdf is { Length: > 0 })
             {
                 message.Attachments.Add(new EmailAttachment
                 {
@@ -199,6 +205,82 @@ public partial class TestCompletionNotificationService
 </html>";
 
         return body;
+    }
+
+    private static string BuildCertificateEmailBody(DiskCertificate certificate, SurfaceTestResult result)
+    {
+        ArgumentNullException.ThrowIfNull(certificate);
+
+        var sb = new StringBuilder();
+        sb.Append("<!DOCTYPE html><html><head><meta charset='utf-8' /><style>");
+        sb.Append("body{font-family:Segoe UI,Arial,sans-serif;color:#1f2937;background:#f8fafc;margin:0;padding:16px;}");
+        sb.Append(".container{max-width:860px;margin:0 auto;background:#fff;border:1px solid #dbe3ee;border-radius:12px;padding:20px;}");
+        sb.Append(".header{background:#2A6FD6;color:#fff;padding:16px;border-radius:10px;margin-bottom:16px;}");
+        sb.Append(".grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;}");
+        sb.Append(".panel{background:#f6f8fb;border:1px solid #e5eaf1;border-radius:8px;padding:12px;}");
+        sb.Append(".row{display:grid;grid-template-columns:220px 1fr;gap:8px;padding:4px 0;}");
+        sb.Append(".label{font-weight:600;color:#374151;}");
+        sb.Append(".value{color:#111827;}");
+        sb.Append(".title{font-size:15px;font-weight:700;margin-bottom:8px;color:#0f172a;}");
+        sb.Append(".grade{font-size:28px;font-weight:800;margin:0;color:#1f2937;}");
+        sb.Append(".foot{margin-top:14px;font-size:12px;color:#6b7280;}");
+        sb.Append("</style></head><body><div class='container'>");
+        sb.Append("<div class='header'><h2 style='margin:0'>📄 Certifikát kvality disku</h2><div style='margin-top:6px'>DiskChecker - kompletní souhrn výsledků</div></div>");
+
+        sb.Append("<div class='grid'>");
+        sb.Append("<div class='panel'><div class='title'>Identita disku</div>");
+        AppendRow(sb, "Model", certificate.DiskModel);
+        AppendRow(sb, "Sériové číslo", certificate.SerialNumber);
+        AppendRow(sb, "Kapacita", certificate.Capacity);
+        AppendRow(sb, "Typ disku", certificate.DiskType);
+        AppendRow(sb, "Rozhraní", certificate.Interface);
+        AppendRow(sb, "Firmware", certificate.Firmware);
+        AppendRow(sb, "Provozní hodiny", certificate.PowerOnHours > 0 ? certificate.PowerOnHours.ToString("#,0", CultureInfo.InvariantCulture) : "N/A");
+        AppendRow(sb, "Počet startů", certificate.PowerCycles > 0 ? certificate.PowerCycles.ToString("#,0", CultureInfo.InvariantCulture) : "N/A");
+        AppendRow(sb, "Číslo certifikátu", certificate.CertificateNumber);
+        AppendRow(sb, "Generováno", certificate.GeneratedAt.ToString("dd.MM.yyyy HH:mm"));
+        sb.Append("</div>");
+
+        sb.Append("<div class='panel'><div class='title'>Hodnocení</div>");
+        sb.Append($"<p class='grade'>Známka {WebUtility.HtmlEncode(certificate.Grade)} - {certificate.Score:F0}/100</p>");
+        AppendRow(sb, "Stav", certificate.HealthStatus);
+        AppendRow(sb, "Typ testu", certificate.TestType);
+        AppendRow(sb, "Délka testu", certificate.TestDuration.ToString(@"hh\:mm\:ss"));
+        AppendRow(sb, "SMART", certificate.SmartPassed ? "✅ V pořádku" : "⚠️ Varování");
+        AppendRow(sb, "Doporučení", certificate.Recommended ? "✅ Doporučeno" : "⚠️ Nedoporučeno");
+        sb.Append("</div>");
+        sb.Append("</div>");
+
+        sb.Append("<div class='panel' style='margin-top:12px'><div class='title'>Výkon testu</div>");
+        AppendRow(sb, "Průměrný zápis", $"{certificate.AvgWriteSpeed:F1} MB/s");
+        AppendRow(sb, "Maximální zápis", $"{certificate.MaxWriteSpeed:F1} MB/s");
+        AppendRow(sb, "Průměrné čtení", $"{certificate.AvgReadSpeed:F1} MB/s");
+        AppendRow(sb, "Maximální čtení", $"{certificate.MaxReadSpeed:F1} MB/s");
+        AppendRow(sb, "Rozsah teplot", certificate.TemperatureRange);
+        AppendRow(sb, "Počet chyb", certificate.ErrorCount.ToString(CultureInfo.InvariantCulture));
+        AppendRow(sb, "Vzorky", result.Samples.Count.ToString(CultureInfo.InvariantCulture));
+        sb.Append("</div>");
+
+        sb.Append("<div class='panel' style='margin-top:12px'><div class='title'>SMART souhrn</div>");
+        AppendRow(sb, "Realokované sektory", certificate.ReallocatedSectors.ToString(CultureInfo.InvariantCulture));
+        AppendRow(sb, "Čekající sektory", certificate.PendingSectors.ToString(CultureInfo.InvariantCulture));
+        if (!string.IsNullOrWhiteSpace(certificate.Notes))
+        {
+            AppendRow(sb, "Poznámky", certificate.Notes!);
+        }
+        sb.Append("</div>");
+
+        sb.Append("<div class='foot'>Tento e-mail obsahuje kompletní certifikační souhrn. PDF příloha je volitelná dle nastavení.</div>");
+        sb.Append("</div></body></html>");
+        return sb.ToString();
+    }
+
+    private static void AppendRow(StringBuilder sb, string label, string? value)
+    {
+        sb.Append("<div class='row'>");
+        sb.Append($"<div class='label'>{WebUtility.HtmlEncode(label)}:</div>");
+        sb.Append($"<div class='value'>{WebUtility.HtmlEncode(string.IsNullOrWhiteSpace(value) ? "N/A" : value)}</div>");
+        sb.Append("</div>");
     }
 
     private static string FormatBytes(long bytes)

@@ -255,11 +255,7 @@ namespace DiskChecker.UI.Avalonia.ViewModels
 
                 if (openPdf)
                 {
-                    System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
-                    {
-                        FileName = pdfPath,
-                        UseShellExecute = true
-                    });
+                    DocumentLauncher.OpenFile(pdfPath);
                 }
             }
             catch (InvalidOperationException ex)

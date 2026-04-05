@@ -43,8 +43,48 @@ public class SanitizationResult
     public TimeSpan Duration { get; set; }
     public bool PartitionCreated { get; set; }
     public bool Formatted { get; set; }
+
+    /// <summary>
+    /// SMART snapshot captured after sanitization when available.
+    /// </summary>
+    public DiskChecker.Core.Models.SmartaData? SmartAfter { get; set; }
+
+    /// <summary>
+    /// Detailed error entries collected during sanitization.
+    /// </summary>
+    public List<SanitizationErrorDetail> ErrorDetails { get; set; } = new();
 }
 
+/// <summary>
+/// Detailed information about a sanitization error.
+/// </summary>
+public class SanitizationErrorDetail
+{
+    /// <summary>
+    /// Gets or sets the phase where the error occurred.
+    /// </summary>
+    public string Phase { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Gets or sets short error code.
+    /// </summary>
+    public string ErrorCode { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Gets or sets human-readable error message.
+    /// </summary>
+    public string Message { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Gets or sets optional detailed diagnostic text.
+    /// </summary>
+    public string? Details { get; set; }
+
+    /// <summary>
+    /// Gets or sets approximate byte offset related to the error.
+    /// </summary>
+    public long? OffsetBytes { get; set; }
+}
 /// <summary>
 /// Progress callback for sanitization operations.
 /// </summary>
@@ -57,4 +97,9 @@ public class SanitizationProgress
     public double CurrentSpeedMBps { get; set; }
     public int Errors { get; set; }
     public TimeSpan? EstimatedTimeRemaining { get; set; }
+
+    /// <summary>
+    /// Optional additional status detail (e.g., recovery attempt reason).
+    /// </summary>
+    public string? StatusDetail { get; set; }
 }

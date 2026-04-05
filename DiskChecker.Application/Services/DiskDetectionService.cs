@@ -442,6 +442,9 @@ public class DiskDetectionService : IDiskDetectionService
             var mediaType = item.TryGetProperty("MediaType", out var mediaProp) 
                 ? mediaProp.GetString() 
                 : null;
+
+            var isSolidState = IsSolidStateDrive(interfaceType, mediaType, model);
+            var isRotational = isSolidState ? false : true;
             
             var busType = DetermineBusType(interfaceType);
             
@@ -456,7 +459,9 @@ public class DiskDetectionService : IDiskDetectionService
                 SerialNumber = serialNumber,
                 MediaType = mediaType,
                 Interface = interfaceType ?? "Unknown",
-                BusType = busType
+                BusType = busType,
+                IsSolidState = isSolidState,
+                IsRotational = isRotational
             };
         }
         catch
@@ -465,6 +470,45 @@ public class DiskDetectionService : IDiskDetectionService
         }
     }
     
+    /// <summary>
+    /// Determines whether a drive should be treated as solid-state based on available platform hints.
+    /// </summary>
+    private static bool IsSolidStateDrive(string? interfaceType, string? mediaType, string? model)
+    {
+        if (!string.IsNullOrWhiteSpace(interfaceType) && interfaceType.Contains("nvme", StringComparison.OrdinalIgnoreCase))
+        {
+            return true;
+        }
+
+        if (!string.IsNullOrWhiteSpace(mediaType))
+        {
+            if (mediaType.Contains("ssd", StringComparison.OrdinalIgnoreCase) ||
+                mediaType.Contains("solid", StringComparison.OrdinalIgnoreCase) ||
+                mediaType.Contains("flash", StringComparison.OrdinalIgnoreCase))
+            {
+                return true;
+            }
+
+            if (mediaType.Contains("hdd", StringComparison.OrdinalIgnoreCase) ||
+                mediaType.Contains("hard", StringComparison.OrdinalIgnoreCase))
+            {
+                return false;
+            }
+        }
+
+        if (!string.IsNullOrWhiteSpace(model))
+        {
+            if (model.Contains("nvme", StringComparison.OrdinalIgnoreCase) ||
+                model.Contains("ssd", StringComparison.OrdinalIgnoreCase) ||
+                model.Contains("flash", StringComparison.OrdinalIgnoreCase))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     private static CoreBusType DetermineBusType(string? interfaceType)
     {
         if (string.IsNullOrEmpty(interfaceType))

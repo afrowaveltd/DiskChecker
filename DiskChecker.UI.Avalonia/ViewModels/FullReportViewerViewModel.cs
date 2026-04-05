@@ -160,42 +160,31 @@ public sealed class FullReportViewerViewModel : ViewModelBase, INavigableViewMod
         {
             var htmlPath = await CreatePrintableHtmlAsync(ReportPath, ReportContent);
 
-            if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+            Process.Start(new ProcessStartInfo
             {
-                Process.Start(new ProcessStartInfo
-                {
-                    FileName = htmlPath,
-                    Verb = "print",
-                    UseShellExecute = true
-                });
-                StatusMessage = "Tisk reportu spuštěn";
-            }
-            else
-            {
-                Process.Start(new ProcessStartInfo
-                {
-                    FileName = htmlPath,
-                    UseShellExecute = true
-                });
+                FileName = htmlPath,
+                UseShellExecute = true
+            });
 
-                StatusMessage = "Report otevřen pro tisk v externí aplikaci";
-                await _dialogService.ShowInfoAsync("Tisk", "Použijte tisk z otevřeného okna (Ctrl+P). ");
-            }
+            StatusMessage = "Report byl otevřen pro tisk v externí aplikaci";
+            await _dialogService.ShowInfoAsync(
+                "Tisk",
+                "Report byl otevřen ve výchozí aplikaci. Pro bezpečný tisk použijte tisk přímo v otevřeném okně (Ctrl+P). Automatický shell tisk byl vypnut kvůli přetížení systému.");
         }
         catch (InvalidOperationException ex)
         {
             StatusMessage = $"Chyba tisku: {ex.Message}";
-            await _dialogService.ShowErrorAsync("Chyba", $"Nepodařilo se vytisknout report: {ex.Message}");
+            await _dialogService.ShowErrorAsync("Chyba", $"Nepodařilo se otevřít report pro tisk: {ex.Message}");
         }
         catch (Win32Exception ex)
         {
             StatusMessage = $"Chyba tisku: {ex.Message}";
-            await _dialogService.ShowErrorAsync("Chyba", $"Nepodařilo se vytisknout report: {ex.Message}");
+            await _dialogService.ShowErrorAsync("Chyba", $"Nepodařilo se otevřít report pro tisk: {ex.Message}");
         }
         catch (IOException ex)
         {
             StatusMessage = $"Chyba tisku: {ex.Message}";
-            await _dialogService.ShowErrorAsync("Chyba", $"Nepodařilo se vytisknout report: {ex.Message}");
+            await _dialogService.ShowErrorAsync("Chyba", $"Nepodařilo se otevřít report pro tisk: {ex.Message}");
         }
     }
 

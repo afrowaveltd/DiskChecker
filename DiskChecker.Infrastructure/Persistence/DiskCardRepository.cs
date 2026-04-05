@@ -313,6 +313,7 @@ public class DiskCardRepository : IDiskCardRepository
                 Score = t.Score,
                 HealthAssessment = t.HealthAssessment,
                 CertificateId = t.CertificateId,
+                ChartImagePath = t.ChartImagePath,
                 Notes = t.Notes,
                 SmartBeforeJson = t.SmartBeforeJson,
                 SmartAfterJson = t.SmartAfterJson
@@ -388,7 +389,10 @@ public class DiskCardRepository : IDiskCardRepository
                 Score = t.Score,
                 HealthAssessment = t.HealthAssessment,
                 CertificateId = t.CertificateId,
-                Notes = t.Notes
+                ChartImagePath = t.ChartImagePath,
+                Notes = t.Notes,
+                SmartBeforeJson = t.SmartBeforeJson,
+                SmartAfterJson = t.SmartAfterJson
             })
             .ToListAsync();
     }

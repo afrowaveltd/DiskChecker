@@ -84,4 +84,18 @@ public class EmailSettingsRecord
         get => UseSsl;
         set => UseSsl = value;
     }
+
+    /// <summary>
+    /// Whether completion e-mails should include the PDF certificate attachment.
+    /// </summary>
+    public bool IncludeCertificateAttachment { get; set; } = true;
+
+    /// <summary>
+    /// Legacy property for backward compatibility.
+    /// </summary>
+    public bool AttachCertificate 
+    { 
+        get => IncludeCertificateAttachment;
+        set => IncludeCertificateAttachment = value;
+    }
 }

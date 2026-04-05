@@ -33,6 +33,26 @@ public interface ISettingsService
     /// </summary>
     Task SetReportRecipientEmailAsync(string email);
     
+    /// <summary>
+    /// Gets whether automatic report e-mails should be sent only for long-running tests.
+    /// </summary>
+    Task<bool> GetEmailSendOnlyForLongRunningTestsAsync();
+
+    /// <summary>
+    /// Sets whether automatic report e-mails should be sent only for long-running tests.
+    /// </summary>
+    Task SetEmailSendOnlyForLongRunningTestsAsync(bool value);
+
+    /// <summary>
+    /// Gets whether automatic e-mail notifications include PDF certificate attachment.
+    /// </summary>
+    Task<bool> GetEmailIncludeCertificateAttachmentAsync();
+
+    /// <summary>
+    /// Sets whether automatic e-mail notifications include PDF certificate attachment.
+    /// </summary>
+    Task SetEmailIncludeCertificateAttachmentAsync(bool value);
+
     // Theme settings
     /// <summary>
     /// Gets whether dark theme is enabled.
@@ -43,6 +63,16 @@ public interface ISettingsService
     /// Sets the dark theme preference.
     /// </summary>
     Task SetIsDarkThemeAsync(bool isDark);
+
+    /// <summary>
+    /// Gets number of retry attempts for USB communication recovery during destructive test I/O.
+    /// </summary>
+    Task<int> GetUsbRecoveryRetryCountAsync();
+
+    /// <summary>
+    /// Sets number of retry attempts for USB communication recovery during destructive test I/O.
+    /// </summary>
+    Task SetUsbRecoveryRetryCountAsync(int value);
 
     // SMART probe configuration (persisted)
     Task<int> GetSmartCacheTtlMinutesAsync();

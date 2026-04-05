@@ -24,6 +24,9 @@ public class SettingsService : ISettingsService
     private int _smartCacheTtlMinutes = 10;
     private int _smartProbeTimeoutSeconds = 4;
     private int _smartProbeParallelism; // 0 = auto
+    private int _usbRecoveryRetryCount = 2;
+    private bool _emailSendOnlyForLongRunningTests = true;
+    private bool _emailIncludeCertificateAttachment = true;
     
     private readonly string _settingsFilePath;
     private readonly string _lockedDisksFilePath;
@@ -72,8 +75,32 @@ public class SettingsService : ISettingsService
     public Task SetLogLevelAsync(string level) { _logLevel = level; return Task.CompletedTask; }
     
     public Task<string> GetReportRecipientEmailAsync() => Task.FromResult(_reportRecipientEmail);
+    public Task<bool> GetEmailIncludeCertificateAttachmentAsync() => Task.FromResult(_emailIncludeCertificateAttachment);
+    public Task<bool> GetEmailSendOnlyForLongRunningTestsAsync() => Task.FromResult(_emailSendOnlyForLongRunningTests);
+    public Task<int> GetUsbRecoveryRetryCountAsync() => Task.FromResult(_usbRecoveryRetryCount);
 
-    public Task SetReportRecipientEmailAsync(string email)
+    public Task SetUsbRecoveryRetryCountAsync(int value)
+    {
+        _usbRecoveryRetryCount = Math.Clamp(value, 0, 10);
+        SaveSettingsToFile();
+        return Task.CompletedTask;
+    }
+ 
+     public Task SetEmailSendOnlyForLongRunningTestsAsync(bool value)
+    {
+        _emailSendOnlyForLongRunningTests = value;
+        SaveSettingsToFile();
+        return Task.CompletedTask;
+    }
+
+    public Task SetEmailIncludeCertificateAttachmentAsync(bool value)
+    {
+        _emailIncludeCertificateAttachment = value;
+        SaveSettingsToFile();
+        return Task.CompletedTask;
+    }
+ 
+     public Task SetReportRecipientEmailAsync(string email)
     {
         _reportRecipientEmail = email?.Trim() ?? string.Empty;
         SaveSettingsToFile();
@@ -94,7 +121,10 @@ public class SettingsService : ISettingsService
         _smartCacheTtlMinutes = 10;
         _smartProbeTimeoutSeconds = 4;
         _smartProbeParallelism = 0;
+        _usbRecoveryRetryCount = 2;
         _reportRecipientEmail = string.Empty;
+        _emailSendOnlyForLongRunningTests = true;
+        _emailIncludeCertificateAttachment = true;
         SaveLockedDisksToFile();
         SaveSettingsToFile();
         return Task.CompletedTask;
@@ -181,8 +211,14 @@ public class SettingsService : ISettingsService
                         _smartProbeTimeoutSeconds = Math.Max(1, to);
                     if (doc.TryGetValue("SmartProbeParallelism", out var pObj) && int.TryParse(pObj.ToString(), out var p))
                         _smartProbeParallelism = Math.Max(0, p);
+                    if (doc.TryGetValue("UsbRecoveryRetryCount", out var usbRetryObj) && int.TryParse(usbRetryObj?.ToString(), out var usbRetryCount))
+                        _usbRecoveryRetryCount = Math.Clamp(usbRetryCount, 0, 10);
                     if (doc.TryGetValue("ReportRecipientEmail", out var recipientObj))
                         _reportRecipientEmail = recipientObj?.ToString()?.Trim() ?? string.Empty;
+                    if (doc.TryGetValue("EmailSendOnlyForLongRunningTests", out var sendLongOnlyObj) && bool.TryParse(sendLongOnlyObj?.ToString(), out var sendLongOnly))
+                        _emailSendOnlyForLongRunningTests = sendLongOnly;
+                    if (doc.TryGetValue("EmailIncludeCertificateAttachment", out var includeAttachmentObj) && bool.TryParse(includeAttachmentObj?.ToString(), out var includeAttachment))
+                        _emailIncludeCertificateAttachment = includeAttachment;
                 }
             }
         }
@@ -201,7 +237,10 @@ public class SettingsService : ISettingsService
                 ["SmartCacheTtlMinutes"] = _smartCacheTtlMinutes,
                 ["SmartProbeTimeoutSeconds"] = _smartProbeTimeoutSeconds,
                 ["SmartProbeParallelism"] = _smartProbeParallelism,
-                ["ReportRecipientEmail"] = _reportRecipientEmail
+                ["UsbRecoveryRetryCount"] = _usbRecoveryRetryCount,
+                ["ReportRecipientEmail"] = _reportRecipientEmail,
+                ["EmailSendOnlyForLongRunningTests"] = _emailSendOnlyForLongRunningTests,
+                ["EmailIncludeCertificateAttachment"] = _emailIncludeCertificateAttachment
             };
             var json = JsonSerializer.Serialize(dict, JsonOptions);
             File.WriteAllText(_settingsFilePath, json);

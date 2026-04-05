@@ -85,6 +85,13 @@ public class DiskSurfaceTestExecutor : ISurfaceTestExecutor
             // Implementation would go here
             await Task.Delay(100, cancellationToken); // Placeholder
             
+            if (result.ErrorCount >= 10)
+            {
+                result.CompletedAtUtc = DateTime.UtcNow;
+                result.Notes = "Disk surface test terminated early: 10 errors found. Disk is defective.".ToSafeString();
+                return result;
+            }
+
             result.CompletedAtUtc = DateTime.UtcNow;
             result.Notes = "Disk surface test completed successfully".ToSafeString();
         }

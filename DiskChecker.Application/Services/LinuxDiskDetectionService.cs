@@ -1,4 +1,3 @@
-
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
@@ -18,7 +17,7 @@ public class LinuxDiskDetectionService : IDiskDetectionService
         
         try
         {
-            var lsblkOutput = await ExecuteCommandAsync("lsblk", "-J -b -o NAME,SIZE,TYPE,MOUNTPOINT,MODEL,SERIAL,FSTYPE,LABEL,ROTA,TRAN,WWN", cancellationToken);
+            var lsblkOutput = await ExecuteCommandAsync("lsblk", "-J -b -o NAME,SIZE,TYPE,MOUNTPOINT,MODEL,SERIAL,FSTYPE,LABEL,PARTLABEL,ROTA,TRAN,WWN", cancellationToken);
             
             if (!string.IsNullOrEmpty(lsblkOutput))
             {
@@ -120,6 +119,8 @@ public class LinuxDiskDetectionService : IDiskDetectionService
                 
                 var displayName = string.Join(" ", displayNameParts);
                 var busType = DetermineBusType(transport, rotational);
+                var isSolidState = !rotational || string.Equals(transport, "nvme", StringComparison.OrdinalIgnoreCase);
+                var isRotational = rotational;
                 
                 var mountPoints = new List<(string MountPoint, string FsType, string Label, string DevicePath, long Size)>();
                 if (device.TryGetProperty("children", out var children))
@@ -135,6 +136,9 @@ public class LinuxDiskDetectionService : IDiskDetectionService
                         var label = child.TryGetProperty("label", out var labelProp) 
                             ? labelProp.GetString() 
                             : null;
+                        var partLabel = child.TryGetProperty("partlabel", out var plProp)
+                            ? plProp.GetString()
+                            : null;
                         var partitionName = child.TryGetProperty("name", out var pnProp) 
                             ? pnProp.GetString() 
                             : null;
@@ -145,11 +149,12 @@ public class LinuxDiskDetectionService : IDiskDetectionService
                         
                         if (!string.IsNullOrEmpty(partitionName))
                         {
+                            var devicePath = $"/dev/{partitionName}";
                             mountPoints.Add((
-                                mountPoint ?? "",
-                                fsType ?? "",
-                                label ?? "",
-                                $"/dev/{partitionName}",
+                                mountPoint ?? string.Empty,
+                                fsType ?? string.Empty,
+                                !string.IsNullOrWhiteSpace(label) ? label! : partLabel ?? string.Empty,
+                                devicePath,
                                 partitionSize
                             ));
                         }
@@ -167,20 +172,26 @@ public class LinuxDiskDetectionService : IDiskDetectionService
                     SerialNumber = serial,
                     Model = model,
                     Interface = transport ?? "Unknown",
-                    BusType = busType
+                    BusType = busType,
+                    IsSolidState = isSolidState,
+                    IsRotational = isRotational
                 };
                 
                 foreach (var (mountPoint, fsType, label, devicePath, pSize) in mountPoints)
                 {
+                    var displayPath = string.IsNullOrWhiteSpace(mountPoint) ? devicePath : mountPoint;
+                    var volumeDisplayName = BuildLinuxVolumeName(label, fsType, devicePath);
+
                     drive.Volumes.Add(new CoreDriveInfo
                     {
                         Id = Guid.NewGuid(),
-                        Path = mountPoint,
-                        Name = !string.IsNullOrEmpty(label) ? label : devicePath,
+                        Path = displayPath,
+                        Name = volumeDisplayName,
                         TotalSize = pSize,
-                        FileSystem = fsType,
+                        FileSystem = string.IsNullOrWhiteSpace(fsType) ? "Unknown" : fsType,
                         IsPhysical = false,
-                        IsReady = true
+                        IsReady = true,
+                        VolumeInfo = devicePath
                     });
                 }
                 
@@ -218,7 +229,7 @@ public class LinuxDiskDetectionService : IDiskDetectionService
         try
         {
             var deviceName = Path.GetFileName(drive.Path);
-            var lsblkOutput = await ExecuteCommandAsync("lsblk", $"-J -b -o NAME,MOUNTPOINT,FSTYPE,LABEL,SIZE {deviceName}", cancellationToken);
+            var lsblkOutput = await ExecuteCommandAsync("lsblk", $"-J -b -o NAME,MOUNTPOINT,FSTYPE,LABEL,PARTLABEL,SIZE {deviceName}", cancellationToken);
             
             if (string.IsNullOrEmpty(lsblkOutput))
                 return;
@@ -246,6 +257,9 @@ public class LinuxDiskDetectionService : IDiskDetectionService
                         var label = partition.TryGetProperty("label", out var labelProp) 
                             ? labelProp.GetString() 
                             : null;
+                        var partLabel = partition.TryGetProperty("partlabel", out var plProp)
+                            ? plProp.GetString()
+                            : null;
                         var partitionName = partition.TryGetProperty("name", out var nameProp) 
                             ? nameProp.GetString() 
                             : null;
@@ -254,18 +268,27 @@ public class LinuxDiskDetectionService : IDiskDetectionService
                             ? s 
                             : 0;
                         
-                        if (!string.IsNullOrEmpty(mountPoint) && mountPoint != "null")
+                        if (!string.IsNullOrEmpty(partitionName))
                         {
+                            var devicePath = $"/dev/{partitionName}";
+                            var displayPath = string.IsNullOrWhiteSpace(mountPoint) || mountPoint == "null"
+                                ? devicePath
+                                : mountPoint;
+                            var displayName = BuildLinuxVolumeName(
+                                !string.IsNullOrWhiteSpace(label) ? label : partLabel,
+                                fileSystem,
+                                devicePath);
+
                             drive.Volumes.Add(new CoreDriveInfo
                             {
                                 Id = Guid.NewGuid(),
-                                Path = mountPoint,
-                                Name = !string.IsNullOrEmpty(label) ? label : "Partition",
+                                Path = displayPath,
+                                Name = displayName,
                                 TotalSize = partitionSize,
-                                FileSystem = fileSystem ?? "",
+                                FileSystem = string.IsNullOrWhiteSpace(fileSystem) ? "Unknown" : fileSystem,
                                 IsPhysical = false,
                                 IsReady = true,
-                                VolumeInfo = !string.IsNullOrEmpty(fileSystem) ? fileSystem : ""
+                                VolumeInfo = devicePath
                             });
                         }
                     }
@@ -276,6 +299,21 @@ public class LinuxDiskDetectionService : IDiskDetectionService
         {
             Debug.WriteLine($"[LinuxDiskDetectionService] EnrichWithPartitionInfoAsync failed: {ex.Message}");
         }
+    }
+
+    private static string BuildLinuxVolumeName(string? label, string? fileSystem, string devicePath)
+    {
+        if (!string.IsNullOrWhiteSpace(label))
+        {
+            return label!;
+        }
+
+        if (!string.IsNullOrWhiteSpace(fileSystem))
+        {
+            return $"{devicePath} ({fileSystem})";
+        }
+
+        return devicePath;
     }
 
     private async Task<List<CoreDriveInfo>> GetDrivesFromSysfsAsync(CancellationToken cancellationToken)
@@ -336,7 +374,9 @@ public class LinuxDiskDetectionService : IDiskDetectionService
                     TotalSize = sizeBytes,
                     IsPhysical = true,
                     IsReady = true,
-                    SerialNumber = serial
+                    SerialNumber = serial,
+                    IsSolidState = null,
+                    IsRotational = null
                 });
             }
         }

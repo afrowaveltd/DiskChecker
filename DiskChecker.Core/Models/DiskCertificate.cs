@@ -225,6 +225,12 @@ public class DiskCertificate
     public string? PdfPath { get; set; }
     
     /// <summary>
+    /// Absolute path to a cached chart image used for certificate rendering.
+    /// </summary>
+    [NotMapped]
+    public string? ChartImagePath { get; set; }
+
+    /// <summary>
     /// Downsampled write speed points for certificate chart rendering (runtime only, not persisted).
     /// </summary>
     [NotMapped]

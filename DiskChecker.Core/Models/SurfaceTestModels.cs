@@ -1,4 +1,3 @@
-
 namespace DiskChecker.Core.Models;
 
 /// <summary>
@@ -141,6 +140,16 @@ public class SurfaceTestSample
    /// Gets or sets the measured throughput in MB/s.
    /// </summary>
    public double ThroughputMbps { get; set; }
+
+   /// <summary>
+   /// Gets or sets test progress (0-100) when the sample was recorded.
+   /// </summary>
+   public double ProgressPercent { get; set; }
+
+   /// <summary>
+   /// Gets or sets temperature in Celsius captured for the sample.
+   /// </summary>
+   public int? TemperatureCelsius { get; set; }
 
    /// <summary>
    /// Gets or sets the timestamp of the sample.
@@ -304,4 +313,9 @@ public class SurfaceTestResult
    /// Human-readable notes/summary.
    /// </summary>
    public string? Notes { get; set; }
+
+   /// <summary>
+   /// Detected drive technology used for scoring heuristics.
+   /// </summary>
+   public DriveTechnology Technology { get; set; } = DriveTechnology.Unknown;
 }

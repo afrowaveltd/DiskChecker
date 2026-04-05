@@ -41,6 +41,11 @@ public class EmailSettings
     /// Gets or sets the sender email address.
     /// </summary>
     public string FromAddress { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Gets or sets whether completion e-mails should include the PDF certificate attachment.
+    /// </summary>
+    public bool IncludeCertificateAttachment { get; set; } = true;
 }
 
 /// <summary>

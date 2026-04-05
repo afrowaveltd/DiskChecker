@@ -91,6 +91,26 @@
                                     BorderBrush="{DynamicResource ThemeBorderBrush}"
                                     Padding="8,4"/>
                         </Grid>
+
+                        <Grid ColumnDefinitions="200,*">
+                            <TextBlock Grid.Column="0" Text="Kdy posílat e-mail:" 
+                                      FontSize="11" VerticalAlignment="Center"
+                                      Foreground="{DynamicResource ThemeTextSecondaryBrush}"/>
+                            <CheckBox Grid.Column="1"
+                                     Content="Posílat automaticky jen pro dlouhotrvající testy (např. sanitizace)"
+                                     IsChecked="{Binding EmailSendOnlyForLongRunningTests}"
+                                     FontSize="11"/>
+                        </Grid>
+
+                        <Grid ColumnDefinitions="200,*">
+                            <TextBlock Grid.Column="0" Text="Příloha certifikátu:" 
+                                      FontSize="11" VerticalAlignment="Center"
+                                      Foreground="{DynamicResource ThemeTextSecondaryBrush}"/>
+                            <CheckBox Grid.Column="1"
+                                     Content="Přikládat PDF certifikát do e-mailu"
+                                     IsChecked="{Binding EmailIncludeCertificateAttachment}"
+                                     FontSize="11"/>
+                        </Grid>
                     </StackPanel>
                 </Border>
 
@@ -131,6 +151,17 @@
                                     Padding="8,4"/>
                         </Grid>
                         
+                        <Grid ColumnDefinitions="200,*">
+                            <TextBlock Grid.Column="0" Text="USB recovery retry:" 
+                                      FontSize="11" VerticalAlignment="Center"
+                                      Foreground="{DynamicResource ThemeTextSecondaryBrush}"/>
+                            <TextBox Grid.Column="1"
+                                    Text="{Binding UsbRecoveryRetryCount}"
+                                    Background="{DynamicResource ThemeCardBackgroundBrush}"
+                                    BorderBrush="{DynamicResource ThemeBorderBrush}"
+                                    Padding="8,4"/>
+                        </Grid>
+                          
                         <Grid ColumnDefinitions="200,*">
                             <TextBlock Grid.Column="0" Text="Timeout testů (s):" 
                                       FontSize="11" VerticalAlignment="Center"

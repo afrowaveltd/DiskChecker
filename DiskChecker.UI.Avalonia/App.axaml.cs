@@ -25,6 +25,9 @@ namespace DiskChecker.UI.Avalonia;
 
 public partial class App : global::Avalonia.Application
 {
+    private const uint EsContinuous = 0x80000000;
+    private const uint EsSystemRequired = 0x00000001;
+
     private ServiceProvider? _serviceProvider;
 
     public override void Initialize()
@@ -48,6 +51,9 @@ public partial class App : global::Avalonia.Application
         {
             // Avoid duplicate validations
             DisableAvaloniaDataAnnotationValidation();
+
+            EnableSleepPrevention();
+            desktop.Exit += (_, _) => DisableSleepPrevention();
             
             // Setup dependency injection
             var services = new ServiceCollection();
@@ -66,6 +72,35 @@ public partial class App : global::Avalonia.Application
 
         base.OnFrameworkInitializationCompleted();
     }
+
+    /// <summary>
+    /// Prevents system sleep while the application is running on Windows.
+    /// </summary>
+    private static void EnableSleepPrevention()
+    {
+        if (!RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+        {
+            return;
+        }
+
+        _ = SetThreadExecutionState(EsContinuous | EsSystemRequired);
+    }
+
+    /// <summary>
+    /// Restores default system sleep behavior on Windows.
+    /// </summary>
+    private static void DisableSleepPrevention()
+    {
+        if (!RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+        {
+            return;
+        }
+
+        _ = SetThreadExecutionState(EsContinuous);
+    }
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    private static extern uint SetThreadExecutionState(uint esFlags);
 
     private void DisableAvaloniaDataAnnotationValidation()
     {

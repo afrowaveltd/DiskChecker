@@ -3,6 +3,8 @@ using DiskChecker.Core.Models;
 using MailKit.Net.Smtp;
 using MailKit.Security;
 using MimeKit;
+using System.Net.Security;
+using System.Security.Cryptography.X509Certificates;
 
 namespace DiskChecker.Application.Services;
 
@@ -57,9 +59,43 @@ public class SmtpEmailSender : IEmailSender
         email.Body = bodyBuilder.ToMessageBody();
 
         using var client = new SmtpClient();
-        var secureOption = settings.UseSsl ? SecureSocketOptions.StartTls : SecureSocketOptions.Auto;
+#pragma warning disable CA5359 // Intranet-compatible tolerant SMTP mode requested by user
+        client.ServerCertificateValidationCallback = static (_, _, _, _) => true;
+#pragma warning restore CA5359
+        client.CheckCertificateRevocation = false;
 
-        await client.ConnectAsync(settings.Host, settings.Port, secureOption, cancellationToken);
+        var secureOptions = settings.UseSsl
+            ? new[] { SecureSocketOptions.StartTls, SecureSocketOptions.Auto, SecureSocketOptions.SslOnConnect, SecureSocketOptions.None }
+            : new[] { SecureSocketOptions.Auto, SecureSocketOptions.None, SecureSocketOptions.StartTls, SecureSocketOptions.SslOnConnect };
+
+        Exception? lastConnectError = null;
+        var connected = false;
+        foreach (var option in secureOptions)
+        {
+            try
+            {
+                await client.ConnectAsync(settings.Host, settings.Port, option, cancellationToken);
+                connected = true;
+                break;
+            }
+            catch (AuthenticationException ex)
+            {
+                lastConnectError = ex;
+            }
+            catch (SslHandshakeException ex)
+            {
+                lastConnectError = ex;
+            }
+            catch (InvalidOperationException ex)
+            {
+                lastConnectError = ex;
+            }
+        }
+
+        if (!connected)
+        {
+            throw lastConnectError as InvalidOperationException ?? new InvalidOperationException("SMTP connection failed for all security modes.", lastConnectError);
+        }
 
         if (!string.IsNullOrWhiteSpace(settings.UserName))
         {

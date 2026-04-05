@@ -96,6 +96,16 @@ public class CoreDriveInfo
     public string? MediaType { get; set; }
     
     /// <summary>
+    /// Indicates whether the drive is detected as solid-state (SSD/NVMe).
+    /// </summary>
+    public bool? IsSolidState { get; set; }
+
+    /// <summary>
+    /// Indicates whether the drive is detected as rotational (HDD spindle based).
+    /// </summary>
+    public bool? IsRotational { get; set; }
+
+    /// <summary>
     /// Bus/connection type for this disk.
     /// </summary>
     public CoreBusType BusType { get; set; } = CoreBusType.Unknown;

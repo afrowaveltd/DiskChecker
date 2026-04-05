@@ -6,6 +6,7 @@ using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Runtime.Versioning;
+using System.Threading;
 using System.Threading.Tasks;
 using DiskChecker.Core.Interfaces;
 using DiskChecker.Core.Models;
@@ -22,6 +23,7 @@ public class CertificateGenerator : ICertificateGenerator
     private readonly ILogger<CertificateGenerator>? _logger;
     private readonly string _certificatesDirectory;
     private readonly string _labelsDirectory;
+    private readonly string _chartCacheDirectory;
 
     public CertificateGenerator(ILogger<CertificateGenerator>? logger = null)
     {
@@ -34,9 +36,14 @@ public class CertificateGenerator : ICertificateGenerator
             Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
             "DiskChecker",
             "Labels");
+        _chartCacheDirectory = Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
+            "DiskChecker",
+            "ChartCache");
         
         Directory.CreateDirectory(_certificatesDirectory);
         Directory.CreateDirectory(_labelsDirectory);
+        Directory.CreateDirectory(_chartCacheDirectory);
     }
 
     public Task<DiskCertificate> GenerateCertificateAsync(TestSession session, DiskCard diskCard)
@@ -107,7 +114,8 @@ public class CertificateGenerator : ICertificateGenerator
                 // Recommendation
                 Recommended = session.Result == TestResult.Pass && !string.Equals(session.Grade, "E", StringComparison.OrdinalIgnoreCase) && !string.Equals(session.Grade, "F", StringComparison.OrdinalIgnoreCase),
                 RecommendationNotes = GenerateRecommendation(session),
-                Notes = session.Notes
+                Notes = session.Notes,
+                ChartImagePath = session.ChartImagePath
             };
 
             certificate.WriteProfilePoints = DownsampleSpeeds(session.WriteSamples.Select(s => s.SpeedMBps), 32);
@@ -208,8 +216,8 @@ public class CertificateGenerator : ICertificateGenerator
             graphics.DrawString("DiskChecker – Profesionální diagnóza disků", smallFont, mutedBrush, 52, 98);
 
             var y = 140;
-            graphics.FillRectangle(panelBrush, 48, y, 760, 230);
-            graphics.DrawRectangle(borderPen, 48, y, 760, 230);
+            graphics.FillRectangle(panelBrush, 48, y, 760, 300);
+            graphics.DrawRectangle(borderPen, 48, y, 760, 300);
 
             void DrawLine(string label, string value, int row)
             {
@@ -222,16 +230,18 @@ public class CertificateGenerator : ICertificateGenerator
             DrawLine("Sériové číslo:", cert.SerialNumber, 1);
             DrawLine("Kapacita:", cert.Capacity, 2);
             DrawLine("Typ disku:", cert.DiskType, 3);
-            DrawLine("Číslo certifikátu:", cert.CertificateNumber, 4);
-            DrawLine("Vygenerováno:", cert.GeneratedAt.ToString("dd.MM.yyyy HH:mm"), 5);
+            DrawLine("Provozní hodiny:", cert.PowerOnHours > 0 ? cert.PowerOnHours.ToString("#,0", CultureInfo.InvariantCulture) : "N/A", 4);
+            DrawLine("Počet startů:", cert.PowerCycles > 0 ? cert.PowerCycles.ToString("#,0", CultureInfo.InvariantCulture) : "N/A", 5);
+            DrawLine("Číslo certifikátu:", cert.CertificateNumber, 6);
+            DrawLine("Vygenerováno:", cert.GeneratedAt.ToString("dd.MM.yyyy HH:mm"), 7);
 
-            graphics.FillRectangle(panelBrush, 838, y, 350, 230);
-            graphics.DrawRectangle(borderPen, 838, y, 350, 230);
+            graphics.FillRectangle(panelBrush, 838, y, 350, 300);
+            graphics.DrawRectangle(borderPen, 838, y, 350, 300);
             graphics.DrawString("KONEČNÁ ZNÁMKA", labelFont, textBrush, 926, y + 18);
 
             const float sealSize = 150f;
             var sealX = 943f;
-            var sealY = y + 48f;
+            var sealY = y + 78f;
             using var sealPen = new Pen(GetGradeColor(cert.Grade), 6f);
             graphics.DrawEllipse(sealPen, sealX, sealY, sealSize, sealSize);
 
@@ -245,7 +255,7 @@ public class CertificateGenerator : ICertificateGenerator
             var scoreSize = graphics.MeasureString(scoreText, scoreFont);
             graphics.DrawString(scoreText, scoreFont, textBrush, sealX + ((sealSize - scoreSize.Width) / 2f), sealY + sealSize + 8f);
 
-            y += 260;
+            y += 330;
             graphics.DrawString("Výsledky testu", sectionFont, accentBrush, 48, y);
             y += 34;
             graphics.FillRectangle(panelBrush, 48, y, width - 96, 170);
@@ -277,37 +287,42 @@ public class CertificateGenerator : ICertificateGenerator
             var chartW = width - 160f;
             var chartH = 260f;
             graphics.DrawRectangle(borderPen, chartX, chartY, chartW, chartH);
-            graphics.DrawLine(axisPen, chartX + 30, chartY + 14, chartX + 30, chartY + chartH - 26);
-            graphics.DrawLine(axisPen, chartX + 30, chartY + chartH - 26, chartX + chartW - 20, chartY + chartH - 26);
-            graphics.DrawLine(axisPen, chartX + ((chartW - 50) * 0.25f) + 30, chartY + 14, chartX + ((chartW - 50) * 0.25f) + 30, chartY + chartH - 26);
-            graphics.DrawLine(axisPen, chartX + ((chartW - 50) * 0.50f) + 30, chartY + 14, chartX + ((chartW - 50) * 0.50f) + 30, chartY + chartH - 26);
-            graphics.DrawLine(axisPen, chartX + ((chartW - 50) * 0.75f) + 30, chartY + 14, chartX + ((chartW - 50) * 0.75f) + 30, chartY + chartH - 26);
 
-            var (writePoints, readPoints) = GetProfilePointsForChart(cert);
-            var maxSpeed = Math.Max(writePoints.Count > 0 ? writePoints.Max() : 0, readPoints.Count > 0 ? readPoints.Max() : 0);
-            if (maxSpeed <= 0) maxSpeed = 1;
+            if (!string.IsNullOrWhiteSpace(cert.ChartImagePath) && File.Exists(cert.ChartImagePath))
+            {
+                using var chartImage = Image.FromFile(cert.ChartImagePath);
+                graphics.DrawImage(chartImage, chartX, chartY, chartW, chartH);
+            }
+            else
+            {
+                graphics.DrawLine(axisPen, chartX + 30, chartY + 14, chartX + 30, chartY + chartH - 26);
+                graphics.DrawLine(axisPen, chartX + 30, chartY + chartH - 26, chartX + chartW - 20, chartY + chartH - 26);
+                graphics.DrawLine(axisPen, chartX + ((chartW - 50) * 0.25f) + 30, chartY + 14, chartX + ((chartW - 50) * 0.25f) + 30, chartY + chartH - 26);
+                graphics.DrawLine(axisPen, chartX + ((chartW - 50) * 0.50f) + 30, chartY + 14, chartX + ((chartW - 50) * 0.50f) + 30, chartY + chartH - 26);
+                graphics.DrawLine(axisPen, chartX + ((chartW - 50) * 0.75f) + 30, chartY + 14, chartX + ((chartW - 50) * 0.75f) + 30, chartY + chartH - 26);
 
-            DrawProfilePolyline(graphics, writePen, writePoints, maxSpeed, chartX + 30, chartY + 14, chartW - 50, chartH - 40);
-            DrawProfilePolyline(graphics, readPen, readPoints, maxSpeed, chartX + 30, chartY + 14, chartW - 50, chartH - 40);
+                var (writePoints, readPoints) = GetProfilePointsForChart(cert);
+                var maxSpeed = Math.Max(writePoints.Count > 0 ? writePoints.Max() : 0, readPoints.Count > 0 ? readPoints.Max() : 0);
+                if (maxSpeed <= 0) maxSpeed = 1;
 
-            // Y-axis labels (MB/s)
-            graphics.DrawString("MB/s", smallFont, mutedBrush, chartX - 4, chartY + 8);
-            graphics.DrawString($"{maxSpeed:F0}", smallFont, mutedBrush, chartX - 22, chartY + 14);
-            graphics.DrawString($"{maxSpeed / 2:F0}", smallFont, mutedBrush, chartX - 22, chartY + (chartH - 40) / 2 + 10);
-            graphics.DrawString("0", smallFont, mutedBrush, chartX - 12, chartY + chartH - 30);
-            
-            // X-axis labels (%)
-            graphics.DrawString("0 %", smallFont, mutedBrush, chartX + 26, chartY + chartH - 18);
-            graphics.DrawString("25 %", smallFont, mutedBrush, chartX + (chartW * 0.25f) - 8, chartY + chartH - 18);
-            graphics.DrawString("50 %", smallFont, mutedBrush, chartX + chartW / 2 - 8, chartY + chartH - 18);
-            graphics.DrawString("75 %", smallFont, mutedBrush, chartX + (chartW * 0.75f) - 8, chartY + chartH - 18);
-            graphics.DrawString("100 %", smallFont, mutedBrush, chartX + chartW - 40, chartY + chartH - 18);
-            
-            // Legend
-            using var pdfLegendWriteBrush = new SolidBrush(Color.FromArgb(220, 38, 38));
-            using var pdfLegendReadBrush = new SolidBrush(Color.FromArgb(5, 150, 105));
-            graphics.DrawString("Zápis", smallFont, pdfLegendWriteBrush, chartX + chartW - 150, chartY + 8);
-            graphics.DrawString("Čtení", smallFont, pdfLegendReadBrush, chartX + chartW - 90, chartY + 8);
+                DrawProfilePolyline(graphics, writePen, writePoints, maxSpeed, chartX + 30, chartY + 14, chartW - 50, chartH - 40);
+                DrawProfilePolyline(graphics, readPen, readPoints, maxSpeed, chartX + 30, chartY + 14, chartW - 50, chartH - 40);
+
+                graphics.DrawString("MB/s", smallFont, mutedBrush, chartX - 4, chartY + 8);
+                graphics.DrawString($"{maxSpeed:F0}", smallFont, mutedBrush, chartX - 22, chartY + 14);
+                graphics.DrawString($"{maxSpeed / 2:F0}", smallFont, mutedBrush, chartX - 22, chartY + (chartH - 40) / 2 + 10);
+                graphics.DrawString("0", smallFont, mutedBrush, chartX - 12, chartY + chartH - 30);
+                graphics.DrawString("0 %", smallFont, mutedBrush, chartX + 26, chartY + chartH - 18);
+                graphics.DrawString("25 %", smallFont, mutedBrush, chartX + (chartW * 0.25f) - 8, chartY + chartH - 18);
+                graphics.DrawString("50 %", smallFont, mutedBrush, chartX + chartW / 2 - 8, chartY + chartH - 18);
+                graphics.DrawString("75 %", smallFont, mutedBrush, chartX + (chartW * 0.75f) - 8, chartY + chartH - 18);
+                graphics.DrawString("100 %", smallFont, mutedBrush, chartX + chartW - 40, chartY + chartH - 18);
+
+                using var pdfLegendWriteBrush = new SolidBrush(Color.FromArgb(220, 38, 38));
+                using var pdfLegendReadBrush = new SolidBrush(Color.FromArgb(5, 150, 105));
+                graphics.DrawString("Zápis", smallFont, pdfLegendWriteBrush, chartX + chartW - 150, chartY + 8);
+                graphics.DrawString("Čtení", smallFont, pdfLegendReadBrush, chartX + chartW - 90, chartY + 8);
+            }
 
             y += 290;
             graphics.DrawString("Doporučení", sectionFont, accentBrush, 48, y);
@@ -950,5 +965,147 @@ Před nasazením disku do provozu doporučujeme ověřit aktuální stav.
         }
 
         return change.ValueAfter > int.MaxValue ? int.MaxValue : (int)change.ValueAfter;
+    }
+
+    /// <summary>
+    /// Generates and stores a cached chart image for the specified test session.
+    /// </summary>
+    public Task<string?> GenerateAndStoreChartImageAsync(TestSession session, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(session);
+
+        return Task.Run(() =>
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+
+            if (session.Id <= 0)
+            {
+                return (string?)null;
+            }
+
+            var writePoints = DownsampleSpeeds(session.WriteSamples.Select(s => s.SpeedMBps), 32);
+            var readPoints = DownsampleSpeeds(session.ReadSamples.Select(s => s.SpeedMBps), 32);
+            var tempPoints = session.TemperatureSamples
+                .Where(t => t.TemperatureCelsius > 0)
+                .OrderBy(t => t.ProgressPercent)
+                .ToList();
+
+            if (writePoints.Count == 0 && readPoints.Count == 0)
+            {
+                return (string?)null;
+            }
+
+            var filePath = Path.Combine(_chartCacheDirectory, $"SessionChart_{session.Id}.png");
+            RenderChartImage(filePath, writePoints, readPoints, tempPoints);
+            return filePath;
+        }, cancellationToken);
+    }
+
+    /// <summary>
+    /// Ensures a cached chart image exists for the specified test session and returns its path.
+    /// </summary>
+    public async Task<string?> EnsureChartImageAsync(TestSession session, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(session);
+
+        if (!string.IsNullOrWhiteSpace(session.ChartImagePath) && File.Exists(session.ChartImagePath))
+        {
+            return session.ChartImagePath;
+        }
+
+        return await GenerateAndStoreChartImageAsync(session, cancellationToken);
+    }
+
+    private static void RenderChartImage(
+        string filePath,
+        IReadOnlyList<double> writePoints,
+        IReadOnlyList<double> readPoints,
+        IReadOnlyList<TemperatureSample> temperatureSamples)
+    {
+        const int width = 1040;
+        const int height = 360;
+
+        using var bitmap = new Bitmap(width, height);
+        using var graphics = Graphics.FromImage(bitmap);
+        graphics.Clear(Color.White);
+        graphics.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
+        graphics.TextRenderingHint = System.Drawing.Text.TextRenderingHint.ClearTypeGridFit;
+
+        using var borderPen = new Pen(Color.FromArgb(210, 215, 223), 2f);
+        using var axisPen = new Pen(Color.FromArgb(203, 213, 225), 1f);
+        using var gridPen = new Pen(Color.FromArgb(241, 245, 249), 1f);
+        using var writePen = new Pen(Color.FromArgb(220, 38, 38), 4f);
+        using var readPen = new Pen(Color.FromArgb(5, 150, 105), 4f);
+        using var tempPen = new Pen(Color.FromArgb(124, 58, 237), 3f);
+        using var textBrush = new SolidBrush(Color.Black);
+        using var mutedBrush = new SolidBrush(Color.FromArgb(90, 90, 90));
+        using var titleBrush = new SolidBrush(Color.FromArgb(15, 76, 129));
+        using var titleFont = new Font("Segoe UI", 15, FontStyle.Bold);
+        using var smallFont = new Font("Segoe UI", 10, FontStyle.Regular);
+
+        graphics.DrawString("Výkonový profil testu", titleFont, titleBrush, 28, 18);
+
+        const float chartX = 72f;
+        const float chartY = 58f;
+        const float chartW = 930f;
+        const float chartH = 230f;
+
+        graphics.DrawRectangle(borderPen, chartX, chartY, chartW, chartH);
+        graphics.DrawLine(axisPen, chartX + 30, chartY + 10, chartX + 30, chartY + chartH - 24);
+        graphics.DrawLine(axisPen, chartX + 30, chartY + chartH - 24, chartX + chartW - 16, chartY + chartH - 24);
+
+        for (var i = 1; i <= 3; i++)
+        {
+            var x = chartX + 30 + ((chartW - 46) * i / 4f);
+            graphics.DrawLine(gridPen, x, chartY + 10, x, chartY + chartH - 24);
+        }
+
+        graphics.DrawLine(gridPen, chartX + 30, chartY + ((chartH - 34) / 2f), chartX + chartW - 16, chartY + ((chartH - 34) / 2f));
+
+        var maxSpeed = Math.Max(writePoints.Count > 0 ? writePoints.Max() : 0, readPoints.Count > 0 ? readPoints.Max() : 0);
+        if (maxSpeed <= 0)
+        {
+            maxSpeed = 1;
+        }
+
+        if (writePoints.Count > 1)
+        {
+            DrawProfilePolyline(graphics, writePen, writePoints, maxSpeed, chartX + 30, chartY + 10, chartW - 46, chartH - 34);
+        }
+
+        if (readPoints.Count > 1)
+        {
+            DrawProfilePolyline(graphics, readPen, readPoints, maxSpeed, chartX + 30, chartY + 10, chartW - 46, chartH - 34);
+        }
+
+        if (temperatureSamples.Count > 1)
+        {
+            var tempValues = temperatureSamples.Select(t => (double)t.TemperatureCelsius).ToList();
+            var maxTemp = Math.Max(tempValues.Max(), 1d);
+            DrawProfilePolyline(graphics, tempPen, tempValues, maxTemp, chartX + 30, chartY + 10, chartW - 46, chartH - 34);
+        }
+
+        graphics.DrawString("MB/s", smallFont, mutedBrush, chartX - 8, chartY + 4);
+        graphics.DrawString(FormattableString.Invariant($"{maxSpeed:F0}"), smallFont, mutedBrush, chartX - 24, chartY + 10);
+        graphics.DrawString(FormattableString.Invariant($"{maxSpeed / 2:F0}"), smallFont, mutedBrush, chartX - 24, chartY + ((chartH - 34) / 2f));
+        graphics.DrawString("0", smallFont, mutedBrush, chartX - 10, chartY + chartH - 30);
+
+        graphics.DrawString("0 %", smallFont, mutedBrush, chartX + 26, chartY + chartH - 16);
+        graphics.DrawString("25 %", smallFont, mutedBrush, chartX + chartW * 0.25f, chartY + chartH - 16);
+        graphics.DrawString("50 %", smallFont, mutedBrush, chartX + chartW * 0.50f, chartY + chartH - 16);
+        graphics.DrawString("75 %", smallFont, mutedBrush, chartX + chartW * 0.75f, chartY + chartH - 16);
+        graphics.DrawString("100 %", smallFont, mutedBrush, chartX + chartW - 42, chartY + chartH - 16);
+
+        using var legendWriteBrush = new SolidBrush(Color.FromArgb(220, 38, 38));
+        using var legendReadBrush = new SolidBrush(Color.FromArgb(5, 150, 105));
+        using var legendTempBrush = new SolidBrush(Color.FromArgb(124, 58, 237));
+        graphics.DrawString("Zápis", smallFont, legendWriteBrush, chartX + chartW - 180, chartY + 8);
+        graphics.DrawString("Čtení", smallFont, legendReadBrush, chartX + chartW - 120, chartY + 8);
+        if (temperatureSamples.Count > 1)
+        {
+            graphics.DrawString("Teplota", smallFont, legendTempBrush, chartX + chartW - 54, chartY + 8);
+        }
+
+        bitmap.Save(filePath, ImageFormat.Png);
     }
 }
