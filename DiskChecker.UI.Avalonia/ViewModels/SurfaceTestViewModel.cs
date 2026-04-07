@@ -1152,6 +1152,18 @@ public partial class SurfaceTestViewModel : ViewModelBase, INavigableViewModel, 
                _ => CurrentPhase
             };
 
+            // Update phase-specific progress bars
+            if(p.Phase == "Zápis nul")
+            {
+               WriteProgress = p.ProgressPercent; // 0-100% of write phase
+               VerifyProgress = 0;
+            }
+            else if(p.Phase == "Čtení a ověření")
+            {
+               WriteProgress = 100; // Write is complete
+               VerifyProgress = p.ProgressPercent; // 0-100% of verify phase
+            }
+
             if(!string.IsNullOrWhiteSpace(p.StatusDetail))
             {
                StatusMessage = p.StatusDetail;
