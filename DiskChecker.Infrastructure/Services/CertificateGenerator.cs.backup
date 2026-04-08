@@ -1181,34 +1181,21 @@ Před nasazením disku do provozu doporučujeme ověřit aktuální stav.
             maxSpeed = 1;
         }
 
-        try
+        if (writePoints.Count > 1)
         {
-            if (writePoints.Count > 1)
-            {
-                DrawProfilePolyline(graphics, writePen, writePoints, maxSpeed, chartX + 30, chartY + 10, chartW - 46, chartH - 34);
-            }
-
-            if (readPoints.Count > 1)
-            {
-                DrawProfilePolyline(graphics, readPen, readPoints, maxSpeed, chartX + 30, chartY + 10, chartW - 46, chartH - 34);
-            }
-
-            if (temperatureSamples.Count > 1)
-            {
-                // Optimalizace: Downsample teplotních dat pokud je jich příliš mnoho
-                var tempValues = temperatureSamples.Count > MaxChartPoints
-                    ? DownsampleTemperatures(temperatureSamples, MaxChartPoints)
-                    : temperatureSamples.Select(t => (double)t.TemperatureCelsius).ToList();
-                    
-                var maxTemp = Math.Max(tempValues.Max(), 1d);
-                DrawProfilePolyline(graphics, tempPen, tempValues, maxTemp, chartX + 30, chartY + 10, chartW - 46, chartH - 34);
-            }
+            DrawProfilePolyline(graphics, writePen, writePoints, maxSpeed, chartX + 30, chartY + 10, chartW - 46, chartH - 34);
         }
-        catch (Exception ex)
+
+        if (readPoints.Count > 1)
         {
-            // Při chybě vykreslení grafu vykreslíme alespoň informativní text
-            graphics.DrawString("Graf není k dispozici", smallFont, mutedBrush, chartX + chartW / 2 - 60, chartY + chartH / 2);
-            System.Diagnostics.Debug.WriteLine($"RenderChartImage polyline error: {ex.GetType().Name}: {ex.Message}");
+            DrawProfilePolyline(graphics, readPen, readPoints, maxSpeed, chartX + 30, chartY + 10, chartW - 46, chartH - 34);
+        }
+
+        if (temperatureSamples.Count > 1)
+        {
+            var tempValues = temperatureSamples.Select(t => (double)t.TemperatureCelsius).ToList();
+            var maxTemp = Math.Max(tempValues.Max(), 1d);
+            DrawProfilePolyline(graphics, tempPen, tempValues, maxTemp, chartX + 30, chartY + 10, chartW - 46, chartH - 34);
         }
 
         graphics.DrawString("MB/s", smallFont, mutedBrush, chartX - 8, chartY + 4);
@@ -1232,48 +1219,6 @@ Před nasazením disku do provozu doporučujeme ověřit aktuální stav.
             graphics.DrawString("Teplota", smallFont, legendTempBrush, chartX + chartW - 54, chartY + 8);
         }
 
-        try
-        {
-            Directory.CreateDirectory(Path.GetDirectoryName(filePath)!);
-            bitmap.Save(filePath, ImageFormat.Png);
-        }
-        catch (Exception ex)
-        {
-            System.Diagnostics.Debug.WriteLine($"Failed to save chart image to {filePath}: {ex.Message}");
-            throw;
-        }
-    }
-
-    /// <summary>
-    /// Downsamples temperature data for chart rendering.
-    /// </summary>
-    private static List<double> DownsampleTemperatures(IReadOnlyList<TemperatureSample> samples, int targetPoints)
-    {
-        if (samples.Count <= targetPoints)
-        {
-            return samples.Select(s => (double)s.TemperatureCelsius).ToList();
-        }
-
-        var result = new List<double>(targetPoints);
-        var bucketSize = samples.Count / (double)targetPoints;
-
-        for (var i = 0; i < targetPoints; i++)
-        {
-            var start = (int)Math.Floor(i * bucketSize);
-            var end = (int)Math.Floor((i + 1) * bucketSize);
-            end = Math.Clamp(end, start + 1, samples.Count);
-
-            var sum = 0;
-            var count = 0;
-            for (var j = start; j < end; j++)
-            {
-                sum += samples[j].TemperatureCelsius;
-                count++;
-            }
-
-            result.Add(count > 0 ? sum / (double)count : samples[Math.Min(start, samples.Count - 1)].TemperatureCelsius);
-        }
-
-        return result;
+        bitmap.Save(filePath, ImageFormat.Png);
     }
 }

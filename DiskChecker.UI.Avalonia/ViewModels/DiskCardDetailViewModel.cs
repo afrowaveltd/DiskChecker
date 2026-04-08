@@ -34,6 +34,7 @@ public partial class DiskCardDetailViewModel : ViewModelBase, INavigableViewMode
     private readonly IDiskComparisonService _comparisonService;
     private readonly ICertificateGenerator _certificateGenerator;
     private readonly ISelectedDiskService _selectedDiskService;
+    private readonly CertificateExportService _certificateExportService;
     
     private DiskCard? _currentCard;
     private TestSession? _selectedSession;
@@ -55,7 +56,8 @@ public partial class DiskCardDetailViewModel : ViewModelBase, INavigableViewMode
         IDialogService dialogService,
         IDiskComparisonService comparisonService,
         ICertificateGenerator certificateGenerator,
-        ISelectedDiskService selectedDiskService)
+        ISelectedDiskService selectedDiskService,
+        CertificateExportService certificateExportService)
     {
         _diskCardRepository = diskCardRepository;
         _navigationService = navigationService;
@@ -63,6 +65,7 @@ public partial class DiskCardDetailViewModel : ViewModelBase, INavigableViewMode
         _comparisonService = comparisonService;
         _certificateGenerator = certificateGenerator;
         _selectedDiskService = selectedDiskService;
+        _certificateExportService = certificateExportService;
         
         TestSessions = new ObservableCollection<TestSession>();
         SmartHistory = new ObservableCollection<SmartHistoryItem>();
@@ -330,6 +333,7 @@ public partial class DiskCardDetailViewModel : ViewModelBase, INavigableViewMode
             IsLoading = true;
             StatusMessage = "Generuji certifikát...";
 
+            // Get latest test session ID
             var sessions = await _diskCardRepository.GetTestSessionsAsync(CurrentCard.Id);
             var latestSession = sessions.FirstOrDefault();
 
@@ -339,23 +343,34 @@ public partial class DiskCardDetailViewModel : ViewModelBase, INavigableViewMode
                 return;
             }
 
-            var certificate = await _certificateGenerator.GenerateCertificateAsync(latestSession, CurrentCard);
-            var pdfPath = await _certificateGenerator.GeneratePdfAsync(certificate);
+            // Use centralized export service with automatic downsampling and progress reporting
+            var progress = new Progress<CertificateExportProgress>(p =>
+            {
+                StatusMessage = p.Message;
+            });
 
-            // Save certificate
-            await _diskCardRepository.CreateCertificateAsync(certificate);
-            LatestCertificate = certificate;
+            var result = await _certificateExportService.ExportCertificateAsync(
+                latestSession.Id,
+                progress);
 
-            StatusMessage = $"Certifikát vygenerován: {certificate.CertificateNumber}";
+            if (!result.IsSuccess)
+            {
+                await _dialogService.ShowErrorAsync("Chyba", $"Nepodařilo se vygenerovat certifikát: {result.ErrorMessage}");
+                return;
+            }
+
+            // Update local state
+            LatestCertificate = result.Certificate;
+            StatusMessage = $"Certifikát vygenerován: {result.Certificate!.CertificateNumber}";
             
             var openPdf = await _dialogService.ShowConfirmationAsync(
                 "Certifikát",
-                $"Certifikát vytvořen:\n{certificate.CertificateNumber}\n\nZnámka: {certificate.Grade}\nSkóre: {certificate.Score:F0}/100\n\n" +
-                $"PDF uloženo:\n{pdfPath}\n\nOtevřít PDF?");
+                $"Certifikát vytvořen:\n{result.Certificate.CertificateNumber}\n\nZnámka: {result.Certificate.Grade}\nSkóre: {result.Certificate.Score:F0}/100\n\n" +
+                $"PDF uloženo:\n{result.PdfPath}\n\nOtevřít PDF?");
 
             if (openPdf)
             {
-                DocumentLauncher.OpenFile(pdfPath);
+                DocumentLauncher.OpenFile(result.PdfPath!);
             }
         }
         catch (Exception ex)

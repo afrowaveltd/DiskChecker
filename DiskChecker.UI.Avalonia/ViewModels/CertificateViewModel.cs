@@ -596,7 +596,7 @@ public partial class CertificateViewModel : ViewModelBase, INavigableViewModel
          return;
       }
 
-      _selectedSession = await _diskCardRepository.GetTestSessionAsync(session.Id) ?? session;
+      _selectedSession = await _diskCardRepository.GetTestSessionWithoutSamplesAsync(session.Id) ?? session;
       if(Certificate == null)
       {
          return;
@@ -633,8 +633,39 @@ public partial class CertificateViewModel : ViewModelBase, INavigableViewModel
          _readGraphSamples = [];
 
          DiskCard? card = null;
+         DiskCertificate? selectedCert = null;
+         _selectedSession = null;
 
-         if(_selectedDiskService.SelectedDisk != null)
+         if(_selectedDiskService.SelectedCertificateId.HasValue)
+         {
+            selectedCert = await _diskCardRepository.GetCertificateAsync(_selectedDiskService.SelectedCertificateId.Value);
+
+            if(selectedCert?.TestSessionId > 0)
+            {
+               _selectedSession = await _diskCardRepository.GetTestSessionWithoutSamplesAsync(selectedCert.TestSessionId);
+               if(_selectedSession != null)
+               {
+                  card = await _diskCardRepository.GetByIdAsync(_selectedSession.DiskCardId);
+               }
+            }
+
+            if(card == null && selectedCert?.DiskCardId > 0)
+            {
+               card = await _diskCardRepository.GetByIdAsync(selectedCert.DiskCardId);
+            }
+         }
+
+         if(_selectedSession == null && _selectedDiskService.SelectedTestSessionId.HasValue)
+         {
+            StatusMessage = "Načítám detail testu pro certifikát...";
+            _selectedSession = await _diskCardRepository.GetTestSessionWithoutSamplesAsync(_selectedDiskService.SelectedTestSessionId.Value);
+            if(_selectedSession != null)
+            {
+               card = await _diskCardRepository.GetByIdAsync(_selectedSession.DiskCardId) ?? card;
+            }
+         }
+
+         if(card == null && _selectedDiskService.SelectedDisk != null)
          {
             card = await _diskCardRepository.GetByDevicePathAsync(_selectedDiskService.SelectedDisk.Path);
          }
@@ -643,20 +674,6 @@ public partial class CertificateViewModel : ViewModelBase, INavigableViewModel
          {
             var allCards = await _diskCardRepository.GetAllAsync();
             card = allCards.OrderByDescending(c => c.LastTestedAt).FirstOrDefault();
-
-            if(card != null)
-            {
-               _selectedDiskService.SelectedDisk = new CoreDriveInfo
-               {
-                  Path = card.DevicePath,
-                  Name = card.ModelName,
-                  TotalSize = card.Capacity,
-                  SerialNumber = card.SerialNumber,
-                  FirmwareVersion = card.FirmwareVersion
-               };
-               _selectedDiskService.SelectedDiskDisplayName = card.ModelName;
-               _selectedDiskService.IsSelectedDiskLocked = card.IsLocked;
-            }
          }
 
          if(card == null)
@@ -665,22 +682,9 @@ public partial class CertificateViewModel : ViewModelBase, INavigableViewModel
             return;
          }
 
-         DiskCertificate? selectedCert = null;
-         _selectedSession = null;
-
-         if(_selectedDiskService.SelectedCertificateId.HasValue)
+         if(selectedCert == null && _selectedSession != null)
          {
-            selectedCert = await _diskCardRepository.GetCertificateAsync(_selectedDiskService.SelectedCertificateId.Value);
-         }
-
-         if(selectedCert == null && _selectedDiskService.SelectedTestSessionId.HasValue)
-         {
-            StatusMessage = "Načítám detail testu pro certifikát...";
-            _selectedSession = await _diskCardRepository.GetTestSessionWithoutSamplesAsync(_selectedDiskService.SelectedTestSessionId.Value);
-            if(_selectedSession != null)
-            {
-               selectedCert = await _certificateGenerator.GenerateCertificateAsync(_selectedSession, card);
-            }
+            selectedCert = await _certificateGenerator.GenerateCertificateAsync(_selectedSession, card);
          }
 
          var latestCert = selectedCert ?? await _diskCardRepository.GetLatestCertificateAsync(card.Id);
@@ -688,20 +692,55 @@ public partial class CertificateViewModel : ViewModelBase, INavigableViewModel
          if(latestCert == null)
          {
             var sessions = await _diskCardRepository.GetTestSessionsAsync(card.Id);
-            var latestSessionId = sessions.FirstOrDefault()?.Id;
+            var latestSessionId = sessions.OrderByDescending(s => s.StartedAt).Select(s => (int?)s.Id).FirstOrDefault();
             if(latestSessionId.HasValue)
             {
                StatusMessage = "Načítám poslední test pro certifikát...";
                _selectedSession = await _diskCardRepository.GetTestSessionWithoutSamplesAsync(latestSessionId.Value);
                if(_selectedSession != null)
                {
-                  latestCert = await _certificateGenerator.GenerateCertificateAsync(_selectedSession, card);
+                  var sessionCard = await _diskCardRepository.GetByIdAsync(_selectedSession.DiskCardId);
+                  if(sessionCard != null)
+                  {
+                     card = sessionCard;
+                     latestCert = await _certificateGenerator.GenerateCertificateAsync(_selectedSession, sessionCard);
+                  }
                }
             }
          }
 
          if(latestCert != null)
          {
+            if(_selectedSession == null && latestCert.TestSessionId > 0)
+            {
+               _selectedSession = await _diskCardRepository.GetTestSessionWithoutSamplesAsync(latestCert.TestSessionId);
+            }
+
+            if(_selectedSession != null)
+            {
+               var sessionCard = await _diskCardRepository.GetByIdAsync(_selectedSession.DiskCardId);
+               if(sessionCard != null)
+               {
+                  card = sessionCard;
+                  latestCert = await _certificateGenerator.GenerateCertificateAsync(_selectedSession, sessionCard);
+               }
+            }
+            else if(latestCert.DiskCardId > 0)
+            {
+               card = await _diskCardRepository.GetByIdAsync(latestCert.DiskCardId) ?? card;
+            }
+
+            _selectedDiskService.SelectedDisk = new CoreDriveInfo
+            {
+               Path = card.DevicePath,
+               Name = card.ModelName,
+               TotalSize = card.Capacity,
+               SerialNumber = card.SerialNumber,
+               FirmwareVersion = card.FirmwareVersion
+            };
+            _selectedDiskService.SelectedDiskDisplayName = card.ModelName;
+            _selectedDiskService.IsSelectedDiskLocked = card.IsLocked;
+
             AvailableSessions.Clear();
             var sessionList = await _diskCardRepository.GetTestSessionsAsync(card.Id);
             foreach(var session in sessionList.OrderByDescending(s => s.StartedAt))
@@ -717,7 +756,7 @@ public partial class CertificateViewModel : ViewModelBase, INavigableViewModel
 
                if(initialSessionId.HasValue)
                {
-                  _selectedSession = await _diskCardRepository.GetTestSessionAsync(initialSessionId.Value);
+                  _selectedSession = await _diskCardRepository.GetTestSessionWithoutSamplesAsync(initialSessionId.Value);
                }
             }
 
@@ -730,37 +769,37 @@ public partial class CertificateViewModel : ViewModelBase, INavigableViewModel
                SelectedSessionItem = AvailableSessions.FirstOrDefault(s => s.Id == _selectedSession.Id);
             }
             StatusMessage = $"Certifikát načten: {latestCert.CertificateNumber}";
-         }
-         else
-         {
-            ResetGraphToDefaults();
-            StatusMessage = "Žádný certifikát nenalezen. Vygenerujte nový.";
-         }
-      }
-      catch(DbException ex)
-      {
-         StatusMessage = $"Chyba při načítání certifikátu: {ex.Message}";
-         await _dialogService.ShowErrorAsync("Chyba", $"Nepodařilo se načíst certifikát: {ex.Message}");
-      }
-      catch(InvalidOperationException ex)
-      {
-         StatusMessage = $"Chyba při načítání certifikátu: {ex.Message}";
-         await _dialogService.ShowErrorAsync("Chyba", $"Nepodařilo se načíst certifikát: {ex.Message}");
-      }
-      catch(IOException ex)
-      {
-         StatusMessage = $"Chyba při načítání certifikátu: {ex.Message}";
-         await _dialogService.ShowErrorAsync("Chyba", $"Nepodařilo se načíst certifikát: {ex.Message}");
-      }
-      catch(ExternalException ex)
-      {
-         StatusMessage = $"Chyba při načítání certifikátu: {ex.Message}";
-         await _dialogService.ShowErrorAsync("Chyba", $"Nepodařilo se vykreslit certifikát: {ex.Message}");
-      }
-      finally
-      {
-         IsLoading = false;
-      }
+          }
+          else
+          {
+             ResetGraphToDefaults();
+             StatusMessage = "Žádný certifikát nenalezen. Vygenerujte nový.";
+          }
+       }
+       catch(DbException ex)
+       {
+          StatusMessage = $"Chyba při načítání certifikátu: {ex.Message}";
+          await _dialogService.ShowErrorAsync("Chyba", $"Nepodařilo se načíst certifikát: {ex.Message}");
+       }
+       catch(InvalidOperationException ex)
+       {
+          StatusMessage = $"Chyba při načítání certifikátu: {ex.Message}";
+          await _dialogService.ShowErrorAsync("Chyba", $"Nepodařilo se načíst certifikát: {ex.Message}");
+       }
+       catch(IOException ex)
+       {
+          StatusMessage = $"Chyba při načítání certifikátu: {ex.Message}";
+          await _dialogService.ShowErrorAsync("Chyba", $"Nepodařilo se načíst certifikát: {ex.Message}");
+       }
+       catch(ExternalException ex)
+       {
+          StatusMessage = $"Chyba při načítání certifikátu: {ex.Message}";
+          await _dialogService.ShowErrorAsync("Chyba", $"Nepodařilo se vykreslit certifikát: {ex.Message}");
+       }
+       finally
+       {
+          IsLoading = false;
+       }
    }
 
    private async Task ApplySmartSummaryAsync(DiskCertificate certificate, DiskCard card)
@@ -838,25 +877,7 @@ public partial class CertificateViewModel : ViewModelBase, INavigableViewModel
 
       if(_selectedSession != null)
       {
-         if(string.IsNullOrWhiteSpace(_selectedSession.ChartImagePath) || !File.Exists(_selectedSession.ChartImagePath))
-         {
-            var generatedChartPath = await _certificateGenerator.EnsureChartImageAsync(_selectedSession);
-            if(!string.IsNullOrWhiteSpace(generatedChartPath) && !string.Equals(_selectedSession.ChartImagePath, generatedChartPath, StringComparison.OrdinalIgnoreCase))
-            {
-               _selectedSession.ChartImagePath = generatedChartPath;
-               await _diskCardRepository.UpdateTestSessionAsync(_selectedSession);
-            }
-         }
-
          certificate.ChartImagePath = _selectedSession.ChartImagePath;
-         _writeGraphSamples = _selectedSession.WriteSamples
-             .Where(s => s.SpeedMBps > 0)
-             .OrderBy(s => s.ProgressPercent)
-             .ToList();
-         _readGraphSamples = _selectedSession.ReadSamples
-             .Where(s => s.SpeedMBps > 0)
-             .OrderBy(s => s.ProgressPercent)
-             .ToList();
       }
 
       var sessionId = certificate.TestSessionId;
@@ -865,40 +886,21 @@ public partial class CertificateViewModel : ViewModelBase, INavigableViewModel
          sessionId = _selectedDiskService.SelectedTestSessionId.Value;
       }
 
+      if(_selectedSession == null && sessionId > 0)
+      {
+         _selectedSession = await _diskCardRepository.GetTestSessionWithoutSamplesAsync(sessionId);
+         if(_selectedSession != null)
+         {
+            certificate.ChartImagePath = _selectedSession.ChartImagePath;
+         }
+      }
+
       if((_writeGraphSamples.Count == 0 && _readGraphSamples.Count == 0) && sessionId > 0)
       {
          StatusMessage = "Načítám data grafu certifikátu...";
          var speedSeries = await LoadCertificateGraphSamplesProgressiveAsync(sessionId);
-         _writeGraphSamples = speedSeries.WriteSamples;
-         _readGraphSamples = speedSeries.ReadSamples;
-      }
-
-      if(_selectedSession == null && sessionId > 0)
-      {
-         _selectedSession = await _diskCardRepository.GetTestSessionAsync(sessionId);
-         if(_selectedSession != null)
-         {
-            _writeGraphSamples = _selectedSession.WriteSamples
-                .Where(s => s.SpeedMBps > 0)
-                .OrderBy(s => s.ProgressPercent)
-                .ToList();
-            _readGraphSamples = _selectedSession.ReadSamples
-                .Where(s => s.SpeedMBps > 0)
-                .OrderBy(s => s.ProgressPercent)
-                .ToList();
-
-            if((string.IsNullOrWhiteSpace(_selectedSession.ChartImagePath) || !File.Exists(_selectedSession.ChartImagePath)) && (_writeGraphSamples.Count > 0 || _readGraphSamples.Count > 0))
-            {
-               var generatedChartPath = await _certificateGenerator.EnsureChartImageAsync(_selectedSession);
-               if(!string.IsNullOrWhiteSpace(generatedChartPath) && !string.Equals(_selectedSession.ChartImagePath, generatedChartPath, StringComparison.OrdinalIgnoreCase))
-               {
-                  _selectedSession.ChartImagePath = generatedChartPath;
-                  await _diskCardRepository.UpdateTestSessionAsync(_selectedSession);
-               }
-            }
-
-            certificate.ChartImagePath = _selectedSession.ChartImagePath;
-         }
+         _writeGraphSamples = DownsampleToLimit(speedSeries.WriteSamples, 512);
+         _readGraphSamples = DownsampleToLimit(speedSeries.ReadSamples, 512);
       }
 
       if(_writeGraphSamples.Count == 0 && _readGraphSamples.Count == 0)
@@ -1287,6 +1289,32 @@ public partial class CertificateViewModel : ViewModelBase, INavigableViewModel
            "0 %",
            "50 %",
            "100 %");
+    }
+
+    /// <summary>
+    /// Downsampleuje vzorky na zadaný limit pomocí rovnoměrného výběru.
+    /// Používá se před generováním certifikátu pro prevenci OutOfMemoryException.
+    /// </summary>
+    private static List<SpeedSample> DownsampleToLimit(List<SpeedSample> samples, int maxPoints)
+    {
+        if (samples == null || samples.Count <= maxPoints)
+        {
+            return samples ?? new List<SpeedSample>();
+        }
+
+        var result = new List<SpeedSample>(maxPoints);
+        var step = (double)samples.Count / maxPoints;
+
+        for (int i = 0; i < maxPoints; i++)
+        {
+            var index = (int)(i * step);
+            if (index < samples.Count)
+            {
+                result.Add(samples[index]);
+            }
+        }
+
+        return result;
     }
 
    #endregion

@@ -1239,13 +1239,17 @@ public partial class SurfaceTestViewModel : ViewModelBase, INavigableViewModel, 
             {
                var card = await _cardTestService.GetOrCreateCardAsync(SelectedDrive!, smartSnapshot, cancellationToken);
 
-               // Collect write samples with proper timestamps and progress
+               // Downsample samples before saving to database to prevent memory/transaction issues
+               // SQLite has practical limits on transaction size and entity tracking
+               const int MaxSamplesToSave = 512;
+               
+               // Collect and downsample write samples
                var writeSamples = await Dispatcher.UIThread.InvokeAsync(() =>
                {
-                  var samples = new List<SpeedSample>();
+                  var allSamples = new List<SpeedSample>();
                   foreach(var point in WriteSpeedHistory)
                   {
-                     samples.Add(new SpeedSample
+                     allSamples.Add(new SpeedSample
                      {
                         Timestamp = point.Timestamp,
                         SpeedMBps = point.Speed,
@@ -1253,16 +1257,34 @@ public partial class SurfaceTestViewModel : ViewModelBase, INavigableViewModel, 
                         BytesProcessed = (long)(point.DataPercent / 100.0 * SelectedDrive!.TotalSize)
                      });
                   }
-                  return samples;
+                  
+                  // Downsample if we have too many samples
+                  if (allSamples.Count > MaxSamplesToSave)
+                  {
+                     var step = Math.Max(1, allSamples.Count / MaxSamplesToSave);
+                     var downsampled = new List<SpeedSample>();
+                     for (int i = 0; i < allSamples.Count; i += step)
+                     {
+                        downsampled.Add(allSamples[i]);
+                     }
+                     // Always include last sample
+                     if (allSamples.Count > 0 && (allSamples.Count - 1) % step != 0)
+                     {
+                        downsampled.Add(allSamples[^1]);
+                     }
+                     return downsampled;
+                  }
+                  
+                  return allSamples;
                });
 
-               // Collect read samples with proper timestamps and progress
+               // Collect and downsample read samples
                var readSamples = await Dispatcher.UIThread.InvokeAsync(() =>
                {
-                  var samples = new List<SpeedSample>();
+                  var allSamples = new List<SpeedSample>();
                   foreach(var point in ReadSpeedHistory)
                   {
-                     samples.Add(new SpeedSample
+                     allSamples.Add(new SpeedSample
                      {
                         Timestamp = point.Timestamp,
                         SpeedMBps = point.Speed,
@@ -1270,12 +1292,30 @@ public partial class SurfaceTestViewModel : ViewModelBase, INavigableViewModel, 
                         BytesProcessed = (long)(point.DataPercent / 100.0 * SelectedDrive!.TotalSize)
                      });
                   }
-                  return samples;
+                  
+                  // Downsample if we have too many samples
+                  if (allSamples.Count > MaxSamplesToSave)
+                  {
+                     var step = Math.Max(1, allSamples.Count / MaxSamplesToSave);
+                     var downsampled = new List<SpeedSample>();
+                     for (int i = 0; i < allSamples.Count; i += step)
+                     {
+                        downsampled.Add(allSamples[i]);
+                     }
+                     // Always include last sample
+                     if (allSamples.Count > 0 && (allSamples.Count - 1) % step != 0)
+                     {
+                        downsampled.Add(allSamples[^1]);
+                     }
+                     return downsampled;
+                  }
+                  
+                  return allSamples;
                });
 
                await _cardTestService.SaveSanitizationAsync(card, result, writeSamples, readSamples, smartSnapshot, smartAfterSnapshot, cancellationToken);
                 
-               StatusMessage = $"Sanitizace uložena - {card.ModelName}";
+               StatusMessage = $"Sanitizace uložena - {card.ModelName} ({writeSamples.Count + readSamples.Count} vzorků)";
                SetStatusMessage($"Sanitizace uložena - {card.ModelName}");
              }
              catch (InvalidOperationException ex)
@@ -1428,6 +1468,30 @@ public partial class SurfaceTestViewModel : ViewModelBase, INavigableViewModel, 
 
       var testEndTime = DateTime.UtcNow;
       var duration = testEndTime - testStartTime;
+
+      // Downsample samples to prevent database overflow (max 512 samples per phase)
+      const int MaxSamplesToSave = 512;
+      if (writeSamples.Count > MaxSamplesToSave)
+      {
+         var step = Math.Max(1, writeSamples.Count / MaxSamplesToSave);
+         var downsampled = new List<(double Speed, int Temp, DateTime Time)>();
+         for (int i = 0; i < writeSamples.Count; i += step)
+            downsampled.Add(writeSamples[i]);
+         if (writeSamples.Count > 0 && (writeSamples.Count - 1) % step != 0)
+            downsampled.Add(writeSamples[^1]);
+         writeSamples = downsampled;
+      }
+      
+      if (readSamples.Count > MaxSamplesToSave)
+      {
+         var step = Math.Max(1, readSamples.Count / MaxSamplesToSave);
+         var downsampled = new List<(double Speed, int Temp, DateTime Time)>();
+         for (int i = 0; i < readSamples.Count; i += step)
+            downsampled.Add(readSamples[i]);
+         if (readSamples.Count > 0 && (readSamples.Count - 1) % step != 0)
+            downsampled.Add(readSamples[^1]);
+         readSamples = downsampled;
+      }
 
       // Calculate averages
       var avgWriteSpeed = writeSamples.Count > 0 ? writeSamples.Average(s => s.Speed) : 0;

@@ -428,6 +428,10 @@ public partial class DiskCardsViewModel : ViewModelBase, INavigableViewModel
     {
         if (card == null || card.TestCount == 0) return;
 
+        var sessions = await _diskCardRepository.GetTestSessionsAsync(card.Id);
+        var latestSession = sessions.OrderByDescending(s => s.StartedAt).FirstOrDefault();
+        var latestCertificate = await _diskCardRepository.GetLatestCertificateAsync(card.Id);
+
         _selectedDiskService.SelectedDisk = new CoreDriveInfo
         {
             Path = card.DevicePath,
@@ -438,8 +442,8 @@ public partial class DiskCardsViewModel : ViewModelBase, INavigableViewModel
         };
         _selectedDiskService.SelectedDiskDisplayName = card.ModelName;
         _selectedDiskService.IsSelectedDiskLocked = card.IsLocked;
-        _selectedDiskService.SelectedTestSessionId = null;
-        _selectedDiskService.SelectedCertificateId = null;
+        _selectedDiskService.SelectedTestSessionId = latestSession?.Id;
+        _selectedDiskService.SelectedCertificateId = latestCertificate?.Id;
 
         _navigationService.NavigateTo<CertificateViewModel>();
         await Task.CompletedTask;

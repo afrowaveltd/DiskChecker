@@ -150,6 +150,10 @@ public partial class App : global::Avalonia.Application
         services.AddScoped<IEmailSettingsService, EmailSettingsService>();
         services.AddScoped<IEmailSender, SmtpEmailSender>();
         services.AddScoped<TestCompletionNotificationService>();
+        
+        // Certificate services
+        services.AddScoped<CertificateExportService>();
+        
         // Infrastructure and application surface test components
         services.AddSingleton<DiskChecker.Infrastructure.Hardware.SurfaceTestExecutorFactory>();
         services.AddScoped<SurfaceTestPersistenceService>();

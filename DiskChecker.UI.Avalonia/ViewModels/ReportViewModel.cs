@@ -1,5 +1,6 @@
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using DiskChecker.Application.Services;
 using DiskChecker.Core.Models;
 using DiskChecker.UI.Avalonia.Services.Interfaces;
 using System;
@@ -27,6 +28,7 @@ namespace DiskChecker.UI.Avalonia.ViewModels
         private readonly INavigationService _navigationService;
         private readonly ICertificateGenerator _certificateGenerator;
         private readonly ReportDocumentState _reportDocumentState;
+        private readonly CertificateExportService _certificateExportService;
         private ObservableCollection<TestReportItem> _reports = new();
         private ObservableCollection<TestReportItem> _filteredReports = new();
         private TestReportItem? _selectedReport;
@@ -41,13 +43,15 @@ namespace DiskChecker.UI.Avalonia.ViewModels
             IDialogService dialogService,
             INavigationService navigationService,
             ICertificateGenerator certificateGenerator,
-            ReportDocumentState reportDocumentState)
+            ReportDocumentState reportDocumentState,
+            CertificateExportService certificateExportService)
         {
             _diskCardRepository = diskCardRepository ?? throw new ArgumentNullException(nameof(diskCardRepository));
             _dialogService = dialogService ?? throw new ArgumentNullException(nameof(dialogService));
             _navigationService = navigationService ?? throw new ArgumentNullException(nameof(navigationService));
             _certificateGenerator = certificateGenerator ?? throw new ArgumentNullException(nameof(certificateGenerator));
             _reportDocumentState = reportDocumentState ?? throw new ArgumentNullException(nameof(reportDocumentState));
+            _certificateExportService = certificateExportService ?? throw new ArgumentNullException(nameof(certificateExportService));
             
             DeleteReportCommand = new AsyncRelayCommand(DeleteReportAsync, () => SelectedReport != null);
             ExportReportCommand = new AsyncRelayCommand(ExportReportAsync, () => SelectedReport != null);
@@ -213,49 +217,31 @@ namespace DiskChecker.UI.Avalonia.ViewModels
             {
                 SetLoadingState(true, "Generuji certifikát...", null);
 
-                var card = await _diskCardRepository.GetByIdAsync(SelectedReport.DiskCardId);
-                if (card == null)
+                // Use centralized export service with automatic downsampling and progress reporting
+                var progress = new Progress<CertificateExportProgress>(p =>
                 {
-                    await _dialogService.ShowErrorAsync("Chyba", "Karta disku pro vybraný report nebyla nalezena.");
+                    SetLoadingState(true, p.Message, p.ProgressPercent);
+                });
+
+                var result = await _certificateExportService.ExportCertificateAsync(
+                    SelectedReport.Id,
+                    progress);
+
+                if (!result.IsSuccess)
+                {
+                    await _dialogService.ShowErrorAsync("Chyba", $"Nepodařilo se exportovat certifikát: {result.ErrorMessage}");
                     return;
                 }
 
-                // Používáme GetTestSessionWithoutSamplesAsync abychom se vyhnuli načtení velkých kolekcí
-                var session = await _diskCardRepository.GetTestSessionWithoutSamplesAsync(SelectedReport.Id);
-                if (session == null)
-                {
-                    await _dialogService.ShowErrorAsync("Chyba", "Testová session pro vybraný report nebyla nalezena.");
-                    return;
-                }
-
-                // Pro sanitizaci načítáme vzorky progresivně v dávkách, aby prostředí zůstalo responzivní.
-                if (session.TestType == TestType.Sanitization)
-                {
-                    var (write, read, _) = await LoadSpeedSamplesProgressiveAsync(
-                        SelectedReport.Id,
-                        modulo: 100,
-                        maxRemainders: 6,
-                        progressStart: 20,
-                        progressEnd: 55,
-                        stageMessage: "Načítám vzorky pro certifikát");
-
-                    session.WriteSamples = write;
-                    session.ReadSamples = read;
-                }
-
-                var certificate = await _certificateGenerator.GenerateCertificateAsync(session, card);
-                var pdfPath = await _certificateGenerator.GeneratePdfAsync(certificate);
-                await _diskCardRepository.CreateCertificateAsync(certificate);
-
-                StatusMessage = $"Certifikát uložen: {certificate.CertificateNumber}";
+                StatusMessage = $"Certifikát uložen: {result.Certificate!.CertificateNumber}";
 
                 var openPdf = await _dialogService.ShowConfirmationAsync(
                     "Certifikát vytvořen",
-                    $"Certifikát byl uložen do PDF:\n{pdfPath}\n\nOtevřít soubor?");
+                    $"Certifikát byl uložen do PDF:\n{result.PdfPath}\n\nOtevřít soubor?");
 
                 if (openPdf)
                 {
-                    DocumentLauncher.OpenFile(pdfPath);
+                    DocumentLauncher.OpenFile(result.PdfPath!);
                 }
             }
             catch (InvalidOperationException ex)
@@ -652,6 +638,7 @@ namespace DiskChecker.UI.Avalonia.ViewModels
 
         /// <summary>
         /// Načte vzorky rychlosti progresivně po dávkách (modulo/remainder), aby se nečetla celá série najednou.
+        /// Používá se pouze pro OpenFullReportAsync, exporty certifikátů používají CertificateExportService.
         /// </summary>
         private async Task<(List<SpeedSample> WriteSamples, List<SpeedSample> ReadSamples, bool ReducedMode)> LoadSpeedSamplesProgressiveAsync(
             int sessionId,

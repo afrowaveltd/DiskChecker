@@ -586,7 +586,14 @@ public class DiskCardTestService
       session.ChartImagePath = await _certificateGenerator.GenerateAndStoreChartImageAsync(session, cancellationToken);
       if(!string.IsNullOrWhiteSpace(session.ChartImagePath))
       {
-         _dbContext.TestSessions.Update(session);
+         // Clear change tracker to prevent tracking conflicts with owned entities (SmartAttributeSummary)
+         // from the first SaveChanges call
+         _dbContext.ChangeTracker.Clear();
+         
+         // Attach only the session entity and update only the ChartImagePath property
+         // This avoids re-tracking the entire navigation graph (SmartBefore/SmartAfter/etc.)
+         var entry = _dbContext.TestSessions.Attach(session);
+         entry.Property(s => s.ChartImagePath).IsModified = true;
          await _dbContext.SaveChangesAsync(cancellationToken);
       }
 
