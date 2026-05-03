@@ -295,35 +295,32 @@ public class LinuxSmartaProvider : ISmartaProvider, IAdvancedSmartaProvider
         {
             try
             {
-                // Use smartctl --scan
-                var psi = new ProcessStartInfo
+                // Use smartctl --scan with a timeout to prevent hanging
+                var result = await ExecuteProcessAsync(smartctlPath, "--scan", cancellationToken);
+                if (result != null)
                 {
-                    FileName = smartctlPath,
-                    Arguments = "--scan",
-                    RedirectStandardOutput = true,
-                    RedirectStandardError = true,
-                    UseShellExecute = false,
-                    CreateNoWindow = true
-                };
+                    var output = result.Value.Output;
 
-                using var process = Process.Start(psi);
-                if (process == null) return drives;
-
-                var output = await process.StandardOutput.ReadToEndAsync(cancellationToken);
-                await process.WaitForExitAsync(cancellationToken);
-
-                // Parse output like: /dev/sda -d scsi # /dev/sda, SCSI device
-                var lines = output.Split('\n');
-                foreach (var line in lines)
-                {
-                    var trimmed = line.Trim();
-                    if (string.IsNullOrEmpty(trimmed)) continue;
-
-                    // Extract device path
-                    var parts = trimmed.Split(' ', '\t');
-                    if (parts.Length > 0 && parts[0].StartsWith("/dev/", StringComparison.Ordinal))
+                    // Parse output like: /dev/sda -d scsi # /dev/sda, SCSI device
+                    var lines = output.Split('\n');
+                    foreach (var line in lines)
                     {
-                        drives.Add(parts[0]);
+                        var trimmed = line.Trim();
+                        if (string.IsNullOrEmpty(trimmed)) continue;
+
+                        // Extract device path
+                        var parts = trimmed.Split(' ', '\t');
+                        if (parts.Length > 0 && parts[0].StartsWith("/dev/", StringComparison.Ordinal))
+                        {
+                            drives.Add(parts[0]);
+                        }
+                    }
+                }
+                else
+                {
+                    if (_logger != null && _logger.IsEnabled(LogLevel.Warning))
+                    {
+                        _logger.LogWarning("smartctl --scan timed out or failed");
                     }
                 }
             }
@@ -444,7 +441,6 @@ public class LinuxSmartaProvider : ISmartaProvider, IAdvancedSmartaProvider
     {
         try
         {
-            // Find smartctl path
             var smartctlPath = await FindSmartctlPathAsync();
             if (string.IsNullOrEmpty(smartctlPath))
             {
@@ -456,42 +452,31 @@ public class LinuxSmartaProvider : ISmartaProvider, IAdvancedSmartaProvider
                 return null;
             }
 
-            // Detect device type and build proper arguments
             var deviceType = DetectDeviceType(devicePath);
             var args = BuildSmartctlArgsForQuery(arguments, devicePath, deviceType);
-            
             Console.WriteLine($"[LinuxSmartaProvider] Running: {smartctlPath} {args}");
-            
-            var psi = new ProcessStartInfo
-            {
-                FileName = smartctlPath,
-                Arguments = args,
-                RedirectStandardOutput = true,
-                RedirectStandardError = true,
-                UseShellExecute = false,
-                CreateNoWindow = true
-            };
 
-            using var process = Process.Start(psi);
-            if (process == null)
+            var directResult = await ExecuteProcessAsync(smartctlPath, args, cancellationToken);
+            if (directResult == null)
             {
-                Console.WriteLine("[LinuxSmartaProvider] ERROR: Failed to start smartctl process");
                 return null;
             }
 
-            var output = await process.StandardOutput.ReadToEndAsync(cancellationToken);
-            var error = await process.StandardError.ReadToEndAsync(cancellationToken);
-            await process.WaitForExitAsync(cancellationToken);
-
-            var outputPreview = output.Length > 200 ? string.Concat(output.AsSpan(0, 200), "...") : output;
-            Console.WriteLine($"[LinuxSmartaProvider] Exit code: {process.ExitCode}, Output: {outputPreview}, Error: {error}");
-
-            if (_logger != null && _logger.IsEnabled(LogLevel.Debug))
+            if (RequiresElevatedRetry(directResult.Value))
             {
-                _logger.LogDebug("smartctl {Args} exit code: {ExitCode}", args, process.ExitCode);
+                if (_logger != null && _logger.IsEnabled(LogLevel.Warning))
+                {
+                    _logger.LogWarning("Direct SMART access to {DevicePath} was denied. Retrying with elevated helper.", devicePath);
+                }
+
+                var elevatedResult = await TryElevatedSmartctlAsync(smartctlPath, args, cancellationToken);
+                if (elevatedResult != null)
+                {
+                    return elevatedResult;
+                }
             }
-            
-            return (process.ExitCode, output, error);
+
+            return directResult;
         }
         catch (Exception ex)
         {
@@ -502,6 +487,112 @@ public class LinuxSmartaProvider : ISmartaProvider, IAdvancedSmartaProvider
             }
             return null;
         }
+    }
+
+    private async Task<(int ExitCode, string Output, string Error)?> ExecuteProcessAsync(string fileName, string arguments, CancellationToken cancellationToken)
+    {
+        var psi = new ProcessStartInfo
+        {
+            FileName = fileName,
+            Arguments = arguments,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            UseShellExecute = false,
+            CreateNoWindow = true
+        };
+
+        using var process = Process.Start(psi);
+        if (process == null)
+        {
+            Console.WriteLine($"[LinuxSmartaProvider] ERROR: Failed to start process {fileName}");
+            return null;
+        }
+
+        // Read output and error concurrently to avoid deadlocks on pipe buffering
+        var outputTask = process.StandardOutput.ReadToEndAsync(cancellationToken);
+        var errorTask = process.StandardError.ReadToEndAsync(cancellationToken);
+
+        // Wait for the process to exit with a timeout to prevent hanging on unresponsive disks.
+        // smartctl can hang indefinitely on some disks that don't respond to SMART queries.
+        using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        timeoutCts.CancelAfter(TimeSpan.FromSeconds(15));
+
+        try
+        {
+            await process.WaitForExitAsync(timeoutCts.Token);
+        }
+        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+        {
+            // Timeout reached – kill the process tree to unblock the read tasks
+            Console.WriteLine($"[LinuxSmartaProvider] TIMEOUT: Killing process {fileName} {arguments}");
+            try
+            {
+                process.Kill(entireProcessTree: true);
+            }
+            catch
+            {
+                // Ignore errors killing the process
+            }
+
+            return null;
+        }
+
+        var output = await outputTask;
+        var error = await errorTask;
+
+        var outputPreview = output.Length > 200 ? string.Concat(output.AsSpan(0, 200), "...") : output;
+        Console.WriteLine($"[LinuxSmartaProvider] Exit code: {process.ExitCode}, Output: {outputPreview}, Error: {error}");
+
+        if (_logger != null && _logger.IsEnabled(LogLevel.Debug))
+        {
+            _logger.LogDebug("Process {FileName} {Args} exit code: {ExitCode}", fileName, arguments, process.ExitCode);
+        }
+
+        return (process.ExitCode, output, error);
+    }
+
+    private async Task<(int ExitCode, string Output, string Error)?> TryElevatedSmartctlAsync(string smartctlPath, string arguments, CancellationToken cancellationToken)
+    {
+        // Only try sudo -n (non-interactive). Do NOT try pkexec because it can
+        // pop a GUI authentication dialog and block indefinitely, which freezes the app.
+        // When running as root (the common Linux deployment scenario), elevated
+        // retry is unnecessary anyway – the direct path already runs with full privileges.
+        var candidates = new[]
+        {
+            (FileName: "sudo", Arguments: $"-n {smartctlPath} {arguments}")
+        };
+
+        foreach (var candidate in candidates)
+        {
+            try
+            {
+                // Use a shorter timeout for the elevated retry to avoid blocking
+                // the overall disk enumeration for too long on a single disk.
+                using var shortTimeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+                using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, shortTimeout.Token);
+
+                var result = await ExecuteProcessAsync(candidate.FileName, candidate.Arguments, linkedCts.Token);
+                if (result != null)
+                {
+                    return result;
+                }
+            }
+            catch
+            {
+            }
+        }
+
+        return null;
+    }
+
+    private static bool RequiresElevatedRetry((int ExitCode, string Output, string Error) result)
+    {
+        var combined = result.Output + "\n" + result.Error;
+        return combined.Contains("permission denied", StringComparison.OrdinalIgnoreCase) ||
+               combined.Contains("operation not permitted", StringComparison.OrdinalIgnoreCase) ||
+               combined.Contains("device open failed", StringComparison.OrdinalIgnoreCase) ||
+               combined.Contains("admin rights", StringComparison.OrdinalIgnoreCase) ||
+               combined.Contains("must be root", StringComparison.OrdinalIgnoreCase);
     }
     
     private static string BuildSmartctlArgsForQuery(string baseArgs, string devicePath, string deviceType)
@@ -562,35 +653,17 @@ public class LinuxSmartaProvider : ISmartaProvider, IAdvancedSmartaProvider
             }
         }
 
-        // Try 'which' command as fallback
+        // Try 'which' command as fallback (with timeout)
         try
         {
-            var psi = new ProcessStartInfo
+            var path = await RunQuickCommandAsync("/usr/bin/which", "smartctl", TimeSpan.FromSeconds(5));
+            if (!string.IsNullOrWhiteSpace(path) && File.Exists(path))
             {
-                FileName = "/usr/bin/which",
-                Arguments = "smartctl",
-                RedirectStandardOutput = true,
-                UseShellExecute = false,
-                CreateNoWindow = true
-            };
-
-            using var process = Process.Start(psi);
-            if (process == null) return null;
-            
-            var output = await process.StandardOutput.ReadToEndAsync();
-            await process.WaitForExitAsync();
-            
-            if (process.ExitCode == 0 && !string.IsNullOrWhiteSpace(output))
-            {
-                var path = output.Trim();
-                if (File.Exists(path))
+                lock (s_pathLock)
                 {
-                    lock (s_pathLock)
-                    {
-                        s_cachedSmartctlPath = path;
-                    }
-                    return path;
+                    s_cachedSmartctlPath = path;
                 }
+                return path;
             }
         }
         catch
@@ -598,35 +671,17 @@ public class LinuxSmartaProvider : ISmartaProvider, IAdvancedSmartaProvider
             // Ignore errors from 'which'
         }
 
-        // Try 'command -v' as another fallback
+        // Try 'command -v' as another fallback (with timeout)
         try
         {
-            var psi = new ProcessStartInfo
+            var path = await RunQuickCommandAsync("/bin/sh", "-c \"command -v smartctl\"", TimeSpan.FromSeconds(5));
+            if (!string.IsNullOrWhiteSpace(path) && File.Exists(path))
             {
-                FileName = "/bin/sh",
-                Arguments = "-c \"command -v smartctl\"",
-                RedirectStandardOutput = true,
-                UseShellExecute = false,
-                CreateNoWindow = true
-            };
-
-            using var process = Process.Start(psi);
-            if (process == null) return null;
-            
-            var output = await process.StandardOutput.ReadToEndAsync();
-            await process.WaitForExitAsync();
-            
-            if (!string.IsNullOrWhiteSpace(output))
-            {
-                var path = output.Trim();
-                if (File.Exists(path))
+                lock (s_pathLock)
                 {
-                    lock (s_pathLock)
-                    {
-                        s_cachedSmartctlPath = path;
-                    }
-                    return path;
+                    s_cachedSmartctlPath = path;
                 }
+                return path;
             }
         }
         catch
@@ -635,6 +690,38 @@ public class LinuxSmartaProvider : ISmartaProvider, IAdvancedSmartaProvider
         }
 
         return null;
+    }
+
+    private static async Task<string?> RunQuickCommandAsync(string fileName, string arguments, TimeSpan timeout)
+    {
+        using var cts = new CancellationTokenSource(timeout);
+        var psi = new ProcessStartInfo
+        {
+            FileName = fileName,
+            Arguments = arguments,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            UseShellExecute = false,
+            CreateNoWindow = true
+        };
+
+        using var process = Process.Start(psi);
+        if (process == null) return null;
+
+        var outputTask = process.StandardOutput.ReadToEndAsync(cts.Token);
+
+        try
+        {
+            await process.WaitForExitAsync(cts.Token);
+        }
+        catch (OperationCanceledException)
+        {
+            try { process.Kill(entireProcessTree: true); } catch { }
+            return null;
+        }
+
+        var output = await outputTask;
+        return process.ExitCode == 0 ? output.Trim() : null;
     }
 
     private static bool IsSmartctlAvailable()

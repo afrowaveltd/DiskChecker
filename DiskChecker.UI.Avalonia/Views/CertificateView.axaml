@@ -129,6 +129,11 @@
                                 <TextBlock Text="{Binding SmartPowerCyclesText, StringFormat='Počet startů: {0}'}"/>
                                 <TextBlock Text="{Binding SmartReallocatedSectorsText, StringFormat='Realokované sektory: {0}'}"/>
                                 <TextBlock Text="{Binding SmartPendingSectorsText, StringFormat='Čekající sektory: {0}'}"/>
+                                <Separator Margin="0,4,0,2"/>
+                                <TextBlock Text="Legenda známek" FontWeight="Bold" FontSize="12"/>
+                                <TextBlock Text="A = výborný stav • B = velmi dobrý stav" FontSize="11"/>
+                                <TextBlock Text="C = dobrý stav • D = opotřebený disk" FontSize="11"/>
+                                <TextBlock Text="E = rizikový disk • F = kritický / vadný" FontSize="11"/>
                             </StackPanel>
                         </Border>
 

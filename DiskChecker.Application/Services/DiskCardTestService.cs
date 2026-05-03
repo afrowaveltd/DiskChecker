@@ -99,38 +99,44 @@ public class DiskCardTestService
           GetPreferredSerialNumber(drive, smartaData),
           GetPreferredModelName(drive, smartaData),
           GetPreferredFirmwareVersion(drive, smartaData));
+      var preferredModelName = GetPreferredModelName(drive, smartaData);
+      var preferredFirmwareVersion = GetPreferredFirmwareVersion(drive, smartaData);
       var hasReliableIdentity = HasReliableSerialNumber(smartaData?.SerialNumber) || HasReliableSerialNumber(drive.SerialNumber);
 
-      DiskCard? card;
-      if(hasReliableIdentity)
+      DiskCard? card = await _dbContext.DiskCards
+          .FirstOrDefaultAsync(c =>
+              c.SerialNumber == serialKey ||
+              c.SerialNumber == legacyKey,
+              cancellationToken);
+
+      if(card == null && !hasReliableIdentity)
       {
-         card = await _dbContext.DiskCards
-             .FirstOrDefaultAsync(c =>
-                 c.SerialNumber == serialKey ||
-                 c.SerialNumber == legacyKey,
-                 cancellationToken);
-      }
-      else
-      {
-         card = await _dbContext.DiskCards
-             .FirstOrDefaultAsync(c =>
-                 c.SerialNumber == serialKey ||
-                 c.SerialNumber == legacyKey ||
-                 c.DevicePath == drive.Path,
-                 cancellationToken);
+         var byPath = await _dbContext.DiskCards
+             .FirstOrDefaultAsync(c => c.DevicePath == drive.Path, cancellationToken);
+
+         if(byPath != null)
+         {
+            var sameModel = string.Equals(NormalizeComparableToken(byPath.ModelName), NormalizeComparableToken(preferredModelName), StringComparison.Ordinal);
+            var sameCapacity = byPath.Capacity <= 0 || drive.TotalSize <= 0 || Math.Abs(byPath.Capacity - drive.TotalSize) < 32L * 1024L * 1024L;
+            var pathFallbackAllowed = sameModel && sameCapacity && !HasReliableSerialNumber(byPath.SerialNumber);
+            if(pathFallbackAllowed)
+            {
+               card = byPath;
+            }
+         }
       }
 
       if(card == null)
       {
          card = new DiskCard
          {
-            ModelName = GetPreferredModelName(drive, smartaData),
+            ModelName = preferredModelName,
             SerialNumber = serialKey,
             DevicePath = drive.Path,
             DiskType = DetermineDiskType(drive),
             InterfaceType = DetermineInterfaceType(drive),
             Capacity = drive.TotalSize,
-            FirmwareVersion = GetPreferredFirmwareVersion(drive, smartaData),
+            FirmwareVersion = preferredFirmwareVersion,
             ConnectionType = drive.IsRemovable ? "External" : "Internal",
             CreatedAt = DateTime.UtcNow,
             LastTestedAt = DateTime.UtcNow,
@@ -176,14 +182,12 @@ public class DiskCardTestService
          cardChanged = true;
       }
 
-      var preferredModelName = GetPreferredModelName(drive, smartaData);
       if(!string.Equals(card.ModelName, preferredModelName, StringComparison.Ordinal))
       {
          card.ModelName = preferredModelName;
          cardChanged = true;
       }
 
-      var preferredFirmwareVersion = GetPreferredFirmwareVersion(drive, smartaData);
       if(!string.Equals(card.FirmwareVersion, preferredFirmwareVersion, StringComparison.Ordinal))
       {
          card.FirmwareVersion = preferredFirmwareVersion;
@@ -208,6 +212,11 @@ public class DiskCardTestService
       }
 
       return card;
+   }
+
+   private static string NormalizeComparableToken(string? value)
+   {
+      return string.IsNullOrWhiteSpace(value) ? string.Empty : value.Trim().ToUpperInvariant();
    }
 
    /// <summary>

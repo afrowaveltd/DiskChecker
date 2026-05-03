@@ -1,103 +1,123 @@
 # DiskChecker
 
-Aplikace pro kontrolu zdraví disků pomocí SMART dat a testování povrchu.
+Profesionální nástroj pro diagnostiku a testování disků pomocí SMART dat a povrchových testů.
 
 ## Projekty
 
-Solution obsahuje následující projekty:
-
 | Projekt | Popis |
 |---------|-------|
-| **DiskChecker.Core** | Základní modely a rozhraní |
-| **DiskChecker.Infrastructure** | Implementace služeb (SMART, databáze) |
-| **DiskChecker.Application** | Aplikační služby a logika |
-| **DiskChecker.UI.Avalonia** | Hlavní UI aplikace (Avalonia) |
+| **DiskChecker.Core** | Základní modely, rozhraní a kalkulátor kvality |
+| **DiskChecker.Infrastructure** | Implementace služeb (SMART, databáze, sanitzace) |
+| **DiskChecker.Application** | Aplikační služby a obchodní logika |
+| **DiskChecker.UI.Avalonia** | Cross-platform desktop UI (Avalonia + MVVM) |
 
 ## Architektura
 
 ```
 ┌─────────────────────────────────────────────────────────┐
-│                   UI.Avalonia                            │
-│  (Avalonia UI + MVVM + CommunityToolkit.Mvvm)           │
+│                  UI.Avalonia                             │
+│  (Avalonia UI · MVVM · CommunityToolkit.Mvvm)          │
 └─────────────────────────────────────────────────────────┘
                           │
                           ▼
 ┌─────────────────────────────────────────────────────────┐
-│                   Application                            │
-│  (Služby aplikace: HistoryService, SmartCheckService)   │
+│                  Application                             │
+│  (SmartCheckService · HistoryService · ReportService)   │
 └─────────────────────────────────────────────────────────┘
                           │
                           ▼
 ┌─────────────────────────────────────────────────────────┐
-│                   Infrastructure                         │
-│  (Implementace: WindowsSmartaProvider, DbContext)       │
+│                  Infrastructure                          │
+│  (WindowsSmartaProvider · LinuxSmartaProvider · SQLite) │
 └─────────────────────────────────────────────────────────┘
                           │
                           ▼
 ┌─────────────────────────────────────────────────────────┐
 │                     Core                                 │
-│  (Modely: SmartaData, QualityRating, CoreDriveInfo)    │
-│  (Rozhraní: ISmartaProvider, IQualityCalculator)       │
+│  (CoreDriveInfo · SmartaData · QualityRating)           │
+│  (ISmartaProvider · IQualityCalculator)                 │
 └─────────────────────────────────────────────────────────┘
 ```
 
 ## Funkce
 
-- **SMART kontrola** - Čtení SMART dat z disků
-- **Hodnocení zdraví** - Výpočet kvality disku (A-F)
-- **Test povrchu** - Zápis a ověření dat na disku
-- **Historie testů** - Ukládání výsledků do databáze
-- **Reporty** - Generování PDF reportů
-- **Zálohování** - Záloha a obnova databáze
+- **SMART kontrola** – čtení a analýza SMART atributů z disků
+- **Hodnocení zdraví** – výpočet kvality disku (stupeň A–F)
+- **Test povrchu** – zápis a ověření dat na disku s vizualizací průběhu
+- **Historie testů** – ukládání výsledků do SQLite databáze
+- **Certifikáty** – generování PDF certifikátů o stavu disku
+- **Reporty** – přehledy a analýzy zdraví disku
+- **Sanitzace** – bezpečné mazání disků (DoD 5220.22-M, Gutmann, NVMe)
+- **Zálohování** – záloha a obnova databáze a nastavení
 
 ## Požadavky
 
-- .NET 10.0
-- Windows / Linux / macOS
-- smartctl (pro SMART data na Linuxu)
+- .NET 10.0 SDK
+- Windows 10+ / Linux (x64, ARM64)
+- `smartctl` z balíčku `smartmontools` (vyžadováno na Linuxu)
+- Root/admin práva pro přístup k diskům
 
 ## Sestavení
 
 ```bash
-# Restore packages
+# Restore balíčků
 dotnet restore
 
-# Build solution
-dotnet build
+# Build řešení
+dotnet build --configuration Release
 
-# Run Avalonia app
+# Spuštění
 dotnet run --project DiskChecker.UI.Avalonia
 ```
 
-## Struktura řešení
+## Publikování
+
+```bash
+# Windows x64
+dotnet publish DiskChecker.UI.Avalonia/DiskChecker.UI.Avalonia.csproj \
+  -c Release -r win-x64 --self-contained true
+
+# Linux x64
+dotnet publish DiskChecker.UI.Avalonia/DiskChecker.UI.Avalonia.csproj \
+  -c Release -r linux-x64 --self-contained true
+
+# Linux ARM64
+dotnet publish DiskChecker.UI.Avalonia/DiskChecker.UI.Avalonia.csproj \
+  -c Release -r linux-arm64 --self-contained true
+```
+
+## Struktura projektu
 
 ```
 DiskChecker/
-├── DiskChecker.Core/           # Modely a rozhraní
-│   ├── Models/                 # Datové modely
-│   ├── Interfaces/             # Rozhraní služeb
-│   └── Services/               # Základní služby
-├── DiskChecker.Infrastructure/ # Implementace
-│   ├── Hardware/               # SMART, testování
-│   ├── Persistence/            # Databáze
-│   └── Helpers/                # Pomocné třídy
-├── DiskChecker.Application/    # Aplikační logika
-│   └── Services/               # Aplikační služby
-├── DiskChecker.UI.Avalonia/    # UI aplikace
-│   ├── ViewModels/             # MVVM view modely
-│   ├── Views/                  # AXAML views
-│   ├── Services/               # UI služby
-│   └── Converters/             # Konvertory
-└── _Archived/                  # Archivované projekty
-    ├── DiskChecker.UI.WPF/     # WPF UI (odpojeno)
-    ├── DiskChecker.Tests/      # Testy (odpojeno)
-    └── ...
+├── DiskChecker.Core/              # Modely a rozhraní
+│   ├── Models/                    # Datové modely (CoreDriveInfo, SmartaData, …)
+│   ├── Interfaces/                # Rozhraní služeb
+│   ├── Extensions/                 # Pomocné rozšíření
+│   └── Services/                  # Základní služby (QualityCalculator)
+├── DiskChecker.Infrastructure/    # Implementace
+│   ├── Hardware/                  # SMART provideři, testování, sanitzace
+│   ├── Persistence/               # SQLite DbContext, repozitáře
+│   ├── Configuration/             # Konfigurace
+│   ├── Helpers/                   # Pomocné třídy
+│   └── Services/                  # CertificateGenerator, ComparisonService
+├── DiskChecker.Application/       # Aplikační logika
+│   ├── Services/                  # Služby (SmartCheck, History, Report, …)
+│   ├── Constants/                 # Konstanty aplikace
+│   └── Extensions/                # Pomocná rozšíření
+├── DiskChecker.UI.Avalonia/       # Desktop UI
+│   ├── ViewModels/                # MVVM view modely
+│   ├── Views/                     # AXAML views
+│   ├── Services/                  # UI služby, navigace, dialogy
+│   ├── Converters/                # Hodnotové konvertory
+│   └── Styles/                    # Styly
+├── tests/                         # Testy
+│   └── DiskChecker.Tests/         # Unit testy
+├── installer/                      # Instalační skripty a konfigurace
+├── scripts/                       # Build skripty
+└── docs/                          # Dokumentace
 ```
 
-## License
+## Licence
 
 Viz soubor [LICENSE](LICENSE).
-
-## Autor
-
-DiskChecker Team

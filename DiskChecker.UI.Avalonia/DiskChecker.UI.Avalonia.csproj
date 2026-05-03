@@ -17,6 +17,7 @@
     <AvaloniaResource Include="Assets\**" />
     <AvaloniaResource Include="Assets\disk-checker-icon.svg" />
     <Content Include="Assets\icon.ico" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="appsettings.json" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
   <!-- Make .axaml.cs files appear as dependents of their .axaml files in the IDE -->
@@ -25,6 +26,11 @@
       <DependentUpon>%(Filename).axaml</DependentUpon>
     </Compile>
   </ItemGroup>
+
+  <!-- NOTE: NU1903 warns about vulnerable Tmds.DBus.Protocol 0.21.2 (transitive via Avalonia.FreeDesktop).
+       Cannot upgrade to 0.93+ because it has breaking API changes (Connection type removed)
+       that crash Avalonia at runtime. Suppressed via WarningsNotAsErrors in Directory.Build.props.
+       Re-evaluate when upgrading to Avalonia 12+. -->
 
   <ItemGroup>
     <PackageReference Include="Avalonia" Version="11.3.12" />

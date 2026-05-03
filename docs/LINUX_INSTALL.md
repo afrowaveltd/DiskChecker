@@ -1,20 +1,17 @@
-# 🐧 DiskChecker Linux Installation & Usage
+# DiskChecker – Instalace a použití na Linuxu
 
-## ✅ System Requirements
+## Požadavky
 
-- **OS**: Ubuntu 20.04+, Debian 11+, Fedora 33+, CentOS 8+, or any modern Linux distro
-- **Architecture**: x64 (amd64) or ARM64
-- **.NET Runtime**: Not required (self-contained build)
-- **Privileges**: Root/sudo access for disk operations
+- **OS**: Ubuntu 20.04+, Debian 11+, Fedora 33+, nebo jakákoliv moderní distribuce
+- **Architektura**: x64 (amd64) nebo ARM64
+- **.NET Runtime**: Není vyžadován (self-contained build)
+- **Práva**: Root/sudo pro přístup k diskům
 
-## 📦 Dependencies
-
-Install required tools:
+## Závislosti
 
 ```bash
 # Ubuntu/Debian
-sudo apt update
-sudo apt install smartmontools
+sudo apt update && sudo apt install smartmontools
 
 # Fedora/RHEL/CentOS
 sudo dnf install smartmontools
@@ -23,189 +20,81 @@ sudo dnf install smartmontools
 sudo pacman -S smartmontools
 ```
 
-## 🚀 Quick Start
+## Instalace
 
-### Option 1: Download Release
-
-1. Download `DiskChecker-linux-x64` from [Releases](https://github.com/afrowaveltd/DiskChecker/releases)
-2. Make executable:
-   ```bash
-   chmod +x DiskChecker-linux-x64
-   ```
-3. Run with sudo:
-   ```bash
-   sudo ./DiskChecker-linux-x64
-   ```
-
-### Option 2: Build from Source
+### 1. Build ze zdrojového kódu
 
 ```bash
-# Clone repository
 git clone https://github.com/afrowaveltd/DiskChecker.git
 cd DiskChecker
-
-# Build for x64
-./scripts/build-linux.sh x64
-
-# OR build for ARM64
-./scripts/build-linux.sh arm64
-
-# Run
-sudo ./publish/linux-x64/DiskChecker.UI
+dotnet publish DiskChecker.UI.Avalonia/DiskChecker.UI.Avalonia.csproj \
+  -c Release -r linux-x64 --self-contained true -o ./publish/linux-x64
 ```
 
-## 📖 Usage
-
-### List Available Disks
+### 2. Instalační skript
 
 ```bash
-sudo ./DiskChecker-linux-x64
-# Select option: 1) Zkontrolovat disk
+sudo ./installer/install-linux.sh
 ```
 
-### Check Disk Health
+Aplikace se nainstaluje do `/opt/diskchecker` a vytvoří symlink `/usr/local/bin/diskchecker`.
+
+### 3. DEB balíček
 
 ```bash
-sudo ./DiskChecker-linux-x64
-# 1. Select disk (e.g., /dev/sda)
-# 2. View SMART data
+./package.sh          # Vytvoří DEB balíček v packages/
+sudo dpkg -i packages/diskchecker-1.0.0-linux-x64.deb
 ```
 
-### Full Surface Test
+## Spuštění
 
 ```bash
-sudo ./DiskChecker-linux-x64
-# Select: 2) Úplný test disku
-# Choose test profile
+# Přes symlink
+sudo diskchecker
+
+# Nebo přímo
+sudo /opt/diskchecker/DiskChecker.UI.Avalonia
 ```
 
-### Disk Sanitization
+## Práva
+
+Aplikace vyžaduje **root práva** pro:
+- Čtení SMART dat (`/dev/sd*`, `/dev/nvme*`)
+- Přímý přístup k disku (povrchové testy)
+- Zápis na úrovni sektorů (sanitzace)
+
+### Alternativy ke spouštění přes sudo
 
 ```bash
-sudo ./DiskChecker-linux-x64
-# Select sanitization profile
-# ⚠️ WARNING: This ERASES ALL DATA!
-```
-
-## 🔒 Permissions
-
-DiskChecker requires **root privileges** for:
-- Reading SMART data (`/dev/sd*`)
-- Direct disk access (surface testing)
-- Raw sector write (sanitization)
-
-### Running without `sudo` each time:
-
-```bash
-# Add yourself to disk group (logout/login required)
+# Přidání uživatele do skupiny disk (vyžaduje odhlášení/refresh)
 sudo usermod -a -G disk $USER
 
-# Set capabilities (safer than full root)
-sudo setcap cap_sys_rawio+ep ./DiskChecker-linux-x64
+# Nastavení capabilities (bezpečnější než plný root)
+sudo setcap cap_sys_rawio+ep /opt/diskchecker/DiskChecker.UI.Avalonia
 ```
 
-## 🔍 Troubleshooting
+## Řešení problémů
 
-### "smartctl: command not found"
+| Problém | Řešení |
+|---------|--------|
+| `smartctl: command not found` | `sudo apt install smartmontools` |
+| `Permission denied` na `/dev/sda` | Spusťte s `sudo` nebo přidejte uživatele do skupiny `disk` |
+| Nebyly nalezeny žádné disky | Ověřte: `lsblk -d -n -o NAME,SIZE,MODEL` |
+| SMART data nejsou dostupná | Ověřte: `sudo smartctl -i /dev/sda` |
+| Aplikace se zasekává na 3. disku | Opraveno – jednotlivé timeouty (15–30 s) na nereagující disky |
 
-```bash
-sudo apt install smartmontools  # Ubuntu/Debian
-```
+## Kompatibilita
 
-### "Permission denied" on /dev/sda
-
-```bash
-# Run with sudo
-sudo ./DiskChecker-linux-x64
-
-# OR add user to disk group
-sudo usermod -a -G disk $USER
-# Then logout and login again
-```
-
-### "No disks found"
-
-```bash
-# Check if lsblk works
-lsblk -d -n -o NAME,PATH,SIZE,MODEL
-
-# Check permissions
-ls -l /dev/sd*
-```
-
-### SMART data not available
-
-```bash
-# Check if smartctl works
-sudo smartctl -i /dev/sda
-
-# Enable SMART on disk
-sudo smartctl -s on /dev/sda
-```
-
-## 🆚 Feature Parity: Linux vs Windows
-
-| Feature | Linux | Windows |
-|---------|-------|---------|
+| Funkce | Linux | Windows |
+|--------|-------|---------|
 | SMART data | ✅ `smartctl` | ✅ WMI/smartctl |
-| Disk listing | ✅ `lsblk` | ✅ WMIC/WMI |
-| Surface test | ✅ `O_DIRECT` | ✅ Win32 NO_BUFFERING |
-| Sanitization | ✅ Raw `/dev/sdX` | ✅ `\\.\PHYSICALDRIVE` |
-| Terminal UI | ✅ Spectre.Console | ✅ Spectre.Console |
-| Email reports | ✅ SMTP | ✅ SMTP |
+| Výpis disků | ✅ `lsblk` / `/sys/block` | ✅ Win32_DiskDrive |
+| Povrchový test | ✅ `O_DIRECT` | ✅ Win32 NO_BUFFERING |
+| Sanitzace | ✅ Raw `/dev/sdX` | ✅ `\\.\PHYSICALDRIVE` |
 | PDF export | ✅ | ✅ |
+| Email reporty | ✅ SMTP | ✅ SMTP |
 
-**100% functional parity!** 🎉
-
-## 📝 Configuration
-
-Config file: `appsettings.json` (same directory as executable)
-
-```json
-{
-  "Logging": {
-    "LogLevel": {
-      "Default": "Information"
-    }
-  },
-  "EmailSettings": {
-    "SmtpServer": "smtp.example.com",
-    "SmtpPort": 587,
-    "UseSsl": true
-  }
-}
-```
-
-## 🐛 Known Issues
-
-- **ARM64**: Tested on Raspberry Pi 4 with Ubuntu 22.04 ✅
-- **NVMe drives**: Supported via `smartctl` (nvme-cli not required)
-- **RAID arrays**: Individual disks accessible, RAID controller support varies
-
-## 💡 Tips
-
-- **Performance**: Surface testing is I/O intensive - expect 100-200 MB/s
-- **Sanitization**: Full 500GB disk takes ~30-60 minutes
-- **Background running**: Use `screen` or `tmux` for long operations
-
-```bash
-# Install screen
-sudo apt install screen
-
-# Run in background
-screen -S diskcheck
-sudo ./DiskChecker-linux-x64
-# Press Ctrl+A then D to detach
-
-# Reattach later
-screen -r diskcheck
-```
-
-## 🤝 Support
+## Podpora
 
 - **Issues**: [GitHub Issues](https://github.com/afrowaveltd/DiskChecker/issues)
-- **Docs**: [Full Documentation](https://github.com/afrowaveltd/DiskChecker/wiki)
-
-## 📜 License
-
-[Insert License Here]
+- **Licence**: viz [LICENSE](../LICENSE)

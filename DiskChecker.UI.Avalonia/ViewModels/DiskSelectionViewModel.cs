@@ -1,6 +1,7 @@
 using System;
 using System.Collections.ObjectModel;
 using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
@@ -212,7 +213,9 @@ public partial class DiskSelectionViewModel : ViewModelBase, INavigableViewModel
             long totalBytes = 0;
             int healthyCount = 0;
             
-            // Load each drive and build disk cards
+            // Load each drive and build disk cards.
+            // Each drive's SMART query has its own timeout so that one
+            // unresponsive disk cannot freeze the whole application.
             foreach (var drive in drives)
             {
                 try
@@ -269,8 +272,22 @@ public partial class DiskSelectionViewModel : ViewModelBase, INavigableViewModel
 
     private async Task<DiskStatusCardItem> LoadDriveAsync(CoreDriveInfo drive, List<string> lockedDisks)
     {
-        // Get SMART data for the drive
-        var smartData = await _smartaProvider.GetSmartaDataAsync(drive.Path);
+        // Get SMART data for the drive with a per-disk timeout to prevent
+        // the entire disk enumeration from hanging on a single unresponsive disk.
+        SmartaData? smartData = null;
+        try
+        {
+            using var perDiskCts = new CancellationTokenSource(TimeSpan.FromSeconds(20));
+            smartData = await _smartaProvider.GetSmartaDataAsync(drive.Path, perDiskCts.Token);
+        }
+        catch (OperationCanceledException)
+        {
+            // Timed out – proceed without SMART data for this disk
+        }
+        catch (Exception)
+        {
+            // Other errors – proceed without SMART data
+        }
 
         if (DriveIdentityResolver.IsReliableSerialNumber(smartData?.SerialNumber))
         {
@@ -371,19 +388,33 @@ public partial class DiskSelectionViewModel : ViewModelBase, INavigableViewModel
             ? smartData.FirmwareVersion
             : drive.FirmwareVersion;
 
-        var identityKey = DriveIdentityResolver.BuildIdentityKey(
-            drive.Path,
-            serial,
-            model,
-            firmware);
-
+        var identityKey = DriveIdentityResolver.BuildIdentityKey(drive.Path, serial, model, firmware);
         var bySerial = await _diskCardRepository.GetBySerialNumberAsync(identityKey);
         if (bySerial != null)
         {
             return bySerial;
         }
 
-        return await _diskCardRepository.GetByDevicePathAsync(drive.Path);
+        if (DriveIdentityResolver.IsReliableSerialNumber(serial))
+        {
+            return null;
+        }
+
+        var byDevicePath = await _diskCardRepository.GetByDevicePathAsync(drive.Path);
+        if (byDevicePath == null)
+        {
+            return null;
+        }
+
+        var sameModel = string.Equals(NormalizeComparableToken(byDevicePath.ModelName), NormalizeComparableToken(model), StringComparison.Ordinal);
+        var sameCapacity = byDevicePath.Capacity <= 0 || drive.TotalSize <= 0 || Math.Abs(byDevicePath.Capacity - drive.TotalSize) < 32L * 1024L * 1024L;
+        var pathFallbackAllowed = sameModel && sameCapacity && !DriveIdentityResolver.IsReliableSerialNumber(byDevicePath.SerialNumber);
+        return pathFallbackAllowed ? byDevicePath : null;
+    }
+
+    private static string NormalizeComparableToken(string? value)
+    {
+        return string.IsNullOrWhiteSpace(value) ? string.Empty : value.Trim().ToUpperInvariant();
     }
     
     private static string BuildPartitionsDisplay(CoreDriveInfo drive)

@@ -6,6 +6,7 @@ set -e
 
 ARCH=${1:-x64}
 PROJECT_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+UI_PROJECT="$PROJECT_ROOT/DiskChecker.UI.Avalonia/DiskChecker.UI.Avalonia.csproj"
 OUTPUT_DIR="$PROJECT_ROOT/publish/linux-$ARCH"
 
 echo "🚀 Building DiskChecker for Linux $ARCH..."
@@ -17,34 +18,31 @@ if [ -d "$OUTPUT_DIR" ]; then
     rm -rf "$OUTPUT_DIR"
 fi
 
-# Build self-contained single-file
-echo "📦 Publishing self-contained single-file..."
-dotnet publish "$PROJECT_ROOT/DiskChecker.UI/DiskChecker.UI.csproj" \
+# Build self-contained
+echo "📦 Publishing self-contained build..."
+dotnet publish "$UI_PROJECT" \
     --configuration Release \
     --runtime "linux-$ARCH" \
     --self-contained true \
     --output "$OUTPUT_DIR" \
-    -p:PublishSingleFile=true \
-    -p:PublishTrimmed=false \
     -p:DebugType=None \
     -p:DebugSymbols=false
 
 # Make executable
-chmod +x "$OUTPUT_DIR/DiskChecker.UI"
+chmod +x "$OUTPUT_DIR/DiskChecker.UI.Avalonia" 2>/dev/null || true
 
-# Display size
 echo ""
 echo "✅ Build completed!"
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 echo "📁 Output: $OUTPUT_DIR"
-echo "📊 Size: $(du -h "$OUTPUT_DIR/DiskChecker.UI" | cut -f1)"
+echo "📊 Size: $(du -sh "$OUTPUT_DIR" | cut -f1)"
 echo ""
 echo "💡 To run on Linux:"
-echo "   sudo $OUTPUT_DIR/DiskChecker.UI"
+echo "   sudo $OUTPUT_DIR/DiskChecker.UI.Avalonia"
 echo ""
-echo "⚠️  Note: Root privileges required for disk access!"
+echo "⚠️  Root privileges required for disk access!"
 echo ""
-echo "📦 Dependencies required on target system:"
+echo "📦 Dependencies on target system:"
 echo "   - smartmontools (for SMART data)"
 echo "   - lsblk (usually pre-installed)"
 echo ""

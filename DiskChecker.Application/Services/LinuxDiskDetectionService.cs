@@ -355,12 +355,7 @@ public class LinuxDiskDetectionService : IDiskDetectionService
                     model = (await File.ReadAllTextAsync(modelPath, cancellationToken)).Trim();
                 }
                 
-                var serialPath = Path.Combine(devicePath, "device", "serial");
-                string? serial = null;
-                if (File.Exists(serialPath))
-                {
-                    serial = (await File.ReadAllTextAsync(serialPath, cancellationToken)).Trim();
-                }
+                var serial = await ResolveStableLinuxIdentifierAsync(deviceName, devicePath, cancellationToken);
                 
                 var displayName = string.IsNullOrEmpty(model) 
                     ? $"/dev/{deviceName}" 
@@ -386,6 +381,97 @@ public class LinuxDiskDetectionService : IDiskDetectionService
         }
         
         return drives;
+    }
+
+    private static async Task<string?> ResolveStableLinuxIdentifierAsync(string deviceName, string devicePath, CancellationToken cancellationToken)
+    {
+        foreach (var candidate in new[]
+                 {
+                     Path.Combine(devicePath, "device", "serial"),
+                     Path.Combine(devicePath, "wwid"),
+                     Path.Combine(devicePath, "device", "wwid")
+                 })
+        {
+            var value = await ReadTrimmedFileAsync(candidate, cancellationToken);
+            if (!string.IsNullOrWhiteSpace(value))
+            {
+                return value;
+            }
+        }
+
+        try
+        {
+            const string byIdPath = "/dev/disk/by-id";
+            if (Directory.Exists(byIdPath))
+            {
+                var matches = Directory.EnumerateFileSystemEntries(byIdPath)
+                    .Where(entry => !entry.Contains("-part", StringComparison.OrdinalIgnoreCase))
+                    .Select(entry => new
+                    {
+                        Name = Path.GetFileName(entry),
+                        Target = ResolveSymlinkTarget(entry)
+                    })
+                    .Where(x => !string.IsNullOrWhiteSpace(x.Target) &&
+                                string.Equals(Path.GetFileName(x.Target), deviceName, StringComparison.OrdinalIgnoreCase))
+                    .OrderBy(x => GetIdentifierPriority(x.Name))
+                    .ThenBy(x => x.Name, StringComparer.OrdinalIgnoreCase)
+                    .ToList();
+
+                var best = matches.FirstOrDefault();
+                if (best != null)
+                {
+                    return best.Name;
+                }
+            }
+        }
+        catch
+        {
+        }
+
+        return null;
+    }
+
+    private static async Task<string?> ReadTrimmedFileAsync(string path, CancellationToken cancellationToken)
+    {
+        try
+        {
+            if (!File.Exists(path))
+            {
+                return null;
+            }
+
+            var value = (await File.ReadAllTextAsync(path, cancellationToken)).Trim();
+            return string.IsNullOrWhiteSpace(value) ? null : value;
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    private static string? ResolveSymlinkTarget(string entry)
+    {
+        try
+        {
+            var info = new FileInfo(entry);
+            return info.ResolveLinkTarget(true)?.FullName;
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    private static int GetIdentifierPriority(string? name)
+    {
+        if (string.IsNullOrWhiteSpace(name)) return 99;
+        if (name.StartsWith("wwn-", StringComparison.OrdinalIgnoreCase)) return 0;
+        if (name.StartsWith("nvme-eui.", StringComparison.OrdinalIgnoreCase)) return 1;
+        if (name.StartsWith("nvme-", StringComparison.OrdinalIgnoreCase)) return 2;
+        if (name.StartsWith("ata-", StringComparison.OrdinalIgnoreCase)) return 3;
+        if (name.StartsWith("scsi-", StringComparison.OrdinalIgnoreCase)) return 4;
+        if (name.StartsWith("usb-", StringComparison.OrdinalIgnoreCase)) return 5;
+        return 9;
     }
 
     private async Task MarkSystemDiskAsync(List<CoreDriveInfo> drives, CancellationToken cancellationToken)
@@ -454,10 +540,41 @@ public class LinuxDiskDetectionService : IDiskDetectionService
             using var process = Process.Start(psi);
             if (process == null) return null;
             
-            var output = await process.StandardOutput.ReadToEndAsync(cancellationToken);
-            await process.WaitForExitAsync(cancellationToken);
+            // Read output and error concurrently to avoid deadlocks
+            var outputTask = process.StandardOutput.ReadToEndAsync(cancellationToken);
+            var errorTask = process.StandardError.ReadToEndAsync(cancellationToken);
             
+            // Wait for process to exit with a timeout to prevent hanging on unresponsive disks
+            using var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            cts.CancelAfter(TimeSpan.FromSeconds(30));
+            
+            try
+            {
+                await process.WaitForExitAsync(cts.Token);
+            }
+            catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+            {
+                // Timeout reached - kill the process
+                try
+                {
+                    process.Kill(entireProcessTree: true);
+                }
+                catch
+                {
+                    // Ignore errors killing the process
+                }
+                
+                Debug.WriteLine($"[LinuxDiskDetectionService] Command timed out: {command} {arguments}");
+                return null;
+            }
+            
+            var output = await outputTask;
             return output;
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            // External cancellation - propagate
+            return null;
         }
         catch
         {

@@ -11,6 +11,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using DiskChecker.Core.Interfaces;
 using DiskChecker.Core.Models;
+using DiskChecker.Core.Services;
 using Microsoft.Extensions.Logging;
 
 namespace DiskChecker.Infrastructure.Services;
@@ -127,8 +128,9 @@ public class CertificateGenerator : ICertificateGenerator
             certificate.ReadProfilePoints = DownsampleSpeeds(session.ReadSamples.Select(s => s.SpeedMBps), CertificateChartPoints);
 
             // Calculate grade and score using shared method
-            var grade = string.IsNullOrWhiteSpace(session.Grade) ? CalculateGrade(session).grade : session.Grade;
-            var score = session.Score > 0 ? session.Score : CalculateGrade(session).score;
+            var calculated = CalculateGrade(session);
+            var grade = session.SmartBefore != null ? calculated.grade : (string.IsNullOrWhiteSpace(session.Grade) ? calculated.grade : session.Grade);
+            var score = session.SmartBefore != null ? calculated.score : (session.Score > 0 ? session.Score : calculated.score);
             certificate.Grade = grade;
             certificate.Score = score;
             certificate.HealthStatus = session.HealthAssessment.ToString();
@@ -276,14 +278,18 @@ public class CertificateGenerator : ICertificateGenerator
             y += 190;
             graphics.DrawString("SMART souhrn", sectionFont, accentBrush, 48, y);
             y += 34;
-            graphics.FillRectangle(panelBrush, 48, y, width - 96, 120);
-            graphics.DrawRectangle(borderPen, 48, y, width - 96, 120);
+            graphics.FillRectangle(panelBrush, 48, y, width - 96, 190);
+            graphics.DrawRectangle(borderPen, 48, y, width - 96, 190);
             graphics.DrawString($"Provozní hodiny: {(cert.PowerOnHours > 0 ? cert.PowerOnHours.ToString("#,0", CultureInfo.InvariantCulture) : "N/A")}", valueFont, textBrush, 64, y + 16);
             graphics.DrawString($"Počet startů: {(cert.PowerCycles > 0 ? cert.PowerCycles.ToString("#,0", CultureInfo.InvariantCulture) : "N/A")}", valueFont, textBrush, 64, y + 44);
             graphics.DrawString($"Realokované sektory: {cert.ReallocatedSectors}", valueFont, textBrush, 520, y + 16);
             graphics.DrawString($"Čekající sektory: {cert.PendingSectors}", valueFont, textBrush, 520, y + 44);
+            graphics.DrawString("Legenda známek:", valueFont, accentBrush, 64, y + 82);
+            graphics.DrawString("A = výborný stav | B = velmi dobrý stav", smallFont, textBrush, 64, y + 110);
+            graphics.DrawString("C = dobrý stav | D = opotřebený disk", smallFont, textBrush, 64, y + 132);
+            graphics.DrawString("E = rizikový disk | F = kritický / vadný", smallFont, textBrush, 64, y + 154);
 
-            y += 150;
+            y += 220;
             graphics.DrawString("Výkonový profil testu", sectionFont, accentBrush, 48, y);
             y += 34;
 
@@ -821,10 +827,14 @@ public class CertificateGenerator : ICertificateGenerator
             using var healthDisplayFont = new Font("Arial", 14);
             graphics.DrawString($"Skóre: {certificate.Score:F0}/100", scoreDisplayFont, textBrush, (800 - 200) / 2, y);
             graphics.DrawString($"Health: {certificate.HealthStatus}", healthDisplayFont, textBrush, (800 - 200) / 2, y + 30);
+            using var legendFont = new Font("Arial", 10);
+            graphics.DrawString("Legenda: A výborný | B velmi dobrý", legendFont, textBrush, 215, y + 58);
+            graphics.DrawString("C dobrý | D opotřebený", legendFont, textBrush, 240, y + 76);
+            graphics.DrawString("E rizikový | F kritický", legendFont, textBrush, 238, y + 94);
 
             if (certificate.Recommended)
             {
-                y += 70;
+                y += 120;
                 using var recFont = new Font("Arial", 14, FontStyle.Bold);
                 using var recBrush = new SolidBrush(Color.Green);
                 graphics.DrawString("✓ RECOMMENDED", recFont, recBrush, 300, y);
@@ -841,115 +851,50 @@ public class CertificateGenerator : ICertificateGenerator
 
     public (string grade, double score) CalculateGrade(TestSession session)
     {
-        double score = 100;
-        
-        // Deduct points for errors
-        score -= session.WriteErrors * 5;
-        score -= session.ReadErrors * 5;
-        score -= session.VerificationErrors * 10;
-        
-        // Deduct points for high temperatures
-        if (session.MaxTemperature.HasValue && session.MaxTemperature > 60)
+        ArgumentNullException.ThrowIfNull(session);
+
+        if (session.SmartBefore != null)
         {
-            score -= (session.MaxTemperature.Value - 60) * 2;
+            var rating = new QualityCalculator().CalculateQuality(session.SmartBefore);
+            return (rating.Grade.ToString(), rating.Score);
         }
-        
-        // Deduct points for slow speeds
-        if (session.AverageWriteSpeedMBps < 50)
+
+        var fallbackScore = 78d;
+
+        if (session.MaxTemperature.HasValue)
         {
-            score -= (50 - session.AverageWriteSpeedMBps) * 0.5;
+            fallbackScore -= session.MaxTemperature.Value switch
+            {
+                <= 45 => 0,
+                <= 50 => 2,
+                <= 55 => 6,
+                <= 60 => 12,
+                _ => 20
+            };
         }
-        
-        if (session.AverageReadSpeedMBps < 50)
+
+        if (session.ErrorCount > 0)
         {
-            score -= (50 - session.AverageReadSpeedMBps) * 0.5;
+            fallbackScore -= Math.Min(36, session.ErrorCount * 4);
         }
-        
-        score = Math.Max(0, Math.Min(100, score));
-        
-        string grade = score switch
+
+        if (session.Result == TestResult.Fail)
         {
-            >= 90 => "A",
-            >= 80 => "B",
-            >= 70 => "C",
-            >= 60 => "D",
+            fallbackScore = Math.Min(fallbackScore, 45);
+        }
+
+        fallbackScore = Math.Clamp(fallbackScore, 0, 100);
+        var fallbackGrade = fallbackScore switch
+        {
+            >= 94 => "A",
+            >= 86 => "B",
+            >= 76 => "C",
+            >= 64 => "D",
             >= 50 => "E",
             _ => "F"
         };
-        
-        return (grade, score);
-    }
 
-    private string GenerateTextReport(DiskCertificate cert)
-    {
-        return $@"
-================================================================================
-                         CERTIFIKÁT DISKU
-================================================================================
-
-Číslo certifikátu: {cert.CertificateNumber}
-Vygenerováno:      {cert.GeneratedAt:yyyy-MM-dd HH:mm:ss} UTC
-Vygeneroval:       {cert.GeneratedBy}
-
---------------------------------------------------------------------------------
-                              INFORMACE O DISKU
---------------------------------------------------------------------------------
-Model:             {cert.DiskModel}
-Sériové číslo:     {cert.SerialNumber}
-Kapacita:          {cert.Capacity}
-Typ:               {cert.DiskType}
-Rozhraní:          {cert.Interface}
-Firmware:          {cert.Firmware}
-
---------------------------------------------------------------------------------
-                              VÝSLEDKY TESTU
---------------------------------------------------------------------------------
-Typ testu:         {cert.TestType}
-Délka testu:       {cert.TestDuration:hh\:mm\:ss}
-Chyby:             {cert.ErrorCount}
-
-Známka:            {cert.Grade}
-Skóre:             {cert.Score:F0}/100
-Stav zdraví:       {cert.HealthStatus}
-
---------------------------------------------------------------------------------
-                            VÝKONNOSTNÍ METRIKY
---------------------------------------------------------------------------------
-Rychlost zápisu:   {cert.AvgWriteSpeed:F1} MB/s (max: {cert.MaxWriteSpeed:F1} MB/s)
-Rychlost čtení:    {cert.AvgReadSpeed:F1} MB/s (max: {cert.MaxReadSpeed:F1} MB/s)
-Teplota:           {cert.TemperatureRange}
-
---------------------------------------------------------------------------------
-                               SMART SOUHRN
- --------------------------------------------------------------------------------
-SMART v pořádku:   {(cert.SmartPassed ? "Ano" : "Ne")}
-Provozní hodiny:   {cert.PowerOnHours}
-Počet startů:      {cert.PowerCycles}
-Realokované sekt.: {cert.ReallocatedSectors}
-Čekající sektory:  {cert.PendingSectors}
-
---------------------------------------------------------------------------------
-                                SANITIZACE
---------------------------------------------------------------------------------
-Provedena:         {(cert.SanitizationPerformed ? "Ano" : "Ne")}
-Metoda:            {cert.SanitizationMethod ?? "N/A"}
-Data ověřena:      {(cert.DataVerified ? "Ano" : "Ne")}
-Schéma oddílů:     {cert.PartitionScheme ?? "N/A"}
-Souborový systém:  {cert.FileSystem ?? "N/A"}
-Název svazku:      {cert.VolumeLabel ?? "N/A"}
-
---------------------------------------------------------------------------------
-                               DOPORUČENÍ
---------------------------------------------------------------------------------
-{(cert.Recommended ? "✓ Tento disk je DOPORUČEN k použití." : "⚠ Tento disk má problémy a NENÍ doporučen k použití.")}
-
-{cert.RecommendationNotes}
-
---------------------------------------------------------------------------------
-Tento certifikát byl automaticky vygenerován aplikací DiskChecker.
-Před nasazením disku do provozu doporučujeme ověřit aktuální stav.
-================================================================================
-";
+        return (fallbackGrade, fallbackScore);
     }
 
     private static string FormatCapacity(long bytes)

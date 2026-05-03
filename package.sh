@@ -31,7 +31,10 @@ package_linux() {
     mkdir -p "${OUTPUT_DIR}/var/lib/diskchecker"
     
     cp -r "${PUBLISH_DIR}/${PLATFORM}/"* "${APP_DIR}/"
-    chmod +x "${APP_DIR}/DiskChecker.UI.Avalonia"
+    # Make the main executable... executable
+    if [ -f "${APP_DIR}/DiskChecker.UI.Avalonia" ]; then
+        chmod +x "${APP_DIR}/DiskChecker.UI.Avalonia"
+    fi
     
     ln -sf /opt/diskchecker/DiskChecker.UI.Avalonia "${OUTPUT_DIR}/usr/bin/diskchecker"
     

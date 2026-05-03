@@ -1,13 +1,20 @@
 # .NET
 bin/
 obj/
-out/
 publish/
+
+# Build artifacts
 *.dll
 *.exe
 *.pdb
 *.cache
-*.log
+
+# NuGet
+*.nupkg
+packages/
+project.lock.json
+project.fragment.lock.json
+artifacts/
 
 # IDE
 .vs/
@@ -18,58 +25,35 @@ publish/
 *.userosscache
 *.sln.docstates
 
-# NuGet
-*.nupkg
-packages/
-project.lock.json
-project.fragment.lock.json
-artifacts/
-
-# Build results
-[Dd]ebug/
-[Rr]elease/
-x64/
-x86/
-[Ww][Ii][Nn]32/
-[Aa][Rr][Mm]/
-[Aa][Rr][Mm]64/
-bld/
-[Bb]in/
-[Oo]bj/
-[Ll]og/
-[Ll]ogs/
-
-# Database
+# Database (runtime)
 *.db
 *.db-shm
 *.db-wal
 
-# Installer outputs
-installer/*.exe
-installer/*.msi
-installer/*.deb
-installer/*.rpm
-
-# OS specific
+# OS files
 .DS_Store
 Thumbs.db
-ehthumbs.db
 Desktop.ini
-$RECYCLE.BIN/
 
-# Test results
-TestResults/
-coverage/
-
-# Temporary files
+# Temp / backup files
 *.tmp
-*.temp
 *.bak
 *.orig
 *~
+*.backup
 
 # Secrets
 *.env
 appsettings.*.json
 !appsettings.json
 !appsettings.Development.json
+
+# Test results
+TestResults/
+coverage/
+
+# Installer outputs
+installer/*.exe
+installer/*.msi
+installer/*.deb
+installer/*.rpm
