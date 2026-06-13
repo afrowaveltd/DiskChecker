@@ -362,7 +362,11 @@ public partial class DiskSelectionViewModel : ViewModelBase, INavigableViewModel
             IsSystemDisk = isSystemDisk,
             IsSystemDiskLabel = isSystemDisk ? "Systémový disk" : "",
             IsLocked = isLocked,
-            SerialNumber = smartData?.SerialNumber ?? drive.SerialNumber,
+            SerialNumber = DriveIdentityResolver.IsReliableSerialNumber(smartData?.SerialNumber)
+                ? smartData!.SerialNumber
+                : (DriveIdentityResolver.IsReliableSerialNumber(drive.SerialNumber)
+                    ? drive.SerialNumber
+                    : null),
             Interface = drive.Interface,
             PartitionsDisplay = partitionsDisplay,
             PartitionCount = partitionCount,

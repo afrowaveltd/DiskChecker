@@ -50,6 +50,16 @@ public class SanitizationResult
     public DiskChecker.Core.Models.SmartaData? SmartAfter { get; set; }
 
     /// <summary>
+    /// File system that was created (e.g., "ext4" on Linux, "NTFS" on Windows).
+    /// </summary>
+    public string? FileSystem { get; set; }
+
+    /// <summary>
+    /// Volume label that was set on the formatted partition.
+    /// </summary>
+    public string? VolumeLabel { get; set; }
+
+    /// <summary>
     /// Detailed error entries collected during sanitization.
     /// </summary>
     public List<SanitizationErrorDetail> ErrorDetails { get; set; } = new();

@@ -27,12 +27,12 @@
     </Compile>
   </ItemGroup>
 
-  <!-- NOTE: NU1903 warns about vulnerable Tmds.DBus.Protocol 0.21.2 (transitive via Avalonia.FreeDesktop).
-       Cannot upgrade to 0.93+ because it has breaking API changes (Connection type removed)
-       that crash Avalonia at runtime. Suppressed via WarningsNotAsErrors in Directory.Build.props.
+  <!-- NOTE: NU1903 resolved by explicitly referencing Tmds.DBus.Protocol 0.21.3 (transitive via Avalonia.FreeDesktop).
+       This version fixes the security vulnerability without breaking API changes.
        Re-evaluate when upgrading to Avalonia 12+. -->
 
   <ItemGroup>
+    <PackageReference Include="Tmds.DBus.Protocol" Version="0.21.3" />
     <PackageReference Include="Avalonia" Version="11.3.12" />
     <PackageReference Include="Avalonia.Desktop" Version="11.3.12" />
     <PackageReference Include="Avalonia.Themes.Fluent" Version="11.3.12" />

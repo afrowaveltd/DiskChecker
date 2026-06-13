@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Runtime.InteropServices;
 using System.Threading;
 using System.Threading.Tasks;
 using DiskChecker.Core.Interfaces;
@@ -548,8 +549,8 @@ public class DiskCardTestService
          PartitionCreated = result.PartitionCreated,
          PartitionScheme = "GPT",
          WasFormatted = result.Formatted,
-         FileSystem = "NTFS",
-         VolumeLabel = "SCCM",
+         FileSystem = result.FileSystem ?? (RuntimeInformation.IsOSPlatform(OSPlatform.Linux) ? "ext4" : "NTFS"),
+         VolumeLabel = result.VolumeLabel ?? "SCCM",
          Result = result.Success && result.ErrorsDetected == 0 ? TestResult.Pass : TestResult.Fail,
          Grade = breakdown.Grade,
          Score = breakdown.Score,

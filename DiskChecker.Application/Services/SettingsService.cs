@@ -27,6 +27,7 @@ public class SettingsService : ISettingsService
     private int _usbRecoveryRetryCount = 2;
     private bool _emailSendOnlyForLongRunningTests = true;
     private bool _emailIncludeCertificateAttachment = true;
+    private string? _certificatePath;
     
     private readonly string _settingsFilePath;
     private readonly string _lockedDisksFilePath;
@@ -99,6 +100,16 @@ public class SettingsService : ISettingsService
         SaveSettingsToFile();
         return Task.CompletedTask;
     }
+    
+    // Certificate path settings
+    public Task<string?> GetCertificatePathAsync() => Task.FromResult(_certificatePath);
+    
+    public Task SetCertificatePathAsync(string? path)
+    {
+        _certificatePath = string.IsNullOrWhiteSpace(path) ? null : path.Trim();
+        SaveSettingsToFile();
+        return Task.CompletedTask;
+    }
  
      public Task SetReportRecipientEmailAsync(string email)
     {
@@ -125,6 +136,7 @@ public class SettingsService : ISettingsService
         _reportRecipientEmail = string.Empty;
         _emailSendOnlyForLongRunningTests = true;
         _emailIncludeCertificateAttachment = true;
+        _certificatePath = null;
         SaveLockedDisksToFile();
         SaveSettingsToFile();
         return Task.CompletedTask;
@@ -219,6 +231,8 @@ public class SettingsService : ISettingsService
                         _emailSendOnlyForLongRunningTests = sendLongOnly;
                     if (doc.TryGetValue("EmailIncludeCertificateAttachment", out var includeAttachmentObj) && bool.TryParse(includeAttachmentObj?.ToString(), out var includeAttachment))
                         _emailIncludeCertificateAttachment = includeAttachment;
+                    if (doc.TryGetValue("CertificatePath", out var certPathObj))
+                        _certificatePath = string.IsNullOrWhiteSpace(certPathObj?.ToString()) ? null : certPathObj.ToString()!.Trim();
                 }
             }
         }
@@ -240,7 +254,8 @@ public class SettingsService : ISettingsService
                 ["UsbRecoveryRetryCount"] = _usbRecoveryRetryCount,
                 ["ReportRecipientEmail"] = _reportRecipientEmail,
                 ["EmailSendOnlyForLongRunningTests"] = _emailSendOnlyForLongRunningTests,
-                ["EmailIncludeCertificateAttachment"] = _emailIncludeCertificateAttachment
+                ["EmailIncludeCertificateAttachment"] = _emailIncludeCertificateAttachment,
+                ["CertificatePath"] = _certificatePath ?? string.Empty
             };
             var json = JsonSerializer.Serialize(dict, JsonOptions);
             File.WriteAllText(_settingsFilePath, json);

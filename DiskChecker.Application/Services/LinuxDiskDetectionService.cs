@@ -94,6 +94,15 @@ public class LinuxDiskDetectionService : IDiskDetectionService
                     ? serialProp.GetString()?.Trim() 
                     : null;
                 
+                // Validate serial - lsblk may return unreliable serials from USB bridges
+                // If serial is unreliable, try to get a better one from /dev/disk/by-id later
+                var validatedSerial = serial;
+                if (!string.IsNullOrWhiteSpace(validatedSerial) && 
+                    !DiskChecker.Application.Services.DriveIdentityResolver.IsReliableSerialNumber(validatedSerial))
+                {
+                    validatedSerial = null; // Will be resolved later via sysfs or by-id
+                }
+                
                 var transport = device.TryGetProperty("tran", out var tranProp) 
                     ? tranProp.GetString() 
                     : null;
@@ -169,7 +178,7 @@ public class LinuxDiskDetectionService : IDiskDetectionService
                     TotalSize = size,
                     IsPhysical = true,
                     IsReady = true,
-                    SerialNumber = serial,
+                    SerialNumber = validatedSerial,
                     Model = model,
                     Interface = transport ?? "Unknown",
                     BusType = busType,

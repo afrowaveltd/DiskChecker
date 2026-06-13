@@ -491,17 +491,21 @@ public partial class DiskCardsViewModel : ViewModelBase, INavigableViewModel
 
     private static string ResolveDisplaySerial(string storedSerial, string? detectedSerial)
     {
-        if (!string.IsNullOrWhiteSpace(detectedSerial))
+        // Only use detected serial if it's reliable (not a placeholder like "00000000")
+        if (!string.IsNullOrWhiteSpace(detectedSerial) &&
+            DriveIdentityResolver.IsReliableSerialNumber(detectedSerial))
         {
             return detectedSerial.Trim();
         }
 
+        // If stored serial is a NOSN hash or empty, show "N/A"
         if (string.IsNullOrWhiteSpace(storedSerial) ||
             storedSerial.StartsWith("NOSN-", StringComparison.OrdinalIgnoreCase))
         {
             return "N/A";
         }
 
+        // Otherwise use the stored serial (which should be a real serial number)
         return storedSerial;
     }
 

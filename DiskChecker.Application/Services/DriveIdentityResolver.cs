@@ -18,7 +18,17 @@ public static class DriveIdentityResolver
         "NOTAVAILABLE",
         "TOBEFILLED",
         "NOTSPECIFIED",
-        "SERIALNUMBER"
+        "SERIALNUMBER",
+        "00000000",
+        "0000000000000000",
+        "00000000000000000000",
+        "12345678901234567890",
+        "0123456789ABCDEF",
+        "FFFFFFFF",
+        "DEADBEEF",
+        "NODEVICE",
+        "GENERIC",
+        "DEFAULT"
     ];
 
     /// <summary>

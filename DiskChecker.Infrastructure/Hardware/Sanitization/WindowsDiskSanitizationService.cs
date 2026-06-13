@@ -154,6 +154,11 @@ public class WindowsDiskSanitizationService : IDiskSanitizationService
                 }
                 result.PartitionCreated = true;
                 result.Formatted = partitionResult.PartitionFormatted; // Set if diskpart formatted it
+                if (result.Formatted)
+                {
+                    result.FileSystem = "NTFS";
+                    result.VolumeLabel = volumeLabel;
+                }
             }
 
             // Phase 5: Format NTFS (only if not already formatted by diskpart)
@@ -175,6 +180,8 @@ public class WindowsDiskSanitizationService : IDiskSanitizationService
                     return result;
                 }
                 result.Formatted = true;
+                result.FileSystem = "NTFS";
+                result.VolumeLabel = volumeLabel;
             }
             else if (format && createPartition && result.Formatted)
             {

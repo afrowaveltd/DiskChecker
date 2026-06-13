@@ -141,6 +141,8 @@ public class LinuxDiskSanitizationService : IDiskSanitizationService
                     return result;
                 }
                 result.Formatted = true;
+                result.FileSystem = "ext4";
+                result.VolumeLabel = volumeLabel;
             }
 
             result.Success = true;
@@ -172,42 +174,57 @@ public class LinuxDiskSanitizationService : IDiskSanitizationService
         if (devicePath.StartsWith("/dev/", StringComparison.Ordinal))
             return devicePath;
 
-        // Try to extract drive identifier
-        var driveNumber = new string(devicePath.Where(char.IsDigit).ToArray());
-        
-        // Check for NVMe devices
+        // Check for NVMe devices - extract controller number and namespace
         if (devicePath.Contains("nvme", StringComparison.OrdinalIgnoreCase))
         {
-            // For NVMe drives, use the pattern /dev/nvme0n1
-            var nvmeIndex = int.TryParse(driveNumber, out var num) ? num : 0;
-            return $"/dev/nvme{nvmeIndex}n1";
-        }
-
-        // For SATA/SCSI drives
-        // Extract letter if present (e.g., /dev/sda -> 'a')
-        var letters = devicePath.Where(char.IsLetter).ToArray();
-        if (letters.Length > 0)
-        {
-            // Find the last lowercase letter which should be the drive letter
-            for (int i = letters.Length - 1; i >= 0; i--)
+            // Parse pattern: nvme<controller>n<namespace>
+            // e.g., /dev/nvme0n1 -> controller=0, namespace=1
+            var nvmeMatch = System.Text.RegularExpressions.Regex.Match(
+                devicePath, @"nvme(\d+)n(\d+)", 
+                System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+            if (nvmeMatch.Success)
             {
-                if (char.IsLower(letters[i]))
+                var controller = nvmeMatch.Groups[1].Value;
+                var ns = nvmeMatch.Groups[2].Value;
+                return $"/dev/nvme{controller}n{ns}";
+            }
+            // Fallback: try to extract just the controller number
+            var digits = new string(devicePath.Where(char.IsDigit).ToArray());
+            if (digits.Length > 0)
+            {
+                // First digit(s) before 'n' are the controller
+                var nIndex = devicePath.IndexOf('n', StringComparison.OrdinalIgnoreCase);
+                if (nIndex > 0)
                 {
-                    return $"/dev/sd{letters[i]}";
+                    var controllerDigits = new string(devicePath[..nIndex].Where(char.IsDigit).ToArray());
+                    var nsDigits = new string(devicePath[nIndex..].Where(char.IsDigit).ToArray());
+                    return $"/dev/nvme{controllerDigits}n{nsDigits}";
                 }
             }
+            return "/dev/nvme0n1"; // Last resort fallback
+        }
+
+        // For SATA/SCSI drives - extract the drive letter
+        // Pattern: /dev/sd[a-z], /dev/hd[a-z], /dev/vd[a-z]
+        var driveMatch = System.Text.RegularExpressions.Regex.Match(
+            devicePath, @"(sd|hd|vd)([a-z]+)$", 
+            System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+        if (driveMatch.Success)
+        {
+            return $"/dev/{driveMatch.Groups[1].Value}{driveMatch.Groups[2].Value}";
         }
 
         // If we have a PhysicalDrive pattern (Windows), convert to /dev/sdX
         if (devicePath.Contains("PhysicalDrive", StringComparison.OrdinalIgnoreCase))
         {
-            // Map PhysicalDrive0 -> /dev/sda, PhysicalDrive1 -> /dev/sdb, etc.
+            var driveNumber = new string(devicePath.Where(char.IsDigit).ToArray());
             var letter = (char)('a' + (int.TryParse(driveNumber, out var num) ? num : 0));
             return $"/dev/sd{letter}";
         }
 
         // Fallback - try to extract a number and map it
-        if (int.TryParse(driveNumber, out var diskNum))
+        var fallbackDigits = new string(devicePath.Where(char.IsDigit).ToArray());
+        if (int.TryParse(fallbackDigits, out var diskNum) && diskNum < 26)
         {
             var letter = (char)('a' + diskNum);
             return $"/dev/sd{letter}";
@@ -306,8 +323,7 @@ public class LinuxDiskSanitizationService : IDiskSanitizationService
 
         try
         {
-            // Open device for writing with direct I/O (O_DIRECT) to bypass cache
-            // We use dd command for reliability with direct I/O
+            // Open device for writing. WriteThrough bypasses OS write cache where possible.
             using var fileStream = new FileStream(
                 devicePath,
                 FileMode.Open,
@@ -360,7 +376,10 @@ public class LinuxDiskSanitizationService : IDiskSanitizationService
                 });
             }
 
+            // Ensure all data is flushed to disk before closing
             await fileStream.FlushAsync(cancellationToken);
+            // Explicitly close the file handle to ensure it's released before read phase
+            fileStream.Close();
 
             result.Success = true;
             result.BytesWritten = bytesWritten;
@@ -383,6 +402,19 @@ public class LinuxDiskSanitizationService : IDiskSanitizationService
         IProgress<SanitizationProgress>? progress,
         CancellationToken cancellationToken)
     {
+        // Read-and-verify: byte-by-byte verification using FileStream.
+        return await ReadAndVerifyFileStreamAsync(devicePath, diskSize, progress, cancellationToken);
+    }
+
+    /// <summary>
+    /// Fallback read/verify using FileStream.
+    /// </summary>
+    private async Task<SanitizationPhaseResult> ReadAndVerifyFileStreamAsync(
+        string devicePath,
+        long diskSize,
+        IProgress<SanitizationProgress>? progress,
+        CancellationToken cancellationToken)
+    {
         var result = new SanitizationPhaseResult();
         var stopwatch = Stopwatch.StartNew();
         var buffer = new byte[BUFFER_SIZE];
@@ -400,7 +432,6 @@ public class LinuxDiskSanitizationService : IDiskSanitizationService
                 bufferSize: 65536,
                 options: FileOptions.SequentialScan);
 
-            // Read and verify all zeros
             while (bytesRead < diskSize)
             {
                 cancellationToken.ThrowIfCancellationRequested();
@@ -426,7 +457,6 @@ public class LinuxDiskSanitizationService : IDiskSanitizationService
                     if (buffer[i] != 0)
                     {
                         result.Errors++;
-                        // Only log first few errors
                         if (result.Errors <= 10 && _logger != null && _logger.IsEnabled(LogLevel.Warning))
                         {
                             _logger.LogWarning("Non-zero byte found at offset {Offset}", bytesRead + i);
@@ -456,7 +486,7 @@ public class LinuxDiskSanitizationService : IDiskSanitizationService
 
                 progress?.Report(new SanitizationProgress
                 {
-                    Phase = "Čtení a ověření",
+                    Phase = "Čtení a ověření (FileStream)",
                     ProgressPercent = (double)bytesRead / diskSize * 100,
                     BytesProcessed = bytesRead,
                     TotalBytes = diskSize,
@@ -465,6 +495,9 @@ public class LinuxDiskSanitizationService : IDiskSanitizationService
                     EstimatedTimeRemaining = eta
                 });
             }
+
+            await fileStream.FlushAsync(cancellationToken);
+            fileStream.Close();
 
             result.Success = true;
             result.BytesRead = bytesRead;
@@ -475,7 +508,7 @@ public class LinuxDiskSanitizationService : IDiskSanitizationService
         catch (Exception ex)
         {
             result.ErrorMessage = ex.Message;
-            _logger?.LogError(ex, "Error reading/verifying {DevicePath}", devicePath);
+            _logger?.LogError(ex, "Error reading/verifying (FileStream fallback) {DevicePath}", devicePath);
         }
 
         return result;
@@ -489,52 +522,137 @@ public class LinuxDiskSanitizationService : IDiskSanitizationService
 
         try
         {
-            // Use sfdisk to create GPT partition table with a single partition
-            var script = @"label: gpt
-unit: sectors
+            // First, use sfdisk (most portable). Use --force instead of --no-reread
+            // which is not available on older sfdisk versions.
+            // The script creates a GPT label and one partition starting at 1 MiB (sector 2048)
+            // using all remaining space.
+            var script = "label: gpt\nstart=2048, size=0, type=0FC63DAF-8483-4772-8E79-3D69D8477DE4\n";
 
-start=2048, type=0FC63DAF-8483-4772-8E79-3D69D8477DE4, bootable
-";
+            var sfdiskSuccess = false;
+            string? sfdiskError = null;
 
-            var psi = new ProcessStartInfo
+            try
             {
-                FileName = "sfdisk",
-                Arguments = $"\"{devicePath}\"",
-                RedirectStandardInput = true,
-                RedirectStandardOutput = true,
-                RedirectStandardError = true,
-                UseShellExecute = false,
-                CreateNoWindow = true
-            };
+                var psi = new ProcessStartInfo
+                {
+                    FileName = "sfdisk",
+                    Arguments = $"--force \"{devicePath}\"",
+                    RedirectStandardInput = true,
+                    RedirectStandardOutput = true,
+                    RedirectStandardError = true,
+                    UseShellExecute = false,
+                    CreateNoWindow = true
+                };
 
-            using var process = Process.Start(psi);
-            if (process == null)
+                using var process = Process.Start(psi);
+                if (process != null)
+                {
+                    await process.StandardInput.WriteAsync(script);
+                    process.StandardInput.Close();
+
+                    var outputTask = process.StandardOutput.ReadToEndAsync(cancellationToken);
+                    var errorTask = process.StandardError.ReadToEndAsync(cancellationToken);
+                    await process.WaitForExitAsync(cancellationToken);
+                    
+                    var error = await errorTask;
+                    
+                    // sfdisk may return non-zero exit code for warnings that are not fatal
+                    // Check if the partition table was actually written
+                    if (process.ExitCode == 0 || 
+                        error.Contains("The partition table has been altered", StringComparison.OrdinalIgnoreCase) ||
+                        error.Contains("Syncing disks", StringComparison.OrdinalIgnoreCase))
+                    {
+                        sfdiskSuccess = true;
+                    }
+                    else
+                    {
+                        sfdiskError = $"sfdisk selhal (exit {process.ExitCode}): {error}";
+                    }
+                }
+                else
+                {
+                    sfdiskError = "Nelze spustit sfdisk";
+                }
+            }
+            catch (Exception sfdiskEx)
             {
-                result.ErrorMessage = "Nelze spustit sfdisk";
-                return result;
+                sfdiskError = $"sfdisk vyhodil výjimku: {sfdiskEx.Message}";
             }
 
-            await process.StandardInput.WriteAsync(script);
-            process.StandardInput.Close();
+            // Fallback to parted if sfdisk failed
+            if (!sfdiskSuccess)
+            {
+                if (_logger != null && _logger.IsEnabled(LogLevel.Warning))
+                    _logger.LogWarning("sfdisk failed ({Error}), falling back to parted", sfdiskError);
 
-            // Read output and wait for exit in parallel to avoid deadlock
-            var outputTask = process.StandardOutput.ReadToEndAsync(cancellationToken);
-            var errorTask = process.StandardError.ReadToEndAsync(cancellationToken);
-            await process.WaitForExitAsync(cancellationToken);
+                try
+                {
+                    var partedPsi = new ProcessStartInfo
+                    {
+                        FileName = "parted",
+                        Arguments = $"-s \"{devicePath}\" mklabel gpt mkpart primary ext4 1MiB 100%",
+                        RedirectStandardOutput = true,
+                        RedirectStandardError = true,
+                        UseShellExecute = false,
+                        CreateNoWindow = true
+                    };
+
+                    using var partedProcess = Process.Start(partedPsi);
+                    if (partedProcess != null)
+                    {
+                        var partedErrorTask = partedProcess.StandardError.ReadToEndAsync(cancellationToken);
+                        await partedProcess.WaitForExitAsync(cancellationToken);
+                        var partedError = await partedErrorTask;
+
+                        if (partedProcess.ExitCode != 0)
+                        {
+                            result.ErrorMessage = $"Vytvoření GPT oddílu selhalo (sfdisk i parted). sfdisk: {sfdiskError}. parted (exit {partedProcess.ExitCode}): {partedError}";
+                            return result;
+                        }
+
+                        sfdiskSuccess = true;
+                        if (_logger != null && _logger.IsEnabled(LogLevel.Information))
+                            _logger.LogInformation("GPT partition created via parted fallback for {DevicePath}", devicePath);
+                    }
+                    else
+                    {
+                        result.ErrorMessage = "Nelze spustit sfdisk ani parted pro vytvoření oddílu.";
+                        return result;
+                    }
+                }
+                catch (Exception partedEx)
+                {
+                    result.ErrorMessage = $"Vytvoření GPT oddílu selhalo. sfdisk: {sfdiskError}. parted: {partedEx.Message}";
+                    return result;
+                }
+            }
+
+            // Notify kernel of partition changes - try partprobe first, fallback to blockdev
+            try
+            {
+                await ExecuteCommandAsync("partprobe", devicePath, cancellationToken);
+            }
+            catch
+            {
+                try
+                {
+                    await ExecuteCommandAsync("blockdev", $"--rereadpt \"{devicePath}\"", cancellationToken);
+                }
+                catch
+                {
+                    _logger?.LogWarning("Neither partprobe nor blockdev available for partition table reload");
+                }
+            }
+
+            // Wait for partition to appear - use polling with timeout
+            var partitionPath = GetPartitionPath(devicePath);
+            var partitionAppeared = await WaitForPartitionAsync(partitionPath, TimeSpan.FromSeconds(15), cancellationToken);
             
-            var output = await outputTask;
-            var error = await errorTask;
-            if (process.ExitCode != 0)
+            if (!partitionAppeared)
             {
-                result.ErrorMessage = $"sfdisk selhal: {error}";
-                return result;
+                _logger?.LogWarning("Partition {PartitionPath} did not appear within timeout; will retry detection in format step", partitionPath);
+                // Don't fail - FormatExt4Async has its own detection logic
             }
-
-            // Notify kernel of partition changes
-            await ExecuteCommandAsync("partprobe", devicePath, cancellationToken);
-
-            // Wait for partition to appear
-            await Task.Delay(1000, cancellationToken);
 
             result.Success = true;
             if (_logger != null && _logger.IsEnabled(LogLevel.Information))
@@ -551,6 +669,38 @@ start=2048, type=0FC63DAF-8483-4772-8E79-3D69D8477DE4, bootable
         return result;
     }
 
+    /// <summary>
+    /// Determines the expected partition path for a given device.
+    /// /dev/sda → /dev/sda1, /dev/nvme0n1 → /dev/nvme0n1p1, /dev/mmcblk0 → /dev/mmcblk0p1
+    /// </summary>
+    private static string GetPartitionPath(string devicePath)
+    {
+        if (devicePath.Contains("nvme", StringComparison.OrdinalIgnoreCase))
+            return devicePath + "p1";
+        if (devicePath.Contains("mmcblk", StringComparison.OrdinalIgnoreCase))
+            return devicePath + "p1";
+        // SATA/SCSI/VirtIO: /dev/sda → /dev/sda1, /dev/vda → /dev/vda1
+        return devicePath + "1";
+    }
+
+    /// <summary>
+    /// Polls for a partition device file to appear, with timeout.
+    /// </summary>
+    private static async Task<bool> WaitForPartitionAsync(string partitionPath, TimeSpan timeout, CancellationToken cancellationToken)
+    {
+        var deadline = DateTime.UtcNow + timeout;
+        while (DateTime.UtcNow < deadline)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            
+            if (File.Exists(partitionPath))
+                return true;
+            
+            await Task.Delay(250, cancellationToken);
+        }
+        return File.Exists(partitionPath);
+    }
+
     private async Task<SanitizationPhaseResult> FormatExt4Async(
         string devicePath,
         string volumeLabel,
@@ -560,46 +710,63 @@ start=2048, type=0FC63DAF-8483-4772-8E79-3D69D8477DE4, bootable
 
         try
         {
-            // Determine the partition device name
-            // For /dev/sda -> /dev/sda1
-            // For /dev/nvme0n1 -> /dev/nvme0n1p1
-            string partitionPath;
-            if (devicePath.Contains("nvme"))
-            {
-                // NVMe devices: /dev/nvme0n1 -> /dev/nvme0n1p1
-                partitionPath = devicePath + "p1";
-            }
-            else if (devicePath.Contains("mmcblk"))
-            {
-                // MMC/SD cards: /dev/mmcblk0 -> /dev/mmcblk0p1
-                partitionPath = devicePath + "p1";
-            }
-            else
-            {
-                // SATA/SCSI: /dev/sda -> /dev/sda1
-                partitionPath = devicePath + "1";
-            }
+            // Determine the partition device name using the shared helper
+            string partitionPath = GetPartitionPath(devicePath);
 
-            // Verify partition exists
+            // Verify partition exists - if not, try to find it via sysfs
             if (!File.Exists(partitionPath))
             {
-                // Try to find any partition on this device
                 var deviceName = Path.GetFileName(devicePath);
-                var partitionsPath = $"/sys/block/{deviceName}";
-                if (Directory.Exists(partitionsPath))
+                var sysfsPath = $"/sys/block/{deviceName}";
+                
+                if (Directory.Exists(sysfsPath))
                 {
-                    var partitions = Directory.GetDirectories(partitionsPath)
-                        .Where(d => System.IO.Path.GetFileName(d).StartsWith(deviceName, StringComparison.Ordinal))
+                    // Look for partition directories: sda1, nvme0n1p1, etc.
+                    var entries = Directory.GetFileSystemEntries(sysfsPath)
+                        .Select(p => Path.GetFileName(p))
+                        .Where(n => n.StartsWith(deviceName, StringComparison.Ordinal) && n != deviceName)
+                        .OrderBy(n => n)
                         .ToList();
 
-                    if (partitions.Count > 0)
+                    if (entries.Count > 0)
                     {
-                        partitionPath = "/dev/" + System.IO.Path.GetFileName(partitions[0]);
+                        partitionPath = "/dev/" + entries[0];
+                        if (_logger != null && _logger.IsEnabled(LogLevel.Information))
+                            _logger.LogInformation("Found partition via sysfs: {PartitionPath}", partitionPath);
+                    }
+                }
+                
+                // If still not found, try lsblk as last resort
+                if (!File.Exists(partitionPath))
+                {
+                    try
+                    {
+                        var lsblkOutput = await ExecuteCommandAndGetOutputAsync("lsblk", $"-ln -o NAME {devicePath}", cancellationToken);
+                        if (!string.IsNullOrWhiteSpace(lsblkOutput))
+                        {
+                            var lines = lsblkOutput.Split('\n', StringSplitOptions.RemoveEmptyEntries);
+                            // First line is the device itself, subsequent lines are partitions
+                            if (lines.Length > 1)
+                            {
+                                partitionPath = "/dev/" + lines[1].Trim();
+                            }
+                        }
+                    }
+                    catch
+                    {
+                        // Ignore lsblk errors
                     }
                 }
             }
 
-            // Format as ext4
+            if (!File.Exists(partitionPath))
+            {
+                result.ErrorMessage = $"Oddíl pro formátování nebyl nalezen (očekáván: {partitionPath})";
+                _logger?.LogError("Partition not found for formatting: expected {Expected}", partitionPath);
+                return result;
+            }
+
+            // Format as ext4 with force flag to skip confirmation
             var psi = new ProcessStartInfo
             {
                 FileName = "mkfs.ext4",
@@ -617,13 +784,17 @@ start=2048, type=0FC63DAF-8483-4772-8E79-3D69D8477DE4, bootable
                 return result;
             }
 
-            var output = await process.StandardOutput.ReadToEndAsync(cancellationToken);
-            var error = await process.StandardError.ReadToEndAsync(cancellationToken);
+            var outputTask = process.StandardOutput.ReadToEndAsync(cancellationToken);
+            var errorTask = process.StandardError.ReadToEndAsync(cancellationToken);
             await process.WaitForExitAsync(cancellationToken);
+            
+            var output = await outputTask;
+            var error = await errorTask;
 
             if (process.ExitCode != 0)
             {
-                result.ErrorMessage = $"mkfs.ext4 selhal: {error}";
+                result.ErrorMessage = $"mkfs.ext4 selhal (exit {process.ExitCode}): {error}";
+                _logger?.LogError("mkfs.ext4 failed for {PartitionPath}: {Error}", partitionPath, error);
                 return result;
             }
 
@@ -641,6 +812,33 @@ start=2048, type=0FC63DAF-8483-4772-8E79-3D69D8477DE4, bootable
         }
 
         return result;
+    }
+
+    private async Task<string?> ExecuteCommandAndGetOutputAsync(string command, string arguments, CancellationToken cancellationToken)
+    {
+        try
+        {
+            var psi = new ProcessStartInfo
+            {
+                FileName = command,
+                Arguments = arguments,
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                UseShellExecute = false,
+                CreateNoWindow = true
+            };
+
+            using var process = Process.Start(psi);
+            if (process == null) return null;
+
+            var outputTask = process.StandardOutput.ReadToEndAsync(cancellationToken);
+            await process.WaitForExitAsync(cancellationToken);
+            return await outputTask;
+        }
+        catch
+        {
+            return null;
+        }
     }
 
     private async Task ExecuteCommandAsync(string command, string arguments, CancellationToken cancellationToken)

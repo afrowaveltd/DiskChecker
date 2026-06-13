@@ -18,9 +18,12 @@ namespace DiskChecker.UI.Avalonia.ViewModels
         private readonly ISelectedDiskService _selectedDiskService;
         private readonly IDiskCardRepository _diskCardRepository;
         private ObservableCollection<HistoricalTest> _tests = new();
+        private ObservableCollection<HistoricalTest> _filteredTests = new();
         private HistoricalTest? _selectedTest;
         private bool _isLoading;
         private string _statusMessage = string.Empty;
+        private int _selectedFilterIndex;
+        private static readonly string[] FilterLabels = { "Všechny", "Povrchový test", "SMART", "Sanitizace" };
 
         public HistoryViewModel(
             IHistoryService historyService,
@@ -46,8 +49,34 @@ namespace DiskChecker.UI.Avalonia.ViewModels
         public ObservableCollection<HistoricalTest> Tests
         {
             get => _tests;
-            set => SetProperty(ref _tests, value);
+            set
+            {
+                if (SetProperty(ref _tests, value))
+                {
+                    ApplyFilter();
+                }
+            }
         }
+
+        public ObservableCollection<HistoricalTest> FilteredTests
+        {
+            get => _filteredTests;
+            set => SetProperty(ref _filteredTests, value);
+        }
+
+        public int SelectedFilterIndex
+        {
+            get => _selectedFilterIndex;
+            set
+            {
+                if (SetProperty(ref _selectedFilterIndex, value))
+                {
+                    ApplyFilter();
+                }
+            }
+        }
+
+        public string[] FilterOptions => FilterLabels;
 
         public HistoricalTest? SelectedTest
         {
@@ -105,6 +134,7 @@ namespace DiskChecker.UI.Avalonia.ViewModels
                 
                 var tests = (await _historyService.GetHistoryAsync()).OrderByDescending(t => t.TestDate).ToList();
                 Tests = new ObservableCollection<HistoricalTest>(tests);
+                ApplyFilter();
                 OnPropertyChanged(nameof(AverageScore));
                 
                 StatusMessage = $"Načteno {tests.Count} testů z historie";
@@ -118,6 +148,25 @@ namespace DiskChecker.UI.Avalonia.ViewModels
             {
                 IsLoading = false;
             }
+        }
+
+        private void ApplyFilter()
+        {
+            var filtered = _selectedFilterIndex switch
+            {
+                1 => _tests.Where(t => t.TestType.Contains("Surface", StringComparison.OrdinalIgnoreCase) ||
+                                       t.TestType.Contains("Povrch", StringComparison.OrdinalIgnoreCase) ||
+                                       t.TestType.Contains("Read", StringComparison.OrdinalIgnoreCase) ||
+                                       t.TestType.Contains("Write", StringComparison.OrdinalIgnoreCase)),
+                2 => _tests.Where(t => t.TestType.Contains("SMART", StringComparison.OrdinalIgnoreCase)),
+                3 => _tests.Where(t => t.TestType.Contains("Sanitiz", StringComparison.OrdinalIgnoreCase)),
+                _ => _tests.AsEnumerable()
+            };
+
+            FilteredTests = new ObservableCollection<HistoricalTest>(filtered.ToList());
+            StatusMessage = _selectedFilterIndex == 0
+                ? $"Načteno {_tests.Count} testů z historie"
+                : $"Zobrazeno {FilteredTests.Count} z {_tests.Count} testů";
         }
 
         private async Task ClearHistoryAsync()

@@ -1,0 +1,3 @@
+# dita placeholder bug
+DITA project analysis: The bug is in PlaceholderService.PrepareForTranslation with referenceValues. When multiple placeholders share the same reference value (e.g. same count word like 'blocks'), the restore function uses string.Replace which is order-dependent and can incorrectly replace earlier-restored placeholders. The core issue is that reference values are not unique and String.Replace on non-unique reference values corrupts the restoration of multiple placeholders.
+

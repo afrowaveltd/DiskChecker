@@ -29,7 +29,8 @@ public class LinuxSmartaProvider : ISmartaProvider, IAdvancedSmartaProvider
         "/usr/local/sbin/smartctl",
         "/usr/local/bin/smartctl",
         "/sbin/smartctl",
-        "/bin/smartctl"
+        "/bin/smartctl",
+        "/snap/bin/smartctl"
     ];
 
     public LinuxSmartaProvider(ILogger<LinuxSmartaProvider>? logger = null)

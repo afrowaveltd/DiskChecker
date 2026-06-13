@@ -58,15 +58,11 @@
                     <TextBlock Text="Filtr:" FontSize="10" 
                               Foreground="{DynamicResource ThemeTextMutedBrush}"
                               VerticalAlignment="Center"/>
-                    <ComboBox SelectedIndex="0"
+                    <ComboBox ItemsSource="{Binding FilterOptions}"
+                              SelectedIndex="{Binding SelectedFilterIndex}"
                               Background="{DynamicResource ThemeCardBackgroundBrush}"
                               BorderBrush="{DynamicResource ThemeBorderBrush}"
-                              Padding="8,4">
-                        <ComboBoxItem Content="Všechny"/>
-                        <ComboBoxItem Content="Povrchový test"/>
-                        <ComboBoxItem Content="SMART"/>
-                        <ComboBoxItem Content="Sanitizace"/>
-                    </ComboBox>
+                              Padding="8,4"/>
                 </StackPanel>
             </Grid>
         </Border>
@@ -78,7 +74,7 @@
                BorderThickness="1"
                Margin="16,0"
                CornerRadius="8">
-            <dg:DataGrid ItemsSource="{Binding Tests}"
+            <dg:DataGrid ItemsSource="{Binding FilteredTests}"
                         SelectedItem="{Binding SelectedTest}"
                         IsReadOnly="True"
                         HeadersVisibility="Column"

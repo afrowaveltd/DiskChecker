@@ -109,4 +109,15 @@ public interface ISettingsService
     /// Unlocks a disk (removes from locked list).
     /// </summary>
     Task UnlockDiskAsync(string diskPath);
+    
+    // Certificate path settings
+    /// <summary>
+    /// Gets the custom certificate storage path, or null if default is used.
+    /// </summary>
+    Task<string?> GetCertificatePathAsync();
+    
+    /// <summary>
+    /// Sets a custom certificate storage path. Pass null or empty to use default.
+    /// </summary>
+    Task SetCertificatePathAsync(string? path);
 }

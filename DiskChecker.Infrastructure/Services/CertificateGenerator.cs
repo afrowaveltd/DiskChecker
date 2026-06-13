@@ -23,6 +23,7 @@ namespace DiskChecker.Infrastructure.Services;
 public class CertificateGenerator : ICertificateGenerator
 {
     private readonly ILogger<CertificateGenerator>? _logger;
+    private readonly ISettingsService? _settingsService;
     private readonly string _certificatesDirectory;
     private readonly string _labelsDirectory;
     private readonly string _chartCacheDirectory;
@@ -31,25 +32,37 @@ public class CertificateGenerator : ICertificateGenerator
     private const int MaxChartPoints = 512;
     private const int CertificateChartPoints = 32;
 
-    public CertificateGenerator(ILogger<CertificateGenerator>? logger = null)
+    public CertificateGenerator(ILogger<CertificateGenerator>? logger = null, ISettingsService? settingsService = null)
     {
         _logger = logger;
-        _certificatesDirectory = Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
-            "DiskChecker",
-            "Certificates");
-        _labelsDirectory = Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
-            "DiskChecker",
-            "Labels");
-        _chartCacheDirectory = Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
-            "DiskChecker",
-            "ChartCache");
+        _settingsService = settingsService;
+        
+        // Use custom path if configured, otherwise default
+        var basePath = GetCertificateBasePath();
+        _certificatesDirectory = Path.Combine(basePath, "Certificates");
+        _labelsDirectory = Path.Combine(basePath, "Labels");
+        _chartCacheDirectory = Path.Combine(basePath, "ChartCache");
         
         Directory.CreateDirectory(_certificatesDirectory);
         Directory.CreateDirectory(_labelsDirectory);
         Directory.CreateDirectory(_chartCacheDirectory);
+    }
+    
+    private string GetCertificateBasePath()
+    {
+        // Try to get custom path from settings
+        if (_settingsService != null)
+        {
+            var customPath = _settingsService.GetCertificatePathAsync().GetAwaiter().GetResult();
+            if (!string.IsNullOrWhiteSpace(customPath) && Directory.Exists(customPath))
+            {
+                return customPath;
+            }
+        }
+        
+        return Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
+            "DiskChecker");
     }
 
     public Task<DiskCertificate> GenerateCertificateAsync(TestSession session, DiskCard diskCard)
@@ -167,7 +180,19 @@ public class CertificateGenerator : ICertificateGenerator
             certificate.CertificateNumber = $"TMP-{DateTime.UtcNow:yyyyMMddHHmmss}";
         }
 
-        var fileName = $"Certificate_{certificate.CertificateNumber}.pdf";
+        var safeSerial = SanitizeFileName(certificate.SerialNumber ?? "NOSN");
+        var datePart = certificate.GeneratedAt.ToString("yyyyMMdd");
+        
+        // Check for existing files with same serial+date to add index
+        var baseName = $"{safeSerial}_{datePart}";
+        var index = 1;
+        string fileName;
+        do
+        {
+            fileName = $"{baseName}_{index}.pdf";
+            index++;
+        } while (File.Exists(Path.Combine(_certificatesDirectory, fileName)));
+        
         var filePath = Path.Combine(_certificatesDirectory, fileName);
 
         var jpegBytes = await RenderCertificateJpegAsync(certificate);
@@ -341,6 +366,21 @@ public class CertificateGenerator : ICertificateGenerator
             graphics.FillRectangle(panelBrush, 48, y, width - 96, 140);
             graphics.DrawRectangle(borderPen, 48, y, width - 96, 140);
             graphics.DrawString(cert.RecommendationNotes ?? "Není k dispozici", valueFont, textBrush, new RectangleF(64, y + 16, width - 130, 100));
+
+            // Add diagnostic/scoring notes if available
+            if (!string.IsNullOrWhiteSpace(cert.Notes))
+            {
+                y += 160;
+                graphics.DrawString("Důvody hodnocení", sectionFont, accentBrush, 48, y);
+                y += 34;
+                
+                // Calculate needed height for notes text
+                var notesSize = graphics.MeasureString(cert.Notes, valueFont, width - 130);
+                var notesHeight = Math.Max(60, (int)Math.Ceiling(notesSize.Height) + 20);
+                graphics.FillRectangle(panelBrush, 48, y, width - 96, notesHeight);
+                graphics.DrawRectangle(borderPen, 48, y, width - 96, notesHeight);
+                graphics.DrawString(cert.Notes, valueFont, textBrush, new RectangleF(64, y + 16, width - 130, notesHeight - 20));
+            }
 
             using var stream = new MemoryStream();
             var encoder = ImageCodecInfo.GetImageEncoders().First(e => e.FormatID == ImageFormat.Jpeg.Guid);
@@ -1220,5 +1260,26 @@ public class CertificateGenerator : ICertificateGenerator
         }
 
         return result;
+    }
+    
+    /// <summary>
+    /// Sanitizes a string for use as a safe file name component.
+    /// </summary>
+    private static string SanitizeFileName(string input)
+    {
+        if (string.IsNullOrWhiteSpace(input)) return "NOSN";
+        
+        var invalid = Path.GetInvalidFileNameChars();
+        var sanitized = new System.Text.StringBuilder(input.Length);
+        foreach (var c in input)
+        {
+            if (Array.IndexOf(invalid, c) >= 0)
+                sanitized.Append('_');
+            else
+                sanitized.Append(c);
+        }
+        
+        var result = sanitized.ToString().Trim();
+        return string.IsNullOrWhiteSpace(result) ? "NOSN" : result;
     }
 }

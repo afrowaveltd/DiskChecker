@@ -11,6 +11,7 @@ using System.Diagnostics;
 using System.Globalization;
 using System.IO;
 using System.Linq;
+using System.Runtime.InteropServices;
 using System.Threading;
 using System.Threading.Tasks;
 using Avalonia.Threading;
@@ -1030,49 +1031,126 @@ private async Task AbortTestAsync()
         try
         {
             var devicePath = SelectedDisk.Drive.Path;
-            var driveNumber = new string(devicePath.Where(char.IsDigit).ToArray());
             
-            if (string.IsNullOrEmpty(driveNumber)) return;
-            
-            // Find smartctl
+            // Find smartctl - cross-platform
             string? smartctlPath = null;
-            var commonPaths = new[] 
-            { 
-                @"C:\Program Files\smartmontools\bin\smartctl.exe",
-                @"C:\Program Files (x86)\smartmontools\bin\smartctl.exe",
-                @"C:\ProgramData\chocolatey\bin\smartctl.exe"
-            };
             
-            foreach (var p in commonPaths)
+            if (RuntimeInformation.IsOSPlatform(OSPlatform.Linux))
             {
-                if (File.Exists(p)) { smartctlPath = p; break; }
-            }
-            
-            if (smartctlPath == null)
-            {
-                // Check PATH
-                try
+                // Linux: use same paths as LinuxSmartaProvider + which/command -v
+                var linuxPaths = new[]
                 {
-                    var psi = new ProcessStartInfo 
-                    { 
-                        FileName = "where", 
-                        Arguments = "smartctl", 
-                        RedirectStandardOutput = true, 
-                        UseShellExecute = false, 
-                        CreateNoWindow = true 
-                    };
-                    using var proc = Process.Start(psi);
-                    if (proc != null)
+                    "/usr/sbin/smartctl",
+                    "/usr/bin/smartctl",
+                    "/usr/local/sbin/smartctl",
+                    "/usr/local/bin/smartctl",
+                    "/sbin/smartctl",
+                    "/bin/smartctl",
+                    "/snap/bin/smartctl"
+                };
+                
+                foreach (var p in linuxPaths)
+                {
+                    if (File.Exists(p)) { smartctlPath = p; break; }
+                }
+                
+                if (smartctlPath == null)
+                {
+                    // Try 'which'
+                    try
                     {
-                        await proc.WaitForExitAsync();
-                        if (proc.ExitCode == 0)
+                        var psi = new ProcessStartInfo
                         {
-                            var output = await proc.StandardOutput.ReadToEndAsync();
-                            smartctlPath = output.Trim().Split('\n')[0].Trim();
+                            FileName = "/usr/bin/which",
+                            Arguments = "smartctl",
+                            RedirectStandardOutput = true,
+                            RedirectStandardError = true,
+                            UseShellExecute = false,
+                            CreateNoWindow = true
+                        };
+                        using var proc = Process.Start(psi);
+                        if (proc != null)
+                        {
+                            await proc.WaitForExitAsync();
+                            if (proc.ExitCode == 0)
+                            {
+                                var output = await proc.StandardOutput.ReadToEndAsync();
+                                smartctlPath = output.Trim().Split('\n')[0].Trim();
+                            }
                         }
                     }
+                    catch { }
                 }
-                catch { }
+                
+                if (smartctlPath == null)
+                {
+                    // Try 'command -v'
+                    try
+                    {
+                        var psi = new ProcessStartInfo
+                        {
+                            FileName = "/bin/sh",
+                            Arguments = "-c \"command -v smartctl\"",
+                            RedirectStandardOutput = true,
+                            RedirectStandardError = true,
+                            UseShellExecute = false,
+                            CreateNoWindow = true
+                        };
+                        using var proc = Process.Start(psi);
+                        if (proc != null)
+                        {
+                            await proc.WaitForExitAsync();
+                            if (proc.ExitCode == 0)
+                            {
+                                var output = await proc.StandardOutput.ReadToEndAsync();
+                                smartctlPath = output.Trim().Split('\n')[0].Trim();
+                            }
+                        }
+                    }
+                    catch { }
+                }
+            }
+            else
+            {
+                // Windows: check known install paths + where
+                var windowsPaths = new[]
+                {
+                    @"C:\Program Files\smartmontools\bin\smartctl.exe",
+                    @"C:\Program Files (x86)\smartmontools\bin\smartctl.exe",
+                    @"C:\ProgramData\chocolatey\bin\smartctl.exe"
+                };
+                
+                foreach (var p in windowsPaths)
+                {
+                    if (File.Exists(p)) { smartctlPath = p; break; }
+                }
+                
+                if (smartctlPath == null)
+                {
+                    try
+                    {
+                        var psi = new ProcessStartInfo
+                        {
+                            FileName = "where",
+                            Arguments = "smartctl",
+                            RedirectStandardOutput = true,
+                            RedirectStandardError = true,
+                            UseShellExecute = false,
+                            CreateNoWindow = true
+                        };
+                        using var proc = Process.Start(psi);
+                        if (proc != null)
+                        {
+                            await proc.WaitForExitAsync();
+                            if (proc.ExitCode == 0)
+                            {
+                                var output = await proc.StandardOutput.ReadToEndAsync();
+                                smartctlPath = output.Trim().Split('\n')[0].Trim();
+                            }
+                        }
+                    }
+                    catch { }
+                }
             }
             
             if (smartctlPath == null)
@@ -1081,12 +1159,32 @@ private async Task AbortTestAsync()
                 return;
             }
             
-            // Run smartctl -a /dev/pdN
-            var devPath = "/dev/pd" + driveNumber;
+            // Build device-specific arguments
+            string args;
+            if (RuntimeInformation.IsOSPlatform(OSPlatform.Linux))
+            {
+                // Linux: use actual device path with device type detection
+                var deviceType = devicePath.Contains("nvme", StringComparison.OrdinalIgnoreCase) ? "nvme" : "auto";
+                args = deviceType == "nvme" 
+                    ? $"-d nvme -a {devicePath}" 
+                    : $"-a {devicePath}";
+            }
+            else
+            {
+                // Windows: use /dev/pdN format
+                var driveNumber = new string(devicePath.Where(char.IsDigit).ToArray());
+                if (string.IsNullOrEmpty(driveNumber))
+                {
+                    RawSmartOutput = "Nelze určit číslo disku pro Windows smartctl.";
+                    return;
+                }
+                args = $"-a /dev/pd{driveNumber}";
+            }
+            
             var startInfo = new ProcessStartInfo
             {
                 FileName = smartctlPath,
-                Arguments = "-a " + devPath,
+                Arguments = args,
                 RedirectStandardOutput = true,
                 RedirectStandardError = true,
                 UseShellExecute = false,
@@ -1094,18 +1192,34 @@ private async Task AbortTestAsync()
             };
             
             using var process = Process.Start(startInfo);
-            if (process == null) return;
+            if (process == null)
+            {
+                RawSmartOutput = "Nepodařilo se spustit smartctl.";
+                return;
+            }
             
             // Read output and wait for exit in parallel to avoid deadlock
             var stdoutTask = process.StandardOutput.ReadToEndAsync();
             var stderrTask = process.StandardError.ReadToEndAsync();
-            await process.WaitForExitAsync();
+            
+            // Timeout after 15 seconds to avoid hanging on unresponsive disks
+            using var timeoutCts = new CancellationTokenSource(TimeSpan.FromSeconds(15));
+            try
+            {
+                await process.WaitForExitAsync(timeoutCts.Token);
+            }
+            catch (OperationCanceledException)
+            {
+                try { process.Kill(entireProcessTree: true); } catch { }
+                RawSmartOutput = "Timeout: smartctl neodpověděl do 15 sekund.";
+                return;
+            }
             
             var stdout = await stdoutTask;
             var stderr = await stderrTask;
             
             var output2 = stdout;
-            if (!string.IsNullOrEmpty(stderr) && !stderr.Contains("smartctl"))
+            if (!string.IsNullOrEmpty(stderr) && !stderr.Contains("smartctl", StringComparison.OrdinalIgnoreCase))
                 output2 += "\n\n--- Errors ---\n" + stderr;
             
             await Dispatcher.UIThread.InvokeAsync(() =>

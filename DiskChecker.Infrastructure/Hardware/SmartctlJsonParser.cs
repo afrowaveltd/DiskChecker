@@ -40,22 +40,44 @@ public static class SmartctlJsonParser
                 _ => "SATA/ATA"
             };
             
-            
-            // Parse SMART status
+            // Parse SMART status - try multiple locations
+            // Standard location: smart_status.passed
             if (root.TryGetProperty("smart_status", out var smartStatus) &&
+                smartStatus.ValueKind == JsonValueKind.Object &&
                 smartStatus.TryGetProperty("passed", out var passed))
             {
                 result.IsHealthy = passed.GetBoolean();
                 result.TestPassed = result.IsHealthy;
             }
+            // Fallback: some older smartctl versions use "smart_status" as a direct boolean
+            else if (root.TryGetProperty("smart_status", out var smartStatusDirect) &&
+                     (smartStatusDirect.ValueKind == JsonValueKind.True || smartStatusDirect.ValueKind == JsonValueKind.False))
+            {
+                result.IsHealthy = smartStatusDirect.GetBoolean();
+                result.TestPassed = result.IsHealthy;
+            }
             
-            // Parse device info
+            // Parse device info - try multiple field names for cross-version compatibility
             if (root.TryGetProperty("model_name", out var modelName))
                 result.DeviceModel = modelName.GetString()?.Trim();
+            else if (root.TryGetProperty("scsi_model_name", out var scsiModel))
+                result.DeviceModel = scsiModel.GetString()?.Trim();
+            else if (root.TryGetProperty("device", out var device) && device.TryGetProperty("model_name", out var devModel))
+                result.DeviceModel = devModel.GetString()?.Trim();
+            
             if (root.TryGetProperty("serial_number", out var serialNum))
                 result.SerialNumber = serialNum.GetString()?.Trim();
+            else if (root.TryGetProperty("scsi_serial_number", out var scsiSerial))
+                result.SerialNumber = scsiSerial.GetString()?.Trim();
+            else if (root.TryGetProperty("device", out var device2) && device2.TryGetProperty("serial_number", out var devSerial))
+                result.SerialNumber = devSerial.GetString()?.Trim();
+            
             if (root.TryGetProperty("firmware_version", out var firmware))
                 result.FirmwareVersion = firmware.GetString()?.Trim();
+            else if (root.TryGetProperty("scsi_firmware_version", out var scsiFw))
+                result.FirmwareVersion = scsiFw.GetString()?.Trim();
+            else if (root.TryGetProperty("device", out var device3) && device3.TryGetProperty("firmware_version", out var devFw))
+                result.FirmwareVersion = devFw.GetString()?.Trim();
             
             // Parse SMART support
             if (root.TryGetProperty("smart_support", out var smartSupport))
@@ -65,9 +87,16 @@ public static class SmartctlJsonParser
             
             // Parse common metrics
             if (root.TryGetProperty("power_on_time", out var powerOn) &&
+                powerOn.ValueKind == JsonValueKind.Object &&
                 powerOn.TryGetProperty("hours", out var hours))
             {
                 result.PowerOnHours = hours.GetInt32();
+            }
+            else if (root.TryGetProperty("power_on_time", out var powerOnDirect) &&
+                     powerOnDirect.ValueKind == JsonValueKind.Number)
+            {
+                // Some versions report power_on_time as direct number of hours
+                result.PowerOnHours = powerOnDirect.GetInt32();
             }
             
             if (root.TryGetProperty("power_cycle_count", out var cycleCount))
@@ -75,7 +104,7 @@ public static class SmartctlJsonParser
                 result.PowerCycleCount = cycleCount.GetInt32();
             }
             
-            // Parse temperature (common location)
+            // Parse temperature (multiple locations for cross-version compatibility)
             if (root.TryGetProperty("temperature", out var temp))
             {
                 if (temp.TryGetProperty("current", out var curr))
@@ -83,12 +112,24 @@ public static class SmartctlJsonParser
                 else if (temp.ValueKind == JsonValueKind.Number)
                     result.Temperature = temp.GetInt32();
             }
+            // NVMe temperature may be in nvme_smart_health_information_log (Kelvin)
+            else if (root.TryGetProperty("nvme_smart_health_information_log", out var nvmeTemp) &&
+                     nvmeTemp.TryGetProperty("temperature", out var nvmeTempVal))
+            {
+                var kelvin = nvmeTempVal.GetInt32();
+                result.Temperature = kelvin > 273 ? kelvin - 273 : kelvin;
+            }
             
             // Parse capacity
             if (root.TryGetProperty("user_capacity", out var cap) &&
                 cap.TryGetProperty("bytes", out var bytes))
             {
                 result.TotalSize = bytes.GetInt64();
+            }
+            else if (root.TryGetProperty("user_capacity", out var capDirect) &&
+                     capDirect.ValueKind == JsonValueKind.Number)
+            {
+                result.TotalSize = capDirect.GetInt64();
             }
             
             // Parse device-specific data
@@ -107,8 +148,10 @@ public static class SmartctlJsonParser
             
             return result;
         }
-        catch (Exception)
+        catch (Exception ex)
         {
+            System.Diagnostics.Debug.WriteLine($"[SmartctlJsonParser] Parse failed: {ex.Message}");
+            // Return a minimal result with whatever we could parse before the exception
             return null;
         }
     }
@@ -146,7 +189,7 @@ public static class SmartctlJsonParser
                     RawValue = GetRawValue(item),
                     IsOk = !item.TryGetProperty("when_failed", out var wf) || wf.ValueKind == JsonValueKind.Null || string.IsNullOrWhiteSpace(wf.GetString()),
                     Current = (byte)(item.TryGetProperty("value", out var v) ? v.GetInt32() : 0),
-                    WhenFailed = item.TryGetProperty("when_failed", out var failed) && failed.ValueKind != JsonValueKind.Null
+                    WhenFailed = item.TryGetProperty("when_failed", out var failed) && failed.ValueKind == JsonValueKind.String
                         ? failed.GetString() ?? string.Empty
                         : string.Empty
                 };
@@ -282,9 +325,10 @@ public static class SmartctlJsonParser
         // Additional fallback: check if passed=false (test running) 
         // smartctl sets smart_status.passed=false during test execution
         if (result.CurrentSelfTest == null && 
-            root.TryGetProperty("smart_status", out var smartStatus) &&
-            smartStatus.TryGetProperty("passed", out var passed) &&
-            !passed.GetBoolean())
+            root.TryGetProperty("smart_status", out var smartStatusFallback) &&
+            smartStatusFallback.ValueKind == JsonValueKind.Object &&
+            smartStatusFallback.TryGetProperty("passed", out var passedFallback) &&
+            !passedFallback.GetBoolean())
         {
             result.CurrentSelfTest = new SmartaSelfTestEntry
             {
@@ -436,9 +480,13 @@ public static class SmartctlJsonParser
         if (!root.TryGetProperty("nvme_smart_health_information_log", out var nvme)) return;
         
         
-        // Temperature
-        if (nvme.TryGetProperty("temperature", out var temp))
-            result.Temperature = temp.GetInt32();
+        // Temperature - only use NVMe health log temperature if not already set from top-level
+        // NVMe health log reports Kelvin, convert to Celsius
+        if (result.Temperature == null && nvme.TryGetProperty("temperature", out var temp))
+        {
+            var kelvin = temp.GetInt32();
+            result.Temperature = kelvin > 273 ? kelvin - 273 : kelvin;
+        }
         
         // Power on hours
         if (nvme.TryGetProperty("power_on_hours", out var hrs))
@@ -450,7 +498,10 @@ public static class SmartctlJsonParser
         
         // Percentage used
         if (nvme.TryGetProperty("percentage_used", out var pctUsed))
+        {
+            result.EnduranceUsedPercent = pctUsed.GetInt32();
             result.WearLevelingCount = 100 - pctUsed.GetInt32();
+        }
         
         // Media errors
         if (nvme.TryGetProperty("media_errors", out var errors))
