@@ -227,6 +227,7 @@ public class DiskCardTestService
        DiskCard card,
        SmartaData smartaData,
        QualityRating rating,
+       TestType smartTestType = TestType.SmartShort,
        CancellationToken cancellationToken = default)
    {
       ArgumentNullException.ThrowIfNull(card);
@@ -236,7 +237,7 @@ public class DiskCardTestService
       {
          DiskCardId = card.Id,
          SessionId = Guid.NewGuid(),
-         TestType = TestType.SmartShort,
+         TestType = smartTestType,
          StartedAt = DateTime.UtcNow,
          CompletedAt = DateTime.UtcNow,
          Status = TestStatus.Completed,

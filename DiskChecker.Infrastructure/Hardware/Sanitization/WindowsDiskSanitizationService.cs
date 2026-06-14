@@ -99,6 +99,7 @@ public class WindowsDiskSanitizationService : IDiskSanitizationService
             // Phase 2: Write zeros
             progress?.Report(new SanitizationProgress
             {
+                PhaseKind = SanitizationProgressPhase.Write,
                 Phase = "Zápis nul",
                 ProgressPercent = 0,
                 TotalBytes = diskSize
@@ -119,6 +120,7 @@ public class WindowsDiskSanitizationService : IDiskSanitizationService
             // Phase 3: Read and verify
             progress?.Report(new SanitizationProgress
             {
+                PhaseKind = SanitizationProgressPhase.ReadVerify,
                 Phase = "Čtení a ověření",
                 ProgressPercent = 0,
                 TotalBytes = diskSize
@@ -490,6 +492,7 @@ offline disk";
 
                 progress?.Report(new SanitizationProgress
                 {
+                    PhaseKind = SanitizationProgressPhase.Write,
                     Phase = "Zápis nul",
                     ProgressPercent = (double)bytesWritten / diskSize * 100,
                     BytesProcessed = bytesWritten,
@@ -640,6 +643,7 @@ offline disk";
 
                 progress?.Report(new SanitizationProgress
                 {
+                    PhaseKind = SanitizationProgressPhase.ReadVerify,
                     Phase = "Čtení a ověření",
                     ProgressPercent = (double)bytesRead / diskSize * 100,
                     BytesProcessed = bytesRead,

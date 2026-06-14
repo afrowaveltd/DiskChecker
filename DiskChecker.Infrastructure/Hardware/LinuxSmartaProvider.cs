@@ -18,6 +18,9 @@ public class LinuxSmartaProvider : ISmartaProvider, IAdvancedSmartaProvider
     private long _cacheHits;
     private long _cacheMisses;
 
+    /// <inheritdoc />
+    public bool LastOperationWasPermissionDenied { get; private set; }
+
     // Static cache for smartctl path - shared across all instances
     private static string? s_cachedSmartctlPath;
     private static readonly object s_pathLock = new();
@@ -440,6 +443,8 @@ public class LinuxSmartaProvider : ISmartaProvider, IAdvancedSmartaProvider
 
     private async Task<(int ExitCode, string Output, string Error)?> ExecuteSmartctlCommandAsync(string devicePath, string arguments, CancellationToken cancellationToken)
     {
+        LastOperationWasPermissionDenied = false;
+
         try
         {
             var smartctlPath = await FindSmartctlPathAsync();
@@ -475,6 +480,11 @@ public class LinuxSmartaProvider : ISmartaProvider, IAdvancedSmartaProvider
                 {
                     return elevatedResult;
                 }
+
+                // Elevated retry also failed – flag permission denied
+                LastOperationWasPermissionDenied = true;
+                Console.WriteLine("[LinuxSmartaProvider] Permission denied: both direct and sudo smartctl failed.");
+                return null;
             }
 
             return directResult;

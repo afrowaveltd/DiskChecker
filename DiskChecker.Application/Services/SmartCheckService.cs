@@ -164,7 +164,7 @@ public class SmartCheckService
         try
         {
             var card = await _cardTestService.GetOrCreateCardAsync(drive, smartaData, cancellationToken);
-            await _cardTestService.SaveSmartCheckAsync(card, smartaData, rating, cancellationToken);
+            await _cardTestService.SaveSmartCheckAsync(card, smartaData, rating, cancellationToken: cancellationToken);
         }
         catch (Exception ex)
         {

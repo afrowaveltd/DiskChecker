@@ -48,6 +48,10 @@ public partial class SurfaceTestViewModel : ViewModelBase, INavigableViewModel, 
 
    private double _writeProgress;
    private double _verifyProgress;
+   private long _writeBytesProcessed;
+   private long _writeTotalBytes;
+   private long _readBytesProcessed;
+   private long _readTotalBytes;
 
    // Combined stats (for backward compatibility / total view)
    private double _currentSpeed;
@@ -263,6 +267,8 @@ public partial class SurfaceTestViewModel : ViewModelBase, INavigableViewModel, 
 
    public double WriteProgress { get => _writeProgress; set => SetProperty(ref _writeProgress, value); }
    public double VerifyProgress { get => _verifyProgress; set => SetProperty(ref _verifyProgress, value); }
+   public string WriteTransferredText => FormatTransferredData("Zapsáno", _writeBytesProcessed, _writeTotalBytes);
+   public string ReadTransferredText => FormatTransferredData("Přečteno", _readBytesProcessed, _readTotalBytes);
 
    // Combined statistics (current total speed)
    public double CurrentSpeed { get => _currentSpeed; set => SetProperty(ref _currentSpeed, value); }
@@ -977,6 +983,8 @@ public partial class SurfaceTestViewModel : ViewModelBase, INavigableViewModel, 
 
       WriteProgress = 0;
       VerifyProgress = 0;
+      SetWriteTransferredData(0, SelectedDrive?.TotalSize ?? 0);
+      SetReadTransferredData(0, SelectedDrive?.TotalSize ?? 0);
       CurrentSpeed = 0;
       _minSpeed = double.MaxValue;
       _maxSpeed = 0;
@@ -1144,24 +1152,24 @@ public partial class SurfaceTestViewModel : ViewModelBase, INavigableViewModel, 
 
          void ApplyProgress()
          {
+            var isWritePhase = p.IsWritePhase;
+            var isReadVerifyPhase = p.IsReadVerifyPhase;
+
             CurrentDataPercent = p.ProgressPercent;
-            CurrentPhase = p.Phase switch
-            {
-               "Zápis nul" => 0,
-               "Čtení a ověření" => 1,
-               _ => CurrentPhase
-            };
+            CurrentPhase = isWritePhase ? 0 : isReadVerifyPhase ? 1 : CurrentPhase;
 
             // Update phase-specific progress bars
-            if(p.Phase == "Zápis nul")
+            if(isWritePhase)
             {
                WriteProgress = p.ProgressPercent; // 0-100% of write phase
                VerifyProgress = 0;
+               SetWriteTransferredData(p.BytesProcessed, p.TotalBytes);
             }
-            else if(p.Phase == "Čtení a ověření")
+            else if(isReadVerifyPhase)
             {
                WriteProgress = 100; // Write is complete
                VerifyProgress = p.ProgressPercent; // 0-100% of verify phase
+               SetReadTransferredData(p.BytesProcessed, p.TotalBytes);
             }
 
             if(!string.IsNullOrWhiteSpace(p.StatusDetail))
@@ -1169,7 +1177,7 @@ public partial class SurfaceTestViewModel : ViewModelBase, INavigableViewModel, 
                StatusMessage = p.StatusDetail;
             }
 
-            if(p.Phase is "Zápis nul" or "Čtení a ověření")
+            if(isWritePhase || isReadVerifyPhase)
             {
                var phaseProgress = p.ProgressPercent;
                CurrentSpeed = p.CurrentSpeedMBps;
@@ -1419,6 +1427,7 @@ public partial class SurfaceTestViewModel : ViewModelBase, INavigableViewModel, 
          var progress = (double)i / writePhaseDuration * 100; // 0-100% for write phase
          WriteProgress = progress * 0.5; // 0-50% for overall progress bar
          VerifyProgress = 0;
+         SetWriteTransferredData((long)(progress / 100d * syntheticTotalBytes), syntheticTotalBytes);
 
          var speed = 45 + Random.Shared.NextDouble() * 15;
          CurrentSpeed = speed;
@@ -1450,6 +1459,7 @@ public partial class SurfaceTestViewModel : ViewModelBase, INavigableViewModel, 
          var progress = (double)i / readPhaseDuration * 100; // 0-100% for read phase (same X axis as write)
          WriteProgress = 100;
          VerifyProgress = progress;
+         SetReadTransferredData((long)(progress / 100d * syntheticTotalBytes), syntheticTotalBytes);
 
          var speed = 50 + Random.Shared.NextDouble() * 20;
          CurrentSpeed = speed;
@@ -1743,6 +1753,27 @@ public partial class SurfaceTestViewModel : ViewModelBase, INavigableViewModel, 
       }
 
       return $"{bytes / mb:F0} MB";
+   }
+
+   private void SetWriteTransferredData(long bytesProcessed, long totalBytes)
+   {
+      _writeBytesProcessed = Math.Max(0, bytesProcessed);
+      _writeTotalBytes = Math.Max(0, totalBytes);
+      OnPropertyChanged(nameof(WriteTransferredText));
+   }
+
+   private void SetReadTransferredData(long bytesProcessed, long totalBytes)
+   {
+      _readBytesProcessed = Math.Max(0, bytesProcessed);
+      _readTotalBytes = Math.Max(0, totalBytes);
+      OnPropertyChanged(nameof(ReadTransferredText));
+   }
+
+   private static string FormatTransferredData(string label, long bytesProcessed, long totalBytes)
+   {
+      return totalBytes > 0
+          ? $"{label}: {FormatDataSize(bytesProcessed)} z {FormatDataSize(totalBytes)}"
+          : $"{label}: {FormatDataSize(bytesProcessed)}";
    }
 
    private string? GetUsbBottleneckWarning(SanitizationResult result)

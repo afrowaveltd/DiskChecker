@@ -100,6 +100,11 @@ public class SanitizationErrorDetail
 /// </summary>
 public class SanitizationProgress
 {
+    /// <summary>
+    /// Stable machine-readable phase used by the UI. Phase remains the localized display text.
+    /// </summary>
+    public SanitizationProgressPhase PhaseKind { get; set; }
+
     public string Phase { get; set; } = "";
     public double ProgressPercent { get; set; }
     public long BytesProcessed { get; set; }
@@ -112,4 +117,19 @@ public class SanitizationProgress
     /// Optional additional status detail (e.g., recovery attempt reason).
     /// </summary>
     public string? StatusDetail { get; set; }
+
+    public bool IsWritePhase =>
+        PhaseKind == SanitizationProgressPhase.Write ||
+        Phase.StartsWith("Zápis nul", StringComparison.Ordinal);
+
+    public bool IsReadVerifyPhase =>
+        PhaseKind == SanitizationProgressPhase.ReadVerify ||
+        Phase.StartsWith("Čtení a ověření", StringComparison.Ordinal);
+}
+
+public enum SanitizationProgressPhase
+{
+    Other,
+    Write,
+    ReadVerify
 }

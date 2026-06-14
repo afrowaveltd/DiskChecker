@@ -235,6 +235,7 @@ public string SelectedTestType
     private CancellationTokenSource? _selfTestPollingCts;
     private bool _wasTestInProgress;
     private string _currentTestType = "";
+    private TestType _currentSmartTestType = TestType.SmartShort;
     private bool _disposed;
 
     public int SelfTestProgress
@@ -592,13 +593,27 @@ public string SelectedTestType
             
             if (smartData == null)
             {
-                StatusMessage = "Nepodařilo se načíst SMART data";
-                await _dialogService.ShowErrorAsync("Chyba", 
-                    $"Nepodařilo se načíst SMART data pro disk {SelectedDisk.DisplayName}.\n\n" +
-                    "Ujistěte se, že:\n" +
-                    "1. Aplikace běží s administrátorskými právy\n" +
-                    "2. Disk podporuje SMART\n" +
-                    "3. je nainstalován smartmontools");
+                if (_smartaProvider.LastOperationWasPermissionDenied)
+                {
+                    StatusMessage = "⚠️ SMART data nedostupná – spusťte aplikaci s právy root (sudo)";
+                    await _dialogService.ShowErrorAsync("Nedostatečná oprávnění",
+                        $"Pro čtení SMART dat disku {SelectedDisk.DisplayName} jsou potřeba administrátorská práva.\n\n" +
+                        "Spusťte aplikaci s root oprávněními:\n" +
+                        "  sudo ./DiskChecker\n\n" +
+                        "nebo přidejte uživatele do skupiny disk:\n" +
+                        "  sudo usermod -aG disk $USER\n" +
+                        "a odhlaste se a znovu přihlaste.");
+                }
+                else
+                {
+                    StatusMessage = "Nepodařilo se načíst SMART data";
+                    await _dialogService.ShowErrorAsync("Chyba", 
+                        $"Nepodařilo se načíst SMART data pro disk {SelectedDisk.DisplayName}.\n\n" +
+                        "Ujistěte se, že:\n" +
+                        "1. Aplikace běží s administrátorskými právy\n" +
+                        "2. Disk podporuje SMART\n" +
+                        "3. je nainstalován smartmontools");
+                }
                 return;
             }
             
@@ -774,7 +789,7 @@ public string SelectedTestType
         try
         {
             var card = await _cardTestService.GetOrCreateCardAsync(drive, smartData);
-            await _cardTestService.SaveSmartCheckAsync(card, smartData, rating);
+            await _cardTestService.SaveSmartCheckAsync(card, smartData, rating, _currentSmartTestType);
             _lastSmartPersistDiskPath = drive.Path;
             _lastSmartPersistUtc = now;
         }
@@ -882,15 +897,20 @@ public string SelectedTestType
 
     private async Task RunShortTestAsync()
     {
-        await RunSelfTestAsync(SmartaSelfTestType.ShortTest, "krátký");
+        await RunSelfTestAsync(SmartaSelfTestType.ShortTest, "krátký", TestType.SmartShort);
     }
 
     private async Task RunLongTestAsync()
     {
-        await RunSelfTestAsync(SmartaSelfTestType.Extended, "rozšířený");
+        await RunSelfTestAsync(SmartaSelfTestType.Extended, "rozšířený", TestType.SmartExtended);
     }
 
-    private async Task RunSelfTestAsync(SmartaSelfTestType testType, string testName)
+    private async Task RunConveyanceTestAsync()
+    {
+        await RunSelfTestAsync(SmartaSelfTestType.Conveyance, "přepravní", TestType.SmartConveyance);
+    }
+
+    private async Task RunSelfTestAsync(SmartaSelfTestType testType, string testName, TestType sessionTestType = TestType.SmartShort)
     {
         if (SelectedDisk?.Drive == null) return;
         
@@ -900,6 +920,8 @@ public string SelectedTestType
                 "Na systémovém disku nelze spustit self-test.\n\nVyberte jiný disk.");
             return;
         }
+
+        _currentSmartTestType = sessionTestType;
 
         var result = await ShowSelfTestConfirmationAsync(testName);
         if (result == SelfTestConfirmationResult.Cancel) return;

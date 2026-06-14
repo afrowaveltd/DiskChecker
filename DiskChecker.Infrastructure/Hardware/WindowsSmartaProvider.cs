@@ -16,6 +16,8 @@ namespace DiskChecker.Infrastructure.Hardware;
 /// </summary>
 public class WindowsSmartaProvider : ISmartaProvider, IAdvancedSmartaProvider
 {
+    /// <inheritdoc />
+    public bool LastOperationWasPermissionDenied { get; private set; }
     private readonly ILogger<WindowsSmartaProvider>? _logger;
     private readonly ConcurrentDictionary<string, (SmartaData Data, DateTime Timestamp)> _smartCache = new();
     private TimeSpan _cacheTtl = TimeSpan.FromMinutes(10);

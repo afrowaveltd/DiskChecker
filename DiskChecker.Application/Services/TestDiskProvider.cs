@@ -8,6 +8,8 @@ namespace DiskChecker.Application.Services;
 /// </summary>
 public class TestDiskProvider : ISmartaProvider
 {
+    public bool LastOperationWasPermissionDenied => false;
+
     public Task<SmartaData?> GetSmartaDataAsync(string devicePath, CancellationToken cancellationToken = default)
     {
         throw new NotImplementedException();

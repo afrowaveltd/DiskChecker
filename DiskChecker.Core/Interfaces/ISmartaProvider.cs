@@ -10,5 +10,11 @@ namespace DiskChecker.Core.Interfaces
         Task<string> GetDependencyInstructionsAsync(CancellationToken cancellationToken = default);
         Task<bool> TryInstallDependenciesAsync(CancellationToken cancellationToken = default);
         Task<int?> GetTemperatureOnlyAsync(string devicePath, CancellationToken cancellationToken = default);
+
+        /// <summary>
+        /// Indicates whether the last SMART operation failed due to insufficient permissions
+        /// (e.g., not running as root on Linux). Resets on each new operation.
+        /// </summary>
+        bool LastOperationWasPermissionDenied { get; }
     }
 }

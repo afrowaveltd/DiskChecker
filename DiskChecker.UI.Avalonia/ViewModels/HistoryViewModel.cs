@@ -154,12 +154,9 @@ namespace DiskChecker.UI.Avalonia.ViewModels
         {
             var filtered = _selectedFilterIndex switch
             {
-                1 => _tests.Where(t => t.TestType.Contains("Surface", StringComparison.OrdinalIgnoreCase) ||
-                                       t.TestType.Contains("Povrch", StringComparison.OrdinalIgnoreCase) ||
-                                       t.TestType.Contains("Read", StringComparison.OrdinalIgnoreCase) ||
-                                       t.TestType.Contains("Write", StringComparison.OrdinalIgnoreCase)),
-                2 => _tests.Where(t => t.TestType.Contains("SMART", StringComparison.OrdinalIgnoreCase)),
-                3 => _tests.Where(t => t.TestType.Contains("Sanitiz", StringComparison.OrdinalIgnoreCase)),
+                1 => _tests.Where(t => IsSurfaceTestType(t.TestType)),
+                2 => _tests.Where(t => IsSmartTestType(t.TestType)),
+                3 => _tests.Where(t => IsSanitizationTestType(t.TestType)),
                 _ => _tests.AsEnumerable()
             };
 
@@ -167,6 +164,31 @@ namespace DiskChecker.UI.Avalonia.ViewModels
             StatusMessage = _selectedFilterIndex == 0
                 ? $"Načteno {_tests.Count} testů z historie"
                 : $"Zobrazeno {FilteredTests.Count} z {_tests.Count} testů";
+        }
+
+        private static bool IsSurfaceTestType(string? testType)
+        {
+            if (string.IsNullOrWhiteSpace(testType)) return false;
+            return testType.Equals("QuickRead", StringComparison.OrdinalIgnoreCase) ||
+                   testType.Equals("QuickWrite", StringComparison.OrdinalIgnoreCase) ||
+                   testType.Equals("FullRead", StringComparison.OrdinalIgnoreCase) ||
+                   testType.Equals("FullWrite", StringComparison.OrdinalIgnoreCase) ||
+                   testType.Equals("FullReadWrite", StringComparison.OrdinalIgnoreCase) ||
+                   testType.Equals("SurfaceScan", StringComparison.OrdinalIgnoreCase);
+        }
+
+        private static bool IsSmartTestType(string? testType)
+        {
+            if (string.IsNullOrWhiteSpace(testType)) return false;
+            return testType.Equals("SmartShort", StringComparison.OrdinalIgnoreCase) ||
+                   testType.Equals("SmartExtended", StringComparison.OrdinalIgnoreCase) ||
+                   testType.Equals("SmartConveyance", StringComparison.OrdinalIgnoreCase);
+        }
+
+        private static bool IsSanitizationTestType(string? testType)
+        {
+            if (string.IsNullOrWhiteSpace(testType)) return false;
+            return testType.Equals("Sanitization", StringComparison.OrdinalIgnoreCase);
         }
 
         private async Task ClearHistoryAsync()

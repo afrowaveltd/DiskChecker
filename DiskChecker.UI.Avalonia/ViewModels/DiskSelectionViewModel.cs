@@ -258,6 +258,12 @@ public partial class DiskSelectionViewModel : ViewModelBase, INavigableViewModel
 
             LoadingState = DiskCards.Count > 0 ? $"Načteno {DiskCards.Count} disků" : "Žádné disky nenalezeny";
             StatusMessage = $"Nalezeno {DiskCards.Count} disků";
+
+            // Check if SMART access was denied due to permissions
+            if (_smartaProvider.LastOperationWasPermissionDenied)
+            {
+                StatusMessage = "⚠️ SMART data nedostupná – spusťte aplikaci s právy root (sudo)";
+            }
         }
         catch (Exception ex)
         {

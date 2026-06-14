@@ -178,9 +178,12 @@
                                            Background="{DynamicResource ThemeBorderLightBrush}"
                                            Foreground="{DynamicResource ThemeSuccessBrush}"
                                            CornerRadius="5" Margin="0,4,0,2"/>
-                                <TextBlock Text="{Binding WriteProgress, StringFormat='{}{0:F1}%'}" 
-                                          FontSize="10" Foreground="{DynamicResource ThemeSuccessBrush}"
-                                          HorizontalAlignment="Right"/>
+                                <Grid ColumnDefinitions="*,Auto">
+                                    <TextBlock Text="{Binding WriteTransferredText}"
+                                               FontSize="10" Foreground="{DynamicResource ThemeTextSecondaryBrush}"/>
+                                    <TextBlock Grid.Column="1" Text="{Binding WriteProgress, StringFormat='{}{0:F1}%'}"
+                                               FontSize="10" Foreground="{DynamicResource ThemeSuccessBrush}"/>
+                                </Grid>
                             </StackPanel>
                             <StackPanel Grid.Column="1">
                                 <StackPanel Orientation="Horizontal" Spacing="6">
@@ -191,9 +194,12 @@
                                            Background="{DynamicResource ThemeBorderLightBrush}"
                                            Foreground="{DynamicResource ThemeWarningBrush}"
                                            CornerRadius="5" Margin="0,4,0,2"/>
-                                <TextBlock Text="{Binding VerifyProgress, StringFormat='{}{0:F1}%'}" 
-                                          FontSize="10" Foreground="{DynamicResource ThemeWarningBrush}"
-                                          HorizontalAlignment="Right"/>
+                                <Grid ColumnDefinitions="*,Auto">
+                                    <TextBlock Text="{Binding ReadTransferredText}"
+                                               FontSize="10" Foreground="{DynamicResource ThemeTextSecondaryBrush}"/>
+                                    <TextBlock Grid.Column="1" Text="{Binding VerifyProgress, StringFormat='{}{0:F1}%'}"
+                                               FontSize="10" Foreground="{DynamicResource ThemeWarningBrush}"/>
+                                </Grid>
                             </StackPanel>
                         </Grid>
 

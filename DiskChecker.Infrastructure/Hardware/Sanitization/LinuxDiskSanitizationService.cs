@@ -72,12 +72,14 @@ public class LinuxDiskSanitizationService : IDiskSanitizationService
             // Phase 2: Write zeros
             progress?.Report(new SanitizationProgress
             {
+                PhaseKind = SanitizationProgressPhase.Write,
                 Phase = "Zápis nul",
                 ProgressPercent = 0,
                 TotalBytes = diskSize
             });
 
             var writeResult = await WriteZerosAsync(normalizedPath, diskSize, progress, cancellationToken);
+            result.ErrorDetails.AddRange(writeResult.ErrorDetails);
             if (!writeResult.Success)
             {
                 result.ErrorMessage = writeResult.ErrorMessage;
@@ -91,12 +93,14 @@ public class LinuxDiskSanitizationService : IDiskSanitizationService
             // Phase 3: Read and verify
             progress?.Report(new SanitizationProgress
             {
+                PhaseKind = SanitizationProgressPhase.ReadVerify,
                 Phase = "Čtení a ověření",
                 ProgressPercent = 0,
                 TotalBytes = diskSize
             });
 
             var readResult = await ReadAndVerifyAsync(normalizedPath, diskSize, progress, cancellationToken);
+            result.ErrorDetails.AddRange(readResult.ErrorDetails);
             if (!readResult.Success)
             {
                 result.ErrorMessage = readResult.ErrorMessage;
@@ -315,6 +319,20 @@ public class LinuxDiskSanitizationService : IDiskSanitizationService
         IProgress<SanitizationProgress>? progress,
         CancellationToken cancellationToken)
     {
+        // Keep the active methodology aligned with Windows: 64 MB zero-filled chunks,
+        // write-through access, per-chunk progress, and one final measured result.
+        return await WriteZerosFileStreamAsync(devicePath, diskSize, progress, cancellationToken);
+    }
+
+    /// <summary>
+    /// Writes zeros using the same chunk size, speed smoothing, and progress model as Windows.
+    /// </summary>
+    private async Task<SanitizationPhaseResult> WriteZerosFileStreamAsync(
+        string devicePath,
+        long diskSize,
+        IProgress<SanitizationProgress>? progress,
+        CancellationToken cancellationToken)
+    {
         var result = new SanitizationPhaseResult();
         var stopwatch = Stopwatch.StartNew();
         var buffer = new byte[BUFFER_SIZE];
@@ -323,7 +341,6 @@ public class LinuxDiskSanitizationService : IDiskSanitizationService
 
         try
         {
-            // Open device for writing. WriteThrough bypasses OS write cache where possible.
             using var fileStream = new FileStream(
                 devicePath,
                 FileMode.Open,
@@ -332,7 +349,6 @@ public class LinuxDiskSanitizationService : IDiskSanitizationService
                 bufferSize: 65536,
                 options: FileOptions.WriteThrough | FileOptions.SequentialScan);
 
-            // Write zeros in chunks
             while (bytesWritten < diskSize)
             {
                 cancellationToken.ThrowIfCancellationRequested();
@@ -340,11 +356,11 @@ public class LinuxDiskSanitizationService : IDiskSanitizationService
                 var bytesToWrite = (int)Math.Min(BUFFER_SIZE, diskSize - bytesWritten);
                 var chunkStopwatch = Stopwatch.StartNew();
 
-                // Use async write for better performance
                 await fileStream.WriteAsync(buffer.AsMemory(0, bytesToWrite), cancellationToken);
 
                 chunkStopwatch.Stop();
                 bytesWritten += bytesToWrite;
+                fileStream.Flush(flushToDisk: true);
 
                 if (result.Errors >= 10)
                 {
@@ -366,6 +382,7 @@ public class LinuxDiskSanitizationService : IDiskSanitizationService
 
                 progress?.Report(new SanitizationProgress
                 {
+                    PhaseKind = SanitizationProgressPhase.Write,
                     Phase = "Zápis nul",
                     ProgressPercent = (double)bytesWritten / diskSize * 100,
                     BytesProcessed = bytesWritten,
@@ -376,9 +393,7 @@ public class LinuxDiskSanitizationService : IDiskSanitizationService
                 });
             }
 
-            // Ensure all data is flushed to disk before closing
             await fileStream.FlushAsync(cancellationToken);
-            // Explicitly close the file handle to ensure it's released before read phase
             fileStream.Close();
 
             result.Success = true;
@@ -390,6 +405,14 @@ public class LinuxDiskSanitizationService : IDiskSanitizationService
         catch (Exception ex)
         {
             result.ErrorMessage = ex.Message;
+            result.ErrorDetails.Add(new SanitizationErrorDetail
+            {
+                Phase = "Write",
+                ErrorCode = ex.HResult.ToString("X", System.Globalization.CultureInfo.InvariantCulture),
+                Message = ex.Message,
+                Details = ex.GetType().Name,
+                OffsetBytes = bytesWritten
+            });
             _logger?.LogError(ex, "Error writing zeros to {DevicePath}", devicePath);
         }
 
@@ -402,12 +425,12 @@ public class LinuxDiskSanitizationService : IDiskSanitizationService
         IProgress<SanitizationProgress>? progress,
         CancellationToken cancellationToken)
     {
-        // Read-and-verify: byte-by-byte verification using FileStream.
+        // Match Windows by measuring and verifying in the same single read pass.
         return await ReadAndVerifyFileStreamAsync(devicePath, diskSize, progress, cancellationToken);
     }
 
     /// <summary>
-    /// Fallback read/verify using FileStream.
+    /// Reads and verifies zeros in one pass, matching the Windows sanitization methodology.
     /// </summary>
     private async Task<SanitizationPhaseResult> ReadAndVerifyFileStreamAsync(
         string devicePath,
@@ -418,7 +441,6 @@ public class LinuxDiskSanitizationService : IDiskSanitizationService
         var result = new SanitizationPhaseResult();
         var stopwatch = Stopwatch.StartNew();
         var buffer = new byte[BUFFER_SIZE];
-        var zeroBuffer = new byte[BUFFER_SIZE];
         long bytesRead = 0;
         double smoothedSpeed = 0;
 
@@ -444,6 +466,14 @@ public class LinuxDiskSanitizationService : IDiskSanitizationService
                 if (bytesReadThisChunk != bytesToRead)
                 {
                     result.Errors++;
+                    result.ErrorDetails.Add(new SanitizationErrorDetail
+                    {
+                        Phase = "Read",
+                        ErrorCode = "PARTIAL_READ",
+                        Message = "Čtení neproběhlo v plné délce bloku.",
+                        Details = $"Přečteno {bytesReadThisChunk} z očekávaných {bytesToRead} bajtů.",
+                        OffsetBytes = bytesRead
+                    });
                     if (_logger != null && _logger.IsEnabled(LogLevel.Warning))
                     {
                         _logger.LogWarning("Read incomplete at offset {Offset}: read {Read} of {Expected}",
@@ -451,16 +481,37 @@ public class LinuxDiskSanitizationService : IDiskSanitizationService
                     }
                 }
 
-                // Verify all zeros
-                for (int i = 0; i < bytesReadThisChunk; i++)
+                var nonZeroCount = 0;
+                var firstNonZeroOffset = -1;
+                for (var i = 0; i < bytesReadThisChunk; i++)
                 {
                     if (buffer[i] != 0)
                     {
-                        result.Errors++;
-                        if (result.Errors <= 10 && _logger != null && _logger.IsEnabled(LogLevel.Warning))
+                        nonZeroCount++;
+                        if (firstNonZeroOffset < 0)
                         {
-                            _logger.LogWarning("Non-zero byte found at offset {Offset}", bytesRead + i);
+                            firstNonZeroOffset = i;
                         }
+                    }
+                }
+
+                if (nonZeroCount > 0)
+                {
+                    result.Errors++;
+                    result.ErrorDetails.Add(new SanitizationErrorDetail
+                    {
+                        Phase = "Verify",
+                        ErrorCode = "NON_ZERO_DATA",
+                        Message = "Ověření našlo nenulová data v přepsaném bloku.",
+                        Details = $"Nenulových bajtů: {nonZeroCount}. První odchylka v rámci chunku na offsetu {firstNonZeroOffset}.",
+                        OffsetBytes = bytesRead + Math.Max(firstNonZeroOffset, 0)
+                    });
+                    if (_logger != null && _logger.IsEnabled(LogLevel.Warning))
+                    {
+                        _logger.LogWarning(
+                            "Found {NonZeroCount} non-zero bytes in block at offset {Offset}",
+                            nonZeroCount,
+                            bytesRead + Math.Max(firstNonZeroOffset, 0));
                     }
                 }
 
@@ -486,7 +537,8 @@ public class LinuxDiskSanitizationService : IDiskSanitizationService
 
                 progress?.Report(new SanitizationProgress
                 {
-                    Phase = "Čtení a ověření (FileStream)",
+                    PhaseKind = SanitizationProgressPhase.ReadVerify,
+                    Phase = "Čtení a ověření",
                     ProgressPercent = (double)bytesRead / diskSize * 100,
                     BytesProcessed = bytesRead,
                     TotalBytes = diskSize,
@@ -508,7 +560,15 @@ public class LinuxDiskSanitizationService : IDiskSanitizationService
         catch (Exception ex)
         {
             result.ErrorMessage = ex.Message;
-            _logger?.LogError(ex, "Error reading/verifying (FileStream fallback) {DevicePath}", devicePath);
+            result.ErrorDetails.Add(new SanitizationErrorDetail
+            {
+                Phase = "Read",
+                ErrorCode = ex.HResult.ToString("X", System.Globalization.CultureInfo.InvariantCulture),
+                Message = ex.Message,
+                Details = ex.GetType().Name,
+                OffsetBytes = bytesRead
+            });
+            _logger?.LogError(ex, "Error reading/verifying {DevicePath}", devicePath);
         }
 
         return result;
@@ -875,5 +935,6 @@ public class LinuxDiskSanitizationService : IDiskSanitizationService
         public long BytesRead { get; set; }
         public double SpeedMBps { get; set; }
         public int Errors { get; set; }
+        public List<SanitizationErrorDetail> ErrorDetails { get; } = new();
     }
 }
