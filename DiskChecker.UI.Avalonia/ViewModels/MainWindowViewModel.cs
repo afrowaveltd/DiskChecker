@@ -513,6 +513,7 @@ public partial class MainWindowViewModel : ViewModelBase
     public bool IsOnDiskCards => _currentViewModelType == typeof(DiskCardsViewModel);
     public bool IsOnSurfaceTest => _currentViewModelType == typeof(SurfaceTestViewModel);
     public bool IsOnSmartCheck => _currentViewModelType == typeof(SmartCheckViewModel);
+    public bool IsOnSeekTest => _currentViewModelType == typeof(SeekTestViewModel);
     public bool IsOnAnalysis => _currentViewModelType == typeof(AnalysisViewModel);
     public bool IsOnDiskComparison => _currentViewModelType == typeof(DiskComparisonViewModel);
     public bool IsOnReport => _currentViewModelType == typeof(ReportViewModel);
@@ -545,6 +546,13 @@ public partial class MainWindowViewModel : ViewModelBase
     {
         _navigationService.NavigateTo<SmartCheckViewModel>();
         StatusMessage = "Naviguji na SMART kontrolu...";
+    }
+
+    [RelayCommand]
+    private void NavigateToSeekTest()
+    {
+        _navigationService.NavigateTo<SeekTestViewModel>();
+        StatusMessage = "Naviguji na seek test...";
     }
 
     [RelayCommand]
@@ -592,6 +600,7 @@ public partial class MainWindowViewModel : ViewModelBase
         OnPropertyChanged(nameof(IsOnDiskCards));
         OnPropertyChanged(nameof(IsOnSurfaceTest));
         OnPropertyChanged(nameof(IsOnSmartCheck));
+        OnPropertyChanged(nameof(IsOnSeekTest));
         OnPropertyChanged(nameof(IsOnAnalysis));
         OnPropertyChanged(nameof(IsOnDiskComparison));
         OnPropertyChanged(nameof(IsOnReport));

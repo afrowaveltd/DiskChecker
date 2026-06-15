@@ -82,6 +82,40 @@ public class SanitizationProgressTests
         }
     }
 
+    [Fact]
+    public async Task LinuxReadVerify_RetriesWhenWriteHandleIsStillBeingReleased()
+    {
+        var path = Path.GetTempFileName();
+        const int fileSize = 1024 * 1024;
+
+        try
+        {
+            await File.WriteAllBytesAsync(path, new byte[fileSize]);
+            var service = new LinuxDiskSanitizationService();
+            using var writeLock = new FileStream(path, FileMode.Open, FileAccess.Write, FileShare.None);
+
+            var readTask = InvokePhaseAsync(
+                service,
+                "ReadAndVerifyAsync",
+                path,
+                fileSize,
+                new CallbackProgress<SanitizationProgress>(_ => { }));
+
+            await Task.Delay(100);
+            Assert.False(readTask.IsCompleted);
+            writeLock.Dispose();
+
+            var readResult = await readTask;
+
+            Assert.True(GetProperty<bool>(readResult, "Success"));
+            Assert.Equal(fileSize, GetProperty<long>(readResult, "BytesRead"));
+        }
+        finally
+        {
+            File.Delete(path);
+        }
+    }
+
     private static async Task<object> InvokePhaseAsync(
         LinuxDiskSanitizationService service,
         string methodName,

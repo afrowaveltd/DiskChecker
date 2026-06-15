@@ -18,6 +18,7 @@ using DiskChecker.Infrastructure.Persistence;
 using DiskChecker.Infrastructure.Services;
 using DiskChecker.Application.Services;
 using DiskChecker.Core;
+using DiskChecker.Core.Models;
 using System.Runtime.InteropServices;
 using Microsoft.EntityFrameworkCore;
 
@@ -162,6 +163,10 @@ public partial class App : global::Avalonia.Application
         services.AddSingleton<TestReportAnalysisService>();
         // Register UI analysis service implementation so AnalysisViewModel can resolve IAnalysisService.
         services.AddSingleton<IAnalysisService, AnalysisService>();
+
+        // Seek test components
+        services.AddSingleton<ISeekTestExecutor, SeekTestExecutor>();
+        services.AddSingleton<SeekTestService>();
         
         // Navigation service
         services.AddSingleton<INavigationService, NavigationService>();
@@ -252,5 +257,6 @@ public partial class App : global::Avalonia.Application
         services.AddTransient<DiskCardDetailViewModel>();
         services.AddTransient<CertificateViewModel>();
         services.AddTransient<DiskComparisonViewModel>();
+        services.AddTransient<SeekTestViewModel>();
     }
 }
