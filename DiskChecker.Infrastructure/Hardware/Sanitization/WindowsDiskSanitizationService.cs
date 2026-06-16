@@ -477,7 +477,8 @@ offline disk";
                 }
 
                 bytesWritten += bytesWrittenThisChunk;
-                FlushFileBuffers(handle.DangerousGetHandle());
+                // The handle uses FILE_FLAG_WRITE_THROUGH. FlushFileBuffers on a raw USB disk can
+                // block indefinitely after the final write and prevent the read phase from starting.
 
                 var chunkSeconds = chunkStopwatch.Elapsed.TotalSeconds;
                 var instantSpeed = chunkSeconds > 0
@@ -1262,9 +1263,6 @@ if ($disk -and $disk.PartitionStyle -eq 'GPT') {{
         var message = $"{operation} selhal: {GetWin32ErrorMessage(win32Error)} (Win32: {win32Error}).";
         return new IOException(message, new Win32Exception(win32Error));
     }
-
-    [DllImport("kernel32.dll", SetLastError = true)]
-    private static extern bool FlushFileBuffers(IntPtr hFile);
 
     /// <summary>
     /// Convert Win32 error code to human-readable message.
