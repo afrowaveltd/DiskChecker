@@ -252,6 +252,12 @@ public class SeekTestExecutor : ISeekTestExecutor
                     var sumSq = latencies.Sum(l => (l - avg) * (l - avg));
                     result.LatencyStdDevMs = Math.Sqrt(sumSq / latencies.Count);
                 }
+
+                // Percentiles: sort and pick
+                var sorted = latencies.OrderBy(l => l).ToList();
+                result.MedianLatencyMs = Percentile(sorted, 0.50);
+                result.P95LatencyMs = Percentile(sorted, 0.95);
+                result.P99LatencyMs = Percentile(sorted, 0.99);
             }
 
             result.IsCompleted = !cancellationToken.IsCancellationRequested;
@@ -278,6 +284,28 @@ public class SeekTestExecutor : ISeekTestExecutor
         }
 
         return result;
+    }
+
+    // ──────────────────────────────────────────────
+    //  Statistics helpers
+    // ──────────────────────────────────────────────
+
+    /// <summary>
+    /// Computes a percentile from a sorted list using linear interpolation.
+    /// </summary>
+    private static double Percentile(List<double> sorted, double percentile)
+    {
+        if (sorted.Count == 0) return 0;
+        if (sorted.Count == 1) return sorted[0];
+
+        double index = percentile * (sorted.Count - 1);
+        int lower = (int)Math.Floor(index);
+        int upper = (int)Math.Ceiling(index);
+
+        if (lower == upper) return sorted[lower];
+
+        double fraction = index - lower;
+        return sorted[lower] + fraction * (sorted[upper] - sorted[lower]);
     }
 
     // ──────────────────────────────────────────────
@@ -448,70 +476,123 @@ public class SeekTestExecutor : ISeekTestExecutor
 
         try
         {
-            var buffer = new byte[blockSizeBytes];
-            // Align buffer for direct I/O if needed
-            var alignedBuffer = buffer;
+            // Allocate aligned buffer for direct I/O
+            // O_DIRECT requires memory aligned to the device's logical block size (typically 512 bytes)
+            const int alignment = 4096; // Use page-aligned for maximum compatibility
+            byte[]? windowsBuffer = null;
 
-            var lastProgressTime = Stopwatch.StartNew();
-            var progressInterval = TimeSpan.FromMilliseconds(200);
-
-            for (int i = 0; i < totalSeeks; i++)
+            unsafe
             {
-                linkedCts.Token.ThrowIfCancellationRequested();
-
-                var (sourceLba, destLba) = positions[i];
-                var sample = new SeekLatencySample
-                {
-                    Index = i + 1,
-                    SourceLba = sourceLba,
-                    DestinationLba = destLba,
-                    SeekDistance = Math.Abs(destLba - sourceLba),
-                    TimestampUtc = DateTime.UtcNow
-                };
+                void* alignedBuffer = null;
 
                 try
                 {
-                    // Seek to source position (pre-positioning)
-                    SeekToLba(deviceHandle, sourceLba);
-
-                    // Measure: seek to destination + read
-                    var seekWatch = Stopwatch.StartNew();
-                    SeekToLba(deviceHandle, destLba);
-                    var readOk = ReadFromDevice(deviceHandle, alignedBuffer, blockSizeBytes);
-                    seekWatch.Stop();
-
-                    sample.LatencyMs = seekWatch.Elapsed.TotalMilliseconds;
-                    sample.HasError = !readOk;
-                    if (!readOk)
-                        sample.ErrorMessage = "Read failed at destination LBA";
-                }
-                catch (Exception ex)
-                {
-                    sample.HasError = true;
-                    sample.ErrorMessage = ex.Message;
-                }
-
-                samples.Add(sample);
-
-                // Progress reporting
-                if (progressCallback != null && lastProgressTime.Elapsed >= progressInterval)
-                {
-                    var successful = samples.Where(s => !s.HasError).ToList();
-                    var avgLatency = successful.Count > 0
-                        ? successful.Average(s => s.LatencyMs)
-                        : 0.0;
-
-                    progressCallback(new SeekTestProgress
+                    if (IsLinux)
                     {
-                        TestId = Guid.Parse(result.TestId),
-                        PercentComplete = (double)(i + 1) / totalSeeks * 100.0,
-                        SeeksCompleted = i + 1,
-                        TotalSeeks = totalSeeks,
-                        CurrentAverageLatencyMs = avgLatency,
-                        TimestampUtc = DateTime.UtcNow
-                    });
+                        // Use NativeMemory for aligned allocation (available in .NET 6+)
+                        alignedBuffer = System.Runtime.InteropServices.NativeMemory.AlignedAlloc(
+                            (nuint)blockSizeBytes, (nuint)alignment);
+                        // Zero the buffer to avoid reading stale data
+                        System.Runtime.InteropServices.NativeMemory.Clear(alignedBuffer, (nuint)blockSizeBytes);
+                    }
+                    else
+                    {
+                        windowsBuffer = new byte[blockSizeBytes];
+                    }
 
-                    lastProgressTime.Restart();
+                    // ── Pre-position head to a known sector (LBA 0) for consistent starting point ──
+                    try
+                    {
+                        SeekToLba(deviceHandle, 0);
+                        if (IsLinux)
+                            ReadLinux(deviceHandle, (byte*)alignedBuffer, blockSizeBytes);
+                        else
+                            ReadFromDeviceWindows(deviceHandle, windowsBuffer!, blockSizeBytes);
+                    }
+                    catch
+                    {
+                        // Pre-positioning is best-effort; ignore failures
+                    }
+
+                    var lastProgressTime = Stopwatch.StartNew();
+                    var progressInterval = TimeSpan.FromMilliseconds(200);
+
+                    for (int i = 0; i < totalSeeks; i++)
+                    {
+                        linkedCts.Token.ThrowIfCancellationRequested();
+
+                        var (sourceLba, destLba) = positions[i];
+                        var sample = new SeekLatencySample
+                        {
+                            Index = i + 1,
+                            SourceLba = sourceLba,
+                            DestinationLba = destLba,
+                            SeekDistance = Math.Abs(destLba - sourceLba),
+                            TimestampUtc = DateTime.UtcNow
+                        };
+
+                        try
+                        {
+                            // Seek to source position (pre-positioning)
+                            SeekToLba(deviceHandle, sourceLba);
+
+                            // Measure: seek to destination + read
+                            var seekWatch = Stopwatch.StartNew();
+                            SeekToLba(deviceHandle, destLba);
+
+                            bool readOk;
+                            if (IsLinux)
+                            {
+                                readOk = ReadLinux(deviceHandle, (byte*)alignedBuffer, blockSizeBytes);
+                            }
+                            else
+                            {
+                                readOk = ReadFromDeviceWindows(deviceHandle, windowsBuffer!, blockSizeBytes);
+                            }
+                            seekWatch.Stop();
+
+                            sample.LatencyMs = seekWatch.Elapsed.TotalMilliseconds;
+                            sample.HasError = !readOk;
+                            if (!readOk)
+                                sample.ErrorMessage = "Read failed at destination LBA";
+                        }
+                        catch (Exception ex)
+                        {
+                            sample.HasError = true;
+                            sample.ErrorMessage = ex.Message;
+                        }
+
+                        samples.Add(sample);
+
+                        // Progress reporting (includes latest sample for real-time UI)
+                        if (progressCallback != null && lastProgressTime.Elapsed >= progressInterval)
+                        {
+                            var successful = samples.Where(s => !s.HasError).ToList();
+                            var avgLatency = successful.Count > 0
+                                ? successful.Average(s => s.LatencyMs)
+                                : 0.0;
+
+                            progressCallback(new SeekTestProgress
+                            {
+                                TestId = Guid.Parse(result.TestId),
+                                PercentComplete = (double)(i + 1) / totalSeeks * 100.0,
+                                SeeksCompleted = i + 1,
+                                TotalSeeks = totalSeeks,
+                                CurrentAverageLatencyMs = avgLatency,
+                                LatestSample = sample,
+                                TimestampUtc = DateTime.UtcNow
+                            });
+
+                            lastProgressTime.Restart();
+                        }
+                    }
+                }
+                finally
+                {
+                    if (alignedBuffer != null)
+                    {
+                        System.Runtime.InteropServices.NativeMemory.AlignedFree(alignedBuffer);
+                    }
                 }
             }
         }
@@ -557,15 +638,11 @@ public class SeekTestExecutor : ISeekTestExecutor
     }
 
     /// <summary>
-    /// Reads from the device at the current position.
+    /// Reads from the device at the current position (Windows byte[] overload).
     /// </summary>
-    private static bool ReadFromDevice(DeviceFileHandle handle, byte[] buffer, int count)
+    private static bool ReadFromDeviceWindows(DeviceFileHandle handle, byte[] buffer, int count)
     {
-        if (IsLinux)
-            return ReadLinux(handle, buffer, count);
-        if (IsWindows)
-            return ReadWindows(handle, buffer, count);
-        return false;
+        return ReadWindows(handle, buffer, count);
     }
 
     // ── Linux P/Invoke ──
@@ -582,7 +659,7 @@ public class SeekTestExecutor : ISeekTestExecutor
     private static extern long lseek(int fd, long offset, int whence);
 
     [DllImport("libc", SetLastError = true)]
-    private static extern nint read(int fd, byte[] buf, nint count);
+    private static extern unsafe nint read(int fd, byte* buf, nint count);
 
     [DllImport("libc", SetLastError = true)]
     private static extern int close(int fd);
@@ -608,13 +685,13 @@ public class SeekTestExecutor : ISeekTestExecutor
         }
     }
 
-    private static bool ReadLinux(DeviceFileHandle handle, byte[] buffer, int count)
+    private static unsafe bool ReadLinux(DeviceFileHandle handle, byte* buffer, int count)
     {
         var bytesRead = read(handle.FileDescriptor, buffer, (nint)count);
         if (bytesRead < 0)
         {
             var errno = Marshal.GetLastWin32Error();
-            // EIO (5) = I/O error – this is expected for some sectors, don't throw
+            // EIO (5) = I/O error, EINVAL (22) = alignment issue – expected for some sectors
             return false;
         }
         return bytesRead > 0;

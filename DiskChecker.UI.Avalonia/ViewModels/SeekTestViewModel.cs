@@ -10,6 +10,11 @@ using DiskChecker.Application.Services;
 using DiskChecker.Core.Interfaces;
 using DiskChecker.Core.Models;
 using DiskChecker.UI.Avalonia.Services.Interfaces;
+using LiveChartsCore;
+using LiveChartsCore.Defaults;
+using LiveChartsCore.SkiaSharpView;
+using LiveChartsCore.SkiaSharpView.Painting;
+using SkiaSharp;
 
 namespace DiskChecker.UI.Avalonia.ViewModels;
 
@@ -56,20 +61,34 @@ public partial class SeekTestViewModel : ViewModelBase, INavigableViewModel, IDi
     private double _minLatencyMs;
     private double _maxLatencyMs;
     private double _stdDevLatencyMs;
+    private double _medianLatencyMs;
+    private double _p95LatencyMs;
+    private double _p99LatencyMs;
     private int _errorCount;
     private string _resultSummary = "";
     private ObservableCollection<SeekLatencySample> _samples = new();
 
-    // Test type options for the UI
+    // Real-time chart data
+    private ObservableCollection<ObservablePoint> _latencyChartValues = new();
+    private ISeries[] _latencySeries = Array.Empty<ISeries>();
+    private Axis[] _latencyXAxes = Array.Empty<Axis>();
+    private Axis[] _latencyYAxes = Array.Empty<Axis>();
+    private int _chartPointCount;
+    private SeekLatencySample? _latestSample;
+    private bool _isPrePositioned;
+
+    // Test type options for the UI – MUST match SeekTestType enum order (FullStroke=0, Random=1, Skip=2)
+    // because EnumToIndexConverter uses (int)enumValue as the SelectedIndex.
     public ObservableCollection<SeekTestTypeOption> TestTypeOptions { get; } = new()
     {
-        new() { Type = SeekTestType.Random, Name = "🎲 Náhodný (Random)", Description = "Náhodné pozice napříč celým diskem – referenční test" },
         new() { Type = SeekTestType.FullStroke, Name = "↔️ Plný rozsah (Full Stroke)", Description = "Zametá celý LBA rozsah od začátku do konce a zpět" },
+        new() { Type = SeekTestType.Random, Name = "🎲 Náhodný (Random)", Description = "Náhodné pozice napříč celým diskem – referenční test" },
         new() { Type = SeekTestType.Skip, Name = "⏭️ Přeskakování (Skip)", Description = "Skáče o fixní segmenty (1000 segmentů) s variabilní velikostí skoku" }
     };
 
     private CancellationTokenSource? _testCancellation;
     private bool _disposed;
+    private bool _isFinalChartBuilt; // guards against progress callbacks corrupting final chart
 
     public SeekTestViewModel(
         INavigationService navigationService,
@@ -306,6 +325,24 @@ public partial class SeekTestViewModel : ViewModelBase, INavigableViewModel, IDi
         set => SetProperty(ref _stdDevLatencyMs, value);
     }
 
+    public double MedianLatencyMs
+    {
+        get => _medianLatencyMs;
+        set => SetProperty(ref _medianLatencyMs, value);
+    }
+
+    public double P95LatencyMs
+    {
+        get => _p95LatencyMs;
+        set => SetProperty(ref _p95LatencyMs, value);
+    }
+
+    public double P99LatencyMs
+    {
+        get => _p99LatencyMs;
+        set => SetProperty(ref _p99LatencyMs, value);
+    }
+
     public int ErrorCount
     {
         get => _errorCount;
@@ -322,6 +359,62 @@ public partial class SeekTestViewModel : ViewModelBase, INavigableViewModel, IDi
     {
         get => _samples;
         set => SetProperty(ref _samples, value);
+    }
+
+    // Real-time chart
+    public ObservableCollection<ObservablePoint> LatencyChartValues
+    {
+        get => _latencyChartValues;
+        set => SetProperty(ref _latencyChartValues, value);
+    }
+
+    public ISeries[] LatencySeries
+    {
+        get => _latencySeries;
+        set => SetProperty(ref _latencySeries, value);
+    }
+
+    public Axis[] LatencyXAxes
+    {
+        get => _latencyXAxes;
+        set => SetProperty(ref _latencyXAxes, value);
+    }
+
+    public Axis[] LatencyYAxes
+    {
+        get => _latencyYAxes;
+        set => SetProperty(ref _latencyYAxes, value);
+    }
+
+    public int ChartPointCount
+    {
+        get => _chartPointCount;
+        set => SetProperty(ref _chartPointCount, value);
+    }
+
+    public SeekLatencySample? LatestSample
+    {
+        get => _latestSample;
+        set
+        {
+            if (SetProperty(ref _latestSample, value))
+            {
+                OnPropertyChanged(nameof(HasLatestSample));
+                OnPropertyChanged(nameof(LatestSampleText));
+            }
+        }
+    }
+
+    public bool HasLatestSample => LatestSample != null;
+
+    public string LatestSampleText => LatestSample != null
+        ? $"#{LatestSample.Index}: {LatestSample.LatencyMs:F2} ms (Δ {LatestSample.SeekDistance} LBA)"
+        : "—";
+
+    public bool IsPrePositioned
+    {
+        get => _isPrePositioned;
+        set => SetProperty(ref _isPrePositioned, value);
     }
 
     #endregion
@@ -445,9 +538,51 @@ public partial class SeekTestViewModel : ViewModelBase, INavigableViewModel, IDi
         EstimatedRemaining = "—";
         Samples.Clear();
         ErrorCount = 0;
+        LatestSample = null;
+        IsPrePositioned = false;
         StatusMessage = "Spouštím seek test...";
 
+        // Initialize real-time chart
+        LatencyChartValues.Clear();
+        LatencySeries = new ISeries[]
+        {
+            new LineSeries<ObservablePoint>
+            {
+                Values = LatencyChartValues,
+                Fill = null,
+                GeometrySize = 4,
+                GeometryFill = new SolidColorPaint(SKColors.DodgerBlue),
+                GeometryStroke = new SolidColorPaint(SKColors.DodgerBlue, 2),
+                Stroke = new SolidColorPaint(SKColors.DodgerBlue, 1.5f),
+                LineSmoothness = 0.3
+            }
+        };
+        LatencyXAxes = new Axis[]
+        {
+            new Axis
+            {
+                Name = "Seek #",
+                NameTextSize = 10,
+                TextSize = 9,
+                MinLimit = 0,
+                Labeler = v => v.ToString("F0")
+            }
+        };
+        LatencyYAxes = new Axis[]
+        {
+            new Axis
+            {
+                Name = "Latence (ms)",
+                NameTextSize = 10,
+                TextSize = 9,
+                MinLimit = 0,
+                Labeler = v => $"{v:F1}"
+            }
+        };
+        ChartPointCount = 0;
+
         _testCancellation = new CancellationTokenSource();
+        _isFinalChartBuilt = false;
         var startTime = DateTime.UtcNow;
 
         try
@@ -468,6 +603,9 @@ public partial class SeekTestViewModel : ViewModelBase, INavigableViewModel, IDi
                 {
                     Dispatcher.UIThread.Post(() =>
                     {
+                        // Guard: don't touch chart data after final chart is built
+                        if (_isFinalChartBuilt) return;
+
                         ProgressPercent = progress.PercentComplete;
                         CompletedSeeks = progress.SeeksCompleted;
                         TotalSeeks = progress.TotalSeeks;
@@ -488,6 +626,22 @@ public partial class SeekTestViewModel : ViewModelBase, INavigableViewModel, IDi
                             EstimatedRemaining = "00:00";
                         }
 
+                        // Real-time sample update
+                        if (progress.LatestSample != null && !progress.LatestSample.HasError)
+                        {
+                            LatestSample = progress.LatestSample;
+                            LatencyChartValues.Add(new ObservablePoint(
+                                progress.SeeksCompleted,
+                                progress.LatestSample.LatencyMs));
+                            ChartPointCount = LatencyChartValues.Count;
+                        }
+
+                        // Pre-positioning indicator (first sample received = pre-positioning done)
+                        if (!IsPrePositioned && progress.SeeksCompleted > 0)
+                        {
+                            IsPrePositioned = true;
+                        }
+
                         StatusMessage = $"Testování... {progress.SeeksCompleted}/{progress.TotalSeeks} seeků ({progress.PercentComplete:F0}%)";
                     });
                 },
@@ -499,8 +653,15 @@ public partial class SeekTestViewModel : ViewModelBase, INavigableViewModel, IDi
             MinLatencyMs = result.MinLatencyMs;
             MaxLatencyMs = result.MaxLatencyMs;
             StdDevLatencyMs = result.LatencyStdDevMs;
+            MedianLatencyMs = result.MedianLatencyMs;
+            P95LatencyMs = result.P95LatencyMs;
+            P99LatencyMs = result.P99LatencyMs;
             ErrorCount = result.ErrorCount;
             Samples = new ObservableCollection<SeekLatencySample>(result.Samples);
+
+            // Build final chart with all successful samples
+            BuildFinalChart(result.Samples);
+            _isFinalChartBuilt = true;
 
             var elapsed = DateTime.UtcNow - startTime;
             ElapsedTime = $"{(int)elapsed.TotalMinutes:D2}:{elapsed.Seconds:D2}";
@@ -533,6 +694,217 @@ public partial class SeekTestViewModel : ViewModelBase, INavigableViewModel, IDi
             _testCancellation?.Dispose();
             _testCancellation = null;
         }
+    }
+
+    /// <summary>
+    /// Builds the final latency distribution chart from all successful samples.
+    /// Shows each sample as a scatter point with outlier coloring and reference lines.
+    /// </summary>
+    private void BuildFinalChart(List<SeekLatencySample> allSamples)
+    {
+        var successful = allSamples.Where(s => !s.HasError).ToList();
+        if (successful.Count == 0) return;
+
+        var latencies = successful.Select(s => s.LatencyMs).ToList();
+        var avg = latencies.Average();
+        var min = latencies.Min();
+        var max = latencies.Max();
+        var stdDev = StdDevLatencyMs;
+
+        // Outlier thresholds
+        var outlierThreshold = avg + 2 * stdDev;   // orange
+        var extremeThreshold = avg + 3 * stdDev;   // red
+
+        // Split points into three color groups
+        var normalPoints = new ObservableCollection<ObservablePoint>();
+        var outlierPoints = new ObservableCollection<ObservablePoint>();
+        var extremePoints = new ObservableCollection<ObservablePoint>();
+
+        foreach (var s in successful)
+        {
+            var point = new ObservablePoint(s.Index, s.LatencyMs);
+            if (s.LatencyMs > extremeThreshold && stdDev > 0)
+                extremePoints.Add(point);
+            else if (s.LatencyMs > outlierThreshold && stdDev > 0)
+                outlierPoints.Add(point);
+            else
+                normalPoints.Add(point);
+        }
+
+        // Build series list
+        var seriesList = new List<ISeries>();
+
+        // Normal points (blue)
+        if (normalPoints.Count > 0)
+        {
+            seriesList.Add(new LineSeries<ObservablePoint>
+            {
+                Values = normalPoints,
+                Fill = null,
+                Stroke = null,
+                GeometrySize = 5,
+                GeometryFill = new SolidColorPaint(SKColors.DodgerBlue.WithAlpha(180)),
+                GeometryStroke = new SolidColorPaint(SKColors.DodgerBlue, 1),
+                LineSmoothness = 0
+            });
+        }
+
+        // Outlier points (orange, avg + 2σ)
+        if (outlierPoints.Count > 0)
+        {
+            seriesList.Add(new LineSeries<ObservablePoint>
+            {
+                Values = outlierPoints,
+                Fill = null,
+                Stroke = null,
+                GeometrySize = 7,
+                GeometryFill = new SolidColorPaint(SKColors.Orange.WithAlpha(200)),
+                GeometryStroke = new SolidColorPaint(SKColors.Orange, 1.5f),
+                LineSmoothness = 0
+            });
+        }
+
+        // Extreme outlier points (red, avg + 3σ)
+        if (extremePoints.Count > 0)
+        {
+            seriesList.Add(new LineSeries<ObservablePoint>
+            {
+                Values = extremePoints,
+                Fill = null,
+                Stroke = null,
+                GeometrySize = 9,
+                GeometryFill = new SolidColorPaint(SKColors.Red.WithAlpha(220)),
+                GeometryStroke = new SolidColorPaint(SKColors.Red, 2),
+                LineSmoothness = 0
+            });
+        }
+
+        // Average reference line (orange-red, dashed)
+        seriesList.Add(new LineSeries<ObservablePoint>
+        {
+            Values = new ObservableCollection<ObservablePoint>
+            {
+                new(1, avg),
+                new(successful.Count, avg)
+            },
+            Stroke = new SolidColorPaint(SKColors.OrangeRed, 2),
+            GeometrySize = 0,
+            Fill = null,
+            LineSmoothness = 0
+        });
+
+        // Median reference line (purple, dashed)
+        var median = MedianLatencyMs;
+        seriesList.Add(new LineSeries<ObservablePoint>
+        {
+            Values = new ObservableCollection<ObservablePoint>
+            {
+                new(1, median),
+                new(successful.Count, median)
+            },
+            Stroke = new SolidColorPaint(SKColors.MediumPurple, 2),
+            GeometrySize = 0,
+            Fill = null,
+            LineSmoothness = 0
+        });
+
+        // P95 reference line (gold, dotted)
+        var p95 = P95LatencyMs;
+        if (p95 > 0)
+        {
+            seriesList.Add(new LineSeries<ObservablePoint>
+            {
+                Values = new ObservableCollection<ObservablePoint>
+                {
+                    new(1, p95),
+                    new(successful.Count, p95)
+                },
+                Stroke = new SolidColorPaint(SKColors.Gold, 1.5f),
+                GeometrySize = 0,
+                Fill = null,
+                LineSmoothness = 0
+            });
+        }
+
+        // P99 reference line (dark orange, dotted)
+        var p99 = P99LatencyMs;
+        if (p99 > 0)
+        {
+            seriesList.Add(new LineSeries<ObservablePoint>
+            {
+                Values = new ObservableCollection<ObservablePoint>
+                {
+                    new(1, p99),
+                    new(successful.Count, p99)
+                },
+                Stroke = new SolidColorPaint(SKColors.DarkOrange, 1.5f),
+                GeometrySize = 0,
+                Fill = null,
+                LineSmoothness = 0
+            });
+        }
+
+        // Min reference line (green)
+        seriesList.Add(new LineSeries<ObservablePoint>
+        {
+            Values = new ObservableCollection<ObservablePoint>
+            {
+                new(1, min),
+                new(successful.Count, min)
+            },
+            Stroke = new SolidColorPaint(SKColors.LimeGreen, 1.5f),
+            GeometrySize = 0,
+            Fill = null,
+            LineSmoothness = 0
+        });
+
+        // Max reference line (red)
+        seriesList.Add(new LineSeries<ObservablePoint>
+        {
+            Values = new ObservableCollection<ObservablePoint>
+            {
+                new(1, max),
+                new(successful.Count, max)
+            },
+            Stroke = new SolidColorPaint(SKColors.Tomato, 1.5f),
+            GeometrySize = 0,
+            Fill = null,
+            LineSmoothness = 0
+        });
+
+        LatencySeries = seriesList.ToArray();
+
+        // Store all points for chart values (for count display)
+        var allPoints = successful.Select(s => new ObservablePoint(s.Index, s.LatencyMs)).ToList();
+        LatencyChartValues = new ObservableCollection<ObservablePoint>(allPoints);
+        ChartPointCount = allPoints.Count;
+
+        LatencyXAxes = new Axis[]
+        {
+            new Axis
+            {
+                Name = "Seek #",
+                NameTextSize = 10,
+                TextSize = 9,
+                MinLimit = 0,
+                MaxLimit = successful.Count + 1,
+                Labeler = v => v.ToString("F0")
+            }
+        };
+
+        var yMax = max * 1.15; // 15% headroom
+        LatencyYAxes = new Axis[]
+        {
+            new Axis
+            {
+                Name = "Latence (ms)",
+                NameTextSize = 10,
+                TextSize = 9,
+                MinLimit = 0,
+                MaxLimit = yMax,
+                Labeler = v => $"{v:F1}"
+            }
+        };
     }
 
     private async Task AbortTestAsync()

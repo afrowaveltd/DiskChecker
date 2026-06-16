@@ -200,6 +200,11 @@ public class SeekTestProgress
     public double CurrentAverageLatencyMs { get; set; }
 
     /// <summary>
+    /// The most recent latency sample (for real-time UI updates).
+    /// </summary>
+    public SeekLatencySample? LatestSample { get; set; }
+
+    /// <summary>
     /// Timestamp of the progress update.
     /// </summary>
     public DateTime TimestampUtc { get; set; }
@@ -290,6 +295,21 @@ public class SeekTestResult
     /// Standard deviation of seek latency.
     /// </summary>
     public double LatencyStdDevMs { get; set; }
+
+    /// <summary>
+    /// Median seek latency (50th percentile) in milliseconds.
+    /// </summary>
+    public double MedianLatencyMs { get; set; }
+
+    /// <summary>
+    /// 95th percentile seek latency in milliseconds.
+    /// </summary>
+    public double P95LatencyMs { get; set; }
+
+    /// <summary>
+    /// 99th percentile seek latency in milliseconds.
+    /// </summary>
+    public double P99LatencyMs { get; set; }
 
     /// <summary>
     /// Number of seek errors encountered.
