@@ -18,6 +18,8 @@ public class LinuxDiskSanitizationService : IDiskSanitizationService
 {
     private readonly ILogger<LinuxDiskSanitizationService>? _logger;
     private const int BUFFER_SIZE = 64 * 1024 * 1024; // 64 MB buffer
+    private const int DeviceOpenMaxAttempts = 10;
+    private const int DeviceOpenRetryDelayMs = 250;
 
     public LinuxDiskSanitizationService(ILogger<LinuxDiskSanitizationService>? logger = null)
     {
@@ -341,60 +343,60 @@ public class LinuxDiskSanitizationService : IDiskSanitizationService
 
         try
         {
-            using var fileStream = new FileStream(
+            using (var fileStream = await OpenDeviceStreamWithRetryAsync(
                 devicePath,
                 FileMode.Open,
                 FileAccess.Write,
                 FileShare.None,
-                bufferSize: 65536,
-                options: FileOptions.WriteThrough | FileOptions.SequentialScan);
-
-            while (bytesWritten < diskSize)
+                FileOptions.WriteThrough | FileOptions.SequentialScan,
+                cancellationToken))
             {
-                cancellationToken.ThrowIfCancellationRequested();
-
-                var bytesToWrite = (int)Math.Min(BUFFER_SIZE, diskSize - bytesWritten);
-                var chunkStopwatch = Stopwatch.StartNew();
-
-                await fileStream.WriteAsync(buffer.AsMemory(0, bytesToWrite), cancellationToken);
-
-                chunkStopwatch.Stop();
-                bytesWritten += bytesToWrite;
-                fileStream.Flush(flushToDisk: true);
-
-                if (result.Errors >= 10)
+                while (bytesWritten < diskSize)
                 {
-                    result.Success = false;
-                    result.ErrorMessage = "Test byl ukončen: nalezeno 10 nebo více chyb. Disk je pravděpodobně vadný.";
-                    return result;
+                    cancellationToken.ThrowIfCancellationRequested();
+
+                    var bytesToWrite = (int)Math.Min(BUFFER_SIZE, diskSize - bytesWritten);
+                    var chunkStopwatch = Stopwatch.StartNew();
+
+                    await fileStream.WriteAsync(buffer.AsMemory(0, bytesToWrite), cancellationToken);
+
+                    chunkStopwatch.Stop();
+                    bytesWritten += bytesToWrite;
+                    fileStream.Flush(flushToDisk: true);
+
+                    if (result.Errors >= 10)
+                    {
+                        result.Success = false;
+                        result.ErrorMessage = "Test byl ukončen: nalezeno 10 nebo více chyb. Disk je pravděpodobně vadný.";
+                        return result;
+                    }
+
+                    var chunkSeconds = chunkStopwatch.Elapsed.TotalSeconds;
+                    var instantSpeed = chunkSeconds > 0
+                        ? bytesToWrite / (1024.0 * 1024.0) / chunkSeconds
+                        : 0;
+                    smoothedSpeed = smoothedSpeed <= 0 ? instantSpeed : (smoothedSpeed * 0.7) + (instantSpeed * 0.3);
+
+                    var elapsed = stopwatch.Elapsed.TotalSeconds;
+                    var averageSpeed = elapsed > 0 ? bytesWritten / (1024.0 * 1024.0) / elapsed : 0;
+                    var remaining = diskSize - bytesWritten;
+                    var eta = averageSpeed > 0 ? TimeSpan.FromSeconds(remaining / (1024.0 * 1024.0) / averageSpeed) : (TimeSpan?)null;
+
+                    progress?.Report(new SanitizationProgress
+                    {
+                        PhaseKind = SanitizationProgressPhase.Write,
+                        Phase = "Zápis nul",
+                        ProgressPercent = (double)bytesWritten / diskSize * 100,
+                        BytesProcessed = bytesWritten,
+                        TotalBytes = diskSize,
+                        CurrentSpeedMBps = smoothedSpeed,
+                        Errors = result.Errors,
+                        EstimatedTimeRemaining = eta
+                    });
                 }
 
-                var chunkSeconds = chunkStopwatch.Elapsed.TotalSeconds;
-                var instantSpeed = chunkSeconds > 0
-                    ? bytesToWrite / (1024.0 * 1024.0) / chunkSeconds
-                    : 0;
-                smoothedSpeed = smoothedSpeed <= 0 ? instantSpeed : (smoothedSpeed * 0.7) + (instantSpeed * 0.3);
-
-                var elapsed = stopwatch.Elapsed.TotalSeconds;
-                var averageSpeed = elapsed > 0 ? bytesWritten / (1024.0 * 1024.0) / elapsed : 0;
-                var remaining = diskSize - bytesWritten;
-                var eta = averageSpeed > 0 ? TimeSpan.FromSeconds(remaining / (1024.0 * 1024.0) / averageSpeed) : (TimeSpan?)null;
-
-                progress?.Report(new SanitizationProgress
-                {
-                    PhaseKind = SanitizationProgressPhase.Write,
-                    Phase = "Zápis nul",
-                    ProgressPercent = (double)bytesWritten / diskSize * 100,
-                    BytesProcessed = bytesWritten,
-                    TotalBytes = diskSize,
-                    CurrentSpeedMBps = smoothedSpeed,
-                    Errors = result.Errors,
-                    EstimatedTimeRemaining = eta
-                });
+                fileStream.Flush(flushToDisk: true);
             }
-
-            await fileStream.FlushAsync(cancellationToken);
-            fileStream.Close();
 
             result.Success = true;
             result.BytesWritten = bytesWritten;
@@ -446,110 +448,108 @@ public class LinuxDiskSanitizationService : IDiskSanitizationService
 
         try
         {
-            using var fileStream = new FileStream(
+            using (var fileStream = await OpenDeviceStreamWithRetryAsync(
                 devicePath,
                 FileMode.Open,
                 FileAccess.Read,
                 FileShare.Read,
-                bufferSize: 65536,
-                options: FileOptions.SequentialScan);
-
-            while (bytesRead < diskSize)
+                FileOptions.SequentialScan,
+                cancellationToken))
             {
-                cancellationToken.ThrowIfCancellationRequested();
-
-                var bytesToRead = (int)Math.Min(BUFFER_SIZE, diskSize - bytesRead);
-                var chunkStopwatch = Stopwatch.StartNew();
-                var bytesReadThisChunk = await fileStream.ReadAsync(buffer.AsMemory(0, bytesToRead), cancellationToken);
-                chunkStopwatch.Stop();
-
-                if (bytesReadThisChunk != bytesToRead)
+                while (bytesRead < diskSize)
                 {
-                    result.Errors++;
-                    result.ErrorDetails.Add(new SanitizationErrorDetail
-                    {
-                        Phase = "Read",
-                        ErrorCode = "PARTIAL_READ",
-                        Message = "Čtení neproběhlo v plné délce bloku.",
-                        Details = $"Přečteno {bytesReadThisChunk} z očekávaných {bytesToRead} bajtů.",
-                        OffsetBytes = bytesRead
-                    });
-                    if (_logger != null && _logger.IsEnabled(LogLevel.Warning))
-                    {
-                        _logger.LogWarning("Read incomplete at offset {Offset}: read {Read} of {Expected}",
-                            bytesRead, bytesReadThisChunk, bytesToRead);
-                    }
-                }
+                    cancellationToken.ThrowIfCancellationRequested();
 
-                var nonZeroCount = 0;
-                var firstNonZeroOffset = -1;
-                for (var i = 0; i < bytesReadThisChunk; i++)
-                {
-                    if (buffer[i] != 0)
+                    var bytesToRead = (int)Math.Min(BUFFER_SIZE, diskSize - bytesRead);
+                    var chunkStopwatch = Stopwatch.StartNew();
+                    var bytesReadThisChunk = await fileStream.ReadAsync(buffer.AsMemory(0, bytesToRead), cancellationToken);
+                    chunkStopwatch.Stop();
+
+                    if (bytesReadThisChunk != bytesToRead)
                     {
-                        nonZeroCount++;
-                        if (firstNonZeroOffset < 0)
+                        result.Errors++;
+                        result.ErrorDetails.Add(new SanitizationErrorDetail
                         {
-                            firstNonZeroOffset = i;
+                            Phase = "Read",
+                            ErrorCode = "PARTIAL_READ",
+                            Message = "Čtení neproběhlo v plné délce bloku.",
+                            Details = $"Přečteno {bytesReadThisChunk} z očekávaných {bytesToRead} bajtů.",
+                            OffsetBytes = bytesRead
+                        });
+                        if (_logger != null && _logger.IsEnabled(LogLevel.Warning))
+                        {
+                            _logger.LogWarning("Read incomplete at offset {Offset}: read {Read} of {Expected}",
+                                bytesRead, bytesReadThisChunk, bytesToRead);
                         }
                     }
-                }
 
-                if (nonZeroCount > 0)
-                {
-                    result.Errors++;
-                    result.ErrorDetails.Add(new SanitizationErrorDetail
+                    var nonZeroCount = 0;
+                    var firstNonZeroOffset = -1;
+                    for (var i = 0; i < bytesReadThisChunk; i++)
                     {
-                        Phase = "Verify",
-                        ErrorCode = "NON_ZERO_DATA",
-                        Message = "Ověření našlo nenulová data v přepsaném bloku.",
-                        Details = $"Nenulových bajtů: {nonZeroCount}. První odchylka v rámci chunku na offsetu {firstNonZeroOffset}.",
-                        OffsetBytes = bytesRead + Math.Max(firstNonZeroOffset, 0)
-                    });
-                    if (_logger != null && _logger.IsEnabled(LogLevel.Warning))
-                    {
-                        _logger.LogWarning(
-                            "Found {NonZeroCount} non-zero bytes in block at offset {Offset}",
-                            nonZeroCount,
-                            bytesRead + Math.Max(firstNonZeroOffset, 0));
+                        if (buffer[i] != 0)
+                        {
+                            nonZeroCount++;
+                            if (firstNonZeroOffset < 0)
+                            {
+                                firstNonZeroOffset = i;
+                            }
+                        }
                     }
+
+                    if (nonZeroCount > 0)
+                    {
+                        result.Errors++;
+                        result.ErrorDetails.Add(new SanitizationErrorDetail
+                        {
+                            Phase = "Verify",
+                            ErrorCode = "NON_ZERO_DATA",
+                            Message = "Ověření našlo nenulová data v přepsaném bloku.",
+                            Details = $"Nenulových bajtů: {nonZeroCount}. První odchylka v rámci chunku na offsetu {firstNonZeroOffset}.",
+                            OffsetBytes = bytesRead + Math.Max(firstNonZeroOffset, 0)
+                        });
+                        if (_logger != null && _logger.IsEnabled(LogLevel.Warning))
+                        {
+                            _logger.LogWarning(
+                                "Found {NonZeroCount} non-zero bytes in block at offset {Offset}",
+                                nonZeroCount,
+                                bytesRead + Math.Max(firstNonZeroOffset, 0));
+                        }
+                    }
+
+                    if (result.Errors >= 10)
+                    {
+                        result.Success = false;
+                        result.ErrorMessage = "Test byl ukončen: nalezeno 10 nebo více chyb. Disk je pravděpodobně vadný.";
+                        return result;
+                    }
+
+                    bytesRead += bytesReadThisChunk;
+
+                    var chunkSeconds = chunkStopwatch.Elapsed.TotalSeconds;
+                    var instantSpeed = chunkSeconds > 0
+                        ? bytesReadThisChunk / (1024.0 * 1024.0) / chunkSeconds
+                        : 0;
+                    smoothedSpeed = smoothedSpeed <= 0 ? instantSpeed : (smoothedSpeed * 0.7) + (instantSpeed * 0.3);
+
+                    var elapsed = stopwatch.Elapsed.TotalSeconds;
+                    var averageSpeed = elapsed > 0 ? bytesRead / (1024.0 * 1024.0) / elapsed : 0;
+                    var remaining = diskSize - bytesRead;
+                    var eta = averageSpeed > 0 ? TimeSpan.FromSeconds(remaining / (1024.0 * 1024.0) / averageSpeed) : (TimeSpan?)null;
+
+                    progress?.Report(new SanitizationProgress
+                    {
+                        PhaseKind = SanitizationProgressPhase.ReadVerify,
+                        Phase = "Čtení a ověření",
+                        ProgressPercent = (double)bytesRead / diskSize * 100,
+                        BytesProcessed = bytesRead,
+                        TotalBytes = diskSize,
+                        CurrentSpeedMBps = smoothedSpeed,
+                        Errors = result.Errors,
+                        EstimatedTimeRemaining = eta
+                    });
                 }
-
-                if (result.Errors >= 10)
-                {
-                    result.Success = false;
-                    result.ErrorMessage = "Test byl ukončen: nalezeno 10 nebo více chyb. Disk je pravděpodobně vadný.";
-                    return result;
-                }
-
-                bytesRead += bytesReadThisChunk;
-
-                var chunkSeconds = chunkStopwatch.Elapsed.TotalSeconds;
-                var instantSpeed = chunkSeconds > 0
-                    ? bytesReadThisChunk / (1024.0 * 1024.0) / chunkSeconds
-                    : 0;
-                smoothedSpeed = smoothedSpeed <= 0 ? instantSpeed : (smoothedSpeed * 0.7) + (instantSpeed * 0.3);
-
-                var elapsed = stopwatch.Elapsed.TotalSeconds;
-                var averageSpeed = elapsed > 0 ? bytesRead / (1024.0 * 1024.0) / elapsed : 0;
-                var remaining = diskSize - bytesRead;
-                var eta = averageSpeed > 0 ? TimeSpan.FromSeconds(remaining / (1024.0 * 1024.0) / averageSpeed) : (TimeSpan?)null;
-
-                progress?.Report(new SanitizationProgress
-                {
-                    PhaseKind = SanitizationProgressPhase.ReadVerify,
-                    Phase = "Čtení a ověření",
-                    ProgressPercent = (double)bytesRead / diskSize * 100,
-                    BytesProcessed = bytesRead,
-                    TotalBytes = diskSize,
-                    CurrentSpeedMBps = smoothedSpeed,
-                    Errors = result.Errors,
-                    EstimatedTimeRemaining = eta
-                });
             }
-
-            await fileStream.FlushAsync(cancellationToken);
-            fileStream.Close();
 
             result.Success = true;
             result.BytesRead = bytesRead;
@@ -572,6 +572,42 @@ public class LinuxDiskSanitizationService : IDiskSanitizationService
         }
 
         return result;
+    }
+
+    private async Task<FileStream> OpenDeviceStreamWithRetryAsync(
+        string devicePath,
+        FileMode mode,
+        FileAccess access,
+        FileShare share,
+        FileOptions options,
+        CancellationToken cancellationToken)
+    {
+        for (var attempt = 1; ; attempt++)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+
+            try
+            {
+                return new FileStream(
+                    devicePath,
+                    mode,
+                    access,
+                    share,
+                    bufferSize: 65536,
+                    options);
+            }
+            catch (IOException ex) when (attempt < DeviceOpenMaxAttempts)
+            {
+                _logger?.LogWarning(
+                    ex,
+                    "Device {DevicePath} is temporarily busy while opening for {Access}. Retrying ({Attempt}/{MaxAttempts})",
+                    devicePath,
+                    access,
+                    attempt,
+                    DeviceOpenMaxAttempts);
+                await Task.Delay(DeviceOpenRetryDelayMs, cancellationToken);
+            }
+        }
     }
 
     private async Task<SanitizationPhaseResult> CreateGptPartitionAsync(

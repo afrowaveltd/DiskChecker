@@ -70,6 +70,13 @@
                             Padding="10,6" Height="32" MinWidth="66" Margin="2"
                             FontSize="11" FontWeight="SemiBold" Cursor="Hand"/>
                     
+                    <Button Content="🎯 Seek"
+                            Command="{Binding NavigateToSeekTestCommand}"
+                            Background="{Binding IsOnSeekTest, Converter={StaticResource ActiveNavConverter}}"
+                            Foreground="{Binding IsOnSeekTest, Converter={StaticResource ActiveNavTextConverter}}"
+                            Padding="10,6" Height="32" MinWidth="60" Margin="2"
+                            FontSize="11" FontWeight="SemiBold" Cursor="Hand"/>
+                    
                     <Button Content="📈 Analýza"
                             Command="{Binding NavigateToAnalysisCommand}"
                             Background="{Binding IsOnAnalysis, Converter={StaticResource ActiveNavConverter}}"

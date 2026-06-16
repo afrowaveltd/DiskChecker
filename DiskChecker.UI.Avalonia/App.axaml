@@ -33,5 +33,8 @@
         <converters:BooleanToClassesConverter x:Key="BooleanToClassesConverter"/>
         <converters:FileSystemToBrushConverter x:Key="FileSystemToBrushConverter"/>
         <converters:FileSystemToForegroundBrushConverter x:Key="FileSystemToForegroundBrushConverter"/>
+        <converters:StringToBoolConverter x:Key="StringToBoolConverter"/>
+        <converters:EnumToIndexConverter x:Key="EnumToIndexConverter"/>
+        <converters:GreaterThanConverter x:Key="GreaterThanConverter"/>
     </Application.Resources>
 </Application>
