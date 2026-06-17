@@ -173,6 +173,18 @@
                             <TextBlock Grid.Column="0" Text="Cesta:" FontSize="10" Foreground="{DynamicResource ThemeTextMutedBrush}"/>
                             <TextBlock Grid.Column="1" Text="{Binding DiskPath}" FontSize="10" FontFamily="Consolas" Foreground="{DynamicResource ThemeTextMutedBrush}"/>
                         </Grid>
+                        <Grid Margin="0,2">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="90"/>
+                                <ColumnDefinition Width="*"/>
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Grid.Column="0" Text="Rozhraní:" FontSize="10" Foreground="{DynamicResource ThemeTextMutedBrush}"/>
+                            <TextBlock Grid.Column="1" FontSize="11" FontWeight="SemiBold">
+                                <Run Text="{Binding SelectedDisk.BusTypeDisplay}"/>
+                                <Run Text=" – " Foreground="{DynamicResource ThemeTextMutedBrush}"/>
+                                <Run Text="{Binding SelectedDisk.ConnectionSpeedDisplay}" Foreground="{DynamicResource ThemeTextSecondaryBrush}"/>
+                            </TextBlock>
+                        </Grid>
                     </StackPanel>
                 </Border>
 

@@ -332,7 +332,7 @@
                         <!-- Real-time chart during test -->
                         <Border Background="{DynamicResource ThemeSecondaryBackgroundBrush}"
                                 CornerRadius="6" Padding="8"
-                                IsVisible="{Binding ChartPointCount, Converter={StaticResource IntToBoolConverter}}">
+                                IsVisible="{Binding IsTesting}">
                             <Grid>
                                 <lvc:CartesianChart Series="{Binding LatencySeries}"
                                                     XAxes="{Binding LatencyXAxes}"

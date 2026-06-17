@@ -77,6 +77,13 @@
                             Padding="10,6" Height="32" MinWidth="60" Margin="2"
                             FontSize="11" FontWeight="SemiBold" Cursor="Hand"/>
                     
+                    <Button Content="💣 Absolutní"
+                            Command="{Binding NavigateToAbsoluteDestructiveTestCommand}"
+                            Background="{Binding IsOnAbsoluteDestructiveTest, Converter={StaticResource ActiveNavConverter}}"
+                            Foreground="{Binding IsOnAbsoluteDestructiveTest, Converter={StaticResource ActiveNavTextConverter}}"
+                            Padding="10,6" Height="32" MinWidth="80" Margin="2"
+                            FontSize="11" FontWeight="SemiBold" Cursor="Hand"/>
+                    
                     <Button Content="📈 Analýza"
                             Command="{Binding NavigateToAnalysisCommand}"
                             Background="{Binding IsOnAnalysis, Converter={StaticResource ActiveNavConverter}}"
@@ -103,6 +110,13 @@
                             Background="{Binding IsOnHistory, Converter={StaticResource ActiveNavConverter}}"
                             Foreground="{Binding IsOnHistory, Converter={StaticResource ActiveNavTextConverter}}"
                             Padding="10,6" Height="32" MinWidth="80" Margin="2"
+                            FontSize="11" FontWeight="SemiBold" Cursor="Hand"/>
+                    
+                    <Button Content="🏅 Certifikáty"
+                            Command="{Binding NavigateToCertificateBrowserCommand}"
+                            Background="{Binding IsOnCertificateBrowser, Converter={StaticResource ActiveNavConverter}}"
+                            Foreground="{Binding IsOnCertificateBrowser, Converter={StaticResource ActiveNavTextConverter}}"
+                            Padding="10,6" Height="32" MinWidth="90" Margin="2"
                             FontSize="11" FontWeight="SemiBold" Cursor="Hand"/>
                 </StackPanel>
 

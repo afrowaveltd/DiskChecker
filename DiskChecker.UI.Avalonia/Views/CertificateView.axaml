@@ -137,6 +137,62 @@
                             </StackPanel>
                         </Border>
 
+                        <!-- Seek test metrics (Absolute Destructive Test) -->
+                        <Border Background="{Binding PanelBackground}" Padding="12" CornerRadius="8"
+                                IsVisible="{Binding HasSeekMetrics}">
+                            <StackPanel Spacing="6">
+                                <TextBlock Text="🎯 Seek test (latence)" FontWeight="Bold" FontSize="13"/>
+                                <TextBlock Text="{Binding SeekTestSummaryText, StringFormat='Souhrn: {0}'}"
+                                           FontSize="11" TextWrapping="Wrap"/>
+                                <Grid ColumnDefinitions="Auto,*" RowDefinitions="Auto,Auto,Auto,Auto" RowSpacing="2" ColumnSpacing="8">
+                                    <TextBlock Grid.Row="0" Grid.Column="0" Text="Průměr:" FontSize="11"/>
+                                    <TextBlock Grid.Row="0" Grid.Column="1" Text="{Binding SeekAvgLatencyMsText}" FontSize="11" FontWeight="SemiBold"/>
+                                    <TextBlock Grid.Row="1" Grid.Column="0" Text="Minimum:" FontSize="11"/>
+                                    <TextBlock Grid.Row="1" Grid.Column="1" Text="{Binding SeekMinLatencyMsText}" FontSize="11"/>
+                                    <TextBlock Grid.Row="2" Grid.Column="0" Text="Maximum:" FontSize="11"/>
+                                    <TextBlock Grid.Row="2" Grid.Column="1" Text="{Binding SeekMaxLatencyMsText}" FontSize="11"/>
+                                    <TextBlock Grid.Row="3" Grid.Column="0" Text="P95:" FontSize="11"/>
+                                    <TextBlock Grid.Row="3" Grid.Column="1" Text="{Binding SeekP95LatencyMsText}" FontSize="11" FontWeight="SemiBold"/>
+                                </Grid>
+                            </StackPanel>
+                        </Border>
+
+                        <!-- Before/After sanitization comparison (Absolute Destructive Test) -->
+                        <Border Background="{Binding PanelBackground}" Padding="12" CornerRadius="8"
+                                IsVisible="{Binding HasBeforeAfterComparison}">
+                            <StackPanel Spacing="6">
+                                <TextBlock Text="🧹 Porovnání sanitizací (před/po seek testech)" FontWeight="Bold" FontSize="13"/>
+                                <TextBlock Text="Rychlost zápisu:" FontSize="11" FontWeight="SemiBold"/>
+                                <Grid ColumnDefinitions="Auto,Auto,Auto" RowDefinitions="Auto" ColumnSpacing="8">
+                                    <TextBlock Grid.Column="0" Text="{Binding Sanitize1WriteText, StringFormat='1. sanitizace: {0}'}" FontSize="11"/>
+                                    <TextBlock Grid.Column="1" Text="→" FontSize="11" Foreground="{DynamicResource ThemeTextMutedBrush}"/>
+                                    <TextBlock Grid.Column="2" Text="{Binding Sanitize2WriteText, StringFormat='2. sanitizace: {0}'}" FontSize="11"/>
+                                </Grid>
+                                <TextBlock Text="{Binding WriteSpeedChangeText, StringFormat='Změna: {0}'}" FontSize="11"
+                                           Foreground="{DynamicResource ThemeTextSecondaryBrush}"/>
+                                <Separator Margin="0,2"/>
+                                <TextBlock Text="Rychlost čtení:" FontSize="11" FontWeight="SemiBold"/>
+                                <Grid ColumnDefinitions="Auto,Auto,Auto" RowDefinitions="Auto" ColumnSpacing="8">
+                                    <TextBlock Grid.Column="0" Text="{Binding Sanitize1ReadText, StringFormat='1. sanitizace: {0}'}" FontSize="11"/>
+                                    <TextBlock Grid.Column="1" Text="→" FontSize="11" Foreground="{DynamicResource ThemeTextMutedBrush}"/>
+                                    <TextBlock Grid.Column="2" Text="{Binding Sanitize2ReadText, StringFormat='2. sanitizace: {0}'}" FontSize="11"/>
+                                </Grid>
+                                <TextBlock Text="{Binding ReadSpeedChangeText, StringFormat='Změna: {0}'}" FontSize="11"
+                                           Foreground="{DynamicResource ThemeTextSecondaryBrush}"/>
+                            </StackPanel>
+                        </Border>
+
+                        <!-- SMART delta summary -->
+                        <Border Background="{Binding PanelBackground}" Padding="12" CornerRadius="8"
+                                IsVisible="{Binding HasBeforeAfterComparison}">
+                            <StackPanel Spacing="4">
+                                <TextBlock Text="📉 SMART změny během testu" FontWeight="Bold" FontSize="13"/>
+                                <TextBlock Text="{Binding SmartDeltaSummaryText}" FontSize="11"
+                                           TextWrapping="Wrap"
+                                           Foreground="{DynamicResource ThemeTextSecondaryBrush}"/>
+                            </StackPanel>
+                        </Border>
+
                         <Border Background="{Binding PanelBackground}" Padding="12" CornerRadius="8">
                             <StackPanel Spacing="8">
                                 <TextBlock Text="Výkonový profil testu" FontWeight="Bold" FontSize="13"/>

@@ -1,0 +1,311 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:DiskChecker.UI.Avalonia.ViewModels"
+             xmlns:converters="using:DiskChecker.UI.Avalonia.Converters"
+             xmlns:lvc="using:LiveChartsCore.SkiaSharpView.Avalonia"
+             x:Class="DiskChecker.UI.Avalonia.Views.AbsoluteDestructiveTestView"
+             x:DataType="vm:AbsoluteDestructiveTestViewModel">
+
+    <ScrollViewer>
+        <StackPanel Spacing="12" Margin="16">
+
+            <!-- ═══════════ HEADER ═══════════ -->
+            <Border Background="{DynamicResource ThemeCardBackgroundBrush}"
+                    CornerRadius="8" Padding="16"
+                    BorderBrush="{DynamicResource ThemeBorderBrush}" BorderThickness="1">
+                <Grid ColumnDefinitions="Auto,*,Auto">
+                    <StackPanel Grid.Column="0" Spacing="4">
+                        <TextBlock Text="💣 ABSOLUTNÍ DESTRUKTIVNÍ TEST" FontSize="18" FontWeight="Bold"
+                                   Foreground="{DynamicResource ThemeTextPrimaryBrush}"/>
+                        <!-- Selected disk always visible -->
+                        <Border Background="{DynamicResource ThemePrimaryLightBrush}"
+                                CornerRadius="4" Padding="8,4" Margin="0,4,0,0"
+                                BorderBrush="{DynamicResource ThemePrimaryBrush}" BorderThickness="1">
+                            <StackPanel Orientation="Horizontal" Spacing="6">
+                                <TextBlock Text="💿" FontSize="14" VerticalAlignment="Center"/>
+                                <StackPanel>
+                                    <TextBlock Text="{Binding SelectedDrive.Name}" FontSize="13" FontWeight="Bold"
+                                               Foreground="{DynamicResource ThemeTextPrimaryBrush}"/>
+                                    <TextBlock FontSize="10" Foreground="{DynamicResource ThemeTextMutedBrush}">
+                                        <Run Text="Cesta: "/>
+                                        <Run Text="{Binding SelectedDrive.Path}" FontWeight="SemiBold"/>
+                                    </TextBlock>
+                                </StackPanel>
+                            </StackPanel>
+                        </Border>
+                    </StackPanel>
+
+                    <StackPanel Grid.Column="2" Spacing="8" VerticalAlignment="Center" HorizontalAlignment="Right">
+                        <!-- Start button -->
+                        <Button Content="▶ Spustit test"
+                                Command="{Binding StartTestCommand}"
+                                IsVisible="{Binding !IsTesting}"
+                                Background="{DynamicResource ThemeDangerBrush}"
+                                Foreground="White"
+                                FontWeight="Bold" FontSize="13"
+                                Padding="20,10" CornerRadius="8"
+                                Cursor="Hand"/>
+                        <!-- Cancel button -->
+                        <Button Content="⏹ Přerušit test"
+                                Command="{Binding CancelTestCommand}"
+                                IsVisible="{Binding IsTesting}"
+                                Background="#E74C3C"
+                                Foreground="White"
+                                FontWeight="Bold" FontSize="13"
+                                Padding="20,10" CornerRadius="8"
+                                Cursor="Hand"/>
+                        <!-- Back button -->
+                        <Button Content="↩ Zpět"
+                                Command="{Binding GoBackCommand}"
+                                IsVisible="{Binding !IsTesting}"
+                                Padding="12,6" CornerRadius="6"
+                                Cursor="Hand"/>
+                    </StackPanel>
+                </Grid>
+            </Border>
+
+            <!-- ═══════════ MANUAL PROFILE SELECTOR ═══════════ -->
+            <Border Background="{DynamicResource ThemeWarningBrush}20"
+                    CornerRadius="8" Padding="12"
+                    BorderBrush="{DynamicResource ThemeWarningBrush}" BorderThickness="1"
+                    IsVisible="{Binding ShowManualProfileSelector}">
+                <StackPanel Spacing="8">
+                    <TextBlock Text="⚠️ SMART data nejsou dostupná" FontSize="14" FontWeight="Bold"
+                               Foreground="{DynamicResource ThemeWarningBrush}"/>
+                    <TextBlock Text="Vyberte manuální testovací profil podle předpokládaného stavu disku:"
+                               FontSize="11" Foreground="{DynamicResource ThemeTextSecondaryBrush}"
+                               TextWrapping="Wrap"/>
+                    <ListBox ItemsSource="{Binding ManualProfiles}"
+                             SelectedIndex="{Binding SelectedManualProfile, Converter={StaticResource EnumToIndexConverter}}"
+                             Background="{DynamicResource ThemeSecondaryBackgroundBrush}"
+                             BorderBrush="{DynamicResource ThemeBorderBrush}"
+                             BorderThickness="1" CornerRadius="6">
+                        <ListBox.ItemTemplate>
+                            <DataTemplate>
+                                <StackPanel Spacing="2" Margin="4">
+                                    <TextBlock Text="{Binding Name}" FontSize="12" FontWeight="SemiBold"/>
+                                    <TextBlock Text="{Binding Description}" FontSize="10"
+                                               Foreground="{DynamicResource ThemeTextMutedBrush}"
+                                               TextWrapping="Wrap"/>
+                                </StackPanel>
+                            </DataTemplate>
+                        </ListBox.ItemTemplate>
+                    </ListBox>
+                </StackPanel>
+            </Border>
+
+            <!-- ═══════════ OVERALL PROGRESS ═══════════ -->
+            <Border Background="{DynamicResource ThemeCardBackgroundBrush}"
+                    CornerRadius="8" Padding="12"
+                    BorderBrush="{DynamicResource ThemeBorderBrush}" BorderThickness="1"
+                    IsVisible="{Binding IsTesting}">
+                <StackPanel Spacing="6">
+                    <Grid ColumnDefinitions="*,Auto">
+                        <TextBlock Grid.Column="0" Text="{Binding StatusMessage}" FontSize="12"
+                                   Foreground="{DynamicResource ThemeTextPrimaryBrush}"
+                                   TextTrimming="CharacterEllipsis"/>
+                        <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="12">
+                            <TextBlock FontSize="11" Foreground="{DynamicResource ThemeTextSecondaryBrush}">
+                                <Run Text="⏱ "/>
+                                <Run Text="{Binding ElapsedTime}"/>
+                            </TextBlock>
+                            <TextBlock FontSize="11" Foreground="{DynamicResource ThemeTextMutedBrush}">
+                                <Run Text="Zbývá: "/>
+                                <Run Text="{Binding EstimatedRemaining}"/>
+                            </TextBlock>
+                        </StackPanel>
+                    </Grid>
+                    <Grid ColumnDefinitions="Auto,*">
+                        <TextBlock Grid.Column="0" Text="{Binding OverallProgress, StringFormat='{}{0:F0}%'}"
+                                   FontSize="11" FontWeight="Bold" Width="40"
+                                   Foreground="{DynamicResource ThemePrimaryBrush}"
+                                   VerticalAlignment="Center"/>
+                        <ProgressBar Grid.Column="1" Value="{Binding OverallProgress}"
+                                     Minimum="0" Maximum="100" Height="8"
+                                     CornerRadius="4"/>
+                    </Grid>
+                </StackPanel>
+            </Border>
+
+            <!-- ═══════════ PHASE TIMELINE ═══════════ -->
+            <Border Background="{DynamicResource ThemeCardBackgroundBrush}"
+                    CornerRadius="8" Padding="12"
+                    BorderBrush="{DynamicResource ThemeBorderBrush}" BorderThickness="1">
+                <StackPanel Spacing="4">
+                    <TextBlock Text="📋 Průběh fází" FontSize="13" FontWeight="Bold"
+                               Foreground="{DynamicResource ThemeTextPrimaryBrush}" Margin="0,0,0,4"/>
+                    <ItemsControl ItemsSource="{Binding Phases}">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate>
+                                <Grid ColumnDefinitions="Auto,Auto,*,Auto" Margin="0,2">
+                                    <!-- Status icon -->
+                                    <TextBlock Grid.Column="0" Text="✅" FontSize="12" Width="20"
+                                               IsVisible="{Binding Status, Converter={StaticResource EnumToBooleanConverter}, ConverterParameter=Completed}"/>
+                                    <TextBlock Grid.Column="0" Text="🔄" FontSize="12" Width="20"
+                                               IsVisible="{Binding Status, Converter={StaticResource EnumToBooleanConverter}, ConverterParameter=Running}"/>
+                                    <TextBlock Grid.Column="0" Text="❌" FontSize="12" Width="20"
+                                               IsVisible="{Binding Status, Converter={StaticResource EnumToBooleanConverter}, ConverterParameter=Failed}"/>
+                                    <TextBlock Grid.Column="0" Text="⏳" FontSize="12" Width="20"
+                                               IsVisible="{Binding Status, Converter={StaticResource EnumToBooleanConverter}, ConverterParameter=Pending}"/>
+
+                                    <!-- Phase name -->
+                                    <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="4">
+                                        <TextBlock Text="{Binding Icon}" FontSize="12"/>
+                                        <TextBlock Text="{Binding Name}" FontSize="12" FontWeight="SemiBold"
+                                                   Foreground="{DynamicResource ThemeTextPrimaryBrush}"/>
+                                    </StackPanel>
+
+                                    <!-- Progress bar within phase -->
+                                    <ProgressBar Grid.Column="2" Value="{Binding ProgressPercent}"
+                                                 Minimum="0" Maximum="100" Height="4"
+                                                 CornerRadius="2" Margin="8,0"
+                                                 IsVisible="{Binding Status, Converter={StaticResource EnumToBooleanConverter}, ConverterParameter=Running}"/>
+
+                                    <!-- Detail -->
+                                    <TextBlock Grid.Column="3" Text="{Binding Detail}" FontSize="10"
+                                               Foreground="{DynamicResource ThemeTextMutedBrush}"
+                                               TextTrimming="CharacterEllipsis"
+                                               MaxWidth="300"/>
+                                </Grid>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </StackPanel>
+            </Border>
+
+            <!-- ═══════════ CURRENT PHASE CHART ═══════════ -->
+            <Border Background="{DynamicResource ThemeCardBackgroundBrush}"
+                    CornerRadius="8" Padding="12"
+                    BorderBrush="{DynamicResource ThemeBorderBrush}" BorderThickness="1"
+                    IsVisible="{Binding IsTesting}">
+                <StackPanel Spacing="4">
+                    <TextBlock FontSize="13" FontWeight="Bold"
+                               Foreground="{DynamicResource ThemeTextPrimaryBrush}">
+                        <Run Text="📈 Aktuální fáze: "/>
+                        <Run Text="{Binding CurrentPhaseName}"/>
+                    </TextBlock>
+                    <lvc:CartesianChart Series="{Binding CurrentPhaseSeries}"
+                                        XAxes="{Binding CurrentPhaseXAxes}"
+                                        YAxes="{Binding CurrentPhaseYAxes}"
+                                        ZoomMode="None"
+                                        TooltipPosition="Top"
+                                        LegendPosition="Hidden"
+                                        AnimationsSpeed="0:0:0"
+                                        Height="200"/>
+                </StackPanel>
+            </Border>
+
+            <!-- ═══════════ SMART TELEMETRY ═══════════ -->
+            <Border Background="{DynamicResource ThemeCardBackgroundBrush}"
+                    CornerRadius="8" Padding="12"
+                    BorderBrush="{DynamicResource ThemeBorderBrush}" BorderThickness="1">
+                <StackPanel Spacing="6">
+                    <TextBlock Text="🔧 SMART Telemetrie" FontSize="13" FontWeight="Bold"
+                               Foreground="{DynamicResource ThemeTextPrimaryBrush}"/>
+
+                    <!-- Baseline -->
+                    <Border Background="{DynamicResource ThemeSecondaryBackgroundBrush}"
+                            CornerRadius="4" Padding="8">
+                        <StackPanel Spacing="2">
+                            <TextBlock Text="📊 Výchozí stav" FontSize="11" FontWeight="SemiBold"
+                                       Foreground="{DynamicResource ThemeTextSecondaryBrush}"/>
+                            <TextBlock Text="{Binding SmartBaselineSummary}" FontSize="10"
+                                       Foreground="{DynamicResource ThemeTextMutedBrush}"
+                                       TextWrapping="Wrap"/>
+                        </StackPanel>
+                    </Border>
+
+                    <!-- Delta -->
+                    <Border Background="{DynamicResource ThemeSecondaryBackgroundBrush}"
+                            CornerRadius="4" Padding="8"
+                            IsVisible="{Binding HasResults}">
+                        <StackPanel Spacing="2">
+                            <TextBlock Text="📉 SMART Delta (před → po)" FontSize="11" FontWeight="SemiBold"
+                                       Foreground="{DynamicResource ThemeTextSecondaryBrush}"/>
+                            <TextBlock Text="{Binding SmartDeltaSummary}" FontSize="10"
+                                       Foreground="{DynamicResource ThemeTextMutedBrush}"
+                                       TextWrapping="Wrap"/>
+                        </StackPanel>
+                    </Border>
+
+                    <!-- Temperature -->
+                    <Grid ColumnDefinitions="Auto,Auto,Auto,*" IsVisible="{Binding IsTesting}">
+                        <TextBlock Grid.Column="0" Text="🌡" FontSize="12" VerticalAlignment="Center"/>
+                        <TextBlock Grid.Column="1" Text="{Binding CurrentTemperature, StringFormat='{}{0}°C'}"
+                                   FontSize="14" FontWeight="Bold" Margin="4,0"
+                                   Foreground="{DynamicResource ThemeTextPrimaryBrush}"
+                                   VerticalAlignment="Center"/>
+                        <TextBlock Grid.Column="2" FontSize="10" Margin="8,0,0,0"
+                                   Foreground="{DynamicResource ThemeTextMutedBrush}"
+                                   VerticalAlignment="Center">
+                            <Run Text="Min: "/>
+                            <Run Text="{Binding MinTemperature}"/>
+                            <Run Text="°C | Max: "/>
+                            <Run Text="{Binding MaxTemperature}"/>
+                            <Run Text="°C"/>
+                        </TextBlock>
+                    </Grid>
+                </StackPanel>
+            </Border>
+
+            <!-- ═══════════ RESULTS (after completion) ═══════════ -->
+            <Border Background="{DynamicResource ThemeCardBackgroundBrush}"
+                    CornerRadius="8" Padding="16"
+                    BorderBrush="{DynamicResource ThemeBorderBrush}" BorderThickness="1"
+                    IsVisible="{Binding HasResults}">
+                <StackPanel Spacing="12">
+                    <TextBlock Text="🏆 Výsledky testu" FontSize="16" FontWeight="Bold"
+                               Foreground="{DynamicResource ThemeSuccessBrush}"/>
+
+                    <!-- Sanitization comparison -->
+                    <Border Background="{DynamicResource ThemeSecondaryBackgroundBrush}"
+                            CornerRadius="6" Padding="10">
+                        <StackPanel Spacing="4">
+                            <TextBlock Text="🧹 Porovnání sanitizací" FontSize="12" FontWeight="SemiBold"
+                                       Foreground="{DynamicResource ThemeTextPrimaryBrush}"/>
+                            <TextBlock Text="{Binding SanitizeComparisonSummary}" FontSize="10"
+                                       Foreground="{DynamicResource ThemeTextSecondaryBrush}"
+                                       TextWrapping="Wrap" FontFamily="Courier New"/>
+                        </StackPanel>
+                    </Border>
+
+                    <!-- Seek results -->
+                    <Border Background="{DynamicResource ThemeSecondaryBackgroundBrush}"
+                            CornerRadius="6" Padding="10">
+                        <StackPanel Spacing="4">
+                            <TextBlock Text="🎯 Výsledky seek testů" FontSize="12" FontWeight="SemiBold"
+                                       Foreground="{DynamicResource ThemeTextPrimaryBrush}"/>
+                            <TextBlock Text="{Binding SeekResultsSummary}" FontSize="10"
+                                       Foreground="{DynamicResource ThemeTextSecondaryBrush}"
+                                       TextWrapping="Wrap" FontFamily="Courier New"/>
+                        </StackPanel>
+                    </Border>
+
+                    <!-- Full summary -->
+                    <Border Background="{DynamicResource ThemeSecondaryBackgroundBrush}"
+                            CornerRadius="6" Padding="10">
+                        <StackPanel Spacing="4">
+                            <TextBlock Text="📄 Kompletní shrnutí" FontSize="12" FontWeight="SemiBold"
+                                       Foreground="{DynamicResource ThemeTextPrimaryBrush}"/>
+                            <TextBlock Text="{Binding ResultsSummary}" FontSize="10"
+                                       Foreground="{DynamicResource ThemeTextSecondaryBrush}"
+                                       TextWrapping="Wrap" FontFamily="Courier New"/>
+                        </StackPanel>
+                    </Border>
+
+                    <!-- Certificate button -->
+                    <Button Content="🎯 Zobrazit certifikát"
+                            Command="{Binding GenerateCertificateCommand}"
+                            IsVisible="{Binding IsCertificateReady}"
+                            Background="{DynamicResource ThemePrimaryBrush}"
+                            Foreground="White"
+                            FontWeight="Bold" FontSize="13"
+                            Padding="20,10" CornerRadius="8"
+                            HorizontalAlignment="Center"
+                            Cursor="Hand"/>
+                </StackPanel>
+            </Border>
+
+        </StackPanel>
+    </ScrollViewer>
+</UserControl>

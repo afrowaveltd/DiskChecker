@@ -68,6 +68,7 @@ public partial class DiskCardDetailViewModel : ViewModelBase, INavigableViewMode
         _certificateExportService = certificateExportService;
         
         TestSessions = new ObservableCollection<TestSession>();
+        Certificates = new ObservableCollection<DiskCertificate>();
         SmartHistory = new ObservableCollection<SmartHistoryItem>();
         SpeedChartModel = new PlotModel { Title = "Rychlost testu" };
         TemperatureChartModel = new PlotModel { Title = "Teplota během testu" };
@@ -137,6 +138,8 @@ public partial class DiskCardDetailViewModel : ViewModelBase, INavigableViewMode
     }
 
     public ObservableCollection<TestSession> TestSessions { get; }
+
+    public ObservableCollection<DiskCertificate> Certificates { get; }
 
     public ObservableCollection<SmartHistoryItem> SmartHistory { get; }
 
@@ -434,6 +437,12 @@ public partial class DiskCardDetailViewModel : ViewModelBase, INavigableViewMode
     }
 
     [RelayCommand]
+    private void BrowseAllCertificates()
+    {
+        _navigationService.NavigateTo<CertificateBrowserViewModel>();
+    }
+
+    [RelayCommand]
     private void GoBack()
     {
         _navigationService.NavigateTo<DiskCardsViewModel>();
@@ -541,6 +550,14 @@ public partial class DiskCardDetailViewModel : ViewModelBase, INavigableViewMode
 
                 // Load latest certificate
                 LatestCertificate = await _diskCardRepository.GetLatestCertificateAsync(cardId);
+
+                // Load all certificates for this disk
+                var allCerts = await _diskCardRepository.GetCertificatesAsync(cardId);
+                Certificates.Clear();
+                foreach (var cert in allCerts.OrderByDescending(c => c.GeneratedAt))
+                {
+                    Certificates.Add(cert);
+                }
 
                 OnPropertyChanged(nameof(Card));
                 OnPropertyChanged(nameof(HasTestSessions));

@@ -1,0 +1,448 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:DiskChecker.UI.Avalonia.ViewModels"
+             xmlns:converters="using:DiskChecker.UI.Avalonia.Converters"
+             x:Class="DiskChecker.UI.Avalonia.Views.CertificateBrowserView"
+             Background="{DynamicResource ThemeBackgroundBrush}">
+
+    <UserControl.Resources>
+        <converters:IntToBoolConverter x:Key="IntToBoolConverter"/>
+    </UserControl.Resources>
+
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+
+        <!-- ========== HEADER ========== -->
+        <Border Grid.Row="0" Background="{DynamicResource ThemePanelBackgroundBrush}"
+                BorderBrush="{DynamicResource ThemeBorderBrush}"
+                BorderThickness="0,0,0,1" Padding="16,10" MinHeight="60">
+            <Grid ColumnDefinitions="*,Auto">
+                <StackPanel Grid.Column="0">
+                    <TextBlock Text="📜 Prohlížeč Certifikátů" Classes="PageTitle"/>
+                    <TextBlock Text="Všechny uložené certifikáty s rekonstruovanými grafy a detaily" Classes="PageSubtitle"/>
+                </StackPanel>
+
+                <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                    <Button Content="🔄 Obnovit"
+                            Command="{Binding RefreshCommand}"
+                            Background="{DynamicResource ThemeInfoBrush}" Foreground="White"
+                            FontWeight="Bold" Padding="12,6" Cursor="Hand"/>
+                    <Button Content="💾 Export PDF"
+                            Command="{Binding ExportPdfCommand}"
+                            IsEnabled="{Binding HasSelectedCertificate}"
+                            Background="{DynamicResource ThemeSuccessBrush}" Foreground="White"
+                            FontWeight="Bold" Padding="12,6" Cursor="Hand"/>
+                    <Button Content="💾 Karta disku"
+                            Command="{Binding ViewDiskCardCommand}"
+                            IsEnabled="{Binding HasSelectedCertificate}"
+                            Background="{DynamicResource ThemePrimaryBrush}" Foreground="White"
+                            FontWeight="Bold" Padding="12,6" Cursor="Hand"/>
+                    <Button Content="🏠 Zpět"
+                            Command="{Binding GoBackCommand}"
+                            Background="{DynamicResource ThemeSecondaryBackgroundBrush}" Foreground="{DynamicResource ThemeTextPrimaryBrush}"
+                            BorderBrush="{DynamicResource ThemeBorderBrush}"
+                            FontWeight="Bold" Padding="12,6" Cursor="Hand"/>
+                </StackPanel>
+            </Grid>
+        </Border>
+
+        <!-- ========== SEARCH AND FILTER ========== -->
+        <Border Grid.Row="1" Background="{DynamicResource ThemeSecondaryBackgroundBrush}" Padding="16,8">
+            <Grid ColumnDefinitions="*,Auto,Auto">
+                <TextBox Grid.Column="0" Watermark="🔍 Hledat podle modelu, sériového čísla, čísla certifikátu..."
+                         Text="{Binding SearchText}" Width="350" HorizontalAlignment="Left"/>
+
+                <ComboBox Grid.Column="1" ItemsSource="{Binding GradeFilters}"
+                          SelectedItem="{Binding SelectedGradeFilter}"
+                          Width="100" Margin="10,0,0,0"/>
+
+                <TextBlock Grid.Column="2" Text="{Binding TotalCertificateCount, StringFormat='Celkem: {0} certifikátů'}"
+                           FontSize="11" Foreground="{DynamicResource ThemeTextMutedBrush}"
+                           VerticalAlignment="Center" Margin="16,0,0,0"/>
+            </Grid>
+        </Border>
+
+        <!-- ========== MAIN CONTENT: Split View ========== -->
+        <Grid Grid.Row="2" Margin="16,10,16,15">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="1.5*" MinWidth="400"/>
+                <ColumnDefinition Width="4"/>
+                <ColumnDefinition Width="2.5*" MinWidth="500"/>
+            </Grid.ColumnDefinitions>
+
+            <!-- LEFT: Certificate List -->
+            <Border Grid.Column="0" Background="{DynamicResource ThemeCardBackgroundBrush}"
+                    BorderBrush="{DynamicResource ThemeBorderBrush}" BorderThickness="1"
+                    CornerRadius="8">
+                <Grid RowDefinitions="Auto,*">
+                    <TextBlock Grid.Row="0" Text="📋 Seznam certifikátů" FontSize="13" FontWeight="Bold"
+                               Margin="12,10,12,6" Foreground="{DynamicResource ThemeTextPrimaryBrush}"/>
+
+                    <DataGrid Grid.Row="1" ItemsSource="{Binding FilteredCertificates}"
+                              SelectedItem="{Binding SelectedListItem}"
+                              AutoGenerateColumns="False"
+                              IsReadOnly="True"
+                              HeadersVisibility="Column"
+                              GridLinesVisibility="Horizontal"
+                              BorderThickness="0"
+                              FontSize="11"
+                              Background="{DynamicResource ThemeCardBackgroundBrush}"
+                              Foreground="{DynamicResource ThemeTextPrimaryBrush}"
+                              RowBackground="{DynamicResource ThemeCardBackgroundBrush}"
+                              HorizontalGridLinesBrush="{DynamicResource ThemeBorderLightBrush}"
+                              VerticalGridLinesBrush="{DynamicResource ThemeBorderLightBrush}">
+                        <DataGrid.Columns>
+                            <DataGridTextColumn Header="Číslo cert." Binding="{Binding CertificateNumber}" Width="140" FontFamily="Consolas"/>
+                            <DataGridTextColumn Header="Model" Binding="{Binding DiskModel}" Width="150"/>
+                            <DataGridTextColumn Header="Sériové č." Binding="{Binding SerialNumber}" Width="130" FontFamily="Consolas"/>
+                            <DataGridTextColumn Header="Známka" Binding="{Binding Grade}" Width="55"/>
+                            <DataGridTextColumn Header="Skóre" Binding="{Binding ScoreText}" Width="50"/>
+                            <DataGridTextColumn Header="Typ testu" Binding="{Binding TestType}" Width="100"/>
+                            <DataGridTextColumn Header="Vygenerováno" Binding="{Binding GeneratedAtText}" Width="120"/>
+                            <DataGridTextColumn Header="Doporučeno" Binding="{Binding RecommendedText}" Width="80"/>
+                        </DataGrid.Columns>
+                    </DataGrid>
+
+                    <!-- Empty state -->
+                    <Panel Grid.Row="1" IsVisible="{Binding FilteredCount, Converter={StaticResource IntToBoolConverter}, ConverterParameter=Invert}">
+                        <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center">
+                            <TextBlock Text="📜" FontSize="48" HorizontalAlignment="Center"/>
+                            <TextBlock Text="Žádné certifikáty" FontSize="16" FontWeight="Bold"
+                                       HorizontalAlignment="Center" Margin="0,8,0,4"/>
+                            <TextBlock Text="Vygenerujte certifikát z karty disku"
+                                       FontSize="11" Foreground="{DynamicResource ThemeTextSecondaryBrush}" HorizontalAlignment="Center"/>
+                        </StackPanel>
+                    </Panel>
+                </Grid>
+            </Border>
+
+            <!-- Splitter -->
+            <GridSplitter Grid.Column="1" Width="4" Background="{DynamicResource ThemeBorderBrush}"
+                          HorizontalAlignment="Stretch" ResizeBehavior="PreviousAndNext"/>
+
+            <!-- RIGHT: Certificate Detail -->
+            <Border Grid.Column="2" Background="White" CornerRadius="8"
+                    BorderBrush="{DynamicResource ThemeBorderBrush}" BorderThickness="1">
+                <Border.Styles>
+                    <Style Selector="TextBlock">
+                        <Setter Property="Foreground" Value="#1A1A1A"/>
+                    </Style>
+                </Border.Styles>
+
+                <Panel>
+                    <!-- No selection state -->
+                    <Panel IsVisible="{Binding !HasSelectedCertificate}">
+                        <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center" Spacing="8">
+                            <TextBlock Text="📄" FontSize="64" HorizontalAlignment="Center"/>
+                            <TextBlock Text="Vyberte certifikát ze seznamu" FontSize="16" FontWeight="Bold"
+                                       HorizontalAlignment="Center" Foreground="#5B6470"/>
+                            <TextBlock Text="Zobrazí se kompletní rekonstrukce certifikátu včetně grafů"
+                                       FontSize="11" Foreground="#8B949E" HorizontalAlignment="Center"/>
+                        </StackPanel>
+                    </Panel>
+
+                    <!-- Certificate detail -->
+                    <ScrollViewer IsVisible="{Binding HasSelectedCertificate}">
+                    <StackPanel Spacing="16" Margin="20">
+                        <!-- Title -->
+                        <StackPanel HorizontalAlignment="Center" Spacing="4">
+                            <TextBlock Text="CERTIFIKÁT KVALITY DISKU" FontSize="22" FontWeight="Bold"
+                                       Foreground="#2A6FD6" HorizontalAlignment="Center"/>
+                            <TextBlock Text="DiskChecker – Profesionální diagnóza disků"
+                                       FontSize="10" Foreground="#5B6470" HorizontalAlignment="Center"/>
+                            <TextBlock Text="{Binding CertificateNumber}" FontSize="11" FontFamily="Consolas"
+                                       Foreground="#8B949E" HorizontalAlignment="Center" Margin="0,2,0,0"/>
+                        </StackPanel>
+
+                        <Separator Background="{DynamicResource ThemeBorderBrush}"/>
+
+                        <!-- Disk Info + Grade -->
+                        <Grid ColumnDefinitions="2*,*" ColumnSpacing="14">
+                            <Border Grid.Column="0" Background="{Binding PanelBackground}" Padding="12" CornerRadius="8">
+                                <Grid ColumnDefinitions="Auto,*" RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto" RowSpacing="3" ColumnSpacing="10">
+                                    <TextBlock Grid.Row="0" Grid.Column="0" Text="Model:" FontWeight="Bold" FontSize="11"/>
+                                    <TextBlock Grid.Row="0" Grid.Column="1" Text="{Binding DiskModel}" FontSize="11"/>
+
+                                    <TextBlock Grid.Row="1" Grid.Column="0" Text="Sériové číslo:" FontWeight="Bold" FontSize="11"/>
+                                    <TextBlock Grid.Row="1" Grid.Column="1" Text="{Binding SerialNumber}" FontFamily="Consolas" FontSize="11"/>
+
+                                    <TextBlock Grid.Row="2" Grid.Column="0" Text="Kapacita:" FontWeight="Bold" FontSize="11"/>
+                                    <TextBlock Grid.Row="2" Grid.Column="1" Text="{Binding Capacity}" FontSize="11"/>
+
+                                    <TextBlock Grid.Row="3" Grid.Column="0" Text="Typ disku:" FontWeight="Bold" FontSize="11"/>
+                                    <TextBlock Grid.Row="3" Grid.Column="1" Text="{Binding DiskType}" FontSize="11"/>
+
+                                    <TextBlock Grid.Row="4" Grid.Column="0" Text="Firmware:" FontWeight="Bold" FontSize="11"/>
+                                    <TextBlock Grid.Row="4" Grid.Column="1" Text="{Binding Firmware}" FontSize="11"/>
+
+                                    <TextBlock Grid.Row="5" Grid.Column="0" Text="Rozhraní:" FontWeight="Bold" FontSize="11"/>
+                                    <TextBlock Grid.Row="5" Grid.Column="1" Text="{Binding Interface}" FontSize="11"/>
+
+                                    <TextBlock Grid.Row="6" Grid.Column="0" Text="Provozní hodiny:" FontWeight="Bold" FontSize="11"/>
+                                    <TextBlock Grid.Row="6" Grid.Column="1" Text="{Binding SmartPowerOnHoursText}" FontSize="11"/>
+
+                                    <TextBlock Grid.Row="7" Grid.Column="0" Text="Vygenerováno:" FontWeight="Bold" FontSize="11"/>
+                                    <TextBlock Grid.Row="7" Grid.Column="1" Text="{Binding GeneratedAtText}" FontSize="11"/>
+                                </Grid>
+                            </Border>
+
+                            <Border Grid.Column="1" Background="{Binding SealBackground}" Padding="14" CornerRadius="12"
+                                    BorderBrush="{Binding GradeColor}" BorderThickness="2">
+                                <Grid RowDefinitions="Auto,Auto,*" MinHeight="200">
+                                    <TextBlock Grid.Row="0" Text="KONEČNÁ ZNÁMKA" FontSize="11" FontWeight="Bold"
+                                               HorizontalAlignment="Center" Margin="0,0,0,6"/>
+                                    <Border Grid.Row="1" Width="100" Height="100" CornerRadius="50"
+                                            BorderBrush="{Binding GradeColor}" BorderThickness="4" Background="White"
+                                            HorizontalAlignment="Center">
+                                        <TextBlock Text="{Binding Grade}" FontSize="48" FontWeight="Bold"
+                                                   Foreground="{Binding GradeColor}"
+                                                   HorizontalAlignment="Center" VerticalAlignment="Center"
+                                                   TextAlignment="Center"
+                                                   RenderTransformOrigin="0.5,0.5">
+                                            <TextBlock.RenderTransform>
+                                                <TranslateTransform Y="-5"/>
+                                            </TextBlock.RenderTransform>
+                                        </TextBlock>
+                                    </Border>
+                                    <TextBlock Grid.Row="2" Text="{Binding Score}" FontSize="14" FontWeight="Bold"
+                                               HorizontalAlignment="Center" VerticalAlignment="Bottom" Margin="0,8,0,0"/>
+                                </Grid>
+                            </Border>
+                        </Grid>
+
+                        <!-- Test Results + Performance -->
+                        <Grid ColumnDefinitions="*,*" ColumnSpacing="14">
+                            <Border Grid.Column="0" Background="{Binding PanelBackground}" Padding="10" CornerRadius="8">
+                                <StackPanel Spacing="3">
+                                    <TextBlock Text="Výsledky testu" FontWeight="Bold" FontSize="12"/>
+                                    <TextBlock Text="{Binding TestType, StringFormat='Typ: {0}'}" FontSize="11"/>
+                                    <TextBlock Text="{Binding TestDuration, StringFormat='Doba: {0}'}" FontSize="11"/>
+                                    <TextBlock Text="{Binding Errors, StringFormat='Chyby: {0}'}" FontSize="11"/>
+                                    <TextBlock Text="{Binding TemperatureRange, StringFormat='Teplota: {0}'}" FontSize="11"/>
+                                </StackPanel>
+                            </Border>
+
+                            <Border Grid.Column="1" Background="{Binding PanelBackground}" Padding="10" CornerRadius="8">
+                                <StackPanel Spacing="3">
+                                    <TextBlock Text="Výkon" FontWeight="Bold" FontSize="12"/>
+                                    <TextBlock Text="{Binding AvgWriteSpeed, StringFormat='Prům. zápis: {0}'}" FontSize="11"/>
+                                    <TextBlock Text="{Binding AvgReadSpeed, StringFormat='Prům. čtení: {0}'}" FontSize="11"/>
+                                    <TextBlock Text="{Binding MaxWriteSpeed, StringFormat='Max zápis: {0}'}" FontSize="11"/>
+                                    <TextBlock Text="{Binding MaxReadSpeed, StringFormat='Max čtení: {0}'}" FontSize="11"/>
+                                    <TextBlock Text="{Binding HealthStatus, StringFormat='Stav: {0}'}" FontSize="11"/>
+                                </StackPanel>
+                            </Border>
+                        </Grid>
+
+                        <!-- SMART Summary -->
+                        <Border Background="{Binding PanelBackground}" Padding="10" CornerRadius="8">
+                            <StackPanel Spacing="4">
+                                <TextBlock Text="SMART souhrn" FontWeight="Bold" FontSize="12"/>
+                                <TextBlock Text="{Binding SmartPowerOnHoursText, StringFormat='Provozní hodiny: {0}'}" FontSize="11"/>
+                                <TextBlock Text="{Binding SmartPowerCyclesText, StringFormat='Počet startů: {0}'}" FontSize="11"/>
+                                <TextBlock Text="{Binding SmartReallocatedSectorsText, StringFormat='Realokované sektory: {0}'}" FontSize="11"/>
+                                <TextBlock Text="{Binding SmartPendingSectorsText, StringFormat='Čekající sektory: {0}'}" FontSize="11"/>
+                                <Separator Margin="0,3"/>
+                                <TextBlock Text="Legenda známek" FontWeight="Bold" FontSize="11"/>
+                                <TextBlock Text="A = výborný • B = velmi dobrý • C = dobrý" FontSize="10"/>
+                                <TextBlock Text="D = opotřebený • E = rizikový • F = kritický" FontSize="10"/>
+                            </StackPanel>
+                        </Border>
+
+                        <!-- Seek test metrics -->
+                        <Border Background="{Binding PanelBackground}" Padding="10" CornerRadius="8"
+                                IsVisible="{Binding HasSeekMetrics}">
+                            <StackPanel Spacing="4">
+                                <TextBlock Text="🎯 Seek test (latence)" FontWeight="Bold" FontSize="12"/>
+                                <TextBlock Text="{Binding SeekTestSummaryText, StringFormat='Souhrn: {0}'}"
+                                           FontSize="10" TextWrapping="Wrap"/>
+                                <Grid ColumnDefinitions="Auto,*" RowDefinitions="Auto,Auto,Auto,Auto" RowSpacing="2" ColumnSpacing="8">
+                                    <TextBlock Grid.Row="0" Grid.Column="0" Text="Průměr:" FontSize="10"/>
+                                    <TextBlock Grid.Row="0" Grid.Column="1" Text="{Binding SeekAvgLatencyMsText}" FontSize="10" FontWeight="SemiBold"/>
+                                    <TextBlock Grid.Row="1" Grid.Column="0" Text="Minimum:" FontSize="10"/>
+                                    <TextBlock Grid.Row="1" Grid.Column="1" Text="{Binding SeekMinLatencyMsText}" FontSize="10"/>
+                                    <TextBlock Grid.Row="2" Grid.Column="0" Text="Maximum:" FontSize="10"/>
+                                    <TextBlock Grid.Row="2" Grid.Column="1" Text="{Binding SeekMaxLatencyMsText}" FontSize="10"/>
+                                    <TextBlock Grid.Row="3" Grid.Column="0" Text="P95:" FontSize="10"/>
+                                    <TextBlock Grid.Row="3" Grid.Column="1" Text="{Binding SeekP95LatencyMsText}" FontSize="10" FontWeight="SemiBold"/>
+                                </Grid>
+                            </StackPanel>
+                        </Border>
+
+                        <!-- Before/After sanitization -->
+                        <Border Background="{Binding PanelBackground}" Padding="10" CornerRadius="8"
+                                IsVisible="{Binding HasBeforeAfterComparison}">
+                            <StackPanel Spacing="4">
+                                <TextBlock Text="🧹 Porovnání sanitizací" FontWeight="Bold" FontSize="12"/>
+                                <TextBlock Text="Rychlost zápisu:" FontSize="10" FontWeight="SemiBold"/>
+                                <Grid ColumnDefinitions="Auto,Auto,Auto" RowDefinitions="Auto" ColumnSpacing="8">
+                                    <TextBlock Grid.Column="0" Text="{Binding Sanitize1WriteText, StringFormat='1. sanitizace: {0}'}" FontSize="10"/>
+                                    <TextBlock Grid.Column="1" Text="→" FontSize="10" Foreground="{DynamicResource ThemeTextMutedBrush}"/>
+                                    <TextBlock Grid.Column="2" Text="{Binding Sanitize2WriteText, StringFormat='2. sanitizace: {0}'}" FontSize="10"/>
+                                </Grid>
+                                <TextBlock Text="{Binding WriteSpeedChangeText, StringFormat='Změna: {0}'}" FontSize="10"
+                                           Foreground="{DynamicResource ThemeTextSecondaryBrush}"/>
+                                <Separator Margin="0,2"/>
+                                <TextBlock Text="Rychlost čtení:" FontSize="10" FontWeight="SemiBold"/>
+                                <Grid ColumnDefinitions="Auto,Auto,Auto" RowDefinitions="Auto" ColumnSpacing="8">
+                                    <TextBlock Grid.Column="0" Text="{Binding Sanitize1ReadText, StringFormat='1. sanitizace: {0}'}" FontSize="10"/>
+                                    <TextBlock Grid.Column="1" Text="→" FontSize="10" Foreground="{DynamicResource ThemeTextMutedBrush}"/>
+                                    <TextBlock Grid.Column="2" Text="{Binding Sanitize2ReadText, StringFormat='2. sanitizace: {0}'}" FontSize="10"/>
+                                </Grid>
+                                <TextBlock Text="{Binding ReadSpeedChangeText, StringFormat='Změna: {0}'}" FontSize="10"
+                                           Foreground="{DynamicResource ThemeTextSecondaryBrush}"/>
+                            </StackPanel>
+                        </Border>
+
+                        <!-- SMART delta -->
+                        <Border Background="{Binding PanelBackground}" Padding="10" CornerRadius="8"
+                                IsVisible="{Binding HasBeforeAfterComparison}">
+                            <StackPanel Spacing="3">
+                                <TextBlock Text="📉 SMART změny během testu" FontWeight="Bold" FontSize="12"/>
+                                <TextBlock Text="{Binding SmartDeltaSummaryText}" FontSize="10"
+                                           TextWrapping="Wrap" Foreground="{DynamicResource ThemeTextSecondaryBrush}"/>
+                            </StackPanel>
+                        </Border>
+
+                        <!-- Sanitization details -->
+                        <Border Background="{Binding PanelBackground}" Padding="10" CornerRadius="8"
+                                IsVisible="{Binding SanitizationPerformed}">
+                            <StackPanel Spacing="3">
+                                <TextBlock Text="🧹 Detaily sanitizace" FontWeight="Bold" FontSize="12"/>
+                                <TextBlock Text="{Binding SanitizationMethod, StringFormat='Metoda: {0}'}" FontSize="10"/>
+                                <TextBlock Text="{Binding DataVerified, StringFormat='Data ověřena: {0}'}" FontSize="10"/>
+                                <TextBlock Text="{Binding PartitionScheme, StringFormat='Schéma: {0}'}" FontSize="10"/>
+                                <TextBlock Text="{Binding FileSystem, StringFormat='Souborový systém: {0}'}" FontSize="10"/>
+                                <TextBlock Text="{Binding VolumeLabel, StringFormat='Label: {0}'}" FontSize="10"/>
+                            </StackPanel>
+                        </Border>
+
+                        <!-- Performance Graph -->
+                        <Border Background="{Binding PanelBackground}" Padding="12" CornerRadius="8">
+                            <StackPanel Spacing="6">
+                                <TextBlock Text="📈 Výkonový profil testu" FontWeight="Bold" FontSize="12"/>
+
+                                <Grid ColumnDefinitions="Auto,*" RowDefinitions="*,Auto" RowSpacing="4" ColumnSpacing="8">
+                                    <Grid Grid.Row="0" Grid.Column="0" RowDefinitions="Auto,*,Auto" Height="100">
+                                        <TextBlock Grid.Row="0" Text="{Binding ChartMaxSpeedLabel}" FontSize="8"
+                                                   Foreground="{DynamicResource ThemeTextMutedBrush}"/>
+                                        <TextBlock Grid.Row="1" Text="{Binding ChartMidSpeedLabel}" FontSize="8"
+                                                   Foreground="{DynamicResource ThemeTextMutedBrush}" VerticalAlignment="Center"/>
+                                        <TextBlock Grid.Row="2" Text="{Binding ChartMinSpeedLabel}" FontSize="8"
+                                                   Foreground="{DynamicResource ThemeTextMutedBrush}" VerticalAlignment="Bottom"/>
+                                    </Grid>
+
+                                    <Viewbox Grid.Row="0" Grid.Column="1" Stretch="Fill" StretchDirection="Both">
+                                        <Canvas Width="520" Height="120" Background="#FFFFFFFF" ClipToBounds="True">
+                                            <Line StartPoint="10,10" EndPoint="10,110" Stroke="#FFCBD5E1" StrokeThickness="1"/>
+                                            <Line StartPoint="10,60" EndPoint="520,60" Stroke="#FFF1F5F9" StrokeThickness="1"/>
+                                            <Line StartPoint="10,110" EndPoint="520,110" Stroke="#FFCBD5E1" StrokeThickness="1"/>
+
+                                            <Polyline Points="{Binding WriteProfilePoints}"
+                                                      Stroke="{Binding ChartStrokeWrite}" StrokeThickness="2"/>
+                                            <Polyline Points="{Binding ReadProfilePoints}"
+                                                      Stroke="{Binding ChartStrokeRead}" StrokeThickness="2"/>
+                                            <Polyline Points="{Binding TemperatureProfilePoints}"
+                                                      Stroke="#FF7C3AED" StrokeThickness="2"
+                                                      IsVisible="{Binding HasTemperatureProfile}"/>
+                                        </Canvas>
+                                    </Viewbox>
+
+                                    <Grid Grid.Row="1" Grid.Column="1" ColumnDefinitions="Auto,*,Auto,*,Auto,*,Auto,*,Auto">
+                                        <TextBlock Grid.Column="0" Text="0 %" FontSize="8" Foreground="{DynamicResource ThemeTextMutedBrush}"/>
+                                        <TextBlock Grid.Column="2" Text="25 %" FontSize="8" Foreground="{DynamicResource ThemeTextMutedBrush}" HorizontalAlignment="Center"/>
+                                        <TextBlock Grid.Column="4" Text="50 %" FontSize="8" Foreground="{DynamicResource ThemeTextMutedBrush}" HorizontalAlignment="Center"/>
+                                        <TextBlock Grid.Column="6" Text="75 %" FontSize="8" Foreground="{DynamicResource ThemeTextMutedBrush}" HorizontalAlignment="Center"/>
+                                        <TextBlock Grid.Column="8" Text="100 %" FontSize="8" Foreground="{DynamicResource ThemeTextMutedBrush}" HorizontalAlignment="Right"/>
+                                    </Grid>
+                                </Grid>
+
+                                <StackPanel Orientation="Horizontal" Spacing="14">
+                                    <StackPanel Orientation="Horizontal" Spacing="5">
+                                        <Border Width="10" Height="10" Background="{Binding ChartStrokeWrite}" CornerRadius="2"/>
+                                        <TextBlock Text="Zápis" FontSize="10"/>
+                                    </StackPanel>
+                                    <StackPanel Orientation="Horizontal" Spacing="5">
+                                        <Border Width="10" Height="10" Background="{Binding ChartStrokeRead}" CornerRadius="2"/>
+                                        <TextBlock Text="Čtení" FontSize="10"/>
+                                    </StackPanel>
+                                    <StackPanel Orientation="Horizontal" Spacing="5" IsVisible="{Binding HasTemperatureProfile}">
+                                        <Border Width="10" Height="10" Background="#FF7C3AED" CornerRadius="2"/>
+                                        <TextBlock Text="Teplota" FontSize="10"/>
+                                    </StackPanel>
+                                </StackPanel>
+                            </StackPanel>
+                        </Border>
+
+                        <!-- Diagnostic -->
+                        <Border Background="{Binding PanelBackground}" Padding="10" CornerRadius="8"
+                                IsVisible="{Binding HasDiagnosticHighlights}">
+                            <StackPanel Spacing="4">
+                                <TextBlock Text="🔍 Diagnostické signály" FontWeight="Bold" FontSize="12"/>
+                                <Border Background="{Binding DiagnosticBadgeBackground}" CornerRadius="999" Padding="8,3" HorizontalAlignment="Left">
+                                    <TextBlock Text="{Binding DiagnosticBadgeText}" FontSize="10" FontWeight="Bold"
+                                               Foreground="{Binding DiagnosticBadgeForeground}"/>
+                                </Border>
+                                <TextBlock Text="{Binding DiagnosticHighlightsText}" TextWrapping="Wrap" FontFamily="Consolas" FontSize="10"/>
+                            </StackPanel>
+                        </Border>
+
+                        <!-- Scoring reasons -->
+                        <Border Background="{Binding PanelBackground}" Padding="10" CornerRadius="8"
+                                IsVisible="{Binding HasScoringReasons}">
+                            <StackPanel Spacing="3">
+                                <TextBlock Text="📝 Důvody hodnocení" FontWeight="Bold" FontSize="12"/>
+                                <TextBlock Text="{Binding ScoringReasonsText}" TextWrapping="Wrap" FontSize="10"/>
+                            </StackPanel>
+                        </Border>
+
+                        <!-- Recommendation -->
+                        <Border Background="{Binding PanelBackground}" Padding="10" CornerRadius="8">
+                            <StackPanel Spacing="3">
+                                <TextBlock Text="✅ Doporučení" FontWeight="Bold" FontSize="12"/>
+                                <TextBlock Text="{Binding RecommendationText}" TextWrapping="Wrap" FontSize="10"/>
+                                <TextBlock Text="{Binding Recommended, StringFormat='Doporučeno k použití: {0}'}" FontSize="10"
+                                           FontWeight="SemiBold" Margin="0,4,0,0"/>
+                            </StackPanel>
+                        </Border>
+
+                        <!-- Notes -->
+                        <Border Background="{Binding PanelBackground}" Padding="10" CornerRadius="8"
+                                IsVisible="{Binding Notes, Converter={StaticResource NotNullConverter}}">
+                            <StackPanel Spacing="3">
+                                <TextBlock Text="📋 Poznámky" FontWeight="Bold" FontSize="12"/>
+                                <TextBlock Text="{Binding Notes}" TextWrapping="Wrap" FontSize="10"/>
+                            </StackPanel>
+                        </Border>
+                    </StackPanel>
+                </ScrollViewer>
+                </Panel>
+            </Border>
+        </Grid>
+
+        <!-- ========== STATUS BAR ========== -->
+        <Border Grid.Row="3" Classes="StatusBar" Padding="16,6">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+
+                <TextBlock Grid.Column="0" Text="{Binding StatusMessage}" Classes="StatusText"/>
+
+                <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8">
+                    <TextBlock Text="{Binding FilteredCount, StringFormat='Zobrazeno: {0}'}" FontSize="10"
+                               Foreground="{DynamicResource ThemeTextMutedBrush}"/>
+                    <Panel IsVisible="{Binding IsLoading}">
+                        <TextBlock Text="⏳ Načítám..." FontSize="10" Foreground="{DynamicResource ThemeWarningBrush}"/>
+                    </Panel>
+                </StackPanel>
+            </Grid>
+        </Border>
+    </Grid>
+</UserControl>

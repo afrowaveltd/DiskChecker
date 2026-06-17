@@ -441,6 +441,13 @@ public class LinuxSmartaProvider : ISmartaProvider, IAdvancedSmartaProvider
         }
     }
 
+    /// <summary>
+    /// Device type probes to try when SMART access fails. Max 3 attempts total.
+    /// First attempt is always "auto", then specific bridge types.
+    /// </summary>
+    private static readonly string[] DeviceTypeProbes = { "auto", "sat", "usbprolific", "usbjmicron" };
+    private const int MaxDeviceTypeProbes = 3;
+
     private async Task<(int ExitCode, string Output, string Error)?> ExecuteSmartctlCommandAsync(string devicePath, string arguments, CancellationToken cancellationToken)
     {
         LastOperationWasPermissionDenied = false;
@@ -458,36 +465,91 @@ public class LinuxSmartaProvider : ISmartaProvider, IAdvancedSmartaProvider
                 return null;
             }
 
-            var deviceType = DetectDeviceType(devicePath);
-            var args = BuildSmartctlArgsForQuery(arguments, devicePath, deviceType);
-            Console.WriteLine($"[LinuxSmartaProvider] Running: {smartctlPath} {args}");
-
-            var directResult = await ExecuteProcessAsync(smartctlPath, args, cancellationToken);
-            if (directResult == null)
+            // Try multiple device types (max 3 probes)
+            for (int probeIndex = 0; probeIndex < Math.Min(DeviceTypeProbes.Length, MaxDeviceTypeProbes); probeIndex++)
             {
-                return null;
-            }
-
-            if (RequiresElevatedRetry(directResult.Value))
-            {
-                if (_logger != null && _logger.IsEnabled(LogLevel.Warning))
+                var deviceType = DeviceTypeProbes[probeIndex];
+                var args = BuildSmartctlArgsForQuery(arguments, devicePath, deviceType);
+                
+                if (probeIndex > 0)
                 {
-                    _logger.LogWarning("Direct SMART access to {DevicePath} was denied. Retrying with elevated helper.", devicePath);
+                    Console.WriteLine($"[LinuxSmartaProvider] Retry {probeIndex + 1}/{MaxDeviceTypeProbes}: trying device type '{deviceType}' for {devicePath}");
+                    if (_logger != null && _logger.IsEnabled(LogLevel.Information))
+                    {
+                        _logger.LogInformation("SMART retry {Attempt}/{Max}: trying device type '{DeviceType}' for {DevicePath}",
+                            probeIndex + 1, MaxDeviceTypeProbes, deviceType, devicePath);
+                    }
+                }
+                
+                Console.WriteLine($"[LinuxSmartaProvider] Running: {smartctlPath} {args}");
+
+                var directResult = await ExecuteProcessAsync(smartctlPath, args, cancellationToken);
+                if (directResult == null)
+                {
+                    continue;
                 }
 
-                var elevatedResult = await TryElevatedSmartctlAsync(smartctlPath, args, cancellationToken);
-                if (elevatedResult != null)
+                if (RequiresElevatedRetry(directResult.Value))
                 {
-                    return elevatedResult;
+                    if (_logger != null && _logger.IsEnabled(LogLevel.Warning))
+                    {
+                        _logger.LogWarning("Direct SMART access to {DevicePath} was denied. Retrying with elevated helper.", devicePath);
+                    }
+
+                    var elevatedResult = await TryElevatedSmartctlAsync(smartctlPath, args, cancellationToken);
+                    if (elevatedResult != null)
+                    {
+                        // Check if elevated result is successful
+                        if (elevatedResult.Value.ExitCode == 0 || elevatedResult.Value.ExitCode == 1)
+                        {
+                            return elevatedResult;
+                        }
+                        if (!string.IsNullOrWhiteSpace(elevatedResult.Value.Output) && 
+                            (elevatedResult.Value.Output.Contains("SMART", StringComparison.OrdinalIgnoreCase) ||
+                             elevatedResult.Value.Output.Contains("Device Model", StringComparison.OrdinalIgnoreCase)))
+                        {
+                            return elevatedResult;
+                        }
+                    }
+
+                    // Elevated retry also failed – flag permission denied
+                    LastOperationWasPermissionDenied = true;
+                    Console.WriteLine("[LinuxSmartaProvider] Permission denied: both direct and sudo smartctl failed.");
+                    
+                    // If this was the last probe, return the elevated result anyway
+                    if (probeIndex >= Math.Min(DeviceTypeProbes.Length, MaxDeviceTypeProbes) - 1)
+                    {
+                        return elevatedResult ?? directResult;
+                    }
+                    continue;
                 }
 
-                // Elevated retry also failed – flag permission denied
-                LastOperationWasPermissionDenied = true;
-                Console.WriteLine("[LinuxSmartaProvider] Permission denied: both direct and sudo smartctl failed.");
-                return null;
+                // Success: exit code 0 or 1
+                if (directResult.Value.ExitCode == 0 || directResult.Value.ExitCode == 1)
+                {
+                    return directResult;
+                }
+                
+                // If we got some output even with error code, it might be usable
+                if (!string.IsNullOrWhiteSpace(directResult.Value.Output) && 
+                    (directResult.Value.Output.Contains("SMART", StringComparison.OrdinalIgnoreCase) ||
+                     directResult.Value.Output.Contains("Device Model", StringComparison.OrdinalIgnoreCase) ||
+                     directResult.Value.Output.Contains("User Capacity", StringComparison.OrdinalIgnoreCase)))
+                {
+                    return directResult;
+                }
+                
+                // If this was the last probe, return whatever we got
+                if (probeIndex >= Math.Min(DeviceTypeProbes.Length, MaxDeviceTypeProbes) - 1)
+                {
+                    return directResult;
+                }
+                
+                // Brief delay before next probe
+                await Task.Delay(300, cancellationToken);
             }
-
-            return directResult;
+            
+            return null;
         }
         catch (Exception ex)
         {

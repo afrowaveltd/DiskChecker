@@ -311,9 +311,11 @@ public partial class DiskSelectionViewModel : ViewModelBase, INavigableViewModel
         }
         
         // Calculate quality rating
-        var quality = smartData != null 
-            ? _qualityCalculator.CalculateQuality(smartData) 
-            : new QualityRating(QualityGrade.F, 0);
+        QualityRating? quality = null;
+        if (smartData != null)
+        {
+            quality = _qualityCalculator.CalculateQuality(smartData);
+        }
         
         // Format capacity
         var capacityText = FormatCapacity(drive.TotalSize);
@@ -334,11 +336,12 @@ public partial class DiskSelectionViewModel : ViewModelBase, INavigableViewModel
         var partitionCount = drive.Volumes?.Count ?? 0;
         
         // Determine health status
-        var healthStatus = quality.Grade switch
+        var healthStatus = quality?.Grade switch
         {
             QualityGrade.A or QualityGrade.B => "OK",
             QualityGrade.C => "Warning",
-            _ => "Critical"
+            QualityGrade.D or QualityGrade.E or QualityGrade.F => "Critical",
+            _ => "Unknown"
         };
         
         // Check if disk has test history (disk card exists)
@@ -361,7 +364,7 @@ public partial class DiskSelectionViewModel : ViewModelBase, INavigableViewModel
                 : drive.Name ?? "Unknown",
             DisplayPath = drive.Path,
             CapacityText = capacityText,
-            GradeText = quality.Grade.ToString(),
+            GradeText = quality?.Grade.ToString() ?? "N/A",
             TemperatureText = temperatureText,
             SmartData = smartData,
             Quality = quality,

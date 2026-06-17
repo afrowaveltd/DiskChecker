@@ -109,6 +109,18 @@ public class CoreDriveInfo
     /// Bus/connection type for this disk.
     /// </summary>
     public CoreBusType BusType { get; set; } = CoreBusType.Unknown;
+
+    /// <summary>
+    /// Maximum theoretical transfer rate of the connection in Mbps.
+    /// Examples: USB 2.0 = 480, SATA 3 = 6000, NVMe Gen3 x4 = 32000.
+    /// Null if unknown.
+    /// </summary>
+    public int? ConnectionSpeedMbps { get; set; }
+
+    /// <summary>
+    /// Human-readable connection speed description (e.g., "USB 2.0 (480 Mbps)", "SATA 6 Gb/s").
+    /// </summary>
+    public string? ConnectionSpeedDescription { get; set; }
     
     /// <summary>
     /// Firmware revision string (alias for FirmwareVersion).

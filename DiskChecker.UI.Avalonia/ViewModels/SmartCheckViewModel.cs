@@ -227,6 +227,28 @@ public string SelectedTestType
     public bool HasData => CurrentSmartData != null;
     public bool HasHealthData => CurrentSmartData?.IsHealthy == true;
     
+    // Connection speed info
+    private string _connectionSpeedText = string.Empty;
+    public string ConnectionSpeedText
+    {
+        get => _connectionSpeedText;
+        set => SetProperty(ref _connectionSpeedText, value);
+    }
+
+    private string _connectionSpeedDescription = string.Empty;
+    public string ConnectionSpeedDescription
+    {
+        get => _connectionSpeedDescription;
+        set => SetProperty(ref _connectionSpeedDescription, value);
+    }
+
+    private bool _hasConnectionSpeedInfo;
+    public bool HasConnectionSpeedInfo
+    {
+        get => _hasConnectionSpeedInfo;
+        set => SetProperty(ref _hasConnectionSpeedInfo, value);
+    }
+
     // Self-test progress tracking
     private int _selfTestProgress;
     private string _selfTestProgressText = "";
@@ -476,6 +498,42 @@ public string SelectedTestType
             var total = drives.Count;
             var processed = 0;
 
+            // Detect connection speeds for all drives in parallel
+            var speedDetectionTasks = new List<Task>();
+            for (int i = 0; i < drives.Count; i++)
+            {
+                var idx = i;
+                var drive = drives[i];
+                speedDetectionTasks.Add(Task.Run(async () =>
+                {
+                    try
+                    {
+                        var (speedMbps, speedDesc) = await _diskDetectionService.DetectConnectionSpeedAsync(drive.Path, drive.BusType);
+                        drive.ConnectionSpeedMbps = speedMbps;
+                        drive.ConnectionSpeedDescription = speedDesc;
+                    }
+                    catch
+                    {
+                        // Non-critical – just leave speed info empty
+                    }
+                }));
+            }
+            // Don't await – let speed detection run in background while SMART loads
+            _ = Task.WhenAll(speedDetectionTasks).ContinueWith(_ =>
+            {
+                Dispatcher.UIThread.InvokeAsync(() =>
+                {
+                    foreach (var card in Disks)
+                    {
+                        if (card.Drive != null)
+                        {
+                            card.ConnectionSpeedMbps = card.Drive.ConnectionSpeedMbps;
+                            card.ConnectionSpeedDescription = card.Drive.ConnectionSpeedDescription;
+                        }
+                    }
+                });
+            });
+
             // Local worker to probe single drive and update placeholder
             async Task ProbeDriveAsync(int index, CoreDriveInfo drive)
             {
@@ -500,9 +558,11 @@ public string SelectedTestType
                         System.Diagnostics.Debug.WriteLine($"Error reading SMART for {drive.Path}: {ex.Message}");
                     }
 
-                    var quality = smartData != null
-                        ? _qualityCalculator.CalculateQuality(smartData)
-                        : new QualityRating(QualityGrade.F, 0);
+                    QualityRating? quality = null;
+                    if (smartData != null)
+                    {
+                        quality = _qualityCalculator.CalculateQuality(smartData);
+                    }
 
                     // Update the placeholder on UI thread
                     await Dispatcher.UIThread.InvokeAsync(() =>
@@ -513,10 +573,13 @@ public string SelectedTestType
                             card.SmartData = smartData;
                             card.Quality = quality;
                             card.DisplayName = !string.IsNullOrEmpty(smartData?.DeviceModel) ? smartData.DeviceModel.Trim() : (drive.Name ?? drive.Path);
-                            card.GradeText = quality.Grade.ToString();
+                            card.GradeText = quality?.Grade.ToString() ?? "N/A";
                             card.TemperatureText = smartData?.Temperature > 0 ? $"{smartData.Temperature}°C" : "N/A";
                             card.IsLoading = false;
                             card.ErrorMessage = error ?? string.Empty;
+                            card.BusType = drive.BusType;
+                            card.ConnectionSpeedMbps = drive.ConnectionSpeedMbps;
+                            card.ConnectionSpeedDescription = drive.ConnectionSpeedDescription;
                         }
 
                         processed++;
@@ -596,24 +659,26 @@ public string SelectedTestType
                 if (_smartaProvider.LastOperationWasPermissionDenied)
                 {
                     StatusMessage = "⚠️ SMART data nedostupná – spusťte aplikaci s právy root (sudo)";
-                    await _dialogService.ShowErrorAsync("Nedostatečná oprávnění",
-                        $"Pro čtení SMART dat disku {SelectedDisk.DisplayName} jsou potřeba administrátorská práva.\n\n" +
-                        "Spusťte aplikaci s root oprávněními:\n" +
-                        "  sudo ./DiskChecker\n\n" +
-                        "nebo přidejte uživatele do skupiny disk:\n" +
-                        "  sudo usermod -aG disk $USER\n" +
-                        "a odhlaste se a znovu přihlaste.");
+                    // Permission issue is informative - don't block with error dialog
+                    // User can still see disk info and use other features
                 }
                 else
                 {
-                    StatusMessage = "Nepodařilo se načíst SMART data";
-                    await _dialogService.ShowErrorAsync("Chyba", 
-                        $"Nepodařilo se načíst SMART data pro disk {SelectedDisk.DisplayName}.\n\n" +
-                        "Ujistěte se, že:\n" +
-                        "1. Aplikace běží s administrátorskými právy\n" +
-                        "2. Disk podporuje SMART\n" +
-                        "3. je nainstalován smartmontools");
+                    StatusMessage = "SMART data nedostupná – disk nemusí podporovat SMART (např. USB adaptér)";
+                    // SMART unavailability is informative, not an error
+                    // The disk may still be perfectly functional
                 }
+                
+                // Clear SMART-dependent data but keep disk selected
+                CurrentSmartData = null;
+                CurrentQuality = null;
+                await Dispatcher.UIThread.InvokeAsync(() =>
+                {
+                    SmartAttributes.Clear();
+                    CriticalAttributes.Clear();
+                    SelfTestLog.Clear();
+                });
+                UpdateComputedProperties();
                 return;
             }
             

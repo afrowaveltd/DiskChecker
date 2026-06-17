@@ -247,6 +247,85 @@ public class DiskCertificate
     /// </summary>
     public string? Notes { get; set; }
     
+    // ========== Seek Test Metrics (Absolute Destructive Test) ==========
+
+    /// <summary>
+    /// Average seek latency across all three seek test types (ms).
+    /// </summary>
+    public double? SeekAvgLatencyMs { get; set; }
+
+    /// <summary>
+    /// Minimum seek latency recorded (ms).
+    /// </summary>
+    public double? SeekMinLatencyMs { get; set; }
+
+    /// <summary>
+    /// Maximum seek latency recorded (ms).
+    /// </summary>
+    public double? SeekMaxLatencyMs { get; set; }
+
+    /// <summary>
+    /// Standard deviation of seek latencies (ms).
+    /// </summary>
+    public double? SeekStdDevLatencyMs { get; set; }
+
+    /// <summary>
+    /// 95th percentile seek latency (ms).
+    /// </summary>
+    public double? SeekP95LatencyMs { get; set; }
+
+    /// <summary>
+    /// Human-readable summary of seek test results per type.
+    /// </summary>
+    public string? SeekTestSummary { get; set; }
+
+    // ========== Before/After Sanitization Comparison ==========
+
+    /// <summary>
+    /// Average write speed from first sanitization (MB/s).
+    /// </summary>
+    public double? Sanitize1AvgWriteMBps { get; set; }
+
+    /// <summary>
+    /// Average write speed from second sanitization (MB/s).
+    /// </summary>
+    public double? Sanitize2AvgWriteMBps { get; set; }
+
+    /// <summary>
+    /// Percentage change in write speed between sanitizations.
+    /// </summary>
+    public double? WriteSpeedChangePercent { get; set; }
+
+    /// <summary>
+    /// Average read speed from first sanitization (MB/s).
+    /// </summary>
+    public double? Sanitize1AvgReadMBps { get; set; }
+
+    /// <summary>
+    /// Average read speed from second sanitization (MB/s).
+    /// </summary>
+    public double? Sanitize2AvgReadMBps { get; set; }
+
+    /// <summary>
+    /// Percentage change in read speed between sanitizations.
+    /// </summary>
+    public double? ReadSpeedChangePercent { get; set; }
+
+    /// <summary>
+    /// Error count from first sanitization.
+    /// </summary>
+    public int? Sanitize1Errors { get; set; }
+
+    /// <summary>
+    /// Error count from second sanitization.
+    /// </summary>
+    public int? Sanitize2Errors { get; set; }
+
+    /// <summary>
+    /// Human-readable summary of SMART attribute changes across the test.
+    /// </summary>
+    public string? SmartDeltaSummary { get; set; }
+
     /// <summary>
     /// Whether certified disk is recommended for use
     /// </summary>

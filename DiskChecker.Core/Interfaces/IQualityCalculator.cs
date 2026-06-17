@@ -4,6 +4,6 @@ namespace DiskChecker.Core.Interfaces
 {
     public interface IQualityCalculator
     {
-        QualityRating CalculateQuality(SmartaData smartaData);
+        QualityRating CalculateQuality(SmartaData? smartaData);
     }
 }

@@ -495,6 +495,13 @@ public class WindowsSmartaProvider : ISmartaProvider, IAdvancedSmartaProvider
         }
     }
 
+    /// <summary>
+    /// Device type probes to try when SMART access fails. Max 3 attempts total.
+    /// First attempt is always "auto", then specific bridge types.
+    /// </summary>
+    private static readonly string[] DeviceTypeProbes = { "auto", "sat", "usbprolific", "usbjmicron" };
+    private const int MaxDeviceTypeProbes = 3;
+
     private async Task<(int ExitCode, string Output, string Error)?> ExecuteSmartctlCommandAsync(string devicePath, string arguments, CancellationToken cancellationToken)
     {
         try
@@ -510,42 +517,96 @@ public class WindowsSmartaProvider : ISmartaProvider, IAdvancedSmartaProvider
                 return null;
             }
 
-            // Convert Windows path to Cygwin/MSYS format and detect device type
+            // Convert Windows path to Cygwin/MSYS format
             var devPath = ConvertToDevicePath(devicePath);
-            var deviceType = DetectDeviceType(devicePath);
-            var args = BuildSmartctlArgsForQuery(arguments, devPath, deviceType);
             
-            
-            var psi = new ProcessStartInfo
+            // Try multiple device types (max 3 probes)
+            for (int probeIndex = 0; probeIndex < Math.Min(DeviceTypeProbes.Length, MaxDeviceTypeProbes); probeIndex++)
             {
-                FileName = smartctlPath,
-                Arguments = args,
-                RedirectStandardOutput = true,
-                RedirectStandardError = true,
-                UseShellExecute = false,
-                CreateNoWindow = true
-            };
+                var deviceType = DeviceTypeProbes[probeIndex];
+                var args = BuildSmartctlArgsForQuery(arguments, devPath, deviceType);
+                
+                if (probeIndex > 0 && _logger != null && _logger.IsEnabled(LogLevel.Information))
+                {
+                    _logger.LogInformation("SMART retry {Attempt}/{Max}: trying device type '{DeviceType}' for {DevicePath}",
+                        probeIndex + 1, MaxDeviceTypeProbes, deviceType, devicePath);
+                }
+                
+                var psi = new ProcessStartInfo
+                {
+                    FileName = smartctlPath,
+                    Arguments = args,
+                    RedirectStandardOutput = true,
+                    RedirectStandardError = true,
+                    UseShellExecute = false,
+                    CreateNoWindow = true
+                };
 
-            using var process = Process.Start(psi);
-            if (process == null)
-            {
-                return null;
+                using var process = Process.Start(psi);
+                if (process == null)
+                {
+                    continue;
+                }
+
+                // Read output and wait for exit in parallel to avoid deadlock
+                var outputTask = process.StandardOutput.ReadToEndAsync(cancellationToken);
+                var errorTask = process.StandardError.ReadToEndAsync(cancellationToken);
+                
+                // Use a shorter timeout for retries
+                using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+                timeoutCts.CancelAfter(TimeSpan.FromSeconds(probeIndex == 0 ? 15 : 8));
+                
+                try
+                {
+                    await process.WaitForExitAsync(timeoutCts.Token);
+                }
+                catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+                {
+                    try { process.Kill(entireProcessTree: true); } catch { }
+                    if (_logger != null && _logger.IsEnabled(LogLevel.Debug))
+                    {
+                        _logger.LogDebug("smartctl timeout for device type '{DeviceType}' on {DevicePath}", deviceType, devicePath);
+                    }
+                    continue;
+                }
+                
+                var output = await outputTask;
+                var error = await errorTask;
+
+                if (_logger != null && _logger.IsEnabled(LogLevel.Debug))
+                {
+                    _logger.LogDebug("smartctl {Args} exit code: {ExitCode}", args, process.ExitCode);
+                }
+                
+                // Success: exit code 0 or 1 (1 = SMART warnings but data available)
+                if (process.ExitCode == 0 || process.ExitCode == 1)
+                {
+                    return (process.ExitCode, output, error);
+                }
+                
+                // If we got some output even with error code, it might be usable
+                if (!string.IsNullOrWhiteSpace(output) && output.Contains("smartctl", StringComparison.OrdinalIgnoreCase))
+                {
+                    // Check if output contains actual SMART data despite non-zero exit code
+                    if (output.Contains("SMART", StringComparison.OrdinalIgnoreCase) || 
+                        output.Contains("Device Model", StringComparison.OrdinalIgnoreCase) ||
+                        output.Contains("User Capacity", StringComparison.OrdinalIgnoreCase))
+                    {
+                        return (process.ExitCode, output, error);
+                    }
+                }
+                
+                // If this was the last probe, return whatever we got
+                if (probeIndex >= Math.Min(DeviceTypeProbes.Length, MaxDeviceTypeProbes) - 1)
+                {
+                    return (process.ExitCode, output, error);
+                }
+                
+                // Brief delay before next probe
+                await Task.Delay(300, cancellationToken);
             }
-
-            // Read output and wait for exit in parallel to avoid deadlock
-            var outputTask = process.StandardOutput.ReadToEndAsync(cancellationToken);
-            var errorTask = process.StandardError.ReadToEndAsync(cancellationToken);
-            await process.WaitForExitAsync(cancellationToken);
             
-            var output = await outputTask;
-            var error = await errorTask;
-
-            if (_logger != null && _logger.IsEnabled(LogLevel.Debug))
-            {
-                _logger.LogDebug("smartctl {Args} exit code: {ExitCode}", args, process.ExitCode);
-            }
-            
-            return (process.ExitCode, output, error);
+            return null;
         }
         catch (Exception ex)
         {

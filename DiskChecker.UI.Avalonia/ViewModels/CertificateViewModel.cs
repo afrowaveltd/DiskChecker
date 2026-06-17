@@ -96,6 +96,20 @@ public partial class CertificateViewModel : ViewModelBase, INavigableViewModel
             OnPropertyChanged(nameof(AvgWriteSpeed));
             OnPropertyChanged(nameof(AvgReadSpeed));
             OnPropertyChanged(nameof(TemperatureRange));
+            OnPropertyChanged(nameof(HasSeekMetrics));
+            OnPropertyChanged(nameof(SeekAvgLatencyMsText));
+            OnPropertyChanged(nameof(SeekMinLatencyMsText));
+            OnPropertyChanged(nameof(SeekMaxLatencyMsText));
+            OnPropertyChanged(nameof(SeekP95LatencyMsText));
+            OnPropertyChanged(nameof(SeekTestSummaryText));
+            OnPropertyChanged(nameof(HasBeforeAfterComparison));
+            OnPropertyChanged(nameof(Sanitize1WriteText));
+            OnPropertyChanged(nameof(Sanitize2WriteText));
+            OnPropertyChanged(nameof(WriteSpeedChangeText));
+            OnPropertyChanged(nameof(Sanitize1ReadText));
+            OnPropertyChanged(nameof(Sanitize2ReadText));
+            OnPropertyChanged(nameof(ReadSpeedChangeText));
+            OnPropertyChanged(nameof(SmartDeltaSummaryText));
             OnPropertyChanged(nameof(Errors));
             OnPropertyChanged(nameof(SmartPassed));
             OnPropertyChanged(nameof(Recommended));
@@ -306,6 +320,48 @@ public partial class CertificateViewModel : ViewModelBase, INavigableViewModel
    public string SmartPendingSectorsText => (Certificate?.PendingSectors ?? 0).ToString(CultureInfo.InvariantCulture);
    public bool Recommended => Certificate?.Recommended ?? false;
    public string RecommendationText => Certificate?.RecommendationNotes ?? "Není k dispozici";
+
+   // ── Seek test metrics (Absolute Destructive Test) ──
+
+   public bool HasSeekMetrics => Certificate?.SeekAvgLatencyMs.HasValue == true;
+
+   public string SeekAvgLatencyMsText => Certificate?.SeekAvgLatencyMs.HasValue == true
+       ? $"{Certificate.SeekAvgLatencyMs.Value:F2} ms" : "—";
+
+   public string SeekMinLatencyMsText => Certificate?.SeekMinLatencyMs.HasValue == true
+       ? $"{Certificate.SeekMinLatencyMs.Value:F2} ms" : "—";
+
+   public string SeekMaxLatencyMsText => Certificate?.SeekMaxLatencyMs.HasValue == true
+       ? $"{Certificate.SeekMaxLatencyMs.Value:F2} ms" : "—";
+
+   public string SeekP95LatencyMsText => Certificate?.SeekP95LatencyMs.HasValue == true
+       ? $"{Certificate.SeekP95LatencyMs.Value:F2} ms" : "—";
+
+   public string SeekTestSummaryText => Certificate?.SeekTestSummary ?? "—";
+
+   // ── Before/After sanitization comparison ──
+
+   public bool HasBeforeAfterComparison => Certificate?.Sanitize1AvgWriteMBps.HasValue == true;
+
+   public string Sanitize1WriteText => Certificate?.Sanitize1AvgWriteMBps.HasValue == true
+       ? $"{Certificate.Sanitize1AvgWriteMBps.Value:F1} MB/s" : "—";
+
+   public string Sanitize2WriteText => Certificate?.Sanitize2AvgWriteMBps.HasValue == true
+       ? $"{Certificate.Sanitize2AvgWriteMBps.Value:F1} MB/s" : "—";
+
+   public string WriteSpeedChangeText => Certificate?.WriteSpeedChangePercent.HasValue == true
+       ? $"{Certificate.WriteSpeedChangePercent.Value:+0.0;-0.0}%" : "—";
+
+   public string Sanitize1ReadText => Certificate?.Sanitize1AvgReadMBps.HasValue == true
+       ? $"{Certificate.Sanitize1AvgReadMBps.Value:F1} MB/s" : "—";
+
+   public string Sanitize2ReadText => Certificate?.Sanitize2AvgReadMBps.HasValue == true
+       ? $"{Certificate.Sanitize2AvgReadMBps.Value:F1} MB/s" : "—";
+
+   public string ReadSpeedChangeText => Certificate?.ReadSpeedChangePercent.HasValue == true
+       ? $"{Certificate.ReadSpeedChangePercent.Value:+0.0;-0.0}%" : "—";
+
+   public string SmartDeltaSummaryText => Certificate?.SmartDeltaSummary ?? "—";
 
    public string ScoringReasonsText => string.IsNullOrWhiteSpace(Certificate?.Notes)
        ? "Bez významných varování."
@@ -1264,31 +1320,6 @@ public partial class CertificateViewModel : ViewModelBase, INavigableViewModel
     private static bool ContainsDiagnosticMarker(string? notes, string marker)
     {
        return !string.IsNullOrWhiteSpace(notes) && notes.Contains(marker, StringComparison.OrdinalIgnoreCase);
-    }
-
-    private readonly record struct CertificateGraphData(
-        string WriteProfilePoints,
-        string ReadProfilePoints,
-        string TemperatureProfilePoints,
-        bool HasTemperatureProfile,
-        string ChartMaxSpeedLabel,
-        string ChartMidSpeedLabel,
-        string ChartMinSpeedLabel,
-        string ChartXAxisStartLabel,
-        string ChartXAxisMidLabel,
-        string ChartXAxisEndLabel)
-    {
-       public static CertificateGraphData Default { get; } = new(
-           "10,90 70,85 130,80 190,75 250,70 310,65 370,60 430,58 490,55",
-           "10,95 70,90 130,86 190,82 250,79 310,76 370,73 430,70 490,68",
-           "10,110 490,110",
-           false,
-           "1 MB/s",
-           "0.5 MB/s",
-           "0 MB/s",
-           "0 %",
-           "50 %",
-           "100 %");
     }
 
     /// <summary>

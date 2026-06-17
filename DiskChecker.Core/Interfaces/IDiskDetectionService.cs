@@ -16,4 +16,9 @@ public interface IDiskDetectionService
     /// Gets a specific drive by path.
     /// </summary>
     Task<CoreDriveInfo?> GetDriveAsync(string path, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Detects the connection speed (Mbps) and human-readable description for a drive.
+    /// </summary>
+    Task<(int? SpeedMbps, string? Description)> DetectConnectionSpeedAsync(string devicePath, CoreBusType busType, CancellationToken cancellationToken = default);
 }

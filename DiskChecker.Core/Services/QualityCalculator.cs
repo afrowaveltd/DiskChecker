@@ -17,9 +17,17 @@ public class QualityCalculator : IQualityCalculator
         Nvme
     }
 
-    public QualityRating CalculateQuality(SmartaData smartaData)
+    public QualityRating CalculateQuality(SmartaData? smartaData)
     {
-        ArgumentNullException.ThrowIfNull(smartaData);
+        if (smartaData == null)
+        {
+            // SMART data unavailable - return neutral rating
+            // This is informative, not an error (e.g., USB adapters often don't pass SMART)
+            return new QualityRating(QualityGrade.C, 50)
+            {
+                Warnings = new List<string> { "SMART data nedostupná – disk může být v pořádku (např. přes USB adaptér)" }
+            };
+        }
 
         var category = GetMediaCategory(smartaData);
         var warnings = new List<string>();

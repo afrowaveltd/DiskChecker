@@ -596,4 +596,94 @@ public class LinuxDiskDetectionService : IDiskDetectionService
         var drives = await GetDrivesAsync(cancellationToken);
         return drives.FirstOrDefault(d => string.Equals(d.Path, path, StringComparison.OrdinalIgnoreCase));
     }
+
+    public async Task<(int? SpeedMbps, string? Description)> DetectConnectionSpeedAsync(string devicePath, CoreBusType busType, CancellationToken cancellationToken = default)
+    {
+        // For NVMe, read PCIe link speed from sysfs
+        if (busType == CoreBusType.Nvme)
+        {
+            try
+            {
+                var deviceName = Path.GetFileName(devicePath);
+                var nvmeController = deviceName.Replace("n1", "").Replace("p1", "");
+                
+                var linkSpeedPaths = new[]
+                {
+                    $"/sys/block/{deviceName}/device/device/link_speed",
+                    $"/sys/class/nvme/{nvmeController}/device/link_speed",
+                };
+
+                foreach (var path in linkSpeedPaths)
+                {
+                    if (File.Exists(path))
+                    {
+                        var content = (await File.ReadAllTextAsync(path, cancellationToken)).Trim();
+                        var speedMatch = Regex.Match(content, @"(\d+\.?\d*)\s*GT/s");
+                        if (speedMatch.Success && double.TryParse(speedMatch.Groups[1].Value, System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out var gtPerSec))
+                        {
+                            var lanes = 4;
+                            var encodingEfficiency = 0.985;
+                            var rawMbps = gtPerSec * 1000 * lanes * encodingEfficiency;
+                            var gen = gtPerSec >= 16 ? "Gen5" : gtPerSec >= 8 ? "Gen4" : gtPerSec >= 4 ? "Gen3" : "Gen2";
+                            return ((int)rawMbps, $"NVMe PCIe {gen} x{lanes} ({gtPerSec} GT/s, až {(int)rawMbps} Mbps)");
+                        }
+                    }
+                }
+            }
+            catch { }
+            return (32000, "NVMe (až 32 000 Mbps)");
+        }
+
+        // For USB drives, check sysfs speed
+        if (busType == CoreBusType.Usb)
+        {
+            try
+            {
+                var deviceName = Path.GetFileName(devicePath);
+                var speedPath = $"/sys/block/{deviceName}/device/speed";
+                if (File.Exists(speedPath))
+                {
+                    var content = (await File.ReadAllTextAsync(speedPath, cancellationToken)).Trim();
+                    if (int.TryParse(content, out var speed))
+                    {
+                        if (speed >= 5000)
+                            return (speed, $"USB 3.x SuperSpeed ({speed} Mbps)");
+                        if (speed >= 480)
+                            return (speed, $"USB 2.0 Hi-Speed ({speed} Mbps)");
+                        return (speed, $"USB ({speed} Mbps)");
+                    }
+                }
+            }
+            catch { }
+            return (480, "USB 2.0 Hi-Speed (480 Mbps) – předpokládáno");
+        }
+
+        if (busType == CoreBusType.Sata)
+        {
+            try
+            {
+                var deviceName = Path.GetFileName(devicePath);
+                var sataSpeedPath = $"/sys/class/ata_link/{deviceName}/sata_spd";
+                if (File.Exists(sataSpeedPath))
+                {
+                    var content = (await File.ReadAllTextAsync(sataSpeedPath, cancellationToken)).Trim();
+                    if (int.TryParse(content, out var gen))
+                    {
+                        var speed = gen switch { 1 => 1500, 2 => 3000, 3 => 6000, _ => 6000 };
+                        return (speed, $"SATA {gen} ({speed} Mbps)");
+                    }
+                }
+            }
+            catch { }
+            return (6000, "SATA 6 Gb/s (6 000 Mbps)");
+        }
+
+        if (busType == CoreBusType.Sas)
+            return (12000, "SAS 12 Gb/s (12 000 Mbps)");
+
+        if (busType == CoreBusType.Ide)
+            return (133, "IDE ATA-133 (133 Mbps)");
+
+        return (null, null);
+    }
 }

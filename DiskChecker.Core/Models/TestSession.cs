@@ -322,6 +322,23 @@ public class TestSession
     /// </summary>
     public List<TestError> Errors { get; set; } = new();
     
+    // ========== Absolute Destructive Test Data ==========
+
+    /// <summary>
+    /// JSON-serialized seek test results from the Absolute Destructive test (FullStroke, Random, Skip).
+    /// </summary>
+    public string? SeekResultsJson { get; set; }
+
+    /// <summary>
+    /// JSON-serialized first sanitization result for before/after comparison.
+    /// </summary>
+    public string? Sanitize1ResultJson { get; set; }
+
+    /// <summary>
+    /// JSON-serialized second sanitization result for before/after comparison.
+    /// </summary>
+    public string? Sanitize2ResultJson { get; set; }
+
     /// <summary>
     /// User notes for this test session
     /// </summary>
@@ -515,7 +532,8 @@ public enum TestType
     SmartShort,
     SmartExtended,
     SmartConveyance,
-    Custom
+    Custom,
+    AbsoluteDestructive
 }
 
 /// <summary>

@@ -50,7 +50,7 @@ public partial class DiskStatusCardItem : ViewModelBase
     /// <summary>
     /// Quality rating calculated from SMART data.
     /// </summary>
-    public QualityRating Quality { get; set; } = new QualityRating(QualityGrade.F, 0);
+    public QualityRating? Quality { get; set; }
     
     /// <summary>
     /// Whether this disk is the system disk.
@@ -175,6 +175,44 @@ public partial class DiskStatusCardItem : ViewModelBase
                 CoreBusType.Scsi => "SCSI",
                 CoreBusType.Virtual => "Virtual",
                 _ => "SATA"
+            };
+        }
+    }
+
+    /// <summary>
+    /// Bus type from the drive info.
+    /// </summary>
+    public CoreBusType BusType { get; set; }
+
+    /// <summary>
+    /// Connection speed in Mbps (null if unknown).
+    /// </summary>
+    public int? ConnectionSpeedMbps { get; set; }
+
+    /// <summary>
+    /// Human-readable connection speed description.
+    /// </summary>
+    public string? ConnectionSpeedDescription { get; set; }
+
+    /// <summary>
+    /// Formatted connection speed for display (e.g., "USB 2.0 (480 Mbps)").
+    /// </summary>
+    public string ConnectionSpeedDisplay
+    {
+        get
+        {
+            if (!string.IsNullOrEmpty(ConnectionSpeedDescription))
+                return ConnectionSpeedDescription;
+            if (ConnectionSpeedMbps.HasValue)
+                return $"{ConnectionSpeedMbps.Value} Mbps";
+            return BusTypeDisplay switch
+            {
+                "NVMe" => "až 32 000 Mbps",
+                "SATA" => "6 000 Mbps",
+                "SAS" => "12 000 Mbps",
+                "USB" => "480 Mbps (USB 2.0)",
+                "IDE" => "133 Mbps",
+                _ => "Neznámá"
             };
         }
     }

@@ -450,6 +450,12 @@ public partial class DiskCardsViewModel : ViewModelBase, INavigableViewModel
     }
 
     [RelayCommand]
+    private void NavigateToCertificateBrowser()
+    {
+        _navigationService.NavigateTo<CertificateBrowserViewModel>();
+    }
+
+    [RelayCommand]
     private void CompareDisks()
     {
         _navigationService.NavigateTo<DiskComparisonViewModel>();
