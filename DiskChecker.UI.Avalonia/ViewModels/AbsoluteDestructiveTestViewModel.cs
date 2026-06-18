@@ -85,6 +85,8 @@ public partial class AbsoluteDestructiveTestViewModel : ViewModelBase, INavigabl
     private bool _disposed;
     private DateTime _testStartTime;
     private DateTime _phaseStartTime;
+    private DateTime _lastUiUpdate = DateTime.MinValue;
+    private const int UiUpdateThrottleMs = 100; // Update UI max every 100ms
 
     // SMART snapshots at each checkpoint
     private SmartaData? _smartBaseline;
@@ -459,12 +461,20 @@ public partial class AbsoluteDestructiveTestViewModel : ViewModelBase, INavigabl
                 volumeLabel: "",
                 new Progress<SanitizationProgress>(p =>
                 {
+                    // Throttle UI updates to max every 100ms
+                    var now = DateTime.UtcNow;
+                    if ((now - _lastUiUpdate).TotalMilliseconds < UiUpdateThrottleMs && p.ProgressPercent < 100)
+                        return;
+
+                    _lastUiUpdate = now;
+
                     Dispatcher.UIThread.Post(() =>
                     {
                         CurrentPhaseProgress = p.ProgressPercent;
                         Phases[1].ProgressPercent = p.ProgressPercent;
                         Phases[1].Detail = $"{p.Phase} — {p.CurrentSpeedMBps:F1} MB/s";
                         UpdateTemperature(_smartBaseline?.Temperature ?? 30);
+                        UpdateOverallProgress();
                     });
                 }),
                 ct);
@@ -511,11 +521,19 @@ public partial class AbsoluteDestructiveTestViewModel : ViewModelBase, INavigabl
                 volumeLabel: "",
                 new Progress<SanitizationProgress>(p =>
                 {
+                    // Throttle UI updates to max every 100ms
+                    var now = DateTime.UtcNow;
+                    if ((now - _lastUiUpdate).TotalMilliseconds < UiUpdateThrottleMs && p.ProgressPercent < 100)
+                        return;
+
+                    _lastUiUpdate = now;
+
                     Dispatcher.UIThread.Post(() =>
                     {
                         CurrentPhaseProgress = p.ProgressPercent;
                         Phases[5].ProgressPercent = p.ProgressPercent;
                         Phases[5].Detail = $"{p.Phase} — {p.CurrentSpeedMBps:F1} MB/s";
+                        UpdateOverallProgress();
                     });
                 }),
                 ct);

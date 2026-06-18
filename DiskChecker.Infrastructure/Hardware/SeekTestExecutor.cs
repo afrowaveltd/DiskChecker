@@ -223,15 +223,20 @@ public class SeekTestExecutor : ISeekTestExecutor
                 request.SkipSegments,
                 request.BlockSizeBytes);
 
-            // Execute seeks with latency measurement
-            var samples = await ExecuteSeeksAsync(
-                request.Drive.Path,
-                positions,
-                request.BlockSizeBytes,
-                request.CollectLatencySamples,
-                request.TimeoutSeconds,
-                progressCallback,
-                result,
+            // Execute seeks with latency measurement on a background thread
+            // (the loop is CPU-bound / synchronous I/O — running it on the UI thread
+            //  would freeze the UI, preventing Dispatcher.UIThread.Post callbacks
+            //  from being processed and leaving the user with no progress updates).
+            var samples = await Task.Run(
+                () => ExecuteSeeksAsync(
+                    request.Drive.Path,
+                    positions,
+                    request.BlockSizeBytes,
+                    request.CollectLatencySamples,
+                    request.TimeoutSeconds,
+                    progressCallback,
+                    result,
+                    cancellationToken),
                 cancellationToken);
 
             result.Samples = samples;
@@ -435,7 +440,7 @@ public class SeekTestExecutor : ISeekTestExecutor
     //  Seek execution with latency measurement
     // ──────────────────────────────────────────────
 
-    private async Task<List<SeekLatencySample>> ExecuteSeeksAsync(
+    private List<SeekLatencySample> ExecuteSeeksAsync(
         string devicePath,
         List<(long SourceLba, long DestLba)> positions,
         int blockSizeBytes,
