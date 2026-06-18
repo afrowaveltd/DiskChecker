@@ -475,6 +475,9 @@ public partial class AbsoluteDestructiveTestViewModel : ViewModelBase, INavigabl
                         Phases[1].Detail = $"{p.Phase} — {p.CurrentSpeedMBps:F1} MB/s";
                         UpdateTemperature(_smartBaseline?.Temperature ?? 30);
                         UpdateOverallProgress();
+
+                        // Feed speed data point into the live chart
+                        _currentPhasePoints.Add(new ObservablePoint(p.ProgressPercent, p.CurrentSpeedMBps));
                     });
                 }),
                 ct);
@@ -534,6 +537,9 @@ public partial class AbsoluteDestructiveTestViewModel : ViewModelBase, INavigabl
                         Phases[5].ProgressPercent = p.ProgressPercent;
                         Phases[5].Detail = $"{p.Phase} — {p.CurrentSpeedMBps:F1} MB/s";
                         UpdateOverallProgress();
+
+                        // Feed speed data point into the live chart
+                        _currentPhasePoints.Add(new ObservablePoint(p.ProgressPercent, p.CurrentSpeedMBps));
                     });
                 }),
                 ct);
