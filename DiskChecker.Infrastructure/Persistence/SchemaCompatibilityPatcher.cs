@@ -54,6 +54,50 @@ public static class SchemaCompatibilityPatcher
         {
             EnsureColumn(dbContext, "EmailSettings", "IncludeCertificateAttachment");
         }
+
+        if (TableExists(dbContext, "DiskCertificates"))
+        {
+            // Columns added when absolute destructive test support was introduced
+            EnsureColumn(dbContext, "DiskCertificates", "TestSessionId");
+            EnsureColumn(dbContext, "DiskCertificates", "TestDuration");
+            EnsureColumn(dbContext, "DiskCertificates", "AvgWriteSpeed");
+            EnsureColumn(dbContext, "DiskCertificates", "MaxWriteSpeed");
+            EnsureColumn(dbContext, "DiskCertificates", "AvgReadSpeed");
+            EnsureColumn(dbContext, "DiskCertificates", "MaxReadSpeed");
+            EnsureColumn(dbContext, "DiskCertificates", "ErrorCount");
+            EnsureColumn(dbContext, "DiskCertificates", "SmartPassed");
+            EnsureColumn(dbContext, "DiskCertificates", "PowerOnHours");
+            EnsureColumn(dbContext, "DiskCertificates", "PowerCycles");
+            EnsureColumn(dbContext, "DiskCertificates", "ReallocatedSectors");
+            EnsureColumn(dbContext, "DiskCertificates", "PendingSectors");
+            EnsureColumn(dbContext, "DiskCertificates", "SanitizationPerformed");
+            EnsureColumn(dbContext, "DiskCertificates", "DataVerified");
+            EnsureColumn(dbContext, "DiskCertificates", "Firmware");
+            EnsureColumn(dbContext, "DiskCertificates", "Interface");
+            EnsureColumn(dbContext, "DiskCertificates", "ValidUntil");
+            EnsureColumn(dbContext, "DiskCertificates", "PdfGenerated");
+            EnsureColumn(dbContext, "DiskCertificates", "ChartImagePath");
+            EnsureColumn(dbContext, "DiskCertificates", "WriteProfilePoints");
+            EnsureColumn(dbContext, "DiskCertificates", "ReadProfilePoints");
+            EnsureColumn(dbContext, "DiskCertificates", "SeekAvgLatencyMs");
+            EnsureColumn(dbContext, "DiskCertificates", "SeekMinLatencyMs");
+            EnsureColumn(dbContext, "DiskCertificates", "SeekMaxLatencyMs");
+            EnsureColumn(dbContext, "DiskCertificates", "SeekStdDevLatencyMs");
+            EnsureColumn(dbContext, "DiskCertificates", "SeekP95LatencyMs");
+            EnsureColumn(dbContext, "DiskCertificates", "SeekTestSummary");
+            EnsureColumn(dbContext, "DiskCertificates", "Sanitize1AvgWriteMBps");
+            EnsureColumn(dbContext, "DiskCertificates", "Sanitize2AvgWriteMBps");
+            EnsureColumn(dbContext, "DiskCertificates", "WriteSpeedChangePercent");
+            EnsureColumn(dbContext, "DiskCertificates", "Sanitize1AvgReadMBps");
+            EnsureColumn(dbContext, "DiskCertificates", "Sanitize2AvgReadMBps");
+            EnsureColumn(dbContext, "DiskCertificates", "ReadSpeedChangePercent");
+            EnsureColumn(dbContext, "DiskCertificates", "Sanitize1Errors");
+            EnsureColumn(dbContext, "DiskCertificates", "Sanitize2Errors");
+            EnsureColumn(dbContext, "DiskCertificates", "SmartDeltaSummary");
+            EnsureColumn(dbContext, "DiskCertificates", "Recommended");
+            EnsureColumn(dbContext, "DiskCertificates", "RecommendationNotes");
+            EnsureColumn(dbContext, "DiskCertificates", "Status");
+        }
     }
 
     private static void EnsureColumn(DiskCheckerDbContext dbContext, string tableName, string columnName)
@@ -157,6 +201,139 @@ public static class SchemaCompatibilityPatcher
         {
             dbContext.Database.ExecuteSqlRaw("ALTER TABLE EmailSettings ADD COLUMN IncludeCertificateAttachment INTEGER NOT NULL DEFAULT 1;");
             return;
+        }
+
+        // ── DiskCertificates columns ──
+        // These columns were added when absolute destructive test support was
+        // introduced.  Older databases created before this feature need them added
+        // via ALTER TABLE so that SaveChangesAsync does not throw.
+
+        if (tableName != "DiskCertificates")
+        {
+            return;
+        }
+
+        switch (columnName)
+        {
+            case "TestSessionId":
+                dbContext.Database.ExecuteSqlRaw("ALTER TABLE DiskCertificates ADD COLUMN TestSessionId INTEGER NOT NULL DEFAULT 0;");
+                return;
+            case "TestDuration":
+                dbContext.Database.ExecuteSqlRaw("ALTER TABLE DiskCertificates ADD COLUMN TestDuration TEXT NULL;");
+                return;
+            case "AvgWriteSpeed":
+                dbContext.Database.ExecuteSqlRaw("ALTER TABLE DiskCertificates ADD COLUMN AvgWriteSpeed REAL NOT NULL DEFAULT 0;");
+                return;
+            case "MaxWriteSpeed":
+                dbContext.Database.ExecuteSqlRaw("ALTER TABLE DiskCertificates ADD COLUMN MaxWriteSpeed REAL NOT NULL DEFAULT 0;");
+                return;
+            case "AvgReadSpeed":
+                dbContext.Database.ExecuteSqlRaw("ALTER TABLE DiskCertificates ADD COLUMN AvgReadSpeed REAL NOT NULL DEFAULT 0;");
+                return;
+            case "MaxReadSpeed":
+                dbContext.Database.ExecuteSqlRaw("ALTER TABLE DiskCertificates ADD COLUMN MaxReadSpeed REAL NOT NULL DEFAULT 0;");
+                return;
+            case "ErrorCount":
+                dbContext.Database.ExecuteSqlRaw("ALTER TABLE DiskCertificates ADD COLUMN ErrorCount INTEGER NOT NULL DEFAULT 0;");
+                return;
+            case "SmartPassed":
+                dbContext.Database.ExecuteSqlRaw("ALTER TABLE DiskCertificates ADD COLUMN SmartPassed INTEGER NOT NULL DEFAULT 0;");
+                return;
+            case "PowerOnHours":
+                dbContext.Database.ExecuteSqlRaw("ALTER TABLE DiskCertificates ADD COLUMN PowerOnHours INTEGER NOT NULL DEFAULT 0;");
+                return;
+            case "PowerCycles":
+                dbContext.Database.ExecuteSqlRaw("ALTER TABLE DiskCertificates ADD COLUMN PowerCycles INTEGER NOT NULL DEFAULT 0;");
+                return;
+            case "ReallocatedSectors":
+                dbContext.Database.ExecuteSqlRaw("ALTER TABLE DiskCertificates ADD COLUMN ReallocatedSectors INTEGER NOT NULL DEFAULT 0;");
+                return;
+            case "PendingSectors":
+                dbContext.Database.ExecuteSqlRaw("ALTER TABLE DiskCertificates ADD COLUMN PendingSectors INTEGER NOT NULL DEFAULT 0;");
+                return;
+            case "SanitizationPerformed":
+                dbContext.Database.ExecuteSqlRaw("ALTER TABLE DiskCertificates ADD COLUMN SanitizationPerformed INTEGER NOT NULL DEFAULT 0;");
+                return;
+            case "DataVerified":
+                dbContext.Database.ExecuteSqlRaw("ALTER TABLE DiskCertificates ADD COLUMN DataVerified INTEGER NOT NULL DEFAULT 0;");
+                return;
+            case "Firmware":
+                dbContext.Database.ExecuteSqlRaw("ALTER TABLE DiskCertificates ADD COLUMN Firmware TEXT NULL;");
+                return;
+            case "Interface":
+                dbContext.Database.ExecuteSqlRaw("ALTER TABLE DiskCertificates ADD COLUMN Interface TEXT NULL;");
+                return;
+            case "ValidUntil":
+                dbContext.Database.ExecuteSqlRaw("ALTER TABLE DiskCertificates ADD COLUMN ValidUntil TEXT NULL;");
+                return;
+            case "PdfGenerated":
+                dbContext.Database.ExecuteSqlRaw("ALTER TABLE DiskCertificates ADD COLUMN PdfGenerated INTEGER NOT NULL DEFAULT 0;");
+                return;
+            case "ChartImagePath":
+                dbContext.Database.ExecuteSqlRaw("ALTER TABLE DiskCertificates ADD COLUMN ChartImagePath TEXT NULL;");
+                return;
+            case "WriteProfilePoints":
+                dbContext.Database.ExecuteSqlRaw("ALTER TABLE DiskCertificates ADD COLUMN WriteProfilePoints TEXT NULL;");
+                return;
+            case "ReadProfilePoints":
+                dbContext.Database.ExecuteSqlRaw("ALTER TABLE DiskCertificates ADD COLUMN ReadProfilePoints TEXT NULL;");
+                return;
+            case "SeekAvgLatencyMs":
+                dbContext.Database.ExecuteSqlRaw("ALTER TABLE DiskCertificates ADD COLUMN SeekAvgLatencyMs REAL NULL;");
+                return;
+            case "SeekMinLatencyMs":
+                dbContext.Database.ExecuteSqlRaw("ALTER TABLE DiskCertificates ADD COLUMN SeekMinLatencyMs REAL NULL;");
+                return;
+            case "SeekMaxLatencyMs":
+                dbContext.Database.ExecuteSqlRaw("ALTER TABLE DiskCertificates ADD COLUMN SeekMaxLatencyMs REAL NULL;");
+                return;
+            case "SeekStdDevLatencyMs":
+                dbContext.Database.ExecuteSqlRaw("ALTER TABLE DiskCertificates ADD COLUMN SeekStdDevLatencyMs REAL NULL;");
+                return;
+            case "SeekP95LatencyMs":
+                dbContext.Database.ExecuteSqlRaw("ALTER TABLE DiskCertificates ADD COLUMN SeekP95LatencyMs REAL NULL;");
+                return;
+            case "SeekTestSummary":
+                dbContext.Database.ExecuteSqlRaw("ALTER TABLE DiskCertificates ADD COLUMN SeekTestSummary TEXT NULL;");
+                return;
+            case "Sanitize1AvgWriteMBps":
+                dbContext.Database.ExecuteSqlRaw("ALTER TABLE DiskCertificates ADD COLUMN Sanitize1AvgWriteMBps REAL NULL;");
+                return;
+            case "Sanitize2AvgWriteMBps":
+                dbContext.Database.ExecuteSqlRaw("ALTER TABLE DiskCertificates ADD COLUMN Sanitize2AvgWriteMBps REAL NULL;");
+                return;
+            case "WriteSpeedChangePercent":
+                dbContext.Database.ExecuteSqlRaw("ALTER TABLE DiskCertificates ADD COLUMN WriteSpeedChangePercent REAL NULL;");
+                return;
+            case "Sanitize1AvgReadMBps":
+                dbContext.Database.ExecuteSqlRaw("ALTER TABLE DiskCertificates ADD COLUMN Sanitize1AvgReadMBps REAL NULL;");
+                return;
+            case "Sanitize2AvgReadMBps":
+                dbContext.Database.ExecuteSqlRaw("ALTER TABLE DiskCertificates ADD COLUMN Sanitize2AvgReadMBps REAL NULL;");
+                return;
+            case "ReadSpeedChangePercent":
+                dbContext.Database.ExecuteSqlRaw("ALTER TABLE DiskCertificates ADD COLUMN ReadSpeedChangePercent REAL NULL;");
+                return;
+            case "Sanitize1Errors":
+                dbContext.Database.ExecuteSqlRaw("ALTER TABLE DiskCertificates ADD COLUMN Sanitize1Errors INTEGER NULL;");
+                return;
+            case "Sanitize2Errors":
+                dbContext.Database.ExecuteSqlRaw("ALTER TABLE DiskCertificates ADD COLUMN Sanitize2Errors INTEGER NULL;");
+                return;
+            case "SmartDeltaSummary":
+                dbContext.Database.ExecuteSqlRaw("ALTER TABLE DiskCertificates ADD COLUMN SmartDeltaSummary TEXT NULL;");
+                return;
+            case "Recommended":
+                dbContext.Database.ExecuteSqlRaw("ALTER TABLE DiskCertificates ADD COLUMN Recommended INTEGER NOT NULL DEFAULT 0;");
+                return;
+            case "RecommendationNotes":
+                dbContext.Database.ExecuteSqlRaw("ALTER TABLE DiskCertificates ADD COLUMN RecommendationNotes TEXT NULL;");
+                return;
+            case "Status":
+                dbContext.Database.ExecuteSqlRaw("ALTER TABLE DiskCertificates ADD COLUMN Status INTEGER NOT NULL DEFAULT 0;");
+                return;
+            default:
+                return;
         }
     }
 

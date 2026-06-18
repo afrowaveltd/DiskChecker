@@ -522,6 +522,13 @@ public class SeekTestExecutor : ISeekTestExecutor
                     var lastProgressTime = Stopwatch.StartNew();
                     var progressInterval = TimeSpan.FromMilliseconds(200);
 
+                    // Watchdog: per-seek timeout and consecutive-error tracking
+                    const int perSeekTimeoutMs = 30_000;     // 30 s per individual seek operation
+                    const int maxConsecutiveErrors = 10;    // abort after 10 consecutive failures
+                    const int diskCheckThreshold = 5;       // after 5 consecutive errors, check if disk is still present
+                    var consecutiveErrors = 0;
+                    var diskStillPresent = true;
+
                     for (int i = 0; i < totalSeeks; i++)
                     {
                         linkedCts.Token.ThrowIfCancellationRequested();
@@ -538,33 +545,162 @@ public class SeekTestExecutor : ISeekTestExecutor
 
                         try
                         {
-                            // Seek to source position (pre-positioning)
-                            SeekToLba(deviceHandle, sourceLba);
+                            // ── Watchdog: run the seek + read on a background thread with a hard timeout ──
+                            // If the disk stops responding, the P/Invoke call can block for a very long time.
+                            // We run it on a thread-pool thread and impose a per-seek timeout.  If it exceeds
+                            // the timeout, we mark the seek as failed and continue — the disk is likely in
+                            // trouble but we still want to collect as many samples as possible.
+                            bool readOk = false;
+                            Exception? ioException = null;
 
-                            // Measure: seek to destination + read
-                            var seekWatch = Stopwatch.StartNew();
-                            SeekToLba(deviceHandle, destLba);
-
-                            bool readOk;
-                            if (IsLinux)
+                            var seekTask = Task.Run(() =>
                             {
-                                readOk = ReadLinux(deviceHandle, (byte*)alignedBuffer, blockSizeBytes);
+                                try
+                                {
+                                    // Seek to source position (pre-positioning)
+                                    SeekToLba(deviceHandle, sourceLba);
+
+                                    // Measure: seek to destination + read
+                                    SeekToLba(deviceHandle, destLba);
+
+                                    if (IsLinux)
+                                        return ReadLinux(deviceHandle, (byte*)alignedBuffer, blockSizeBytes);
+                                    else
+                                        return ReadFromDeviceWindows(deviceHandle, windowsBuffer!, blockSizeBytes);
+                                }
+                                catch (Exception ex)
+                                {
+                                    ioException = ex;
+                                    return false;
+                                }
+                            }, linkedCts.Token);
+
+                            // Wait with timeout — if the disk is stuck, we don't hang forever
+                            var seekWatch = Stopwatch.StartNew();
+                            var completed = seekTask.Wait(TimeSpan.FromMilliseconds(perSeekTimeoutMs), linkedCts.Token);
+                            seekWatch.Stop();
+
+                            if (!completed)
+                            {
+                                // The seek timed out — the disk is likely unresponsive
+                                sample.HasError = true;
+                                sample.LatencyMs = seekWatch.Elapsed.TotalMilliseconds;
+                                sample.ErrorMessage = $"Seek timed out after {perSeekTimeoutMs / 1000}s — disk unresponsive";
+                                consecutiveErrors++;
+
+                                // After a few consecutive timeouts/errors, check if the disk is still present
+                                if (consecutiveErrors >= diskCheckThreshold && diskStillPresent)
+                                {
+                                    diskStillPresent = IsDevicePresent(devicePath);
+                                    if (!diskStillPresent)
+                                    {
+                                        _logger?.LogError("Disk {DevicePath} disappeared during seek test at sample {Index}", devicePath, i + 1);
+
+                                        // Mark all remaining samples as errors
+                                        for (int j = i + 1; j < totalSeeks; j++)
+                                        {
+                                            samples.Add(new SeekLatencySample
+                                            {
+                                                Index = j + 1,
+                                                HasError = true,
+                                                ErrorMessage = "Disk disappeared — device no longer present",
+                                                TimestampUtc = DateTime.UtcNow
+                                            });
+                                        }
+
+                                        // Report progress with the failure
+                                        if (progressCallback != null)
+                                        {
+                                            progressCallback(new SeekTestProgress
+                                            {
+                                                TestId = Guid.Parse(result.TestId),
+                                                PercentComplete = 100.0,
+                                                SeeksCompleted = totalSeeks,
+                                                TotalSeeks = totalSeeks,
+                                                CurrentAverageLatencyMs = 0,
+                                                LatestSample = sample,
+                                                TimestampUtc = DateTime.UtcNow
+                                            });
+                                        }
+
+                                        result.WasAborted = true;
+                                        result.Notes = $"Disk disappeared at sample {i + 1} — device {devicePath} no longer present";
+                                        break;
+                                    }
+                                }
+
+                                // If we've had too many consecutive errors, abort the test
+                                if (consecutiveErrors >= maxConsecutiveErrors)
+                                {
+                                    _logger?.LogError("Aborting seek test: {Count} consecutive errors on {DevicePath}", consecutiveErrors, devicePath);
+
+                                    // Mark all remaining samples as errors
+                                    for (int j = i + 1; j < totalSeeks; j++)
+                                    {
+                                        samples.Add(new SeekLatencySample
+                                        {
+                                            Index = j + 1,
+                                            HasError = true,
+                                            ErrorMessage = $"Skipped — {consecutiveErrors} consecutive errors",
+                                            TimestampUtc = DateTime.UtcNow
+                                        });
+                                    }
+
+                                    result.WasAborted = true;
+                                    result.Notes = $"Aborted after {consecutiveErrors} consecutive seek errors — disk may be faulty";
+
+                                    if (progressCallback != null)
+                                    {
+                                        progressCallback(new SeekTestProgress
+                                        {
+                                            TestId = Guid.Parse(result.TestId),
+                                            PercentComplete = 100.0,
+                                            SeeksCompleted = totalSeeks,
+                                            TotalSeeks = totalSeeks,
+                                            CurrentAverageLatencyMs = 0,
+                                            LatestSample = sample,
+                                            TimestampUtc = DateTime.UtcNow
+                                        });
+                                    }
+                                    break;
+                                }
                             }
                             else
                             {
-                                readOk = ReadFromDeviceWindows(deviceHandle, windowsBuffer!, blockSizeBytes);
-                            }
-                            seekWatch.Stop();
+                                // Seek completed within timeout
+                                sample.LatencyMs = seekWatch.Elapsed.TotalMilliseconds;
+                                readOk = seekTask.Result;
 
-                            sample.LatencyMs = seekWatch.Elapsed.TotalMilliseconds;
-                            sample.HasError = !readOk;
-                            if (!readOk)
-                                sample.ErrorMessage = "Read failed at destination LBA";
+                                if (ioException != null)
+                                {
+                                    sample.HasError = true;
+                                    sample.ErrorMessage = ioException.Message;
+                                    consecutiveErrors++;
+                                }
+                                else
+                                {
+                                    sample.HasError = !readOk;
+                                    if (!readOk)
+                                    {
+                                        sample.ErrorMessage = "Read failed at destination LBA";
+                                        consecutiveErrors++;
+                                    }
+                                    else
+                                    {
+                                        consecutiveErrors = 0;  // Reset on success
+                                    }
+                                }
+                            }
+                        }
+                        catch (OperationCanceledException)
+                        {
+                            throw;
                         }
                         catch (Exception ex)
                         {
                             sample.HasError = true;
                             sample.ErrorMessage = ex.Message;
+                            consecutiveErrors++;
                         }
 
                         samples.Add(sample);
@@ -607,6 +743,47 @@ public class SeekTestExecutor : ISeekTestExecutor
         }
 
         return samples;
+    }
+
+    // ──────────────────────────────────────────────
+    //  Disk presence check
+    // ──────────────────────────────────────────────
+
+    /// <summary>
+    /// Checks whether the device is still present and accessible.
+    /// Used when a disk becomes unresponsive during seek testing.
+    /// </summary>
+    private static bool IsDevicePresent(string devicePath)
+    {
+        try
+        {
+            if (IsLinux)
+            {
+                // On Linux, check if the device node exists
+                return System.IO.File.Exists(devicePath);
+            }
+            else
+            {
+                // On Windows, try to open the device briefly
+                var convertedPath = ConvertToWindowsDevicePath(devicePath);
+                var handle = CreateFileW(
+                    convertedPath,
+                    GENERIC_READ,
+                    FILE_SHARE_READ | FILE_SHARE_WRITE,
+                    IntPtr.Zero,
+                    OPEN_EXISTING,
+                    0,
+                    IntPtr.Zero);
+                if (handle == IntPtr.Zero || handle == new IntPtr(-1))
+                    return false;
+                CloseHandle(handle);
+                return true;
+            }
+        }
+        catch
+        {
+            return false;
+        }
     }
 
     // ──────────────────────────────────────────────

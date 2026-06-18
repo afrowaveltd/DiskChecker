@@ -110,6 +110,7 @@ public partial class AbsoluteDestructiveTestViewModel : ViewModelBase, INavigabl
 
     // Chart data for current phase
     private readonly ObservableCollection<ObservablePoint> _currentPhasePoints = new();
+    private readonly ObservableCollection<ObservablePoint> _readPhasePoints = new();
 
     // ──────────────────────────────────────────────
     //  Observable properties
@@ -154,6 +155,7 @@ public partial class AbsoluteDestructiveTestViewModel : ViewModelBase, INavigabl
 
     // LiveCharts for current phase
     public ObservableCollection<ObservablePoint> CurrentPhasePoints => _currentPhasePoints;
+    public ObservableCollection<ObservablePoint> ReadPhasePoints => _readPhasePoints;
 
     public ISeries[] CurrentPhaseSeries { get; }
 
@@ -202,10 +204,21 @@ public partial class AbsoluteDestructiveTestViewModel : ViewModelBase, INavigabl
         {
             new LineSeries<ObservablePoint>
             {
+                Name = "Zápis",
                 Values = _currentPhasePoints,
                 Fill = null,
                 GeometrySize = 0,
                 Stroke = new SolidColorPaint(new SKColor(239, 68, 68), 2),
+                LineSmoothness = 0,
+                AnimationsSpeed = TimeSpan.Zero
+            },
+            new LineSeries<ObservablePoint>
+            {
+                Name = "Čtení",
+                Values = _readPhasePoints,
+                Fill = null,
+                GeometrySize = 0,
+                Stroke = new SolidColorPaint(new SKColor(34, 197, 94), 2),
                 LineSmoothness = 0,
                 AnimationsSpeed = TimeSpan.Zero
             }
@@ -476,8 +489,11 @@ public partial class AbsoluteDestructiveTestViewModel : ViewModelBase, INavigabl
                         UpdateTemperature(_smartBaseline?.Temperature ?? 30);
                         UpdateOverallProgress();
 
-                        // Feed speed data point into the live chart
-                        _currentPhasePoints.Add(new ObservablePoint(p.ProgressPercent, p.CurrentSpeedMBps));
+                        // Feed speed data point into the live chart (red=write, green=read)
+                        if (p.IsReadVerifyPhase)
+                            _readPhasePoints.Add(new ObservablePoint(p.ProgressPercent, p.CurrentSpeedMBps));
+                        else
+                            _currentPhasePoints.Add(new ObservablePoint(p.ProgressPercent, p.CurrentSpeedMBps));
                     });
                 }),
                 ct);
@@ -538,8 +554,11 @@ public partial class AbsoluteDestructiveTestViewModel : ViewModelBase, INavigabl
                         Phases[5].Detail = $"{p.Phase} — {p.CurrentSpeedMBps:F1} MB/s";
                         UpdateOverallProgress();
 
-                        // Feed speed data point into the live chart
-                        _currentPhasePoints.Add(new ObservablePoint(p.ProgressPercent, p.CurrentSpeedMBps));
+                        // Feed speed data point into the live chart (red=write, green=read)
+                        if (p.IsReadVerifyPhase)
+                            _readPhasePoints.Add(new ObservablePoint(p.ProgressPercent, p.CurrentSpeedMBps));
+                        else
+                            _currentPhasePoints.Add(new ObservablePoint(p.ProgressPercent, p.CurrentSpeedMBps));
                     });
                 }),
                 ct);
@@ -586,6 +605,7 @@ public partial class AbsoluteDestructiveTestViewModel : ViewModelBase, INavigabl
         CurrentPhaseName = name;
         _phaseStartTime = DateTime.UtcNow;
         _currentPhasePoints.Clear();
+        _readPhasePoints.Clear();
 
         try
         {
