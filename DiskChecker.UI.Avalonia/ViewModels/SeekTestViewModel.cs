@@ -77,6 +77,12 @@ public partial class SeekTestViewModel : ViewModelBase, INavigableViewModel, IDi
     private SeekLatencySample? _latestSample;
     private bool _isPrePositioned;
 
+    // Final chart data (separate from real-time to avoid LiveCharts visibility issues)
+    private ISeries[] _finalLatencySeries = Array.Empty<ISeries>();
+    private Axis[] _finalLatencyXAxes = Array.Empty<Axis>();
+    private Axis[] _finalLatencyYAxes = Array.Empty<Axis>();
+    private int _finalChartPointCount;
+
     // Test type options for the UI – MUST match SeekTestType enum order (FullStroke=0, Random=1, Skip=2)
     // because EnumToIndexConverter uses (int)enumValue as the SelectedIndex.
     public ObservableCollection<SeekTestTypeOption> TestTypeOptions { get; } = new()
@@ -390,6 +396,31 @@ public partial class SeekTestViewModel : ViewModelBase, INavigableViewModel, IDi
     {
         get => _chartPointCount;
         set => SetProperty(ref _chartPointCount, value);
+    }
+
+    // Final chart properties (separate from real-time chart)
+    public ISeries[] FinalLatencySeries
+    {
+        get => _finalLatencySeries;
+        set => SetProperty(ref _finalLatencySeries, value);
+    }
+
+    public Axis[] FinalLatencyXAxes
+    {
+        get => _finalLatencyXAxes;
+        set => SetProperty(ref _finalLatencyXAxes, value);
+    }
+
+    public Axis[] FinalLatencyYAxes
+    {
+        get => _finalLatencyYAxes;
+        set => SetProperty(ref _finalLatencyYAxes, value);
+    }
+
+    public int FinalChartPointCount
+    {
+        get => _finalChartPointCount;
+        set => SetProperty(ref _finalChartPointCount, value);
     }
 
     public SeekLatencySample? LatestSample
@@ -894,6 +925,34 @@ public partial class SeekTestViewModel : ViewModelBase, INavigableViewModel, IDi
 
         var yMax = max * 1.15; // 15% headroom
         LatencyYAxes = new Axis[]
+        {
+            new Axis
+            {
+                Name = "Latence (ms)",
+                NameTextSize = 10,
+                TextSize = 9,
+                MinLimit = 0,
+                MaxLimit = yMax,
+                Labeler = v => $"{v:F1}"
+            }
+        };
+
+        // Also populate final chart properties (separate bindings for the results section)
+        FinalLatencySeries = seriesList.ToArray();
+        FinalChartPointCount = allPoints.Count;
+        FinalLatencyXAxes = new Axis[]
+        {
+            new Axis
+            {
+                Name = "Seek #",
+                NameTextSize = 10,
+                TextSize = 9,
+                MinLimit = 0,
+                MaxLimit = successful.Count + 1,
+                Labeler = v => v.ToString("F0")
+            }
+        };
+        FinalLatencyYAxes = new Axis[]
         {
             new Axis
             {

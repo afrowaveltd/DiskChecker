@@ -36,5 +36,10 @@
         <converters:StringToBoolConverter x:Key="StringToBoolConverter"/>
         <converters:EnumToIndexConverter x:Key="EnumToIndexConverter"/>
         <converters:GreaterThanConverter x:Key="GreaterThanConverter"/>
+        <converters:EnumEqConverter x:Key="EnumEqConverter"/>
+        <converters:EnumNeqConverter x:Key="EnumNeqConverter"/>
+        <converters:EnumInConverter x:Key="EnumInConverter"/>
+        <converters:EnumDisplayConverter x:Key="EnumDisplayConverter"/>
+        <converters:BytesToHumanReadableConverter x:Key="BytesToHRConverter"/>
     </Application.Resources>
 </Application>

@@ -85,6 +85,8 @@ public partial class SmartCheckViewModel : ViewModelBase, INavigableViewModel, I
         SetProbeTimeoutCommand = new AsyncRelayCommand<string>(async s => await SetProbeTimeoutFromStringAsync(s ?? string.Empty));
         SetProbeParallelismCommand = new AsyncRelayCommand<string>(async s => await SetProbeParallelismFromStringAsync(s ?? string.Empty));
         SelectVolumeCommand = new RelayCommand<CoreDriveInfo?>(SelectVolume);
+        NavigateToBackupCommand = new AsyncRelayCommand(NavigateToBackupAsync, () => IsFailing);
+        ForceTestAnywayCommand = new RelayCommand(ForceTestAnyway);
     }
 
     #region Properties
@@ -226,6 +228,12 @@ public string SelectedTestType
     // Computed properties for display
     public bool HasData => CurrentSmartData != null;
     public bool HasHealthData => CurrentSmartData?.IsHealthy == true;
+    public bool IsFailing => CurrentSmartData?.IsFailing == true;
+    public string FailurePrediction => CurrentSmartData?.FailurePrediction ?? string.Empty;
+    public bool HasFailingAttributes => CurrentSmartData?.FailingAttributes is { Count: > 0 };
+    public string FailingAttributesSummary => CurrentSmartData?.FailingAttributes != null
+        ? string.Join("\n", CurrentSmartData.FailingAttributes)
+        : string.Empty;
     
     // Connection speed info
     private string _connectionSpeedText = string.Empty;
@@ -418,6 +426,8 @@ public string SelectedTestType
     public IRelayCommand<CoreDriveInfo?> SelectVolumeCommand { get; }
     public IAsyncRelayCommand? RunSmartFeatureCommand { get; private set; }
     public IAsyncRelayCommand? ClearSelfTestResultCommand { get; private set; }
+    public IAsyncRelayCommand NavigateToBackupCommand { get; }
+    public IRelayCommand ForceTestAnywayCommand { get; }
 
     #endregion
 
@@ -1342,6 +1352,10 @@ private void UpdateComputedProperties()
         OnPropertyChanged(nameof(CanRunSelfTest));
         OnPropertyChanged(nameof(SelfTestProgress));
         OnPropertyChanged(nameof(SelfTestProgressText));
+        OnPropertyChanged(nameof(IsFailing));
+        OnPropertyChanged(nameof(FailurePrediction));
+        OnPropertyChanged(nameof(HasFailingAttributes));
+        OnPropertyChanged(nameof(FailingAttributesSummary));
         OnPropertyChanged(nameof(SelfTestTypeText));
         OnPropertyChanged(nameof(NvMePercentageUsed));
         OnPropertyChanged(nameof(NvMeMediaErrors));
@@ -1709,6 +1723,23 @@ private void UpdateComputedProperties()
     {
         ClearSelfTestResult();
         return Task.CompletedTask;
+    }
+
+    private async Task NavigateToBackupAsync()
+    {
+        if (SelectedDisk?.Drive == null) return;
+        
+        // Navigate to backup view with the failing disk pre-selected
+        _selectedDiskService.SelectedDisk = SelectedDisk.Drive;
+        _navigationService.NavigateTo<BackupViewModel>();
+        await Task.CompletedTask;
+    }
+
+    private void ForceTestAnyway()
+    {
+        // User acknowledges the risk and wants to proceed with testing
+        // The warning banner stays visible but the user can now use destructive tests
+        StatusMessage = "⚠️ Uživatel pokračuje přes varování SMART — testování na vlastní riziko.";
     }
 
     public void Dispose()

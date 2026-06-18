@@ -83,6 +83,13 @@
                             Foreground="{Binding IsOnAbsoluteDestructiveTest, Converter={StaticResource ActiveNavTextConverter}}"
                             Padding="10,6" Height="32" MinWidth="80" Margin="2"
                             FontSize="11" FontWeight="SemiBold" Cursor="Hand"/>
+
+                    <Button Content="🛡️ Bezpečný"
+                            Command="{Binding NavigateToSafeDestructiveTestCommand}"
+                            Background="{Binding IsOnSafeDestructiveTest, Converter={StaticResource ActiveNavConverter}}"
+                            Foreground="{Binding IsOnSafeDestructiveTest, Converter={StaticResource ActiveNavTextConverter}}"
+                            Padding="10,6" Height="32" MinWidth="80" Margin="2"
+                            FontSize="11" FontWeight="SemiBold" Cursor="Hand"/>
                     
                     <Button Content="📈 Analýza"
                             Command="{Binding NavigateToAnalysisCommand}"
@@ -117,6 +124,20 @@
                             Background="{Binding IsOnCertificateBrowser, Converter={StaticResource ActiveNavConverter}}"
                             Foreground="{Binding IsOnCertificateBrowser, Converter={StaticResource ActiveNavTextConverter}}"
                             Padding="10,6" Height="32" MinWidth="90" Margin="2"
+                            FontSize="11" FontWeight="SemiBold" Cursor="Hand"/>
+
+                    <Button Content="💾 Záloha"
+                            Command="{Binding NavigateToBackupCommand}"
+                            Background="{Binding IsOnBackup, Converter={StaticResource ActiveNavConverter}}"
+                            Foreground="{Binding IsOnBackup, Converter={StaticResource ActiveNavTextConverter}}"
+                            Padding="10,6" Height="32" MinWidth="80" Margin="2"
+                            FontSize="11" FontWeight="SemiBold" Cursor="Hand"/>
+
+                    <Button Content="🔄 Obnova"
+                            Command="{Binding NavigateToRestoreCommand}"
+                            Background="{Binding IsOnRestore, Converter={StaticResource ActiveNavConverter}}"
+                            Foreground="{Binding IsOnRestore, Converter={StaticResource ActiveNavTextConverter}}"
+                            Padding="10,6" Height="32" MinWidth="80" Margin="2"
                             FontSize="11" FontWeight="SemiBold" Cursor="Hand"/>
                 </StackPanel>
 

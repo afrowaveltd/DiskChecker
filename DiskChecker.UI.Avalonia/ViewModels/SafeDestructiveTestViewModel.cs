@@ -1,0 +1,1072 @@
+using System;
+using System.Collections.Generic;
+using System.Collections.ObjectModel;
+using System.IO;
+using System.Linq;
+using System.Text.Json;
+using System.Threading;
+using System.Threading.Tasks;
+using Avalonia.Threading;
+using CommunityToolkit.Mvvm.ComponentModel;
+using CommunityToolkit.Mvvm.Input;
+using DiskChecker.Application.Services;
+using DiskChecker.Core.Interfaces;
+using DiskChecker.Core.Models;
+using DiskChecker.UI.Avalonia.Services.Interfaces;
+using LiveChartsCore;
+using LiveChartsCore.Defaults;
+using LiveChartsCore.SkiaSharpView;
+using LiveChartsCore.SkiaSharpView.Painting;
+using SkiaSharp;
+
+namespace DiskChecker.UI.Avalonia.ViewModels;
+
+public enum SafeDestructivePhase
+{
+    /// <summary>Initial state — disk selected, ready to start.</summary>
+    Ready,
+    /// <summary>Creating raw sector image of the disk.</summary>
+    Backup,
+    /// <summary>Running destructive test phases.</summary>
+    Test,
+    /// <summary>Restoring raw image back to disk.</summary>
+    Restore,
+    /// <summary>All phases complete.</summary>
+    Completed,
+    /// <summary>Cancelled by user or error.</summary>
+    Failed
+}
+
+public partial class SafeDestructiveTestViewModel : ViewModelBase, INavigableViewModel, IDisposable
+{
+    // ──────────────────────────────────────────────
+    //  Dependencies
+    // ──────────────────────────────────────────────
+
+    private readonly INavigationService _navigationService;
+    private readonly ISelectedDiskService _selectedDiskService;
+    private readonly IDialogService _dialogService;
+    private readonly IDiskSanitizationService _sanitizationService;
+    private readonly SeekTestService _seekTestService;
+    private readonly ISmartaProvider _smartaProvider;
+    private readonly SmartCheckService _smartCheckService;
+    private readonly IDiskCardRepository _diskCardRepository;
+    private readonly ICertificateGenerator _certificateGenerator;
+    private readonly TestCompletionNotificationService _notificationService;
+
+    // ──────────────────────────────────────────────
+    //  Cancellation
+    // ──────────────────────────────────────────────
+
+    private CancellationTokenSource? _cts;
+    private bool _disposed;
+
+    // ──────────────────────────────────────────────
+    //  Observable properties — workflow
+    // ──────────────────────────────────────────────
+
+    [ObservableProperty] private SafeDestructivePhase _phase = SafeDestructivePhase.Ready;
+    [ObservableProperty] private string _statusMessage = "Připraveno — vyberte cílový disk pro zálohu.";
+    [ObservableProperty] private double _overallProgress;
+    [ObservableProperty] private string _overallProgressText = "0%";
+    [ObservableProperty] private string _currentPhaseName = string.Empty;
+    [ObservableProperty] private string _currentPhaseIcon = string.Empty;
+
+    // ──────────────────────────────────────────────
+    //  Disk info
+    // ──────────────────────────────────────────────
+
+    [ObservableProperty] private CoreDriveInfo? _selectedDrive;
+    [ObservableProperty] private string _diskDisplayName = string.Empty;
+    [ObservableProperty] private string _diskPath = string.Empty;
+    [ObservableProperty] private long _diskTotalBytes;
+    [ObservableProperty] private string _diskTotalSizeText = string.Empty;
+
+    // ──────────────────────────────────────────────
+    //  Backup phase properties
+    // ──────────────────────────────────────────────
+
+    [ObservableProperty] private string _backupTargetPath = string.Empty;
+    [ObservableProperty] private long _backupTargetFreeBytes;
+    [ObservableProperty] private string _backupTargetFreeText = string.Empty;
+    [ObservableProperty] private bool _hasEnoughBackupSpace;
+    [ObservableProperty] private string _backupSpaceSummary = string.Empty;
+    [ObservableProperty] private long _backupBytesWritten;
+    [ObservableProperty] private string _backupBytesWrittenText = string.Empty;
+    [ObservableProperty] private string _backupSpeedText = string.Empty;
+    [ObservableProperty] private string _backupElapsedText = string.Empty;
+    [ObservableProperty] private string _backupEtaText = string.Empty;
+    [ObservableProperty] private string _backupCurrentSectorText = string.Empty;
+
+    // ──────────────────────────────────────────────
+    //  Test phase properties (mirrors AbsoluteDestructiveTest)
+    // ──────────────────────────────────────────────
+
+    [ObservableProperty] private ObservableCollection<TestPhaseViewModel> _testPhases = new();
+    [ObservableProperty] private double _testPhaseProgress;
+    [ObservableProperty] private string _testPhaseDetail = string.Empty;
+    [ObservableProperty] private string _testCurrentSpeedText = string.Empty;
+    [ObservableProperty] private string _testCurrentTemperatureText = string.Empty;
+    [ObservableProperty] private string _testElapsedText = string.Empty;
+    [ObservableProperty] private string _testEtaText = string.Empty;
+
+    // ──────────────────────────────────────────────
+    //  Restore phase properties
+    // ──────────────────────────────────────────────
+
+    [ObservableProperty] private string _restoreImagePath = string.Empty;
+    [ObservableProperty] private long _restoreBytesWritten;
+    [ObservableProperty] private string _restoreBytesWrittenText = string.Empty;
+    [ObservableProperty] private string _restoreSpeedText = string.Empty;
+    [ObservableProperty] private string _restoreElapsedText = string.Empty;
+    [ObservableProperty] private string _restoreEtaText = string.Empty;
+    [ObservableProperty] private string _restoreCurrentSectorText = string.Empty;
+
+    // ──────────────────────────────────────────────
+    //  Results
+    // ──────────────────────────────────────────────
+
+    [ObservableProperty] private string _resultsSummary = string.Empty;
+    [ObservableProperty] private string _smartDeltaSummary = string.Empty;
+    [ObservableProperty] private bool _hasResults;
+
+    // ──────────────────────────────────────────────
+    //  Charts (sanitize + seek)
+    // ──────────────────────────────────────────────
+
+    [ObservableProperty] private ObservableCollection<ObservablePoint> _sanitizePass1WritePoints = new();
+    [ObservableProperty] private ObservableCollection<ObservablePoint> _sanitizePass1ReadPoints = new();
+    [ObservableProperty] private ObservableCollection<ObservablePoint> _sanitizePass2WritePoints = new();
+    [ObservableProperty] private ObservableCollection<ObservablePoint> _sanitizePass2ReadPoints = new();
+
+    [ObservableProperty] private ObservableCollection<ObservablePoint> _seekFullStrokePoints = new();
+    [ObservableProperty] private ObservableCollection<ObservablePoint> _seekRandomPoints = new();
+    [ObservableProperty] private ObservableCollection<ObservablePoint> _seekSkipPoints = new();
+
+    [ObservableProperty] private ISeries[] _sanitizeChartSeries = Array.Empty<ISeries>();
+    [ObservableProperty] private Axis[] _sanitizeChartXAxes = Array.Empty<Axis>();
+    [ObservableProperty] private Axis[] _sanitizeChartYAxes = Array.Empty<Axis>();
+
+    [ObservableProperty] private ISeries[] _seekChartSeries = Array.Empty<ISeries>();
+    [ObservableProperty] private Axis[] _seekChartXAxes = Array.Empty<Axis>();
+    [ObservableProperty] private Axis[] _seekChartYAxes = Array.Empty<Axis>();
+
+    [ObservableProperty] private int _activeSeekChartIndex;
+    [ObservableProperty] private bool _hasSeekCharts;
+
+    // ──────────────────────────────────────────────
+    //  Sanitize data counters
+    // ──────────────────────────────────────────────
+
+    [ObservableProperty] private long _sanitizeBytesWritten;
+    [ObservableProperty] private string _sanitizeBytesWrittenText = string.Empty;
+    [ObservableProperty] private long _sanitizeBytesRead;
+    [ObservableProperty] private string _sanitizeBytesReadText = string.Empty;
+    [ObservableProperty] private long _sanitizeTotalBytes;
+    [ObservableProperty] private string _sanitizeTotalBytesText = string.Empty;
+
+    // ──────────────────────────────────────────────
+    //  Sanitize series toggles
+    // ──────────────────────────────────────────────
+
+    [ObservableProperty] private bool _showPass1Write = true;
+    [ObservableProperty] private bool _showPass1Read = true;
+    [ObservableProperty] private bool _showPass2Write = true;
+    [ObservableProperty] private bool _showPass2Read = true;
+
+    // ──────────────────────────────────────────────
+    //  Log
+    // ──────────────────────────────────────────────
+
+    [ObservableProperty] private string _logText = string.Empty;
+    private readonly List<string> _logEntries = new();
+
+    // ──────────────────────────────────────────────
+    //  SMART snapshots
+    // ──────────────────────────────────────────────
+
+    private SmartaData? _smartBefore;
+    private SmartaData? _smartAfter;
+
+    // ──────────────────────────────────────────────
+    //  Backup manifest path (for restore)
+    // ──────────────────────────────────────────────
+
+    private string? _backupManifestPath;
+    private string? _backupImagePath;
+    private long _backupTotalBytes;
+
+    // ──────────────────────────────────────────────
+    //  Timing
+    // ──────────────────────────────────────────────
+
+    private DateTime _phaseStartTime;
+    private long _phaseBytesProcessed;
+
+    // ──────────────────────────────────────────────
+    //  Commands
+    // ──────────────────────────────────────────────
+
+    public IAsyncRelayCommand StartWorkflowCommand { get; }
+    public IRelayCommand CancelCommand { get; }
+    public IRelayCommand GoBackCommand { get; }
+    public IRelayCommand SwitchSeekChartCommand { get; }
+    public IRelayCommand ToggleSanitizeSeriesCommand { get; }
+
+    private static readonly JsonSerializerOptions _jsonOptions = new() { WriteIndented = true };
+
+    // ──────────────────────────────────────────────
+    //  Constructor
+    // ──────────────────────────────────────────────
+
+    public SafeDestructiveTestViewModel(
+        INavigationService navigationService,
+        ISelectedDiskService selectedDiskService,
+        IDialogService dialogService,
+        IDiskSanitizationService sanitizationService,
+        SeekTestService seekTestService,
+        ISmartaProvider smartaProvider,
+        SmartCheckService smartCheckService,
+        IDiskCardRepository diskCardRepository,
+        ICertificateGenerator certificateGenerator,
+        TestCompletionNotificationService notificationService)
+    {
+        _navigationService = navigationService;
+        _selectedDiskService = selectedDiskService;
+        _dialogService = dialogService;
+        _sanitizationService = sanitizationService;
+        _seekTestService = seekTestService;
+        _smartaProvider = smartaProvider;
+        _smartCheckService = smartCheckService;
+        _diskCardRepository = diskCardRepository;
+        _certificateGenerator = certificateGenerator;
+        _notificationService = notificationService;
+
+        StartWorkflowCommand = new AsyncRelayCommand(StartWorkflowAsync, () => Phase == SafeDestructivePhase.Ready && SelectedDrive != null && HasEnoughBackupSpace);
+        CancelCommand = new RelayCommand(Cancel);
+        GoBackCommand = new RelayCommand(GoBack);
+        SwitchSeekChartCommand = new RelayCommand(SwitchSeekChart);
+        ToggleSanitizeSeriesCommand = new RelayCommand(ToggleSanitizeSeries);
+
+        InitializeChartDefaults();
+    }
+
+    // ──────────────────────────────────────────────
+    //  Initialization
+    // ──────────────────────────────────────────────
+
+    public async Task InitializeAsync()
+    {
+        var disk = _selectedDiskService.SelectedDisk;
+        if (disk == null)
+        {
+            StatusMessage = "❌ Není vybrán žádný disk.";
+            return;
+        }
+
+        SelectedDrive = disk;
+        DiskDisplayName = disk.Name ?? disk.Path;
+        DiskPath = disk.Path;
+        DiskTotalBytes = disk.TotalSize;
+        DiskTotalSizeText = FormatBytesLong(disk.TotalSize);
+
+        // Find a suitable backup target (largest available non-source drive)
+        await FindBackupTargetAsync();
+
+        // Capture pre-test SMART
+        try
+        {
+            _smartBefore = await _smartaProvider.GetSmartaDataAsync(disk.Path);
+        }
+        catch
+        {
+            _smartBefore = null;
+        }
+
+        Log($"Disk: {DiskDisplayName} ({DiskTotalSizeText})");
+        Log($"Cesta: {DiskPath}");
+        Log($"SMART před testem: {(_smartBefore != null ? "dostupný" : "nedostupný")}");
+
+        if (HasEnoughBackupSpace)
+            StatusMessage = "✅ Připraveno — lze spustit bezpečný destruktivní test.";
+        else
+            StatusMessage = "❌ Nedostatek místa pro zálohu — uvolněte místo nebo vyberte jiný cílový disk.";
+    }
+
+    private async Task FindBackupTargetAsync()
+    {
+        var drives = DriveInfo.GetDrives()
+            .Where(d => d.IsReady && d.DriveType == DriveType.Fixed)
+            .OrderByDescending(d => d.AvailableFreeSpace)
+            .ToList();
+
+        // Exclude the source drive
+        if (SelectedDrive != null)
+        {
+            drives = drives.Where(d =>
+            {
+                var root = d.RootDirectory.FullName.TrimEnd('\\', '/');
+                var sourceRoot = Path.GetPathRoot(SelectedDrive.Path)?.TrimEnd('\\', '/');
+                return !string.Equals(root, sourceRoot, StringComparison.OrdinalIgnoreCase);
+            }).ToList();
+        }
+
+        if (drives.Count > 0)
+        {
+            var best = drives[0];
+            BackupTargetPath = best.RootDirectory.FullName;
+            BackupTargetFreeBytes = best.AvailableFreeSpace;
+            BackupTargetFreeText = FormatBytesLong(best.AvailableFreeSpace);
+
+            // Reserve: RAM size (min 4GB, max 32GB for safety)
+            long systemReserve = Math.Min(Math.Max(4L * 1024 * 1024 * 1024, GetRamBytes() / 2), 32L * 1024 * 1024 * 1024);
+            long usableBytes = Math.Max(0, best.AvailableFreeSpace - systemReserve);
+
+            HasEnoughBackupSpace = usableBytes >= DiskTotalBytes;
+            BackupSpaceSummary = HasEnoughBackupSpace
+                ? $"✅ Dostatek místa: {FormatBytesLong(usableBytes)} volných (potřeba {DiskTotalSizeText})"
+                : $"❌ Nedostatek: {FormatBytesLong(usableBytes)} volných, potřeba {DiskTotalSizeText}";
+        }
+        else
+        {
+            BackupTargetPath = "(nenalezen)";
+            BackupTargetFreeBytes = 0;
+            BackupTargetFreeText = "0 B";
+            HasEnoughBackupSpace = false;
+            BackupSpaceSummary = "❌ Nenalezen žádný cílový disk pro zálohu.";
+        }
+    }
+
+    private static long GetRamBytes()
+    {
+        // Conservative estimate for system reserve calculation
+        return 8L * 1024 * 1024 * 1024; // 8 GB
+    }
+
+    // ──────────────────────────────────────────────
+    //  Chart defaults
+    // ──────────────────────────────────────────────
+
+    private void InitializeChartDefaults()
+    {
+        var xAxis = new Axis
+        {
+            Name = "Progres (%)",
+            MinLimit = 0,
+            MaxLimit = 100,
+            Labeler = v => $"{v:F0}%"
+        };
+        var yAxis = new Axis
+        {
+            Name = "MB/s",
+            MinLimit = 0
+        };
+
+        SanitizeChartXAxes = new[] { xAxis };
+        SanitizeChartYAxes = new[] { yAxis };
+
+        SeekChartXAxes = new[] { new Axis { Name = "Seek #", MinLimit = 0 } };
+        SeekChartYAxes = new[] { new Axis { Name = "Latence (ms)", MinLimit = 0 } };
+
+        RebuildSanitizeChart();
+    }
+
+    private void RebuildSanitizeChart()
+    {
+        var series = new List<ISeries>();
+
+        if (ShowPass1Write && SanitizePass1WritePoints.Count > 0)
+            series.Add(CreateLineSeries(SanitizePass1WritePoints, "1. Zápis", new SKColor(0xEF, 0x44, 0x44), 2));
+        if (ShowPass1Read && SanitizePass1ReadPoints.Count > 0)
+            series.Add(CreateLineSeries(SanitizePass1ReadPoints, "1. Čtení", new SKColor(0x22, 0xC5, 0x5E), 2));
+        if (ShowPass2Write && SanitizePass2WritePoints.Count > 0)
+            series.Add(CreateLineSeries(SanitizePass2WritePoints, "2. Zápis", new SKColor(0xB9, 0x1C, 0x1C), 2));
+        if (ShowPass2Read && SanitizePass2ReadPoints.Count > 0)
+            series.Add(CreateLineSeries(SanitizePass2ReadPoints, "2. Čtení", new SKColor(0x15, 0x80, 0x3D), 2));
+
+        SanitizeChartSeries = series.ToArray();
+    }
+
+    private static ISeries CreateLineSeries(ObservableCollection<ObservablePoint> points, string name, SKColor color, float strokeWidth)
+    {
+        return new LineSeries<ObservablePoint>
+        {
+            Values = points,
+            Name = name,
+            Stroke = new SolidColorPaint(color, strokeWidth),
+            GeometrySize = 0,
+            Fill = null,
+            LineSmoothness = 0
+        };
+    }
+
+    // ──────────────────────────────────────────────
+    //  Workflow orchestration
+    // ──────────────────────────────────────────────
+
+    private async Task StartWorkflowAsync()
+    {
+        if (SelectedDrive == null) return;
+
+        _cts = new CancellationTokenSource();
+        var ct = _cts.Token;
+
+        try
+        {
+            // ── Phase 1: Backup ──
+            await RunBackupPhaseAsync(ct);
+            if (ct.IsCancellationRequested) return;
+
+            // ── Phase 2: Destructive Test ──
+            await RunTestPhaseAsync(ct);
+            if (ct.IsCancellationRequested) return;
+
+            // ── Phase 3: Restore ──
+            await RunRestorePhaseAsync(ct);
+            if (ct.IsCancellationRequested) return;
+
+            // ── Complete ──
+            Phase = SafeDestructivePhase.Completed;
+            CurrentPhaseName = "Dokončeno";
+            CurrentPhaseIcon = "✅";
+            OverallProgress = 100;
+            OverallProgressText = "100%";
+            StatusMessage = "✅ Bezpečný destruktivní test dokončen — disk obnoven ze zálohy.";
+            HasResults = true;
+
+            await BuildResultsAsync();
+            Log("═══ WORKFLOW DOKONČEN ═══");
+        }
+        catch (OperationCanceledException)
+        {
+            Phase = SafeDestructivePhase.Failed;
+            StatusMessage = "⏹ Operace zrušena uživatelem.";
+            Log("⏹ Operace zrušena.");
+        }
+        catch (Exception ex)
+        {
+            Phase = SafeDestructivePhase.Failed;
+            StatusMessage = $"❌ Chyba: {ex.Message}";
+            Log($"❌ FATAL: {ex.Message}");
+        }
+    }
+
+    // ──────────────────────────────────────────────
+    //  Phase 1: Raw Backup
+    // ──────────────────────────────────────────────
+
+    private async Task RunBackupPhaseAsync(CancellationToken ct)
+    {
+        Phase = SafeDestructivePhase.Backup;
+        CurrentPhaseName = "Záloha (raw image)";
+        CurrentPhaseIcon = "💾";
+        StatusMessage = "Vytvářím bitovou kopii disku...";
+        OverallProgress = 0;
+        OverallProgressText = "0%";
+
+        var backupRoot = Path.Combine(BackupTargetPath, $"DiskChecker_SafeBackup_{DateTime.Now:yyyyMMdd_HHmmss}");
+        Directory.CreateDirectory(backupRoot);
+        _backupImagePath = Path.Combine(backupRoot, "disk_image.raw");
+        _backupManifestPath = Path.Combine(backupRoot, "backup_manifest.json");
+
+        Log($"Záloha → {_backupImagePath}");
+
+        const int sectorSize = 4096;
+        var buffer = new byte[sectorSize];
+        long totalSize = DiskTotalBytes;
+        long bytesRead = 0;
+        _phaseStartTime = DateTime.UtcNow;
+        _phaseBytesProcessed = 0;
+
+        using var sourceStream = new FileStream(DiskPath, FileMode.Open, FileAccess.Read,
+            FileShare.Read, sectorSize, FileOptions.SequentialScan);
+        using var targetStream = new FileStream(_backupImagePath, FileMode.Create, FileAccess.Write,
+            FileShare.None, 1024 * 1024, FileOptions.SequentialScan);
+
+        while (bytesRead < totalSize)
+        {
+            ct.ThrowIfCancellationRequested();
+
+            int bytesToRead = (int)Math.Min(sectorSize, totalSize - bytesRead);
+            int bytesReadNow = await sourceStream.ReadAsync(buffer.AsMemory(0, bytesToRead), ct);
+            if (bytesReadNow == 0) break;
+
+            await targetStream.WriteAsync(buffer.AsMemory(0, bytesReadNow), ct);
+            bytesRead += bytesReadNow;
+            _phaseBytesProcessed += bytesReadNow;
+
+            BackupBytesWritten = bytesRead;
+            BackupBytesWrittenText = FormatBytesLong(bytesRead);
+            BackupCurrentSectorText = $"Sektor {bytesRead / sectorSize:N0} / {totalSize / sectorSize:N0}";
+
+            double backupProgress = totalSize > 0 ? (double)bytesRead / totalSize * 100 : 0;
+            OverallProgress = backupProgress * 0.30; // Backup = 30% of total workflow
+            OverallProgressText = $"{OverallProgress:F0}%";
+
+            UpdatePhaseSpeedAndEta(ref _phaseStartTime, ref _phaseBytesProcessed,
+                out var speed, out var elapsed, out var eta);
+            BackupSpeedText = speed;
+            BackupElapsedText = elapsed;
+            BackupEtaText = eta;
+
+            await Dispatcher.UIThread.InvokeAsync(() => { }, DispatcherPriority.Background, ct);
+        }
+
+        _backupTotalBytes = bytesRead;
+
+        // Write manifest
+        var manifest = new
+        {
+            SourceDrive = DiskPath,
+            SourceModel = DiskDisplayName,
+            BackupDate = DateTime.Now.ToString("O"),
+            Mode = "RawImage",
+            TotalBytes = bytesRead,
+            SectorSize = sectorSize
+        };
+        using var manifestStream = File.OpenWrite(_backupManifestPath);
+        await JsonSerializer.SerializeAsync(manifestStream, manifest, _jsonOptions, ct);
+
+        Log($"Záloha dokončena: {FormatBytesLong(bytesRead)}");
+        StatusMessage = "✅ Záloha dokončena — zahajuji destruktivní test...";
+    }
+
+    // ──────────────────────────────────────────────
+    //  Phase 2: Destructive Test
+    // ──────────────────────────────────────────────
+
+    private async Task RunTestPhaseAsync(CancellationToken ct)
+    {
+        Phase = SafeDestructivePhase.Test;
+        CurrentPhaseName = "Destruktivní test";
+        CurrentPhaseIcon = "🧪";
+        StatusMessage = "Provádím destruktivní test...";
+
+        if (SelectedDrive == null) return;
+
+        // Build test phases
+        TestPhases.Clear();
+        var phases = new[]
+        {
+            new TestPhaseViewModel { Name = "Sanitizace 1 (zápis)", Icon = "🧹", PhaseIndex = 0 },
+            new TestPhaseViewModel { Name = "Sanitizace 1 (čtení)", Icon = "🧹", PhaseIndex = 1 },
+            new TestPhaseViewModel { Name = "Seek — Full Stroke", Icon = "↔️", PhaseIndex = 2 },
+            new TestPhaseViewModel { Name = "Seek — Náhodný", Icon = "🎲", PhaseIndex = 3 },
+            new TestPhaseViewModel { Name = "Seek — Skip", Icon = "⏭️", PhaseIndex = 4 },
+            new TestPhaseViewModel { Name = "Sanitizace 2 (zápis)", Icon = "🧹", PhaseIndex = 5 },
+            new TestPhaseViewModel { Name = "Sanitizace 2 (čtení)", Icon = "🧹", PhaseIndex = 6 }
+        };
+        foreach (var p in phases) TestPhases.Add(p);
+
+        int totalPhases = phases.Length;
+        double testWeight = 0.40; // Test = 40% of total workflow
+        double phaseWeight = testWeight / totalPhases;
+
+        // ── Sanitize Pass 1 Write ──
+        await RunSanitizePhaseAsync(0, "write", SanitizePass1WritePoints, phaseWeight, 0, ct);
+        if (ct.IsCancellationRequested) return;
+
+        // ── Sanitize Pass 1 Read ──
+        await RunSanitizePhaseAsync(1, "read", SanitizePass1ReadPoints, phaseWeight, phaseWeight, ct);
+        if (ct.IsCancellationRequested) return;
+
+        // ── Seek Full Stroke ──
+        await RunSeekPhaseAsync(2, SeekTestType.FullStroke, SeekFullStrokePoints, phaseWeight, phaseWeight * 2, ct);
+        if (ct.IsCancellationRequested) return;
+
+        // ── Seek Random ──
+        await RunSeekPhaseAsync(3, SeekTestType.Random, SeekRandomPoints, phaseWeight, phaseWeight * 3, ct);
+        if (ct.IsCancellationRequested) return;
+
+        // ── Seek Skip ──
+        await RunSeekPhaseAsync(4, SeekTestType.Skip, SeekSkipPoints, phaseWeight, phaseWeight * 4, ct);
+        if (ct.IsCancellationRequested) return;
+
+        HasSeekCharts = true;
+        RebuildSeekChart();
+
+        // ── Sanitize Pass 2 Write ──
+        await RunSanitizePhaseAsync(5, "write", SanitizePass2WritePoints, phaseWeight, phaseWeight * 5, ct);
+        if (ct.IsCancellationRequested) return;
+
+        // ── Sanitize Pass 2 Read ──
+        await RunSanitizePhaseAsync(6, "read", SanitizePass2ReadPoints, phaseWeight, phaseWeight * 6, ct);
+        if (ct.IsCancellationRequested) return;
+
+        // Capture post-test SMART
+        try
+        {
+            _smartAfter = await _smartaProvider.GetSmartaDataAsync(SelectedDrive.Path, ct);
+        }
+        catch
+        {
+            _smartAfter = null;
+        }
+
+        StatusMessage = "✅ Test dokončen — obnovuji data ze zálohy...";
+    }
+
+    private async Task RunSanitizePhaseAsync(int phaseIndex, string mode,
+        ObservableCollection<ObservablePoint> points, double phaseWeight, double baseProgress,
+        CancellationToken ct)
+    {
+        var phase = TestPhases[phaseIndex];
+        phase.Status = TestPhaseStatus.Running;
+        TestPhaseProgress = 0;
+        TestPhaseDetail = mode == "write" ? "Zapisuji..." : "Čtu...";
+
+        SanitizeTotalBytes = DiskTotalBytes;
+        SanitizeTotalBytesText = DiskTotalSizeText;
+
+        long bytesProcessed = 0;
+        _phaseStartTime = DateTime.UtcNow;
+        _phaseBytesProcessed = 0;
+
+        const int blockSize = 256 * 1024; // 256KB blocks
+        var buffer = new byte[blockSize];
+        long totalBlocks = DiskTotalBytes / blockSize;
+
+        using var deviceStream = new FileStream(DiskPath, FileMode.Open, FileAccess.ReadWrite,
+            FileShare.None, blockSize, FileOptions.SequentialScan);
+
+        for (long block = 0; block < totalBlocks; block++)
+        {
+            ct.ThrowIfCancellationRequested();
+
+            if (mode == "write")
+            {
+                Array.Fill(buffer, (byte)0x00);
+                await deviceStream.WriteAsync(buffer, ct);
+            }
+            else
+            {
+                await deviceStream.ReadExactlyAsync(buffer, ct);
+            }
+
+            bytesProcessed += blockSize;
+            _phaseBytesProcessed += blockSize;
+
+            if (mode == "write")
+                SanitizeBytesWritten = bytesProcessed;
+            else
+                SanitizeBytesRead = bytesProcessed;
+
+            SanitizeBytesWrittenText = FormatBytesLong(SanitizeBytesWritten);
+            SanitizeBytesReadText = FormatBytesLong(SanitizeBytesRead);
+
+            double phaseProgress = DiskTotalBytes > 0 ? (double)bytesProcessed / DiskTotalBytes * 100 : 0;
+            TestPhaseProgress = phaseProgress;
+            phase.ProgressPercent = phaseProgress;
+
+            // Add chart point every ~1%
+            if (block % Math.Max(1, totalBlocks / 100) == 0 || block == totalBlocks - 1)
+            {
+                var speedMbps = CalculateCurrentSpeed();
+                points.Add(new ObservablePoint(phaseProgress, speedMbps));
+            }
+
+            UpdatePhaseSpeedAndEta(ref _phaseStartTime, ref _phaseBytesProcessed,
+                out var speed, out var elapsed, out var eta);
+            TestCurrentSpeedText = speed;
+            TestElapsedText = elapsed;
+            TestEtaText = eta;
+
+            OverallProgress = baseProgress + (phaseProgress / 100 * phaseWeight) * 100;
+            OverallProgressText = $"{OverallProgress:F0}%";
+
+            await Dispatcher.UIThread.InvokeAsync(() => { }, DispatcherPriority.Background, ct);
+        }
+
+        phase.Status = TestPhaseStatus.Completed;
+        phase.ProgressPercent = 100;
+        RebuildSanitizeChart();
+        Log($"Sanitizace {phaseIndex + 1} ({mode}): dokončeno — {FormatBytesLong(bytesProcessed)}");
+    }
+
+    private async Task RunSeekPhaseAsync(int phaseIndex, SeekTestType seekType,
+        ObservableCollection<ObservablePoint> points, double phaseWeight, double baseProgress,
+        CancellationToken ct)
+    {
+        var phase = TestPhases[phaseIndex];
+        phase.Status = TestPhaseStatus.Running;
+        TestPhaseProgress = 0;
+        TestPhaseDetail = $"Seek test: {seekType}...";
+
+        _phaseStartTime = DateTime.UtcNow;
+        _phaseBytesProcessed = 0;
+
+        if (SelectedDrive == null) return;
+
+        var result = await _seekTestService.RunWithRecommendationAsync(
+            SelectedDrive,
+            preferredType: seekType,
+            progressCallback: progress =>
+            {
+                double phaseProgress = progress.PercentComplete;
+                TestPhaseProgress = phaseProgress;
+                phase.ProgressPercent = phaseProgress;
+
+                if (progress.LatestSample != null)
+                {
+                    points.Add(new ObservablePoint(progress.SeeksCompleted, progress.LatestSample.LatencyMs));
+                }
+
+                TestCurrentSpeedText = $"{progress.CurrentAverageLatencyMs:F2} ms";
+                TestElapsedText = $"{(int)(DateTime.UtcNow - _phaseStartTime).TotalHours:D2}:{(DateTime.UtcNow - _phaseStartTime).Minutes:D2}:{(DateTime.UtcNow - _phaseStartTime).Seconds:D2}";
+
+                OverallProgress = baseProgress + (phaseProgress / 100 * phaseWeight) * 100;
+                OverallProgressText = $"{OverallProgress:F0}%";
+            },
+            cancellationToken: ct);
+
+        phase.Status = result.IsCompleted ? TestPhaseStatus.Completed : TestPhaseStatus.Failed;
+        phase.ProgressPercent = 100;
+        Log($"Seek {seekType}: dokončeno — avg {result.AverageLatencyMs:F2} ms, P95 {result.P95LatencyMs:F2} ms, chyb: {result.ErrorCount}");
+    }
+
+    // ──────────────────────────────────────────────
+    //  Phase 3: Raw Restore
+    // ──────────────────────────────────────────────
+
+    private async Task RunRestorePhaseAsync(CancellationToken ct)
+    {
+        Phase = SafeDestructivePhase.Restore;
+        CurrentPhaseName = "Obnova (raw image)";
+        CurrentPhaseIcon = "🔄";
+        StatusMessage = "Obnovuji data ze zálohy...";
+
+        if (_backupImagePath == null || !File.Exists(_backupImagePath))
+            throw new InvalidOperationException("Záloha nebyla nalezena.");
+
+        RestoreImagePath = _backupImagePath;
+        Log($"Obnova ← {_backupImagePath}");
+
+        const int sectorSize = 4096;
+        var buffer = new byte[sectorSize];
+        long totalSize = _backupTotalBytes;
+        long bytesWritten = 0;
+        _phaseStartTime = DateTime.UtcNow;
+        _phaseBytesProcessed = 0;
+
+        using var sourceStream = new FileStream(_backupImagePath, FileMode.Open, FileAccess.Read,
+            FileShare.Read, sectorSize, FileOptions.SequentialScan);
+        using var targetStream = new FileStream(DiskPath, FileMode.Open, FileAccess.Write,
+            FileShare.None, sectorSize, FileOptions.SequentialScan);
+
+        while (bytesWritten < totalSize)
+        {
+            ct.ThrowIfCancellationRequested();
+
+            int bytesToRead = (int)Math.Min(sectorSize, totalSize - bytesWritten);
+            int bytesReadNow = await sourceStream.ReadAsync(buffer.AsMemory(0, bytesToRead), ct);
+            if (bytesReadNow == 0) break;
+
+            await targetStream.WriteAsync(buffer.AsMemory(0, bytesReadNow), ct);
+            bytesWritten += bytesReadNow;
+            _phaseBytesProcessed += bytesReadNow;
+
+            RestoreBytesWritten = bytesWritten;
+            RestoreBytesWrittenText = FormatBytesLong(bytesWritten);
+            RestoreCurrentSectorText = $"Sektor {bytesWritten / sectorSize:N0} / {totalSize / sectorSize:N0}";
+
+            double restoreProgress = totalSize > 0 ? (double)bytesWritten / totalSize * 100 : 0;
+            OverallProgress = 70 + restoreProgress * 0.30; // Restore = 30% of total workflow
+            OverallProgressText = $"{OverallProgress:F0}%";
+
+            UpdatePhaseSpeedAndEta(ref _phaseStartTime, ref _phaseBytesProcessed,
+                out var speed, out var elapsed, out var eta);
+            RestoreSpeedText = speed;
+            RestoreElapsedText = elapsed;
+            RestoreEtaText = eta;
+
+            await Dispatcher.UIThread.InvokeAsync(() => { }, DispatcherPriority.Background, ct);
+        }
+
+        Log($"Obnova dokončena: {FormatBytesLong(bytesWritten)}");
+        StatusMessage = "✅ Data obnovena — workflow dokončen.";
+    }
+
+    // ──────────────────────────────────────────────
+    //  Results
+    // ──────────────────────────────────────────────
+
+    private async Task BuildResultsAsync()
+    {
+        var sb = new System.Text.StringBuilder();
+        sb.AppendLine("═══ BEZPEČNÝ DESTRUKTIVNÍ TEST — VÝSLEDKY ═══");
+        sb.AppendLine($"Disk: {DiskDisplayName}");
+        sb.AppendLine($"Cesta: {DiskPath}");
+        sb.AppendLine($"Velikost: {DiskTotalSizeText}");
+        sb.AppendLine();
+
+        // Sanitize stats
+        if (SanitizePass1WritePoints.Count > 0)
+        {
+            double avgWrite1 = SanitizePass1WritePoints.Average(p => p.Y ?? 0);
+            double avgRead1 = SanitizePass1ReadPoints.Count > 0 ? SanitizePass1ReadPoints.Average(p => p.Y ?? 0) : 0;
+            sb.AppendLine($"🧹 Sanitizace 1: Write {avgWrite1:F1} MB/s | Read {avgRead1:F1} MB/s");
+        }
+        if (SanitizePass2WritePoints.Count > 0)
+        {
+            double avgWrite2 = SanitizePass2WritePoints.Average(p => p.Y ?? 0);
+            double avgRead2 = SanitizePass2ReadPoints.Count > 0 ? SanitizePass2ReadPoints.Average(p => p.Y ?? 0) : 0;
+            sb.AppendLine($"🧹 Sanitizace 2: Write {avgWrite2:F1} MB/s | Read {avgRead2:F1} MB/s");
+        }
+
+        // Seek stats
+        if (SeekFullStrokePoints.Count > 0)
+            sb.AppendLine($"🎯 Seek Full Stroke: avg {SeekFullStrokePoints.Average(p => p.Y ?? 0):F2} ms, P95 {Percentile(SeekFullStrokePoints.Select(p => p.Y ?? 0).ToList(), 0.95):F2} ms");
+        if (SeekRandomPoints.Count > 0)
+            sb.AppendLine($"🎯 Seek Random: avg {SeekRandomPoints.Average(p => p.Y ?? 0):F2} ms, P95 {Percentile(SeekRandomPoints.Select(p => p.Y ?? 0).ToList(), 0.95):F2} ms");
+        if (SeekSkipPoints.Count > 0)
+            sb.AppendLine($"🎯 Seek Skip: avg {SeekSkipPoints.Average(p => p.Y ?? 0):F2} ms, P95 {Percentile(SeekSkipPoints.Select(p => p.Y ?? 0).ToList(), 0.95):F2} ms");
+
+        ResultsSummary = sb.ToString();
+
+        // SMART delta
+        if (_smartBefore != null && _smartAfter != null)
+        {
+            var deltaSb = new System.Text.StringBuilder();
+            deltaSb.AppendLine("═══ SMART ZMĚNY ═══");
+
+            if (_smartBefore.Temperature != _smartAfter.Temperature)
+                deltaSb.AppendLine($"🌡 Teplota: {_smartBefore.Temperature}°C → {_smartAfter.Temperature}°C (Δ {_smartAfter.Temperature - _smartBefore.Temperature:+0;-0}°C)");
+            if (_smartBefore.ReallocatedSectorCount != _smartAfter.ReallocatedSectorCount)
+                deltaSb.AppendLine($"⚠️ Reallocated sectors: {_smartBefore.ReallocatedSectorCount} → {_smartAfter.ReallocatedSectorCount} (Δ {_smartAfter.ReallocatedSectorCount - _smartBefore.ReallocatedSectorCount:+0;-0})");
+            if (_smartBefore.PendingSectorCount != _smartAfter.PendingSectorCount)
+                deltaSb.AppendLine($"⚠️ Pending sectors: {_smartBefore.PendingSectorCount} → {_smartAfter.PendingSectorCount} (Δ {_smartAfter.PendingSectorCount - _smartBefore.PendingSectorCount:+0;-0})");
+            if (_smartBefore.UncorrectableErrorCount != _smartAfter.UncorrectableErrorCount)
+                deltaSb.AppendLine($"⚠️ Uncorrectable errors: {_smartBefore.UncorrectableErrorCount} → {_smartAfter.UncorrectableErrorCount} (Δ {_smartAfter.UncorrectableErrorCount - _smartBefore.UncorrectableErrorCount:+0;-0})");
+            if (_smartBefore.PowerOnHours != _smartAfter.PowerOnHours)
+                deltaSb.AppendLine($"⏱ Power-on hours: {_smartBefore.PowerOnHours} → {_smartAfter.PowerOnHours} (Δ {_smartAfter.PowerOnHours - _smartBefore.PowerOnHours:+0;-0}h)");
+
+            SmartDeltaSummary = deltaSb.ToString();
+        }
+
+        // Save to repository
+        try
+        {
+            var card = await _diskCardRepository.GetBySerialNumberAsync(SelectedDrive?.SerialNumber ?? "");
+            if (card != null)
+            {
+                var session = new TestSession
+                {
+                    TestType = TestType.AbsoluteDestructive,
+                    StartedAt = DateTime.Now.AddMinutes(-30), // approximate
+                    CompletedAt = DateTime.Now,
+                    Status = TestStatus.Completed,
+                    Result = TestResult.Pass,
+                    Notes = "Safe Destructive Test (backup → test → restore)"
+                };
+                card.TestSessions.Add(session);
+                await _diskCardRepository.UpdateAsync(card);
+            }
+        }
+        catch { /* non-critical */ }
+    }
+
+    // ──────────────────────────────────────────────
+    //  Seek chart switching
+    // ──────────────────────────────────────────────
+
+    private void SwitchSeekChart()
+    {
+        ActiveSeekChartIndex = (ActiveSeekChartIndex + 1) % 3;
+        RebuildSeekChart();
+    }
+
+    private void RebuildSeekChart()
+    {
+        var points = ActiveSeekChartIndex switch
+        {
+            0 => SeekFullStrokePoints,
+            1 => SeekRandomPoints,
+            2 => SeekSkipPoints,
+            _ => SeekFullStrokePoints
+        };
+
+        var name = ActiveSeekChartIndex switch
+        {
+            0 => "Full Stroke",
+            1 => "Náhodný",
+            2 => "Skip",
+            _ => "Full Stroke"
+        };
+
+        SeekChartSeries = new ISeries[]
+        {
+            new ScatterSeries<ObservablePoint>
+            {
+                Values = points,
+                Name = name,
+                Stroke = new SolidColorPaint(new SKColor(0x3B, 0x82, 0xF6), 1),
+                Fill = new SolidColorPaint(new SKColor(0x3B, 0x82, 0xF6, 0x40)),
+                GeometrySize = 4
+            }
+        };
+    }
+
+    // ──────────────────────────────────────────────
+    //  Sanitize series toggle
+    // ──────────────────────────────────────────────
+
+    private void ToggleSanitizeSeries()
+    {
+        // Cycle through toggles: all on → pass1 only → pass2 only → writes only → reads only → all on
+        if (ShowPass1Write && ShowPass1Read && ShowPass2Write && ShowPass2Read)
+        {
+            ShowPass2Write = false;
+            ShowPass2Read = false;
+        }
+        else if (ShowPass1Write && ShowPass1Read && !ShowPass2Write && !ShowPass2Read)
+        {
+            ShowPass1Write = false;
+            ShowPass1Read = false;
+            ShowPass2Write = true;
+            ShowPass2Read = true;
+        }
+        else if (!ShowPass1Write && !ShowPass1Read && ShowPass2Write && ShowPass2Read)
+        {
+            ShowPass1Write = true;
+            ShowPass2Write = true;
+            ShowPass1Read = false;
+            ShowPass2Read = false;
+        }
+        else if (ShowPass1Write && ShowPass2Write && !ShowPass1Read && !ShowPass2Read)
+        {
+            ShowPass1Write = false;
+            ShowPass2Write = false;
+            ShowPass1Read = true;
+            ShowPass2Read = true;
+        }
+        else
+        {
+            ShowPass1Write = true;
+            ShowPass1Read = true;
+            ShowPass2Write = true;
+            ShowPass2Read = true;
+        }
+
+        RebuildSanitizeChart();
+    }
+
+    // ──────────────────────────────────────────────
+    //  Helpers
+    // ──────────────────────────────────────────────
+
+    private double CalculateCurrentSpeed()
+    {
+        var elapsed = (DateTime.UtcNow - _phaseStartTime).TotalSeconds;
+        if (elapsed > 0.5 && _phaseBytesProcessed > 0)
+            return _phaseBytesProcessed / elapsed / (1024.0 * 1024.0); // MB/s
+        return 0;
+    }
+
+    private void UpdatePhaseSpeedAndEta(ref DateTime startTime, ref long bytesProcessed,
+        out string speedText, out string elapsedText, out string etaText)
+    {
+        var elapsed = DateTime.UtcNow - startTime;
+        elapsedText = $"{(int)elapsed.TotalHours:D2}:{elapsed.Minutes:D2}:{elapsed.Seconds:D2}";
+
+        if (elapsed.TotalSeconds > 1 && bytesProcessed > 0)
+        {
+            var speedBps = bytesProcessed / elapsed.TotalSeconds;
+            speedText = FormatBytesLong((long)speedBps) + "/s";
+
+            long totalForPhase = Phase switch
+            {
+                SafeDestructivePhase.Backup => DiskTotalBytes,
+                SafeDestructivePhase.Restore => _backupTotalBytes,
+                _ => DiskTotalBytes
+            };
+
+            if (totalForPhase > 0 && speedBps > 0)
+            {
+                var remainingBytes = totalForPhase - bytesProcessed;
+                var remainingSeconds = remainingBytes / speedBps;
+                etaText = remainingSeconds < 3600
+                    ? $"{remainingSeconds / 60:F0}m {remainingSeconds % 60:F0}s"
+                    : $"{(int)(remainingSeconds / 3600)}h {(int)(remainingSeconds % 3600 / 60)}m";
+            }
+            else
+            {
+                etaText = "—";
+            }
+        }
+        else
+        {
+            speedText = "—";
+            etaText = "—";
+        }
+    }
+
+    private static double Percentile(List<double> values, double percentile)
+    {
+        if (values.Count == 0) return 0;
+        var sorted = values.OrderBy(v => v).ToList();
+        int index = (int)Math.Ceiling(percentile * sorted.Count) - 1;
+        return sorted[Math.Clamp(index, 0, sorted.Count - 1)];
+    }
+
+    private static string FormatBytesLong(long bytes)
+    {
+        return bytes switch
+        {
+            >= 1_000_000_000_000L => $"{bytes / 1_000_000_000_000.0:F2} TB",
+            >= 1_000_000_000L => $"{bytes / 1_000_000_000.0:F2} GB",
+            >= 1_000_000L => $"{bytes / 1_000_000.0:F2} MB",
+            >= 1_000L => $"{bytes / 1_000.0:F2} KB",
+            _ => $"{bytes} B"
+        };
+    }
+
+    private void Log(string message)
+    {
+        var entry = $"[{DateTime.Now:HH:mm:ss}] {message}";
+        _logEntries.Add(entry);
+        LogText = string.Join("\n", _logEntries);
+    }
+
+    // ──────────────────────────────────────────────
+    //  Cancel / GoBack
+    // ──────────────────────────────────────────────
+
+    private void Cancel()
+    {
+        _cts?.Cancel();
+        Log("⏹ Zrušení požadováno...");
+    }
+
+    private void GoBack()
+    {
+        if (Phase == SafeDestructivePhase.Backup || Phase == SafeDestructivePhase.Test || Phase == SafeDestructivePhase.Restore)
+        {
+            _ = _dialogService.ShowErrorAsync("Operace běží", "Nelze opustit během běžící operace. Nejprve operaci přerušte.");
+            return;
+        }
+        _navigationService.NavigateTo<AbsoluteDestructiveTestViewModel>();
+    }
+
+    // ──────────────────────────────────────────────
+    //  INavigableViewModel
+    // ──────────────────────────────────────────────
+
+    public void OnNavigatedTo()
+    {
+        _ = InitializeAsync();
+    }
+
+    // ──────────────────────────────────────────────
+    //  IDisposable
+    // ──────────────────────────────────────────────
+
+    public void Dispose()
+    {
+        if (_disposed) return;
+        _disposed = true;
+        _cts?.Cancel();
+        _cts?.Dispose();
+        _cts = null;
+        GC.SuppressFinalize(this);
+    }
+}

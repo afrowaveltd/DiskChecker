@@ -891,6 +891,48 @@ public static class SmartctlJsonParser
     
     public static SmartaData ToSmartaData(SmartCheckResult result)
     {
+        // Detect failing attributes
+        var failingAttrs = new List<string>();
+        bool isFailing = !result.IsHealthy;
+        string failurePrediction = string.Empty;
+
+        if (result.Attributes != null)
+        {
+            foreach (var attr in result.Attributes)
+            {
+                if (!attr.IsOk && !string.IsNullOrWhiteSpace(attr.WhenFailed))
+                {
+                    isFailing = true;
+                    var failType = attr.WhenFailed.Contains("FAILING_NOW", StringComparison.OrdinalIgnoreCase)
+                        ? "FAILING_NOW"
+                        : attr.WhenFailed.Contains("In_the_past", StringComparison.OrdinalIgnoreCase)
+                            ? "In_the_past"
+                            : attr.WhenFailed;
+                    failingAttrs.Add($"{attr.Name} (ID {attr.Id}): {failType} — value={attr.Value}, threshold={attr.Threshold}");
+                }
+            }
+        }
+
+        // Build failure prediction message
+        if (isFailing)
+        {
+            var failingNowCount = failingAttrs.Count(a => a.Contains("FAILING_NOW"));
+            if (failingNowCount > 0)
+            {
+                failurePrediction = failingNowCount == 1
+                    ? $"⚠️ Disk selže do 24 hodin — atribut {failingAttrs.First(a => a.Contains("FAILING_NOW")).Split(':')[0]} je v kritickém stavu. ZÁLOHUJTE NYNÍ!"
+                    : $"⚠️ Disk selže do 24 hodin — {failingNowCount} atributů v kritickém stavu. ZÁLOHUJTE NYNÍ!";
+            }
+            else if (failingAttrs.Any(a => a.Contains("In_the_past")))
+            {
+                failurePrediction = $"⚠️ Disk měl kritické atributy v minulosti — {failingAttrs.Count} atributů pod thresholdem. Zvažte výměnu.";
+            }
+            else if (!result.IsHealthy)
+            {
+                failurePrediction = "⚠️ SMART overall-health: FAILED! Disk je v kritickém stavu. Zálohujte data a vyměňte disk.";
+            }
+        }
+
         return new SmartaData
         {
             DeviceModel = result.DeviceModel ?? "",
@@ -898,6 +940,9 @@ public static class SmartctlJsonParser
             FirmwareVersion = result.FirmwareVersion ?? "",
             DeviceType = result.DeviceType ?? "Unknown",
             IsHealthy = result.IsHealthy,
+            IsFailing = isFailing,
+            FailurePrediction = failurePrediction,
+            FailingAttributes = failingAttrs,
             SmartEnabled = result.IsEnabled,
             Temperature = result.Temperature,
             PowerOnHours = result.PowerOnHours,

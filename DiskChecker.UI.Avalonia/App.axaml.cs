@@ -257,8 +257,11 @@ public partial class App : global::Avalonia.Application
         services.AddTransient<DiskCardDetailViewModel>();
         services.AddTransient<CertificateViewModel>();
         services.AddTransient<CertificateBrowserViewModel>();
+        services.AddTransient<BackupViewModel>();
+        services.AddTransient<RestoreViewModel>();
         services.AddTransient<DiskComparisonViewModel>();
         services.AddTransient<SeekTestViewModel>();
         services.AddTransient<AbsoluteDestructiveTestViewModel>();
+        services.AddTransient<SafeDestructiveTestViewModel>();
     }
 }

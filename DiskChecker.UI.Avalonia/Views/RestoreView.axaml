@@ -1,0 +1,255 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="clr-namespace:DiskChecker.UI.Avalonia.ViewModels"
+             x:Class="DiskChecker.UI.Avalonia.Views.RestoreView"
+             x:DataType="vm:RestoreViewModel">
+
+    <Grid RowDefinitions="Auto,Auto,*,Auto,Auto" Margin="16">
+
+        <!-- ═══ HEADER ═══ -->
+        <Border Grid.Row="0" Padding="16,12" CornerRadius="8"
+                Background="{DynamicResource ThemePrimaryLowBrush}"
+                BorderBrush="{DynamicResource ThemePrimaryBrush}" BorderThickness="1">
+            <StackPanel Spacing="6">
+                <TextBlock Text="🔄 OBNOVA ZÁLOHY" FontSize="20" FontWeight="Bold"
+                           Foreground="{DynamicResource ThemePrimaryBrush}"/>
+                <TextBlock Text="{Binding StatusMessage}" FontSize="13"
+                           Foreground="{DynamicResource ThemeForegroundBrush}" Opacity="0.8"/>
+            </StackPanel>
+        </Border>
+
+        <!-- ═══ PHASE: IDLE / NO BACKUPS ═══ -->
+        <Border Grid.Row="1" Padding="16" CornerRadius="8" Margin="0,12,0,0"
+                Background="{DynamicResource ThemeCardBrush}"
+                IsVisible="{Binding Phase, Converter={StaticResource EnumEqConverter}, ConverterParameter=Idle}">
+            <StackPanel Spacing="12" HorizontalAlignment="Center">
+                <TextBlock Text="📭" FontSize="48" HorizontalAlignment="Center"/>
+                <TextBlock Text="Nenalezeny žádné zálohy" FontSize="16" FontWeight="Bold"
+                           HorizontalAlignment="Center"/>
+                <TextBlock Text="Nejprve proveďte zálohu disku v sekci Zálohování."
+                           FontSize="13" Opacity="0.7" HorizontalAlignment="Center"
+                           TextWrapping="Wrap" MaxWidth="400"/>
+                <Button Content="💾 Přejít na zálohování" HorizontalAlignment="Center"
+                        Command="{Binding GoBackCommand}" Classes="Primary"/>
+            </StackPanel>
+        </Border>
+
+        <!-- ═══ PHASE: SCANNING ═══ -->
+        <Border Grid.Row="1" Padding="16" CornerRadius="8" Margin="0,12,0,0"
+                Background="{DynamicResource ThemeCardBrush}"
+                IsVisible="{Binding Phase, Converter={StaticResource EnumEqConverter}, ConverterParameter=Scanning}">
+            <StackPanel Spacing="12" HorizontalAlignment="Center">
+                <ProgressBar IsIndeterminate="True" Height="6" Width="200"
+                             Foreground="{DynamicResource ThemePrimaryBrush}"/>
+                <TextBlock Text="🔍 Hledám existující zálohy..." FontSize="14"
+                           HorizontalAlignment="Center"/>
+            </StackPanel>
+        </Border>
+
+        <!-- ═══ MAIN CONTENT (Ready / Running / Verifying / Completed) ═══ -->
+        <Grid Grid.Row="2" ColumnDefinitions="*,*" RowDefinitions="Auto,*" Margin="0,12,0,0"
+              IsVisible="{Binding Phase, Converter={StaticResource EnumNeqConverter}, ConverterParameter=Idle}">
+
+            <!-- LEFT: Backup list -->
+            <Border Grid.Row="0" Grid.Column="0" Padding="12" CornerRadius="8"
+                    Background="{DynamicResource ThemeCardBrush}" Margin="0,0,6,0">
+                <StackPanel Spacing="8">
+                    <TextBlock Text="📦 NALEZENÉ ZÁLOHY" FontSize="14" FontWeight="Bold"/>
+                    <ScrollViewer Height="200">
+                        <ItemsControl ItemsSource="{Binding DiscoveredBackups}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate x:DataType="vm:DiscoveredBackup">
+                                    <Border Padding="10,8" Margin="0,0,0,4" CornerRadius="6"
+                                            Background="{DynamicResource ThemeBackgroundBrush}"
+                                            Cursor="Hand"
+                                            PointerPressed="OnBackupPointerPressed">
+                                        <StackPanel Spacing="4">
+                                            <StackPanel Orientation="Horizontal" Spacing="8">
+                                                <TextBlock Text="{Binding SourceModel}" FontWeight="Bold" FontSize="13"/>
+                                                <Border Padding="4,2" CornerRadius="4"
+                                                        Background="{DynamicResource ThemePrimaryLowBrush}">
+                                                    <TextBlock Text="{Binding Mode}" FontSize="11"
+                                                               Foreground="{DynamicResource ThemePrimaryBrush}"/>
+                                                </Border>
+                                            </StackPanel>
+                                            <TextBlock Text="{Binding BackupDate}" FontSize="11" Opacity="0.7"/>
+                                            <StackPanel Orientation="Horizontal" Spacing="12">
+                                                <TextBlock Text="{Binding TotalBytesText}" FontSize="12" FontWeight="SemiBold"/>
+                                                <TextBlock Text="{Binding FoldersSummary}" FontSize="11" Opacity="0.7"/>
+                                            </StackPanel>
+                                            <TextBlock Text="{Binding SourceDrivePath}" FontSize="10" Opacity="0.5"
+                                                       FontFamily="Consolas"/>
+                                        </StackPanel>
+                                    </Border>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </ScrollViewer>
+                </StackPanel>
+            </Border>
+
+            <!-- RIGHT: Target disk selection -->
+            <Border Grid.Row="0" Grid.Column="1" Padding="12" CornerRadius="8"
+                    Background="{DynamicResource ThemeCardBrush}" Margin="6,0,0,0">
+                <StackPanel Spacing="8">
+                    <TextBlock Text="💿 CÍLOVÝ DISK" FontSize="14" FontWeight="Bold"/>
+                    <ScrollViewer Height="200">
+                        <ItemsControl ItemsSource="{Binding TargetDisks}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate x:DataType="vm:RestoreTargetItem">
+                                    <Border Padding="10,8" Margin="0,0,0,4" CornerRadius="6"
+                                            Background="{DynamicResource ThemeBackgroundBrush}"
+                                            Cursor="Hand"
+                                            PointerPressed="OnTargetPointerPressed">
+                                        <StackPanel Spacing="4">
+                                            <StackPanel Orientation="Horizontal" Spacing="8">
+                                                <RadioButton IsChecked="{Binding IsSelected}"
+                                                             GroupName="TargetDisks"/>
+                                                <TextBlock Text="{Binding DisplayName}" FontWeight="Bold" FontSize="13"/>
+                                            </StackPanel>
+                                            <TextBlock Text="{Binding TotalSizeText}" FontSize="12" Opacity="0.7"/>
+                                            <TextBlock Text="{Binding Warning}" FontSize="11"
+                                                       Foreground="{DynamicResource ThemeWarningBrush}"
+                                                       IsVisible="{Binding Warning, Converter={StaticResource NotNullConverter}}"/>
+                                        </StackPanel>
+                                    </Border>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </ScrollViewer>
+                </StackPanel>
+            </Border>
+
+            <!-- DETAIL: Selected backup info -->
+            <Border Grid.Row="1" Grid.Column="0" Grid.ColumnSpan="2" Padding="16" CornerRadius="8"
+                    Background="{DynamicResource ThemeCardBrush}" Margin="0,12,0,0"
+                    IsVisible="{Binding HasSelectedBackup}">
+                <Grid ColumnDefinitions="*,Auto" RowDefinitions="Auto,Auto,Auto,Auto">
+                    <TextBlock Grid.Row="0" Grid.Column="0" Text="📋 DETAIL VYBRANÉ ZÁLOHY"
+                               FontSize="14" FontWeight="Bold" Margin="0,0,0,8"/>
+                    <Button Grid.Row="0" Grid.Column="1" Content="🔄 Znovu hledat"
+                            Command="{Binding ScanForBackupsCommand}" Classes="Secondary" VerticalAlignment="Top"/>
+
+                    <StackPanel Grid.Row="1" Grid.Column="0" Grid.ColumnSpan="2" Spacing="4">
+                        <TextBlock FontSize="12">
+                            <Run Text="Zdrojový disk: " FontWeight="SemiBold"/>
+                            <Run Text="{Binding SelectedBackup.SourceModel}"/>
+                        </TextBlock>
+                        <TextBlock FontSize="12">
+                            <Run Text="Cesta: " FontWeight="SemiBold"/>
+                            <Run Text="{Binding SelectedBackup.SourceDrivePath}" FontFamily="Consolas"/>
+                        </TextBlock>
+                        <TextBlock FontSize="12">
+                            <Run Text="Datum zálohy: " FontWeight="SemiBold"/>
+                            <Run Text="{Binding SelectedBackup.BackupDate}"/>
+                        </TextBlock>
+                        <TextBlock FontSize="12">
+                            <Run Text="Režim: " FontWeight="SemiBold"/>
+                            <Run Text="{Binding SelectedBackup.Mode}"/>
+                        </TextBlock>
+                        <TextBlock FontSize="12">
+                            <Run Text="Velikost: " FontWeight="SemiBold"/>
+                            <Run Text="{Binding SelectedBackup.TotalBytesText}"/>
+                        </TextBlock>
+                        <TextBlock FontSize="12">
+                            <Run Text="Částí: " FontWeight="SemiBold"/>
+                            <Run Text="{Binding SelectedBackup.Parts}"/>
+                        </TextBlock>
+                        <TextBlock FontSize="12" TextWrapping="Wrap">
+                            <Run Text="Složky: " FontWeight="SemiBold"/>
+                            <Run Text="{Binding SelectedBackup.FoldersSummary}"/>
+                        </TextBlock>
+                    </StackPanel>
+                </Grid>
+            </Border>
+        </Grid>
+
+        <!-- ═══ PROGRESS (Running / Verifying) ═══ -->
+        <Border Grid.Row="3" Padding="16" CornerRadius="8" Margin="0,12,0,0"
+                Background="{DynamicResource ThemeCardBrush}"
+                IsVisible="{Binding Phase, Converter={StaticResource EnumInConverter}, ConverterParameter='Running,Verifying'}">
+            <StackPanel Spacing="10">
+                <TextBlock FontSize="14" FontWeight="Bold">
+                    <Run Text="{Binding Phase, Converter={StaticResource EnumDisplayConverter}}"/>
+                    <Run Text=" — "/>
+                    <Run Text="{Binding OverallProgress, StringFormat='{}{0:F1}%'}"/>
+                </TextBlock>
+
+                <!-- Overall progress -->
+                <Grid ColumnDefinitions="*,Auto" RowDefinitions="Auto,Auto">
+                    <ProgressBar Grid.Row="0" Grid.Column="0" Value="{Binding OverallProgress}" Height="8"
+                                 Foreground="{DynamicResource ThemePrimaryBrush}"/>
+                    <TextBlock Grid.Row="0" Grid.Column="1" Text="{Binding OverallProgress, StringFormat='{}{0:F1}%'}"
+                               FontSize="12" FontWeight="SemiBold" Margin="8,0,0,0" VerticalAlignment="Center"/>
+
+                    <StackPanel Grid.Row="1" Grid.Column="0" Grid.ColumnSpan="2" Orientation="Horizontal"
+                                Spacing="16" Margin="0,6,0,0">
+                        <TextBlock FontSize="11" Opacity="0.7">
+                            <Run Text="⏱ "/><Run Text="{Binding ElapsedTime}"/>
+                        </TextBlock>
+                        <TextBlock FontSize="11" Opacity="0.7">
+                            <Run Text="🏁 "/><Run Text="{Binding EstimatedRemaining}"/>
+                        </TextBlock>
+                        <TextBlock FontSize="11" Opacity="0.7">
+                            <Run Text="⚡ "/><Run Text="{Binding CurrentSpeed}"/>
+                        </TextBlock>
+                    </StackPanel>
+                </Grid>
+
+                <!-- Current file -->
+                <Border Padding="8" CornerRadius="4"
+                        Background="{DynamicResource ThemeBackgroundBrush}"
+                        IsVisible="{Binding CurrentFileName, Converter={StaticResource NotNullConverter}}">
+                    <Grid ColumnDefinitions="*,Auto" RowDefinitions="Auto,Auto">
+                        <TextBlock Grid.Row="0" Grid.Column="0" Text="{Binding CurrentFileName}"
+                                   FontSize="11" FontFamily="Consolas" TextTrimming="CharacterEllipsis"/>
+                        <TextBlock Grid.Row="0" Grid.Column="1" Text="{Binding CurrentFileBytes, Converter={StaticResource BytesToHRConverter}}"
+                                   FontSize="11" Margin="8,0,0,0"/>
+                        <ProgressBar Grid.Row="1" Grid.Column="0" Grid.ColumnSpan="2"
+                                     Value="{Binding CurrentFileProgress}" Height="4"
+                                     Foreground="{DynamicResource ThemeSuccessBrush}" Margin="0,4,0,0"/>
+                    </Grid>
+                </Border>
+            </StackPanel>
+        </Border>
+
+        <!-- ═══ VERIFY RESULT ═══ -->
+        <Border Grid.Row="3" Padding="16" CornerRadius="8" Margin="0,12,0,0"
+                Background="{DynamicResource ThemeCardBrush}"
+                IsVisible="{Binding Phase, Converter={StaticResource EnumEqConverter}, ConverterParameter=Completed}">
+            <StackPanel Spacing="8">
+                <TextBlock Text="✅ OBNOVA DOKONČENA" FontSize="16" FontWeight="Bold"
+                           Foreground="{DynamicResource ThemeSuccessBrush}"/>
+                <TextBlock Text="{Binding VerifyResult}" FontSize="13" TextWrapping="Wrap"/>
+                <TextBlock Text="{Binding RestoreLogText}" FontSize="10" FontFamily="Consolas"
+                           Opacity="0.7" MaxHeight="150"
+                           IsVisible="{Binding RestoreLogText, Converter={StaticResource NotNullConverter}}"/>
+            </StackPanel>
+        </Border>
+
+        <!-- ═══ FAILED ═══ -->
+        <Border Grid.Row="3" Padding="16" CornerRadius="8" Margin="0,12,0,0"
+                Background="{DynamicResource ThemeCardBrush}"
+                IsVisible="{Binding Phase, Converter={StaticResource EnumEqConverter}, ConverterParameter=Failed}">
+            <StackPanel Spacing="8">
+                <TextBlock Text="❌ OBNOVA SELHALA" FontSize="16" FontWeight="Bold"
+                           Foreground="{DynamicResource ThemeErrorBrush}"/>
+                <TextBlock Text="{Binding StatusMessage}" FontSize="13" TextWrapping="Wrap"/>
+                <TextBlock Text="{Binding RestoreLogText}" FontSize="10" FontFamily="Consolas"
+                           Opacity="0.7" MaxHeight="150"/>
+            </StackPanel>
+        </Border>
+
+        <!-- ═══ BOTTOM BUTTONS ═══ -->
+        <StackPanel Grid.Row="4" Orientation="Horizontal" Spacing="12"
+                    HorizontalAlignment="Right" Margin="0,16,0,0">
+            <Button Content="↩️ Zpět" Command="{Binding GoBackCommand}" Classes="Secondary"
+                    IsVisible="{Binding Phase, Converter={StaticResource EnumNeqConverter}, ConverterParameter=Running}"/>
+            <Button Content="⏹️ Přerušit" Command="{Binding CancelRestoreCommand}" Classes="Danger"
+                    IsVisible="{Binding Phase, Converter={StaticResource EnumInConverter}, ConverterParameter='Running,Verifying'}"/>
+            <Button Content="💾 SPUSTIT OBNOVU" Command="{Binding StartRestoreCommand}" Classes="Primary"
+                    IsVisible="{Binding Phase, Converter={StaticResource EnumEqConverter}, ConverterParameter=Ready}"/>
+        </StackPanel>
+
+    </Grid>
+</UserControl>

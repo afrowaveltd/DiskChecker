@@ -515,11 +515,14 @@ public partial class MainWindowViewModel : ViewModelBase
     public bool IsOnSmartCheck => _currentViewModelType == typeof(SmartCheckViewModel);
     public bool IsOnSeekTest => _currentViewModelType == typeof(SeekTestViewModel);
     public bool IsOnAbsoluteDestructiveTest => _currentViewModelType == typeof(AbsoluteDestructiveTestViewModel);
+    public bool IsOnSafeDestructiveTest => _currentViewModelType == typeof(SafeDestructiveTestViewModel);
     public bool IsOnAnalysis => _currentViewModelType == typeof(AnalysisViewModel);
     public bool IsOnDiskComparison => _currentViewModelType == typeof(DiskComparisonViewModel);
     public bool IsOnReport => _currentViewModelType == typeof(ReportViewModel);
     public bool IsOnHistory => _currentViewModelType == typeof(HistoryViewModel);
     public bool IsOnCertificateBrowser => _currentViewModelType == typeof(CertificateBrowserViewModel);
+    public bool IsOnBackup => _currentViewModelType == typeof(BackupViewModel);
+    public bool IsOnRestore => _currentViewModelType == typeof(RestoreViewModel);
     public bool IsOnSettings => _currentViewModelType == typeof(SettingsViewModel);
 
     [RelayCommand]
@@ -527,6 +530,20 @@ public partial class MainWindowViewModel : ViewModelBase
     {
         _navigationService.NavigateTo<CertificateBrowserViewModel>();
         StatusMessage = "Naviguji na prohlížeč certifikátů...";
+    }
+
+    [RelayCommand]
+    private void NavigateToBackup()
+    {
+        _navigationService.NavigateTo<BackupViewModel>();
+        StatusMessage = "Naviguji na zálohování...";
+    }
+
+    [RelayCommand]
+    private void NavigateToRestore()
+    {
+        _navigationService.NavigateTo<RestoreViewModel>();
+        StatusMessage = "Naviguji na obnovu záloh...";
     }
 
     [RelayCommand]
@@ -569,6 +586,13 @@ public partial class MainWindowViewModel : ViewModelBase
     {
         _navigationService.NavigateTo<AbsoluteDestructiveTestViewModel>();
         StatusMessage = "Naviguji na absolutní destruktivní test...";
+    }
+
+    [RelayCommand]
+    private void NavigateToSafeDestructiveTest()
+    {
+        _navigationService.NavigateTo<SafeDestructiveTestViewModel>();
+        StatusMessage = "Naviguji na bezpečný destruktivní test...";
     }
 
     [RelayCommand]
@@ -618,11 +642,14 @@ public partial class MainWindowViewModel : ViewModelBase
         OnPropertyChanged(nameof(IsOnSmartCheck));
         OnPropertyChanged(nameof(IsOnSeekTest));
         OnPropertyChanged(nameof(IsOnAbsoluteDestructiveTest));
+        OnPropertyChanged(nameof(IsOnSafeDestructiveTest));
         OnPropertyChanged(nameof(IsOnAnalysis));
         OnPropertyChanged(nameof(IsOnDiskComparison));
         OnPropertyChanged(nameof(IsOnReport));
         OnPropertyChanged(nameof(IsOnHistory));
         OnPropertyChanged(nameof(IsOnCertificateBrowser));
+        OnPropertyChanged(nameof(IsOnBackup));
+        OnPropertyChanged(nameof(IsOnRestore));
         OnPropertyChanged(nameof(IsOnSettings));
     }
 }

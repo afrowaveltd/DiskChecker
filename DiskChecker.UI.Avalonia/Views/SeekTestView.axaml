@@ -521,9 +521,9 @@
                                     </StackPanel>
                                 </StackPanel>
                                 <Grid>
-                                    <lvc:CartesianChart Series="{Binding LatencySeries}"
-                                                        XAxes="{Binding LatencyXAxes}"
-                                                        YAxes="{Binding LatencyYAxes}"
+                                    <lvc:CartesianChart Series="{Binding FinalLatencySeries}"
+                                                        XAxes="{Binding FinalLatencyXAxes}"
+                                                        YAxes="{Binding FinalLatencyYAxes}"
                                                         ZoomMode="None"
                                                         TooltipPosition="Top"
                                                         LegendPosition="Hidden"
@@ -534,7 +534,7 @@
                                                HorizontalAlignment="Center"
                                                FontSize="12"
                                                Foreground="{DynamicResource ThemeTextMutedBrush}"
-                                               IsVisible="{Binding ChartPointCount, Converter={StaticResource InvertedIntToBoolConverter}}"/>
+                                               IsVisible="{Binding FinalChartPointCount, Converter={StaticResource InvertedIntToBoolConverter}}"/>
                                 </Grid>
                             </StackPanel>
                         </Border>

@@ -173,7 +173,77 @@
                 </StackPanel>
             </Border>
 
-            <!-- ═══════════ CURRENT PHASE CHART ═══════════ -->
+            <!-- ═══════════ SANITIZATION CHART (persistent, two passes) ═══════════ -->
+            <Border Background="{DynamicResource ThemeCardBackgroundBrush}"
+                    CornerRadius="8" Padding="12"
+                    BorderBrush="{DynamicResource ThemeBorderBrush}" BorderThickness="1"
+                    IsVisible="{Binding IsTesting}">
+                <StackPanel Spacing="6">
+                    <Grid ColumnDefinitions="*,Auto,Auto">
+                        <TextBlock Grid.Column="0" Text="{Binding SanitizeChartTitle}" FontSize="13" FontWeight="Bold"
+                                   Foreground="{DynamicResource ThemeTextPrimaryBrush}"/>
+                        <TextBlock Grid.Column="1" Text="{Binding SanitizeDataWritten}" FontSize="10"
+                                   Foreground="{DynamicResource ThemeDangerBrush}" Margin="8,0"
+                                   VerticalAlignment="Center"/>
+                        <TextBlock Grid.Column="2" Text="{Binding SanitizeDataRead}" FontSize="10"
+                                   Foreground="{DynamicResource ThemeSuccessBrush}"
+                                   VerticalAlignment="Center"/>
+                    </Grid>
+                    <!-- Legend with toggles (clickable buttons styled as legend items) -->
+                    <StackPanel Orientation="Horizontal" Spacing="8" Margin="4,0,0,2">
+                        <Button Command="{Binding ToggleSanitizeSeriesCommand}" CommandParameter="pass1write"
+                                Background="Transparent" BorderThickness="0" Padding="2" Cursor="Hand">
+                            <StackPanel Orientation="Horizontal" Spacing="4">
+                                <Border Width="14" Height="2" Background="#EF4444" CornerRadius="1" VerticalAlignment="Center"
+                                        IsVisible="{Binding ShowSanitizePass1Write}"/>
+                                <Border Width="14" Height="2" Background="{DynamicResource ThemeTextMutedBrush}" CornerRadius="1" VerticalAlignment="Center"
+                                        IsVisible="{Binding !ShowSanitizePass1Write}"/>
+                                <TextBlock Text="1. Zápis" FontSize="9" Foreground="{DynamicResource ThemeTextSecondaryBrush}"/>
+                            </StackPanel>
+                        </Button>
+                        <Button Command="{Binding ToggleSanitizeSeriesCommand}" CommandParameter="pass1read"
+                                Background="Transparent" BorderThickness="0" Padding="2" Cursor="Hand">
+                            <StackPanel Orientation="Horizontal" Spacing="4">
+                                <Border Width="14" Height="2" Background="#22C55E" CornerRadius="1" VerticalAlignment="Center"
+                                        IsVisible="{Binding ShowSanitizePass1Read}"/>
+                                <Border Width="14" Height="2" Background="{DynamicResource ThemeTextMutedBrush}" CornerRadius="1" VerticalAlignment="Center"
+                                        IsVisible="{Binding !ShowSanitizePass1Read}"/>
+                                <TextBlock Text="1. Čtení" FontSize="9" Foreground="{DynamicResource ThemeTextSecondaryBrush}"/>
+                            </StackPanel>
+                        </Button>
+                        <Button Command="{Binding ToggleSanitizeSeriesCommand}" CommandParameter="pass2write"
+                                Background="Transparent" BorderThickness="0" Padding="2" Cursor="Hand">
+                            <StackPanel Orientation="Horizontal" Spacing="4">
+                                <Border Width="14" Height="2" Background="#B91C1C" CornerRadius="1" VerticalAlignment="Center"
+                                        IsVisible="{Binding ShowSanitizePass2Write}"/>
+                                <Border Width="14" Height="2" Background="{DynamicResource ThemeTextMutedBrush}" CornerRadius="1" VerticalAlignment="Center"
+                                        IsVisible="{Binding !ShowSanitizePass2Write}"/>
+                                <TextBlock Text="2. Zápis" FontSize="9" Foreground="{DynamicResource ThemeTextSecondaryBrush}"/>
+                            </StackPanel>
+                        </Button>
+                        <Button Command="{Binding ToggleSanitizeSeriesCommand}" CommandParameter="pass2read"
+                                Background="Transparent" BorderThickness="0" Padding="2" Cursor="Hand">
+                            <StackPanel Orientation="Horizontal" Spacing="4">
+                                <Border Width="14" Height="2" Background="#15803D" CornerRadius="1" VerticalAlignment="Center"
+                                        IsVisible="{Binding ShowSanitizePass2Read}"/>
+                                <Border Width="14" Height="2" Background="{DynamicResource ThemeTextMutedBrush}" CornerRadius="1" VerticalAlignment="Center"
+                                        IsVisible="{Binding !ShowSanitizePass2Read}"/>
+                                <TextBlock Text="2. Čtení" FontSize="9" Foreground="{DynamicResource ThemeTextSecondaryBrush}"/>
+                            </StackPanel>
+                        </Button>
+                    </StackPanel>
+                    <lvc:CartesianChart Series="{Binding SanitizeChartSeries}"
+                                        XAxes="{Binding SanitizeChartXAxes}"
+                                        YAxes="{Binding SanitizeChartYAxes}"
+                                        ZoomMode="None"
+                                        TooltipPosition="Top"
+                                        LegendPosition="Hidden"
+                                        AnimationsSpeed="0:0:0"
+                                        Height="220"/>
+                </StackPanel>
+            </Border>
+
+            <!-- ═══════════ CURRENT PHASE CHART (seek phases) ═══════════ -->
             <Border Background="{DynamicResource ThemeCardBackgroundBrush}"
                     CornerRadius="8" Padding="12"
                     BorderBrush="{DynamicResource ThemeBorderBrush}" BorderThickness="1"
@@ -192,6 +262,45 @@
                                         LegendPosition="Hidden"
                                         AnimationsSpeed="0:0:0"
                                         Height="200"/>
+                </StackPanel>
+            </Border>
+
+            <!-- ═══════════ SEEK RESULTS CHARTS (switchable, after completion) ═══════════ -->
+            <Border Background="{DynamicResource ThemeCardBackgroundBrush}"
+                    CornerRadius="8" Padding="12"
+                    BorderBrush="{DynamicResource ThemeBorderBrush}" BorderThickness="1"
+                    IsVisible="{Binding HasSeekCharts}">
+                <StackPanel Spacing="8">
+                    <Grid ColumnDefinitions="*,Auto">
+                        <TextBlock Grid.Column="0" Text="{Binding SeekChartTitle}" FontSize="13" FontWeight="Bold"
+                                   Foreground="{DynamicResource ThemeTextPrimaryBrush}"/>
+                        <!-- Toggle buttons -->
+                        <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="4">
+                            <Button Content="↔️ Full Stroke"
+                                    Command="{Binding SwitchSeekChartCommand}"
+                                    CommandParameter="0"
+                                    Padding="8,4" CornerRadius="4" FontSize="10"
+                                    Cursor="Hand"/>
+                            <Button Content="🎲 Náhodný"
+                                    Command="{Binding SwitchSeekChartCommand}"
+                                    CommandParameter="1"
+                                    Padding="8,4" CornerRadius="4" FontSize="10"
+                                    Cursor="Hand"/>
+                            <Button Content="⏭️ Skip"
+                                    Command="{Binding SwitchSeekChartCommand}"
+                                    CommandParameter="2"
+                                    Padding="8,4" CornerRadius="4" FontSize="10"
+                                    Cursor="Hand"/>
+                        </StackPanel>
+                    </Grid>
+                    <lvc:CartesianChart Series="{Binding SeekChartSeries}"
+                                        XAxes="{Binding SeekChartXAxes}"
+                                        YAxes="{Binding SeekChartYAxes}"
+                                        ZoomMode="None"
+                                        TooltipPosition="Top"
+                                        LegendPosition="Hidden"
+                                        AnimationsSpeed="0:0:0"
+                                        Height="220"/>
                 </StackPanel>
             </Border>
 
@@ -248,6 +357,39 @@
                 </StackPanel>
             </Border>
 
+            <!-- ═══════════ DISK RECOVERY (when disk disappears) ═══════════ -->
+            <Border Background="{DynamicResource ThemeCardBackgroundBrush}"
+                    CornerRadius="8" Padding="16"
+                    BorderBrush="{DynamicResource ThemeWarningBrush}" BorderThickness="2"
+                    IsVisible="{Binding IsDiskRecoveryActive}">
+                <StackPanel Spacing="8">
+                    <Grid ColumnDefinitions="Auto,*,Auto">
+                        <TextBlock Grid.Column="0" Text="⚠️" FontSize="20" VerticalAlignment="Center"/>
+                        <StackPanel Grid.Column="1" Margin="8,0">
+                            <TextBlock Text="DISK PŘESTAL ODPOVÍDAT" FontSize="14" FontWeight="Bold"
+                                       Foreground="{DynamicResource ThemeWarningBrush}"/>
+                            <TextBlock Text="{Binding DiskRecoveryStatus}" FontSize="11"
+                                       Foreground="{DynamicResource ThemeTextSecondaryBrush}"
+                                       TextWrapping="Wrap"/>
+                        </StackPanel>
+                        <Border Grid.Column="2" Background="{DynamicResource ThemeSecondaryBackgroundBrush}"
+                                CornerRadius="6" Padding="10,6">
+                            <TextBlock Text="{Binding DiskRecoveryCountdown}" FontSize="16" FontWeight="Bold"
+                                       Foreground="{DynamicResource ThemePrimaryBrush}"
+                                       HorizontalAlignment="Center"/>
+                        </Border>
+                    </Grid>
+                    <!-- Disappearance log -->
+                    <Border Background="{DynamicResource ThemeSecondaryBackgroundBrush}"
+                            CornerRadius="4" Padding="8"
+                            IsVisible="{Binding DiskDisappearanceCount, Converter={StaticResource IntToBoolConverter}}">
+                        <TextBlock Text="{Binding DiskDisappearanceLog}" FontSize="9"
+                                   Foreground="{DynamicResource ThemeTextMutedBrush}"
+                                   FontFamily="Courier New" TextWrapping="Wrap"/>
+                    </Border>
+                </StackPanel>
+            </Border>
+
             <!-- ═══════════ RESULTS (after completion) ═══════════ -->
             <Border Background="{DynamicResource ThemeCardBackgroundBrush}"
                     CornerRadius="8" Padding="16"
@@ -276,6 +418,30 @@
                             <TextBlock Text="🎯 Výsledky seek testů" FontSize="12" FontWeight="SemiBold"
                                        Foreground="{DynamicResource ThemeTextPrimaryBrush}"/>
                             <TextBlock Text="{Binding SeekResultsSummary}" FontSize="10"
+                                       Foreground="{DynamicResource ThemeTextSecondaryBrush}"
+                                       TextWrapping="Wrap" FontFamily="Courier New"/>
+                        </StackPanel>
+                    </Border>
+
+                    <!-- Post-test statistics (compact) -->
+                    <Border Background="{DynamicResource ThemeSecondaryBackgroundBrush}"
+                            CornerRadius="6" Padding="10">
+                        <StackPanel Spacing="4">
+                            <TextBlock Text="📊 Statistika" FontSize="12" FontWeight="SemiBold"
+                                       Foreground="{DynamicResource ThemeTextPrimaryBrush}"/>
+                            <TextBlock Text="{Binding PostTestStatistics}" FontSize="10"
+                                       Foreground="{DynamicResource ThemeTextSecondaryBrush}"
+                                       TextWrapping="Wrap" FontFamily="Courier New"/>
+                        </StackPanel>
+                    </Border>
+
+                    <!-- SMART changes -->
+                    <Border Background="{DynamicResource ThemeSecondaryBackgroundBrush}"
+                            CornerRadius="6" Padding="10">
+                        <StackPanel Spacing="4">
+                            <TextBlock Text="🔬 SMART změny" FontSize="12" FontWeight="SemiBold"
+                                       Foreground="{DynamicResource ThemeTextPrimaryBrush}"/>
+                            <TextBlock Text="{Binding SmartChangeDetails}" FontSize="10"
                                        Foreground="{DynamicResource ThemeTextSecondaryBrush}"
                                        TextWrapping="Wrap" FontFamily="Courier New"/>
                         </StackPanel>

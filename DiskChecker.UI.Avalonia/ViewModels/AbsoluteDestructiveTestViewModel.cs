@@ -112,6 +112,17 @@ public partial class AbsoluteDestructiveTestViewModel : ViewModelBase, INavigabl
     private readonly ObservableCollection<ObservablePoint> _currentPhasePoints = new();
     private readonly ObservableCollection<ObservablePoint> _readPhasePoints = new();
 
+    // ── Sanitization chart (persists across both sanitization passes) ──
+    private readonly ObservableCollection<ObservablePoint> _sanitizePass1WritePoints = new();
+    private readonly ObservableCollection<ObservablePoint> _sanitizePass1ReadPoints = new();
+    private readonly ObservableCollection<ObservablePoint> _sanitizePass2WritePoints = new();
+    private readonly ObservableCollection<ObservablePoint> _sanitizePass2ReadPoints = new();
+
+    // ── Seek result charts (one per seek type, switchable) ──
+    private readonly ObservableCollection<ObservablePoint> _seekFullStrokePoints = new();
+    private readonly ObservableCollection<ObservablePoint> _seekRandomPoints = new();
+    private readonly ObservableCollection<ObservablePoint> _seekSkipPoints = new();
+
     // ──────────────────────────────────────────────
     //  Observable properties
     // ──────────────────────────────────────────────
@@ -142,6 +153,36 @@ public partial class AbsoluteDestructiveTestViewModel : ViewModelBase, INavigabl
     [ObservableProperty] private bool _isCertificateReady;
     [ObservableProperty] private DiskCertificate? _certificate;
 
+    // ── Sanitization chart properties ──
+    [ObservableProperty] private string _sanitizeChartTitle = "Sanitizace";
+    [ObservableProperty] private string _sanitizeDataWritten = "Zapsáno: 0 / 0 GB";
+    [ObservableProperty] private string _sanitizeDataRead = "Přečteno: 0 / 0 GB";
+    [ObservableProperty] private double _sanitizeProgressPercent;
+    [ObservableProperty] private bool _isSanitizePass2; // true when second pass is running
+
+    // ── Sanitization chart series toggles ──
+    [ObservableProperty] private bool _showSanitizePass1Write = true;
+    [ObservableProperty] private bool _showSanitizePass1Read = true;
+    [ObservableProperty] private bool _showSanitizePass2Write = true;
+    [ObservableProperty] private bool _showSanitizePass2Read = true;
+
+    // ── Seek chart properties (switchable) ──
+    [ObservableProperty] private string _seekChartTitle = "Seek: Full Stroke";
+    [ObservableProperty] private int _selectedSeekChartIndex; // 0=FullStroke, 1=Random, 2=Skip
+    [ObservableProperty] private bool _hasSeekCharts;
+
+    // ── Post-test statistics ──
+    [ObservableProperty] private string _postTestStatistics = string.Empty;
+    [ObservableProperty] private string _smartChangeDetails = string.Empty;
+
+    // ── Disk recovery ──
+    [ObservableProperty] private bool _isDiskRecoveryActive;
+    [ObservableProperty] private string _diskRecoveryStatus = string.Empty;
+    [ObservableProperty] private int _diskRecoverySecondsRemaining;
+    [ObservableProperty] private string _diskRecoveryCountdown = string.Empty;
+    [ObservableProperty] private int _diskDisappearanceCount;
+    [ObservableProperty] private string _diskDisappearanceLog = string.Empty;
+
     // Phase timeline
     public ObservableCollection<TestPhaseViewModel> Phases { get; } = new();
 
@@ -162,6 +203,16 @@ public partial class AbsoluteDestructiveTestViewModel : ViewModelBase, INavigabl
     public Axis[] CurrentPhaseXAxes { get; }
 
     public Axis[] CurrentPhaseYAxes { get; }
+
+    // ── Sanitization chart series (two passes, different colors) ──
+    public ISeries[] SanitizeChartSeries { get; private set; }
+    public Axis[] SanitizeChartXAxes { get; private set; }
+    public Axis[] SanitizeChartYAxes { get; private set; }
+
+    // ── Seek chart series (switchable) ──
+    public ISeries[] SeekChartSeries { get; private set; }
+    public Axis[] SeekChartXAxes { get; private set; }
+    public Axis[] SeekChartYAxes { get; private set; }
 
     // ──────────────────────────────────────────────
     //  Constructor
@@ -241,6 +292,115 @@ public partial class AbsoluteDestructiveTestViewModel : ViewModelBase, INavigabl
             new Axis
             {
                 Name = "ms / MB/s",
+                MinLimit = 0,
+                LabelsPaint = new SolidColorPaint(new SKColor(148, 163, 184)),
+                TextSize = 10
+            }
+        };
+
+        // Sanitization chart – two passes with distinct colors
+        // Pass 1: Write=red, Read=green (solid)
+        // Pass 2: Write=dark red, Read=dark green (dashed feel via different shade)
+        SanitizeChartSeries = new ISeries[]
+        {
+            new LineSeries<ObservablePoint>
+            {
+                Name = "1. Zápis",
+                Values = _sanitizePass1WritePoints,
+                Fill = null,
+                GeometrySize = 0,
+                Stroke = new SolidColorPaint(new SKColor(239, 68, 68), 2),
+                LineSmoothness = 0,
+                AnimationsSpeed = TimeSpan.Zero
+            },
+            new LineSeries<ObservablePoint>
+            {
+                Name = "1. Čtení",
+                Values = _sanitizePass1ReadPoints,
+                Fill = null,
+                GeometrySize = 0,
+                Stroke = new SolidColorPaint(new SKColor(34, 197, 94), 2),
+                LineSmoothness = 0,
+                AnimationsSpeed = TimeSpan.Zero
+            },
+            new LineSeries<ObservablePoint>
+            {
+                Name = "2. Zápis",
+                Values = _sanitizePass2WritePoints,
+                Fill = null,
+                GeometrySize = 0,
+                Stroke = new SolidColorPaint(new SKColor(185, 28, 28), 2),
+                LineSmoothness = 0,
+                AnimationsSpeed = TimeSpan.Zero
+            },
+            new LineSeries<ObservablePoint>
+            {
+                Name = "2. Čtení",
+                Values = _sanitizePass2ReadPoints,
+                Fill = null,
+                GeometrySize = 0,
+                Stroke = new SolidColorPaint(new SKColor(21, 128, 61), 2),
+                LineSmoothness = 0,
+                AnimationsSpeed = TimeSpan.Zero
+            }
+        };
+
+        SanitizeChartXAxes = new Axis[]
+        {
+            new Axis
+            {
+                Name = "Progres (%)",
+                MinLimit = 0,
+                MaxLimit = 100,
+                LabelsPaint = new SolidColorPaint(new SKColor(148, 163, 184)),
+                TextSize = 10
+            }
+        };
+
+        SanitizeChartYAxes = new Axis[]
+        {
+            new Axis
+            {
+                Name = "MB/s",
+                MinLimit = 0,
+                LabelsPaint = new SolidColorPaint(new SKColor(148, 163, 184)),
+                TextSize = 10
+            }
+        };
+
+        // Seek chart – single chart, switchable data
+        SeekChartSeries = new ISeries[]
+        {
+            new LineSeries<ObservablePoint>
+            {
+                Name = "Latence",
+                Values = _seekFullStrokePoints,
+                Fill = null,
+                GeometrySize = 3,
+                GeometryFill = new SolidColorPaint(SKColors.DodgerBlue),
+                GeometryStroke = new SolidColorPaint(SKColors.DodgerBlue, 1),
+                Stroke = new SolidColorPaint(SKColors.DodgerBlue, 1.5f),
+                LineSmoothness = 0,
+                AnimationsSpeed = TimeSpan.Zero
+            }
+        };
+
+        SeekChartXAxes = new Axis[]
+        {
+            new Axis
+            {
+                Name = "Seek #",
+                MinLimit = 0,
+                LabelsPaint = new SolidColorPaint(new SKColor(148, 163, 184)),
+                TextSize = 10
+            }
+        };
+
+        SeekChartYAxes = new Axis[]
+        {
+            new Axis
+            {
+                Name = "Latence (ms)",
                 MinLimit = 0,
                 LabelsPaint = new SolidColorPaint(new SKColor(148, 163, 184)),
                 TextSize = 10
@@ -416,6 +576,136 @@ public partial class AbsoluteDestructiveTestViewModel : ViewModelBase, INavigabl
         _navigationService.NavigateTo<DiskSelectionViewModel>();
     }
 
+    [RelayCommand]
+    private void SwitchSeekChart(string param)
+    {
+        if (!int.TryParse(param, out var index)) return;
+        SelectedSeekChartIndex = index;
+
+        var (title, points) = index switch
+        {
+            0 => ("Seek: Full Stroke", _seekFullStrokePoints),
+            1 => ("Seek: Náhodný", _seekRandomPoints),
+            2 => ("Seek: Přeskakování", _seekSkipPoints),
+            _ => ("Seek: Full Stroke", _seekFullStrokePoints)
+        };
+
+        SeekChartTitle = title;
+        SeekChartSeries = new ISeries[]
+        {
+            new LineSeries<ObservablePoint>
+            {
+                Name = "Latence",
+                Values = points,
+                Fill = null,
+                GeometrySize = 3,
+                GeometryFill = new SolidColorPaint(SKColors.DodgerBlue),
+                GeometryStroke = new SolidColorPaint(SKColors.DodgerBlue, 1),
+                Stroke = new SolidColorPaint(SKColors.DodgerBlue, 1.5f),
+                LineSmoothness = 0,
+                AnimationsSpeed = TimeSpan.Zero
+            }
+        };
+
+        SeekChartXAxes = new Axis[]
+        {
+            new Axis
+            {
+                Name = "Seek #",
+                MinLimit = 0,
+                LabelsPaint = new SolidColorPaint(new SKColor(148, 163, 184)),
+                TextSize = 10
+            }
+        };
+
+        SeekChartYAxes = new Axis[]
+        {
+            new Axis
+            {
+                Name = "Latence (ms)",
+                MinLimit = 0,
+                LabelsPaint = new SolidColorPaint(new SKColor(148, 163, 184)),
+                TextSize = 10
+            }
+        };
+    }
+
+    [RelayCommand]
+    private void ToggleSanitizeSeries(string param)
+    {
+        switch (param)
+        {
+            case "pass1write": ShowSanitizePass1Write = !ShowSanitizePass1Write; break;
+            case "pass1read": ShowSanitizePass1Read = !ShowSanitizePass1Read; break;
+            case "pass2write": ShowSanitizePass2Write = !ShowSanitizePass2Write; break;
+            case "pass2read": ShowSanitizePass2Read = !ShowSanitizePass2Read; break;
+        }
+        RebuildSanitizeChart();
+    }
+
+    private void RebuildSanitizeChart()
+    {
+        var seriesList = new List<ISeries>();
+
+        if (ShowSanitizePass1Write)
+        {
+            seriesList.Add(new LineSeries<ObservablePoint>
+            {
+                Name = "1. Zápis",
+                Values = _sanitizePass1WritePoints,
+                Fill = null,
+                GeometrySize = 0,
+                Stroke = new SolidColorPaint(new SKColor(239, 68, 68), 2),
+                LineSmoothness = 0,
+                AnimationsSpeed = TimeSpan.Zero
+            });
+        }
+
+        if (ShowSanitizePass1Read)
+        {
+            seriesList.Add(new LineSeries<ObservablePoint>
+            {
+                Name = "1. Čtení",
+                Values = _sanitizePass1ReadPoints,
+                Fill = null,
+                GeometrySize = 0,
+                Stroke = new SolidColorPaint(new SKColor(34, 197, 94), 2),
+                LineSmoothness = 0,
+                AnimationsSpeed = TimeSpan.Zero
+            });
+        }
+
+        if (ShowSanitizePass2Write)
+        {
+            seriesList.Add(new LineSeries<ObservablePoint>
+            {
+                Name = "2. Zápis",
+                Values = _sanitizePass2WritePoints,
+                Fill = null,
+                GeometrySize = 0,
+                Stroke = new SolidColorPaint(new SKColor(185, 28, 28), 2),
+                LineSmoothness = 0,
+                AnimationsSpeed = TimeSpan.Zero
+            });
+        }
+
+        if (ShowSanitizePass2Read)
+        {
+            seriesList.Add(new LineSeries<ObservablePoint>
+            {
+                Name = "2. Čtení",
+                Values = _sanitizePass2ReadPoints,
+                Fill = null,
+                GeometrySize = 0,
+                Stroke = new SolidColorPaint(new SKColor(21, 128, 61), 2),
+                LineSmoothness = 0,
+                AnimationsSpeed = TimeSpan.Zero
+            });
+        }
+
+        SanitizeChartSeries = seriesList.ToArray();
+    }
+
     // ──────────────────────────────────────────────
     //  Phase orchestration
     // ──────────────────────────────────────────────
@@ -466,6 +756,13 @@ public partial class AbsoluteDestructiveTestViewModel : ViewModelBase, INavigabl
             ct.ThrowIfCancellationRequested();
             SetPhase(1, TestPhaseStatus.Running, "Zápis nul + ověření...");
 
+            IsSanitizePass2 = false;
+            SanitizeChartTitle = "🧹 1. Sanitizace – Zápis nul + Ověření";
+            _sanitizePass1WritePoints.Clear();
+            _sanitizePass1ReadPoints.Clear();
+            _sanitizePass2WritePoints.Clear();
+            _sanitizePass2ReadPoints.Clear();
+
             _sanitize1Result = await _sanitizationService.SanitizeDiskAsync(
                 SelectedDrive!.Path,
                 SelectedDrive.TotalSize,
@@ -489,11 +786,28 @@ public partial class AbsoluteDestructiveTestViewModel : ViewModelBase, INavigabl
                         UpdateTemperature(_smartBaseline?.Temperature ?? 30);
                         UpdateOverallProgress();
 
-                        // Feed speed data point into the live chart (red=write, green=read)
+                        // Feed into sanitization chart (pass 1)
+                        if (p.IsReadVerifyPhase)
+                            _sanitizePass1ReadPoints.Add(new ObservablePoint(p.ProgressPercent, p.CurrentSpeedMBps));
+                        else
+                            _sanitizePass1WritePoints.Add(new ObservablePoint(p.ProgressPercent, p.CurrentSpeedMBps));
+
+                        // Also feed the current phase chart (backward compat)
                         if (p.IsReadVerifyPhase)
                             _readPhasePoints.Add(new ObservablePoint(p.ProgressPercent, p.CurrentSpeedMBps));
                         else
                             _currentPhasePoints.Add(new ObservablePoint(p.ProgressPercent, p.CurrentSpeedMBps));
+
+                        // Update data counters
+                        var totalGB = SelectedDrive!.TotalSize / (1024.0 * 1024.0 * 1024.0);
+                        var writtenGB = totalGB * p.ProgressPercent / 100.0;
+                        SanitizeDataWritten = $"Zapsáno: {writtenGB:F1} / {totalGB:F0} GB ({p.ProgressPercent:F0}%)";
+                        if (p.IsReadVerifyPhase)
+                        {
+                            var readGB = totalGB * p.ProgressPercent / 100.0;
+                            SanitizeDataRead = $"Přečteno: {readGB:F1} / {totalGB:F0} GB ({p.ProgressPercent:F0}%)";
+                        }
+                        SanitizeProgressPercent = p.ProgressPercent;
                     });
                 }),
                 ct);
@@ -532,6 +846,9 @@ public partial class AbsoluteDestructiveTestViewModel : ViewModelBase, INavigabl
             ct.ThrowIfCancellationRequested();
             SetPhase(5, TestPhaseStatus.Running, "Zápis nul + ověření (finální)...");
 
+            IsSanitizePass2 = true;
+            SanitizeChartTitle = "🧹 2. Sanitizace – Zápis nul + Ověření (finální)";
+
             _sanitize2Result = await _sanitizationService.SanitizeDiskAsync(
                 SelectedDrive!.Path,
                 SelectedDrive.TotalSize,
@@ -554,11 +871,28 @@ public partial class AbsoluteDestructiveTestViewModel : ViewModelBase, INavigabl
                         Phases[5].Detail = $"{p.Phase} — {p.CurrentSpeedMBps:F1} MB/s";
                         UpdateOverallProgress();
 
-                        // Feed speed data point into the live chart (red=write, green=read)
+                        // Feed into sanitization chart (pass 2)
+                        if (p.IsReadVerifyPhase)
+                            _sanitizePass2ReadPoints.Add(new ObservablePoint(p.ProgressPercent, p.CurrentSpeedMBps));
+                        else
+                            _sanitizePass2WritePoints.Add(new ObservablePoint(p.ProgressPercent, p.CurrentSpeedMBps));
+
+                        // Also feed the current phase chart (backward compat)
                         if (p.IsReadVerifyPhase)
                             _readPhasePoints.Add(new ObservablePoint(p.ProgressPercent, p.CurrentSpeedMBps));
                         else
                             _currentPhasePoints.Add(new ObservablePoint(p.ProgressPercent, p.CurrentSpeedMBps));
+
+                        // Update data counters
+                        var totalGB = SelectedDrive!.TotalSize / (1024.0 * 1024.0 * 1024.0);
+                        var writtenGB = totalGB * p.ProgressPercent / 100.0;
+                        SanitizeDataWritten = $"Zapsáno: {writtenGB:F1} / {totalGB:F0} GB ({p.ProgressPercent:F0}%)";
+                        if (p.IsReadVerifyPhase)
+                        {
+                            var readGB = totalGB * p.ProgressPercent / 100.0;
+                            SanitizeDataRead = $"Přečteno: {readGB:F1} / {totalGB:F0} GB ({p.ProgressPercent:F0}%)";
+                        }
+                        SanitizeProgressPercent = p.ProgressPercent;
                     });
                 }),
                 ct);
@@ -651,6 +985,16 @@ public partial class AbsoluteDestructiveTestViewModel : ViewModelBase, INavigabl
             SeekTestResult? result = null;
             var progressSamples = new List<double>();
 
+            // Determine which seek chart collection to populate
+            var targetPoints = seekType switch
+            {
+                SeekTestType.FullStroke => _seekFullStrokePoints,
+                SeekTestType.Random => _seekRandomPoints,
+                SeekTestType.Skip => _seekSkipPoints,
+                _ => _seekFullStrokePoints
+            };
+            targetPoints.Clear();
+
             result = await _seekTestService.RunAsync(
                 request,
                 progress =>
@@ -667,6 +1011,11 @@ public partial class AbsoluteDestructiveTestViewModel : ViewModelBase, INavigabl
                                 progress.SeeksCompleted,
                                 progress.LatestSample.LatencyMs));
                             progressSamples.Add(progress.LatestSample.LatencyMs);
+
+                            // Also populate the persistent seek chart
+                            targetPoints.Add(new ObservablePoint(
+                                progress.SeeksCompleted,
+                                progress.LatestSample.LatencyMs));
                         }
 
                         UpdateOverallProgress();
@@ -691,6 +1040,9 @@ public partial class AbsoluteDestructiveTestViewModel : ViewModelBase, INavigabl
 
             SetPhase(index, TestPhaseStatus.Completed,
                 $"avg: {avgLatency:F2} ms | P95: {result.P95LatencyMs:F2} ms | vzorků: {result.SeekCount}");
+
+            // Mark seek charts as available
+            HasSeekCharts = true;
         }, ct);
     }
 
@@ -866,6 +1218,101 @@ public partial class AbsoluteDestructiveTestViewModel : ViewModelBase, INavigabl
         sb.AppendLine($"Celková doba: {ElapsedTime}");
 
         ResultsSummary = sb.ToString();
+
+        // ── Build post-test statistics (compact, for the stats panel) ──
+        var statsSb = new System.Text.StringBuilder();
+        statsSb.AppendLine("═══ STATISTIKA ═══");
+        statsSb.AppendLine();
+
+        // Sanitization averages
+        if (_sanitize1Result != null)
+        {
+            statsSb.AppendLine($"🧹 Sanitizace 1:");
+            statsSb.AppendLine($"   Zápis:  {_sanitize1Result.WriteSpeedMBps:F1} MB/s");
+            statsSb.AppendLine($"   Čtení:  {_sanitize1Result.ReadSpeedMBps:F1} MB/s");
+            statsSb.AppendLine($"   Chyby:  {_sanitize1Result.ErrorsDetected}");
+        }
+        if (_sanitize2Result != null)
+        {
+            statsSb.AppendLine($"🧹 Sanitizace 2:");
+            statsSb.AppendLine($"   Zápis:  {_sanitize2Result.WriteSpeedMBps:F1} MB/s");
+            statsSb.AppendLine($"   Čtení:  {_sanitize2Result.ReadSpeedMBps:F1} MB/s");
+            statsSb.AppendLine($"   Chyby:  {_sanitize2Result.ErrorsDetected}");
+        }
+
+        // Seek averages
+        statsSb.AppendLine();
+        statsSb.AppendLine($"🎯 Seek testy:");
+        statsSb.AppendLine($"   Full Stroke: avg {fsAvg:F2} ms, P95 {_seekFullStrokeResult?.P95LatencyMs ?? 0:F2} ms, P99 {_seekFullStrokeResult?.P99LatencyMs ?? 0:F2} ms");
+        statsSb.AppendLine($"   Náhodný:    avg {rndAvg:F2} ms, P95 {_seekRandomResult?.P95LatencyMs ?? 0:F2} ms, P99 {_seekRandomResult?.P99LatencyMs ?? 0:F2} ms");
+        statsSb.AppendLine($"   Skip:       avg {skipAvg:F2} ms, P95 {_seekSkipResult?.P95LatencyMs ?? 0:F2} ms, P99 {_seekSkipResult?.P99LatencyMs ?? 0:F2} ms");
+
+        // Temperature
+        statsSb.AppendLine();
+        statsSb.AppendLine($"🌡 Teplota: {MinTemperature}–{MaxTemperature}°C (průměr {(MinTemperature + MaxTemperature) / 2:F0}°C)");
+
+        // Disk disappearances
+        if (DiskDisappearanceCount > 0)
+        {
+            statsSb.AppendLine();
+            statsSb.AppendLine($"⚠️ Disk zmizel {DiskDisappearanceCount}x během testu");
+        }
+
+        PostTestStatistics = statsSb.ToString();
+
+        // ── Build SMART change details ──
+        SmartChangeDetails = BuildSmartChangeDetails();
+    }
+
+    private string BuildSmartChangeDetails()
+    {
+        if (_smartBaseline == null) return "SMART nedostupný – změny nelze sledovat.";
+
+        var sb = new System.Text.StringBuilder();
+        sb.AppendLine("═══ SMART ZMĚNY ═══");
+        sb.AppendLine();
+
+        // Temperature change
+        var baselineTemp = _smartBaseline.Temperature;
+        var finalTemp = _smartFinal?.Temperature ?? baselineTemp;
+        var tempDelta = finalTemp - baselineTemp;
+        sb.AppendLine($"🌡 Teplota: {baselineTemp}°C → {finalTemp}°C (Δ {tempDelta:+0;-0}°C)");
+
+        // Reallocated sectors
+        var baselineRealloc = _smartBaseline.ReallocatedSectorCount ?? 0;
+        var finalRealloc = _smartFinal?.ReallocatedSectorCount ?? baselineRealloc;
+        if (finalRealloc != baselineRealloc)
+            sb.AppendLine($"⚠️ Reallocated sectors: {baselineRealloc} → {finalRealloc} (Δ {finalRealloc - baselineRealloc:+0;-0})");
+
+        // Pending sectors
+        var baselinePending = _smartBaseline.PendingSectorCount ?? 0;
+        var finalPending = _smartFinal?.PendingSectorCount ?? baselinePending;
+        if (finalPending != baselinePending)
+            sb.AppendLine($"⚠️ Pending sectors: {baselinePending} → {finalPending} (Δ {finalPending - baselinePending:+0;-0})");
+
+        // Uncorrectable sectors
+        var baselineUncorr = _smartBaseline.UncorrectableErrorCount ?? 0;
+        var finalUncorr = _smartFinal?.UncorrectableErrorCount ?? baselineUncorr;
+        if (finalUncorr != baselineUncorr)
+            sb.AppendLine($"⚠️ Uncorrectable: {baselineUncorr} → {finalUncorr} (Δ {finalUncorr - baselineUncorr:+0;-0})");
+
+        // Power-on hours
+        var baselineHours = _smartBaseline.PowerOnHours ?? 0;
+        var finalHours = _smartFinal?.PowerOnHours ?? baselineHours;
+        sb.AppendLine($"⏱ Power-on hours: {baselineHours} → {finalHours} (Δ {finalHours - baselineHours:+0;-0}h)");
+
+        // Wear leveling (SSD)
+        var baselineWear = _smartBaseline.WearLevelingCount ?? 0;
+        var finalWear = _smartFinal?.WearLevelingCount ?? baselineWear;
+        if (finalWear != baselineWear)
+            sb.AppendLine($"🔋 Wear leveling: {baselineWear} → {finalWear} (Δ {finalWear - baselineWear:+0;-0})");
+
+        if (sb.Length <= "═══ SMART ZMĚNY ═══\n\n🌡 Teplota:".Length + 20)
+        {
+            sb.AppendLine("✅ Žádné významné SMART změny detekovány.");
+        }
+
+        return sb.ToString();
     }
 
     private string BuildSmartDeltaSummary()
@@ -1170,6 +1617,103 @@ public partial class AbsoluteDestructiveTestViewModel : ViewModelBase, INavigabl
         "Kritický" => HealthAssessment.Critical,
         _ => HealthAssessment.Unknown
     };
+
+    // ──────────────────────────────────────────────
+    //  Disk recovery
+    // ──────────────────────────────────────────────
+
+    /// <summary>
+    /// Waits for a disappeared disk to reappear, with countdown and re-initialization attempts.
+    /// Called when I/O operations fail with device-not-found errors.
+    /// </summary>
+    private async Task<bool> RecoverDiskAsync(CancellationToken ct)
+    {
+        DiskDisappearanceCount++;
+        var disappearanceTime = DateTime.UtcNow;
+        var logEntry = $"[{disappearanceTime:HH:mm:ss}] Disk zmizel (výskyt #{DiskDisappearanceCount})";
+
+        DiskDisappearanceLog = string.IsNullOrEmpty(DiskDisappearanceLog)
+            ? logEntry
+            : DiskDisappearanceLog + "\n" + logEntry;
+
+        IsDiskRecoveryActive = true;
+        DiskRecoveryStatus = "🔍 Disk přestal odpovídat – čekám na obnovení...";
+
+        const int recoveryTimeoutSeconds = 600; // 10 minutes
+        const int checkIntervalSeconds = 5;
+
+        for (int remaining = recoveryTimeoutSeconds; remaining > 0; remaining -= checkIntervalSeconds)
+        {
+            ct.ThrowIfCancellationRequested();
+
+            DiskRecoverySecondsRemaining = remaining;
+            DiskRecoveryCountdown = $"⏳ Čekám {remaining / 60:D2}:{remaining % 60:D2}";
+
+            // Check if disk reappeared
+            try
+            {
+                var drives = System.IO.DriveInfo.GetDrives();
+                var found = drives.Any(d =>
+                    d.Name.StartsWith(SelectedDrive!.Path, StringComparison.OrdinalIgnoreCase) ||
+                    d.Name.Equals(SelectedDrive!.Path, StringComparison.OrdinalIgnoreCase));
+
+                if (!found)
+                {
+                    // Try raw device check
+                    try
+                    {
+                        using var fs = System.IO.File.OpenRead(SelectedDrive!.Path);
+                        found = true;
+                    }
+                    catch (System.IO.FileNotFoundException) { found = false; }
+                    catch (System.IO.IOException) { found = false; }
+                }
+
+                if (found)
+                {
+                    DiskRecoveryStatus = "✅ Disk nalezen – pokouším se o re-inicializaci...";
+                    DiskRecoveryCountdown = "Re-inicializace...";
+
+                    // Wait a moment for the OS to stabilize
+                    await Task.Delay(2000, ct);
+
+                    // Try to re-initialize
+                    try
+                    {
+                        // Re-read SMART
+                        var smarta = await _smartaProvider.GetSmartaDataAsync(SelectedDrive!.Path, ct);
+                        if (smarta != null)
+                        {
+                            _smartBaseline = smarta;
+                            SmartBaselineSummary = FormatSmartSummary(smarta, "Po recovery");
+                        }
+
+                        DiskRecoveryStatus = "✅ Disk obnoven – pokračuji v testu";
+                        DiskDisappearanceLog += $"\n[{DateTime.UtcNow:HH:mm:ss}] Disk obnoven po {DiskDisappearanceCount}. výskytu (čekalo se {(recoveryTimeoutSeconds - remaining)}s)";
+                        IsDiskRecoveryActive = false;
+                        return true;
+                    }
+                    catch
+                    {
+                        DiskRecoveryStatus = "⚠️ Disk nalezen, ale re-inicializace selhala – zkouším dál...";
+                    }
+                }
+            }
+            catch
+            {
+                // Detection itself failed – disk or controller is gone
+            }
+
+            await Task.Delay(checkIntervalSeconds * 1000, ct);
+        }
+
+        // Timeout – disk never came back
+        DiskRecoveryStatus = "❌ Disk se nevrátil do 10 minut – test končí";
+        DiskRecoveryCountdown = "Timeout";
+        DiskDisappearanceLog += $"\n[{DateTime.UtcNow:HH:mm:ss}] Recovery timeout – disk se nevrátil";
+        IsDiskRecoveryActive = false;
+        return false;
+    }
 
     // ──────────────────────────────────────────────
     //  Utility

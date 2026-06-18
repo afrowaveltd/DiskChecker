@@ -21,6 +21,23 @@ namespace DiskChecker.Core.Models
         public bool IsHealthy { get; set; }
         public bool SmartEnabled { get; set; }
         
+        /// <summary>
+        /// True when SMART overall-health check FAILED or critical attributes are below threshold.
+        /// This means the drive is predicted to fail soon — backup immediately.
+        /// </summary>
+        public bool IsFailing { get; set; }
+        
+        /// <summary>
+        /// Human-readable failure prediction summary (e.g. "Disk selže do 24 hodin").
+        /// Empty if the drive is healthy.
+        /// </summary>
+        public string FailurePrediction { get; set; } = string.Empty;
+        
+        /// <summary>
+        /// List of SMART attributes that are currently in FAILING_NOW or prefail state.
+        /// </summary>
+        public List<string> FailingAttributes { get; set; } = new();
+        
         // Basic metrics (all drive types)
         public int? Temperature { get; set; }
         public int? PowerOnHours { get; set; }

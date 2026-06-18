@@ -617,11 +617,11 @@ public class DiskDetectionService : IDiskDetectionService
                     await process.WaitForExitAsync(cancellationToken);
                     
                     if (output.Contains("3.", StringComparison.OrdinalIgnoreCase) || output.Contains("USB 3", StringComparison.OrdinalIgnoreCase) || output.Contains("SuperSpeed", StringComparison.OrdinalIgnoreCase))
-                        return (5000, "USB 3.x SuperSpeed (až 5 000 Mbps)");
+                        return (5000, "USB 3.x SuperSpeed (5 000 Mbps, ~450 MB/s)");
                     if (output.Contains("2.", StringComparison.OrdinalIgnoreCase) || output.Contains("USB 2", StringComparison.OrdinalIgnoreCase) || output.Contains("Hi-Speed", StringComparison.OrdinalIgnoreCase))
-                        return (480, "USB 2.0 Hi-Speed (480 Mbps)");
+                        return (480, "USB 2.0 Hi-Speed (480 Mbps, ~40 MB/s)");
                     if (output.Contains("1.", StringComparison.OrdinalIgnoreCase) || output.Contains("USB 1", StringComparison.OrdinalIgnoreCase))
-                        return (12, "USB 1.1 Full-Speed (12 Mbps)");
+                        return (12, "USB 1.1 Full-Speed (12 Mbps, ~1 MB/s)");
                 }
             }
             catch { }
