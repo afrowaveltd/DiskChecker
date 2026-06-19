@@ -143,13 +143,39 @@ public partial class SafeDestructiveTestViewModel : ViewModelBase, INavigableVie
     [ObservableProperty] private ObservableCollection<ObservablePoint> _seekRandomPoints = new();
     [ObservableProperty] private ObservableCollection<ObservablePoint> _seekSkipPoints = new();
 
-    [ObservableProperty] private ISeries[] _sanitizeChartSeries = Array.Empty<ISeries>();
-    [ObservableProperty] private Axis[] _sanitizeChartXAxes = Array.Empty<Axis>();
-    [ObservableProperty] private Axis[] _sanitizeChartYAxes = Array.Empty<Axis>();
+    [ObservableProperty] private ISeries[] _sanitizeChartSeries = new ISeries[]
+    {
+        new LineSeries<ObservablePoint>
+        {
+            Values = new ObservableCollection<ObservablePoint>(),
+            Fill = null, Stroke = null, GeometrySize = 0, LineSmoothness = 0
+        }
+    };
+    [ObservableProperty] private Axis[] _sanitizeChartXAxes = new Axis[]
+    {
+        new Axis { Name = "Progres (%)", NameTextSize = 10, TextSize = 9, MinLimit = 0, MaxLimit = 100, Labeler = v => v.ToString("F0") }
+    };
+    [ObservableProperty] private Axis[] _sanitizeChartYAxes = new Axis[]
+    {
+        new Axis { Name = "MB/s", NameTextSize = 10, TextSize = 9, MinLimit = 0, Labeler = v => $"{v:F0}" }
+    };
 
-    [ObservableProperty] private ISeries[] _seekChartSeries = Array.Empty<ISeries>();
-    [ObservableProperty] private Axis[] _seekChartXAxes = Array.Empty<Axis>();
-    [ObservableProperty] private Axis[] _seekChartYAxes = Array.Empty<Axis>();
+    [ObservableProperty] private ISeries[] _seekChartSeries = new ISeries[]
+    {
+        new LineSeries<ObservablePoint>
+        {
+            Values = new ObservableCollection<ObservablePoint>(),
+            Fill = null, Stroke = null, GeometrySize = 0, LineSmoothness = 0
+        }
+    };
+    [ObservableProperty] private Axis[] _seekChartXAxes = new Axis[]
+    {
+        new Axis { Name = "Seek #", NameTextSize = 10, TextSize = 9, MinLimit = 0, Labeler = v => v.ToString("F0") }
+    };
+    [ObservableProperty] private Axis[] _seekChartYAxes = new Axis[]
+    {
+        new Axis { Name = "Latence (ms)", NameTextSize = 10, TextSize = 9, MinLimit = 0, Labeler = v => $"{v:F1}" }
+    };
 
     [ObservableProperty] private int _activeSeekChartIndex;
     [ObservableProperty] private bool _hasSeekCharts;
@@ -384,6 +410,8 @@ public partial class SafeDestructiveTestViewModel : ViewModelBase, INavigableVie
         if (ShowPass2Read && SanitizePass2ReadPoints.Count > 0)
             series.Add(CreateLineSeries(SanitizePass2ReadPoints, "2. Čtení", new SKColor(0x15, 0x80, 0x3D), 2));
 
+        // Two-step assignment forces LiveCharts2 SkiaSharp to detect the change and redraw
+        SanitizeChartSeries = Array.Empty<ISeries>();
         SanitizeChartSeries = series.ToArray();
     }
 
@@ -1079,7 +1107,7 @@ public partial class SafeDestructiveTestViewModel : ViewModelBase, INavigableVie
             _ => "Full Stroke"
         };
 
-        SeekChartSeries = new ISeries[]
+        var newSeries = new ISeries[]
         {
             new ScatterSeries<ObservablePoint>
             {
@@ -1090,6 +1118,10 @@ public partial class SafeDestructiveTestViewModel : ViewModelBase, INavigableVie
                 GeometrySize = 4
             }
         };
+
+        // Two-step assignment forces LiveCharts2 SkiaSharp to detect the change and redraw
+        SeekChartSeries = Array.Empty<ISeries>();
+        SeekChartSeries = newSeries;
     }
 
     // ──────────────────────────────────────────────

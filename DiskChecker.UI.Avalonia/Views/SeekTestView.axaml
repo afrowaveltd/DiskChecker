@@ -468,9 +468,11 @@
                         </Grid>
 
                         <!-- Latency distribution chart (final) -->
+                        <!-- NOTE: IsVisible is intentionally NOT bound here – the chart must remain
+                             in the visual tree from the start so LiveCharts2 SkiaSharp initializes
+                             its render surface. The "no data" overlay handles the empty state. -->
                         <Border Background="{DynamicResource ThemeSecondaryBackgroundBrush}"
-                                CornerRadius="6" Padding="8"
-                                IsVisible="{Binding HasResults}">
+                                CornerRadius="6" Padding="8">
                             <StackPanel Spacing="4">
                                 <!-- Legend row 1: sample points -->
                                 <StackPanel Orientation="Horizontal" Spacing="12" Margin="4,0,0,2">

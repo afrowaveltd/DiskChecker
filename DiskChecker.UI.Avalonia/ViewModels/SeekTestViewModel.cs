@@ -73,17 +73,58 @@ public partial class SeekTestViewModel : ViewModelBase, INavigableViewModel, IDi
 
     // Real-time chart data
     private ObservableCollection<ObservablePoint> _latencyChartValues = new();
-    private ISeries[] _latencySeries = Array.Empty<ISeries>();
-    private Axis[] _latencyXAxes = Array.Empty<Axis>();
-    private Axis[] _latencyYAxes = Array.Empty<Axis>();
+    // Real-time chart MUST be initialized with dummy data so LiveCharts2 SkiaSharp
+    // initializes its render surface when IsTesting becomes true. The dummy points
+    // use negative X values (-9..0) which fall outside the visible area (MinLimit=0),
+    // so they are invisible but keep the render surface alive.
+    private ISeries[] _latencySeries = new ISeries[]
+    {
+        new LineSeries<ObservablePoint>
+        {
+            Values = new ObservableCollection<ObservablePoint>(
+                Enumerable.Range(-9, 10).Select(i => new ObservablePoint(i, 0))),
+            Fill = null,
+            Stroke = null,
+            GeometrySize = 0,
+            LineSmoothness = 0
+        }
+    };
+    private Axis[] _latencyXAxes = new Axis[]
+    {
+        new Axis { Name = "Seek #", NameTextSize = 10, TextSize = 9, MinLimit = 0, Labeler = v => v.ToString("F0") }
+    };
+    private Axis[] _latencyYAxes = new Axis[]
+    {
+        new Axis { Name = "Latence (ms)", NameTextSize = 10, TextSize = 9, MinLimit = 0, Labeler = v => $"{v:F1}" }
+    };
     private int _chartPointCount;
     private SeekLatencySample? _latestSample;
     private bool _isPrePositioned;
 
-    // Final chart data (separate from real-time to avoid LiveCharts visibility issues)
-    private ISeries[] _finalLatencySeries = Array.Empty<ISeries>();
-    private Axis[] _finalLatencyXAxes = Array.Empty<Axis>();
-    private Axis[] _finalLatencyYAxes = Array.Empty<Axis>();
+    // Final chart data (separate from real-time to avoid LiveCharts visibility issues).
+    // MUST be initialized with dummy data so LiveCharts2 SkiaSharp initializes
+    // its render surface immediately. The dummy points use negative X values (-9..0)
+    // which fall outside the visible area (MinLimit=0), so they are invisible.
+    private ISeries[] _finalLatencySeries = new ISeries[]
+    {
+        new LineSeries<ObservablePoint>
+        {
+            Values = new ObservableCollection<ObservablePoint>(
+                Enumerable.Range(-9, 10).Select(i => new ObservablePoint(i, 0))),
+            Fill = null,
+            Stroke = null,
+            GeometrySize = 0,
+            LineSmoothness = 0
+        }
+    };
+    private Axis[] _finalLatencyXAxes = new Axis[]
+    {
+        new Axis { Name = "Seek #", NameTextSize = 10, TextSize = 9, MinLimit = 0, Labeler = v => v.ToString("F0") }
+    };
+    private Axis[] _finalLatencyYAxes = new Axis[]
+    {
+        new Axis { Name = "Latence (ms)", NameTextSize = 10, TextSize = 9, MinLimit = 0, Labeler = v => $"{v:F1}" }
+    };
     private int _finalChartPointCount;
 
     // Test type options for the UI – MUST match SeekTestType enum order (FullStroke=0, Random=1, Skip=2)
@@ -580,6 +621,16 @@ public partial class SeekTestViewModel : ViewModelBase, INavigableViewModel, IDi
         IsPrePositioned = false;
         StatusMessage = "Spouštím seek test...";
 
+        // Clear final chart from previous test so only the real-time chart shows during testing.
+        // We intentionally use new T[0] instead of Array.Empty<T>() because LiveCharts2
+        // SkiaSharp needs a fresh reference to detect the change; Array.Empty returns a singleton.
+#pragma warning disable CA1825
+        FinalLatencySeries = new ISeries[0];
+        FinalChartPointCount = 0;
+        FinalLatencyXAxes = new Axis[0];
+        FinalLatencyYAxes = new Axis[0];
+#pragma warning restore CA1825
+
         // Initialize real-time chart
         LatencyChartValues.Clear();
         LatencySeries = new ISeries[]
@@ -1035,10 +1086,11 @@ public partial class SeekTestViewModel : ViewModelBase, INavigableViewModel, IDi
             }
         };
 
-        // Also populate final chart properties (separate bindings for the results section)
-        FinalLatencySeries = seriesList.ToArray();
-        FinalChartPointCount = allPoints.Count;
-        FinalLatencyXAxes = new Axis[]
+        // Also populate final chart properties (separate bindings for the results section).
+        // LiveCharts2 SkiaSharp sometimes fails to pick up series/axes changes when set
+        // directly. A two-step assignment via Dispatcher forces a redraw.
+        var finalSeries = seriesList.ToArray();
+        var finalXAxes = new Axis[]
         {
             new Axis
             {
@@ -1050,7 +1102,7 @@ public partial class SeekTestViewModel : ViewModelBase, INavigableViewModel, IDi
                 Labeler = v => v.ToString("F0")
             }
         };
-        FinalLatencyYAxes = new Axis[]
+        var finalYAxes = new Axis[]
         {
             new Axis
             {
@@ -1062,6 +1114,28 @@ public partial class SeekTestViewModel : ViewModelBase, INavigableViewModel, IDi
                 Labeler = v => $"{v:F1}"
             }
         };
+
+        // BuildFinalChart runs on a background thread (async command). SkiaSharp
+        // requires changes from the UI thread to trigger a redraw. We use
+        // Dispatcher.UIThread.Post with a two-step assignment:
+        //   1. Clear to new T[0] (fresh reference, NOT Array.Empty singleton)
+        //   2. Set real data
+        // This forces LiveCharts2 to detect the delta and render.
+        Dispatcher.UIThread.Post(() =>
+        {
+            // Step 1: clear with fresh references
+#pragma warning disable CA1825
+            FinalLatencySeries = new ISeries[0];
+            FinalLatencyXAxes = new Axis[0];
+            FinalLatencyYAxes = new Axis[0];
+#pragma warning restore CA1825
+
+            // Step 2: set real data – chart detects the delta and redraws
+            FinalLatencySeries = finalSeries;
+            FinalLatencyXAxes = finalXAxes;
+            FinalLatencyYAxes = finalYAxes;
+            FinalChartPointCount = allPoints.Count;
+        });
     }
 
     private async Task AbortTestAsync()

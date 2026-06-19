@@ -266,10 +266,11 @@
             </Border>
 
             <!-- ═══════════ SEEK RESULTS CHARTS (switchable, after completion) ═══════════ -->
+            <!-- NOTE: IsVisible is intentionally NOT bound – chart must stay in visual tree
+                 so LiveCharts2 SkiaSharp initializes its render surface properly. -->
             <Border Background="{DynamicResource ThemeCardBackgroundBrush}"
                     CornerRadius="8" Padding="12"
-                    BorderBrush="{DynamicResource ThemeBorderBrush}" BorderThickness="1"
-                    IsVisible="{Binding HasSeekCharts}">
+                    BorderBrush="{DynamicResource ThemeBorderBrush}" BorderThickness="1">
                 <StackPanel Spacing="8">
                     <Grid ColumnDefinitions="*,Auto">
                         <TextBlock Grid.Column="0" Text="{Binding SeekChartTitle}" FontSize="13" FontWeight="Bold"
@@ -293,14 +294,23 @@
                                     Cursor="Hand"/>
                         </StackPanel>
                     </Grid>
-                    <lvc:CartesianChart Series="{Binding SeekChartSeries}"
-                                        XAxes="{Binding SeekChartXAxes}"
-                                        YAxes="{Binding SeekChartYAxes}"
-                                        ZoomMode="None"
-                                        TooltipPosition="Top"
-                                        LegendPosition="Hidden"
-                                        AnimationsSpeed="0:0:0"
-                                        Height="220"/>
+                    <Grid>
+                        <lvc:CartesianChart Series="{Binding SeekChartSeries}"
+                                            XAxes="{Binding SeekChartXAxes}"
+                                            YAxes="{Binding SeekChartYAxes}"
+                                            ZoomMode="None"
+                                            TooltipPosition="Top"
+                                            LegendPosition="Hidden"
+                                            AnimationsSpeed="0:0:0"
+                                            Height="220"/>
+                        <!-- Overlay shown when no seek charts available yet -->
+                        <TextBlock Text="📈 Seek grafy budou zobrazeny po dokončení seek testů"
+                                   VerticalAlignment="Center"
+                                   HorizontalAlignment="Center"
+                                   FontSize="12"
+                                   Foreground="{DynamicResource ThemeTextMutedBrush}"
+                                   IsVisible="{Binding HasSeekCharts, Converter={StaticResource InverseBooleanConverter}}"/>
+                    </Grid>
                 </StackPanel>
             </Border>
 

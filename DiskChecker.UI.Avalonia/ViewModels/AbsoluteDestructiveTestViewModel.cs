@@ -205,14 +205,44 @@ public partial class AbsoluteDestructiveTestViewModel : ViewModelBase, INavigabl
     public Axis[] CurrentPhaseYAxes { get; }
 
     // ── Sanitization chart series (two passes, different colors) ──
-    [ObservableProperty] private ISeries[] _sanitizeChartSeries = Array.Empty<ISeries>();
-    [ObservableProperty] private Axis[] _sanitizeChartXAxes = Array.Empty<Axis>();
-    [ObservableProperty] private Axis[] _sanitizeChartYAxes = Array.Empty<Axis>();
+    // MUST initialize with dummy series + axes so LiveCharts2 SkiaSharp initializes
+    // its render surface immediately. Array.Empty causes a permanently black chart.
+    [ObservableProperty] private ISeries[] _sanitizeChartSeries = new ISeries[]
+    {
+        new LineSeries<ObservablePoint>
+        {
+            Values = new ObservableCollection<ObservablePoint>(),
+            Fill = null, Stroke = null, GeometrySize = 0, LineSmoothness = 0
+        }
+    };
+    [ObservableProperty] private Axis[] _sanitizeChartXAxes = new Axis[]
+    {
+        new Axis { Name = "Progres (%)", NameTextSize = 10, TextSize = 9, MinLimit = 0, MaxLimit = 100, Labeler = v => v.ToString("F0") }
+    };
+    [ObservableProperty] private Axis[] _sanitizeChartYAxes = new Axis[]
+    {
+        new Axis { Name = "MB/s", NameTextSize = 10, TextSize = 9, MinLimit = 0, Labeler = v => $"{v:F0}" }
+    };
 
     // ── Seek chart series (switchable) ──
-    [ObservableProperty] private ISeries[] _seekChartSeries = Array.Empty<ISeries>();
-    [ObservableProperty] private Axis[] _seekChartXAxes = Array.Empty<Axis>();
-    [ObservableProperty] private Axis[] _seekChartYAxes = Array.Empty<Axis>();
+    // MUST initialize with dummy series + axes so LiveCharts2 SkiaSharp initializes
+    // its render surface immediately. Array.Empty causes a permanently black chart.
+    [ObservableProperty] private ISeries[] _seekChartSeries = new ISeries[]
+    {
+        new LineSeries<ObservablePoint>
+        {
+            Values = new ObservableCollection<ObservablePoint>(),
+            Fill = null, Stroke = null, GeometrySize = 0, LineSmoothness = 0
+        }
+    };
+    [ObservableProperty] private Axis[] _seekChartXAxes = new Axis[]
+    {
+        new Axis { Name = "Seek #", NameTextSize = 10, TextSize = 9, MinLimit = 0, Labeler = v => v.ToString("F0") }
+    };
+    [ObservableProperty] private Axis[] _seekChartYAxes = new Axis[]
+    {
+        new Axis { Name = "Latence (ms)", NameTextSize = 10, TextSize = 9, MinLimit = 0, Labeler = v => $"{v:F1}" }
+    };
 
     // ──────────────────────────────────────────────
     //  Constructor
@@ -591,7 +621,8 @@ public partial class AbsoluteDestructiveTestViewModel : ViewModelBase, INavigabl
         };
 
         SeekChartTitle = title;
-        SeekChartSeries = new ISeries[]
+
+        var newSeries = new ISeries[]
         {
             new LineSeries<ObservablePoint>
             {
@@ -606,8 +637,7 @@ public partial class AbsoluteDestructiveTestViewModel : ViewModelBase, INavigabl
                 AnimationsSpeed = TimeSpan.Zero
             }
         };
-
-        SeekChartXAxes = new Axis[]
+        var newXAxes = new Axis[]
         {
             new Axis
             {
@@ -617,8 +647,7 @@ public partial class AbsoluteDestructiveTestViewModel : ViewModelBase, INavigabl
                 TextSize = 10
             }
         };
-
-        SeekChartYAxes = new Axis[]
+        var newYAxes = new Axis[]
         {
             new Axis
             {
@@ -628,6 +657,14 @@ public partial class AbsoluteDestructiveTestViewModel : ViewModelBase, INavigabl
                 TextSize = 10
             }
         };
+
+        // Two-step assignment forces LiveCharts2 SkiaSharp to detect the change and redraw
+        SeekChartSeries = Array.Empty<ISeries>();
+        SeekChartXAxes = Array.Empty<Axis>();
+        SeekChartYAxes = Array.Empty<Axis>();
+        SeekChartSeries = newSeries;
+        SeekChartXAxes = newXAxes;
+        SeekChartYAxes = newYAxes;
     }
 
     [RelayCommand]
@@ -703,6 +740,8 @@ public partial class AbsoluteDestructiveTestViewModel : ViewModelBase, INavigabl
             });
         }
 
+        // Two-step assignment forces LiveCharts2 SkiaSharp to detect the change and redraw
+        SanitizeChartSeries = Array.Empty<ISeries>();
         SanitizeChartSeries = seriesList.ToArray();
     }
 
