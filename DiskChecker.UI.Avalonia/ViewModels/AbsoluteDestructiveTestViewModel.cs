@@ -205,14 +205,14 @@ public partial class AbsoluteDestructiveTestViewModel : ViewModelBase, INavigabl
     public Axis[] CurrentPhaseYAxes { get; }
 
     // ── Sanitization chart series (two passes, different colors) ──
-    public ISeries[] SanitizeChartSeries { get; private set; }
-    public Axis[] SanitizeChartXAxes { get; private set; }
-    public Axis[] SanitizeChartYAxes { get; private set; }
+    [ObservableProperty] private ISeries[] _sanitizeChartSeries = Array.Empty<ISeries>();
+    [ObservableProperty] private Axis[] _sanitizeChartXAxes = Array.Empty<Axis>();
+    [ObservableProperty] private Axis[] _sanitizeChartYAxes = Array.Empty<Axis>();
 
     // ── Seek chart series (switchable) ──
-    public ISeries[] SeekChartSeries { get; private set; }
-    public Axis[] SeekChartXAxes { get; private set; }
-    public Axis[] SeekChartYAxes { get; private set; }
+    [ObservableProperty] private ISeries[] _seekChartSeries = Array.Empty<ISeries>();
+    [ObservableProperty] private Axis[] _seekChartXAxes = Array.Empty<Axis>();
+    [ObservableProperty] private Axis[] _seekChartYAxes = Array.Empty<Axis>();
 
     // ──────────────────────────────────────────────
     //  Constructor
@@ -1506,6 +1506,8 @@ public partial class AbsoluteDestructiveTestViewModel : ViewModelBase, INavigabl
             {
                 Certificate.TestSessionId = session.Id;
                 Certificate.DiskCardId = card.Id;
+                await _diskCardRepository.CreateCertificateAsync(Certificate);
+                StatusMessage = $"✅ Test dokončen – certifikát {Certificate.CertificateNumber} uložen";
             }
         }
         catch (Exception ex)

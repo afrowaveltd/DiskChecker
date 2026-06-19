@@ -529,6 +529,7 @@ public enum TestType
     FullReadWrite,
     SurfaceScan,
     Sanitization,
+    Seek,
     SmartShort,
     SmartExtended,
     SmartConveyance,

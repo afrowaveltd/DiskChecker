@@ -185,6 +185,7 @@ public partial class App : global::Avalonia.Application
         
         // Disk cache service to avoid reloading disks on navigation
         services.AddSingleton<IDiskCacheService, DiskCacheService>();
+        services.AddSingleton<LocaleService>();
         
         // Shared state for full report preview/print
         services.AddSingleton<ReportDocumentState>();

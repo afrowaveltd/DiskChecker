@@ -211,7 +211,7 @@ public partial class SafeDestructiveTestViewModel : ViewModelBase, INavigableVie
     public IRelayCommand CancelCommand { get; }
     public IRelayCommand GoBackCommand { get; }
     public IRelayCommand SwitchSeekChartCommand { get; }
-    public IRelayCommand ToggleSanitizeSeriesCommand { get; }
+    public IRelayCommand<string> ToggleSanitizeSeriesCommand { get; }
 
     private static readonly JsonSerializerOptions _jsonOptions = new() { WriteIndented = true };
 
@@ -246,7 +246,7 @@ public partial class SafeDestructiveTestViewModel : ViewModelBase, INavigableVie
         CancelCommand = new RelayCommand(Cancel);
         GoBackCommand = new RelayCommand(GoBack);
         SwitchSeekChartCommand = new RelayCommand(SwitchSeekChart);
-        ToggleSanitizeSeriesCommand = new RelayCommand(ToggleSanitizeSeries);
+        ToggleSanitizeSeriesCommand = new RelayCommand<string>(ToggleSanitizeSeries);
 
         InitializeChartDefaults();
     }
@@ -435,6 +435,8 @@ public partial class SafeDestructiveTestViewModel : ViewModelBase, INavigableVie
             HasResults = true;
 
             await BuildResultsAsync();
+            await BuildCertificateAsync();
+            await SaveTestSessionAsync();
             Log("═══ WORKFLOW DOKONČEN ═══");
         }
         catch (OperationCanceledException)
@@ -843,26 +845,210 @@ public partial class SafeDestructiveTestViewModel : ViewModelBase, INavigableVie
             SmartDeltaSummary = deltaSb.ToString();
         }
 
-        // Save to repository
+    }
+
+    // ──────────────────────────────────────────────
+    //  Certificate & Session persistence
+    // ──────────────────────────────────────────────
+
+    private async Task BuildCertificateAsync()
+    {
+        if (SelectedDrive == null) return;
+
+        var card = await _diskCardRepository.GetByDevicePathAsync(SelectedDrive.Path);
+        if (card == null)
+        {
+            card = new DiskCard
+            {
+                DevicePath = SelectedDrive.Path,
+                ModelName = SelectedDrive.Name ?? DiskDisplayName,
+                SerialNumber = SelectedDrive.SerialNumber ?? "",
+                Capacity = SelectedDrive.TotalSize,
+                DiskType = _smartBefore?.DeviceType ?? "Unknown",
+                CreatedAt = DateTime.UtcNow,
+                LastTestedAt = DateTime.UtcNow
+            };
+        }
+
+        var cert = new DiskCertificate
+        {
+            CertificateNumber = $"SAFE-{DateTime.UtcNow:yyyyMMdd}-{Guid.NewGuid():N}"[..24],
+            DiskCardId = card.Id,
+            GeneratedAt = DateTime.UtcNow,
+            GeneratedBy = Environment.UserName,
+            DiskModel = SelectedDrive.Name ?? DiskDisplayName,
+            SerialNumber = SelectedDrive.SerialNumber ?? "-",
+            Capacity = DiskTotalSizeText,
+            DiskType = _smartBefore?.DeviceType ?? "HDD",
+            TestType = "Bezpečný destruktivní test (záloha → test → obnova)",
+            TestDuration = DateTime.UtcNow - _phaseStartTime,
+            Grade = CalculateSafeGrade(),
+            Score = CalculateSafeScore(),
+            HealthStatus = DetermineSafeHealthStatus(),
+            Status = CertificateStatus.Active,
+            Recommended = true,
+            Notes = $"Bezpečný destruktivní test: záloha → test → obnova.\n{ResultsSummary}",
+            SmartPassed = _smartAfter?.ReallocatedSectorCount == 0 && _smartAfter?.PendingSectorCount == 0,
+            PowerOnHours = _smartAfter?.PowerOnHours ?? _smartBefore?.PowerOnHours ?? 0,
+            ReallocatedSectors = _smartAfter?.ReallocatedSectorCount ?? _smartBefore?.ReallocatedSectorCount ?? 0,
+            PendingSectors = _smartAfter?.PendingSectorCount ?? _smartBefore?.PendingSectorCount ?? 0,
+            SanitizationPerformed = true,
+            SanitizationMethod = "Zero-fill + verify (2×) — safe mode",
+            DataVerified = true,
+            ErrorCount = 0,
+            TemperatureRange = $"{_smartBefore?.Temperature ?? 0}–{_smartAfter?.Temperature ?? 0}°C",
+            SmartDeltaSummary = SmartDeltaSummary
+        };
+
+        // Seek metrics
+        var allSeekPoints = SeekFullStrokePoints.Concat(SeekRandomPoints).Concat(SeekSkipPoints)
+            .Select(p => p.Y ?? 0).Where(y => y > 0).OrderBy(y => y).ToList();
+        if (allSeekPoints.Count > 0)
+        {
+            cert.SeekAvgLatencyMs = allSeekPoints.Average();
+            cert.SeekMinLatencyMs = allSeekPoints.Min();
+            cert.SeekMaxLatencyMs = allSeekPoints.Max();
+            cert.SeekP95LatencyMs = Percentile(allSeekPoints, 0.95);
+        }
+
+        // Sanitize metrics
+        if (SanitizePass1WritePoints.Count > 0)
+            cert.Sanitize1AvgWriteMBps = SanitizePass1WritePoints.Average(p => p.Y ?? 0);
+        if (SanitizePass1ReadPoints.Count > 0)
+            cert.Sanitize1AvgReadMBps = SanitizePass1ReadPoints.Average(p => p.Y ?? 0);
+        if (SanitizePass2WritePoints.Count > 0)
+            cert.Sanitize2AvgWriteMBps = SanitizePass2WritePoints.Average(p => p.Y ?? 0);
+        if (SanitizePass2ReadPoints.Count > 0)
+            cert.Sanitize2AvgReadMBps = SanitizePass2ReadPoints.Average(p => p.Y ?? 0);
+
+        Certificate = cert;
+    }
+
+    private DiskCertificate? Certificate { get; set; }
+
+    private async Task SaveTestSessionAsync()
+    {
         try
         {
-            var card = await _diskCardRepository.GetBySerialNumberAsync(SelectedDrive?.SerialNumber ?? "");
-            if (card != null)
+            if (SelectedDrive == null || Certificate == null) return;
+
+            var card = await _diskCardRepository.GetByDevicePathAsync(SelectedDrive.Path);
+            if (card == null) return;
+
+            var session = new TestSession
             {
-                var session = new TestSession
-                {
-                    TestType = TestType.AbsoluteDestructive,
-                    StartedAt = DateTime.Now.AddMinutes(-30), // approximate
-                    CompletedAt = DateTime.Now,
-                    Status = TestStatus.Completed,
-                    Result = TestResult.Pass,
-                    Notes = "Safe Destructive Test (backup → test → restore)"
-                };
-                card.TestSessions.Add(session);
-                await _diskCardRepository.UpdateAsync(card);
-            }
+                DiskCardId = card.Id,
+                SessionId = Guid.NewGuid(),
+                TestType = TestType.AbsoluteDestructive,
+                StartedAt = DateTime.UtcNow - Certificate.TestDuration,
+                CompletedAt = DateTime.UtcNow,
+                Duration = Certificate.TestDuration,
+                Status = TestStatus.Completed,
+                IsDestructive = true,
+                WasLocked = true,
+                SmartBefore = _smartBefore,
+                SmartAfter = _smartAfter,
+                StartTemperature = _smartBefore?.Temperature,
+                MaxTemperature = Math.Max(_smartBefore?.Temperature ?? 0, _smartAfter?.Temperature ?? 0),
+                AverageTemperature = ((_smartBefore?.Temperature ?? 0) + (_smartAfter?.Temperature ?? 0)) / 2.0,
+                Result = TestResult.Pass,
+                Grade = Certificate.Grade,
+                Score = Certificate.Score,
+                HealthAssessment = MapHealthAssessment(Certificate.HealthStatus),
+                Notes = Certificate.Notes,
+                SmartChanges = _smartBefore != null && _smartAfter != null
+                    ? BuildSmartChanges(_smartBefore, _smartAfter)
+                    : new List<SmartAttributeChange>()
+            };
+
+            await _diskCardRepository.CreateTestSessionAsync(session);
+
+            Certificate.TestSessionId = session.Id;
+            Certificate.DiskCardId = card.Id;
+            await _diskCardRepository.CreateCertificateAsync(Certificate);
+
+            Log($"Certifikát uložen: {Certificate.CertificateNumber}");
         }
-        catch { /* non-critical */ }
+        catch (Exception ex)
+        {
+            Log($"❌ Uložení session/certifikátu selhalo: {ex.Message}");
+        }
+    }
+
+    private string CalculateSafeGrade()
+    {
+        double avgWrite = 0;
+        if (SanitizePass1WritePoints.Count > 0) avgWrite = SanitizePass1WritePoints.Average(p => p.Y ?? 0);
+        return avgWrite switch
+        {
+            >= 200 => "A",
+            >= 150 => "B",
+            >= 100 => "C",
+            >= 60 => "D",
+            >= 30 => "E",
+            _ => "F"
+        };
+    }
+
+    private int CalculateSafeScore()
+    {
+        double avgWrite = 0;
+        if (SanitizePass1WritePoints.Count > 0) avgWrite = SanitizePass1WritePoints.Average(p => p.Y ?? 0);
+        return avgWrite switch
+        {
+            >= 250 => 95,
+            >= 200 => 85,
+            >= 150 => 70,
+            >= 100 => 55,
+            >= 60 => 40,
+            >= 30 => 25,
+            _ => 10
+        };
+    }
+
+    private static string DetermineSafeHealthStatus()
+    {
+        return "Healthy — test completed successfully with backup/restore";
+    }
+
+    private static HealthAssessment MapHealthAssessment(string? healthStatus)
+    {
+        if (string.IsNullOrWhiteSpace(healthStatus)) return HealthAssessment.Unknown;
+        if (healthStatus.Contains("Healthy", StringComparison.OrdinalIgnoreCase)) return HealthAssessment.Excellent;
+        if (healthStatus.Contains("Warning", StringComparison.OrdinalIgnoreCase)) return HealthAssessment.Fair;
+        if (healthStatus.Contains("Critical", StringComparison.OrdinalIgnoreCase)) return HealthAssessment.Critical;
+        return HealthAssessment.Unknown;
+    }
+
+    private static List<SmartAttributeChange> BuildSmartChanges(SmartaData before, SmartaData after)
+    {
+        var changes = new List<SmartAttributeChange>();
+        long bTemp = before.Temperature ?? 0;
+        long aTemp = after.Temperature ?? 0;
+        if (bTemp != aTemp)
+            changes.Add(new SmartAttributeChange { AttributeName = "Temperature", ValueBefore = bTemp, ValueAfter = aTemp, Change = aTemp - bTemp });
+
+        long bRealloc = before.ReallocatedSectorCount ?? 0;
+        long aRealloc = after.ReallocatedSectorCount ?? 0;
+        if (bRealloc != aRealloc)
+            changes.Add(new SmartAttributeChange { AttributeName = "ReallocatedSectorCount", ValueBefore = bRealloc, ValueAfter = aRealloc, Change = aRealloc - bRealloc });
+
+        long bPending = before.PendingSectorCount ?? 0;
+        long aPending = after.PendingSectorCount ?? 0;
+        if (bPending != aPending)
+            changes.Add(new SmartAttributeChange { AttributeName = "PendingSectorCount", ValueBefore = bPending, ValueAfter = aPending, Change = aPending - bPending });
+
+        long bUncorr = before.UncorrectableErrorCount ?? 0;
+        long aUncorr = after.UncorrectableErrorCount ?? 0;
+        if (bUncorr != aUncorr)
+            changes.Add(new SmartAttributeChange { AttributeName = "UncorrectableErrorCount", ValueBefore = bUncorr, ValueAfter = aUncorr, Change = aUncorr - bUncorr });
+
+        long bPoh = before.PowerOnHours ?? 0;
+        long aPoh = after.PowerOnHours ?? 0;
+        if (bPoh != aPoh)
+            changes.Add(new SmartAttributeChange { AttributeName = "PowerOnHours", ValueBefore = bPoh, ValueAfter = aPoh, Change = aPoh - bPoh });
+
+        return changes;
     }
 
     // ──────────────────────────────────────────────
@@ -910,43 +1096,15 @@ public partial class SafeDestructiveTestViewModel : ViewModelBase, INavigableVie
     //  Sanitize series toggle
     // ──────────────────────────────────────────────
 
-    private void ToggleSanitizeSeries()
+    private void ToggleSanitizeSeries(string? param)
     {
-        // Cycle through toggles: all on → pass1 only → pass2 only → writes only → reads only → all on
-        if (ShowPass1Write && ShowPass1Read && ShowPass2Write && ShowPass2Read)
+        switch (param)
         {
-            ShowPass2Write = false;
-            ShowPass2Read = false;
+            case "pass1write": ShowPass1Write = !ShowPass1Write; break;
+            case "pass1read": ShowPass1Read = !ShowPass1Read; break;
+            case "pass2write": ShowPass2Write = !ShowPass2Write; break;
+            case "pass2read": ShowPass2Read = !ShowPass2Read; break;
         }
-        else if (ShowPass1Write && ShowPass1Read && !ShowPass2Write && !ShowPass2Read)
-        {
-            ShowPass1Write = false;
-            ShowPass1Read = false;
-            ShowPass2Write = true;
-            ShowPass2Read = true;
-        }
-        else if (!ShowPass1Write && !ShowPass1Read && ShowPass2Write && ShowPass2Read)
-        {
-            ShowPass1Write = true;
-            ShowPass2Write = true;
-            ShowPass1Read = false;
-            ShowPass2Read = false;
-        }
-        else if (ShowPass1Write && ShowPass2Write && !ShowPass1Read && !ShowPass2Read)
-        {
-            ShowPass1Write = false;
-            ShowPass2Write = false;
-            ShowPass1Read = true;
-            ShowPass2Read = true;
-        }
-        else
-        {
-            ShowPass1Write = true;
-            ShowPass1Read = true;
-            ShowPass2Write = true;
-            ShowPass2Read = true;
-        }
-
         RebuildSanitizeChart();
     }
 

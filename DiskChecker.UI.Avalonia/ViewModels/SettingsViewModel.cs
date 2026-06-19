@@ -1,6 +1,7 @@
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using DiskChecker.UI.Avalonia.Services.Interfaces;
+using DiskChecker.UI.Avalonia.Services;
 using DiskChecker.Core.Interfaces;
 using System;
 using System.Collections.ObjectModel;
@@ -14,6 +15,7 @@ namespace DiskChecker.UI.Avalonia.ViewModels
         private readonly ISettingsService _settingsService;
         private readonly IDialogService _dialogService;
         private readonly IBackupService _backupService;
+        private readonly LocaleService _localizationService;
         
         private bool _isSaving;
         private string _statusMessage = string.Empty;
@@ -35,11 +37,12 @@ namespace DiskChecker.UI.Avalonia.ViewModels
         private int _smartProbeTimeoutSeconds;
         private int _smartProbeParallelismValue;
 
-        public SettingsViewModel(ISettingsService settingsService, IDialogService dialogService, IBackupService backupService)
+        public SettingsViewModel(ISettingsService settingsService, IDialogService dialogService, IBackupService backupService, LocaleService localizationService)
         {
             _settingsService = settingsService ?? throw new ArgumentNullException(nameof(settingsService));
             _dialogService = dialogService ?? throw new ArgumentNullException(nameof(dialogService));
             _backupService = backupService ?? throw new ArgumentNullException(nameof(backupService));
+            _localizationService = localizationService ?? throw new ArgumentNullException(nameof(localizationService));
             
             SaveSettingsCommand = new AsyncRelayCommand(SaveSettingsAsync, () => !IsSaving);
             ResetSettingsCommand = new AsyncRelayCommand(ResetSettingsAsync);
@@ -47,6 +50,16 @@ namespace DiskChecker.UI.Avalonia.ViewModels
             CreateBackupCommand = new AsyncRelayCommand(CreateBackupAsync, () => !IsSaving);
             RestoreBackupCommand = new AsyncRelayCommand(RestoreBackupAsync, () => !IsSaving && SelectedBackup != null);
             RefreshBackupsCommand = new AsyncRelayCommand(RefreshBackupsAsync);
+            SetLanguageCommand = new RelayCommand<string>(SetLanguage);
+
+            // Populate available languages
+            foreach (var loc in _localizationService.GetAvailableLocales())
+                AvailableLanguages.Add(loc);
+            if (AvailableLanguages.Count == 0)
+            {
+                AvailableLanguages.Add("cs");
+                AvailableLanguages.Add("en");
+            }
             
             LoadSettings();
             _ = RefreshBackupsAsync();
@@ -171,6 +184,9 @@ namespace DiskChecker.UI.Avalonia.ViewModels
         public IAsyncRelayCommand CreateBackupCommand { get; }
         public IAsyncRelayCommand RestoreBackupCommand { get; }
         public IAsyncRelayCommand RefreshBackupsCommand { get; }
+        public IRelayCommand<string> SetLanguageCommand { get; }
+
+        public ObservableCollection<string> AvailableLanguages { get; } = new();
 
         public string ReportRecipientEmail
         {
@@ -371,6 +387,14 @@ namespace DiskChecker.UI.Avalonia.ViewModels
             {
                 IsLoadingBackups = false;
             }
+        }
+
+        private void SetLanguage(string? locale)
+        {
+            if (string.IsNullOrWhiteSpace(locale)) return;
+            _localizationService.SetLocale(locale);
+            Language = locale;
+            StatusMessage = $"Jazyk změněn na: {locale}";
         }
     }
 }

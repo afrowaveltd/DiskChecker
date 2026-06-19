@@ -45,6 +45,7 @@ public partial class SurfaceTestViewModel : ViewModelBase, INavigableViewModel, 
    private readonly DiskCardTestService _cardTestService;
    private readonly TestCompletionNotificationService _notificationService;
    private readonly ICertificateGenerator _certificateGenerator;
+   private readonly IDiskCardRepository _diskCardRepository;
 
    private double _writeProgress;
    private double _verifyProgress;
@@ -131,7 +132,8 @@ public partial class SurfaceTestViewModel : ViewModelBase, INavigableViewModel, 
        SmartCheckService smartCheckService,
        DiskCardTestService cardTestService,
        TestCompletionNotificationService notificationService,
-       ICertificateGenerator certificateGenerator)
+       ICertificateGenerator certificateGenerator,
+       IDiskCardRepository diskCardRepository)
    {
       _navigationService = navigationService;
       _selectedDiskService = selectedDiskService;
@@ -143,6 +145,7 @@ public partial class SurfaceTestViewModel : ViewModelBase, INavigableViewModel, 
       _cardTestService = cardTestService;
       _notificationService = notificationService;
       _certificateGenerator = certificateGenerator;
+      _diskCardRepository = diskCardRepository;
 
       AvailableDrives = new ObservableCollection<CoreDriveInfo>();
       SpeedHistory = new ObservableCollection<SpeedDataPoint>();
@@ -1642,6 +1645,14 @@ public partial class SurfaceTestViewModel : ViewModelBase, INavigableViewModel, 
          }
 
          var certificate = await _certificateGenerator.GenerateCertificateAsync(session, card);
+
+         // Save certificate to database
+         try
+         {
+            await _diskCardRepository.CreateCertificateAsync(certificate);
+         }
+         catch { /* non-critical — certificate saved to DB for later viewing */ }
+
          var certificatePath = await _certificateGenerator.GeneratePdfAsync(certificate);
 
          if(!File.Exists(certificatePath))

@@ -1,6 +1,7 @@
 using System;
 using System.Collections.ObjectModel;
 using System.Linq;
+using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using Avalonia.Threading;
@@ -30,6 +31,8 @@ public partial class SeekTestViewModel : ViewModelBase, INavigableViewModel, IDi
     private readonly ISettingsService _settingsService;
     private readonly IDiskCacheService _diskCacheService;
     private readonly SeekTestService _seekTestService;
+    private readonly ICertificateGenerator _certificateGenerator;
+    private readonly IDiskCardRepository _diskCardRepository;
 
     private CoreDriveInfo? _selectedDrive;
     private bool _isTesting;
@@ -102,7 +105,9 @@ public partial class SeekTestViewModel : ViewModelBase, INavigableViewModel, IDi
         IDialogService dialogService,
         ISettingsService settingsService,
         IDiskCacheService diskCacheService,
-        SeekTestService seekTestService)
+        SeekTestService seekTestService,
+        ICertificateGenerator certificateGenerator,
+        IDiskCardRepository diskCardRepository)
     {
         _navigationService = navigationService;
         _selectedDiskService = selectedDiskService;
@@ -110,6 +115,8 @@ public partial class SeekTestViewModel : ViewModelBase, INavigableViewModel, IDi
         _settingsService = settingsService;
         _diskCacheService = diskCacheService;
         _seekTestService = seekTestService;
+        _certificateGenerator = certificateGenerator;
+        _diskCardRepository = diskCardRepository;
 
         GoBackCommand = new RelayCommand(NavigateBack);
         StartTestCommand = new AsyncRelayCommand(StartTestAsync, () => !IsTesting && !IsDiskTooFragile && SelectedDrive != null);
@@ -706,6 +713,12 @@ public partial class SeekTestViewModel : ViewModelBase, INavigableViewModel, IDi
             StatusMessage = result.IsCompleted
                 ? $"Test dokončen – průměrná latence {result.AverageLatencyMs:F2} ms"
                 : "Test přerušen";
+
+            // Generate and save certificate
+            if (result.IsCompleted)
+            {
+                await SaveTestSessionAndCertificateAsync(result);
+            }
         }
         catch (OperationCanceledException)
         {
@@ -725,6 +738,91 @@ public partial class SeekTestViewModel : ViewModelBase, INavigableViewModel, IDi
             _testCancellation?.Dispose();
             _testCancellation = null;
         }
+    }
+
+    /// <summary>
+    /// Saves the test session and generates a certificate for the completed seek test.
+    /// </summary>
+    private async Task SaveTestSessionAndCertificateAsync(SeekTestResult result)
+    {
+        try
+        {
+            if (SelectedDrive == null) return;
+
+            var card = await _diskCardRepository.GetByDevicePathAsync(SelectedDrive.Path);
+            if (card == null)
+            {
+                card = new DiskCard
+                {
+                    DevicePath = SelectedDrive.Path,
+                    ModelName = SelectedDrive.Name,
+                    SerialNumber = SelectedDrive.SerialNumber ?? "",
+                    Capacity = SelectedDrive.TotalSize,
+                    DiskType = "Unknown",
+                    CreatedAt = DateTime.UtcNow,
+                    LastTestedAt = DateTime.UtcNow
+                };
+            }
+
+            var session = new TestSession
+            {
+                DiskCardId = card.Id,
+                SessionId = Guid.NewGuid(),
+                TestType = TestType.Seek,
+                StartedAt = DateTime.UtcNow - result.Duration,
+                CompletedAt = DateTime.UtcNow,
+                Duration = result.Duration,
+                Status = TestStatus.Completed,
+                IsDestructive = false,
+                WasLocked = false,
+                Result = TestResult.Pass,
+                Grade = CalculateSeekGrade(result),
+                Score = CalculateSeekScore(result),
+                Notes = $"Seek test: {SelectedTestType}, {result.SeekCount} seeků, avg {result.AverageLatencyMs:F2} ms",
+                SeekResultsJson = JsonSerializer.Serialize(result)
+            };
+
+            await _diskCardRepository.CreateTestSessionAsync(session);
+
+            var cert = await _certificateGenerator.GenerateCertificateAsync(session, card);
+            cert.CertificateNumber = $"SEEK-{DateTime.UtcNow:yyyyMMdd}-{Guid.NewGuid():N}"[..24];
+            await _diskCardRepository.CreateCertificateAsync(cert);
+
+            StatusMessage = $"✅ Test dokončen – certifikát {cert.CertificateNumber} uložen";
+        }
+        catch (Exception ex)
+        {
+            StatusMessage = $"Test dokončen, ale certifikát se nepodařilo uložit: {ex.Message}";
+        }
+    }
+
+    private static string CalculateSeekGrade(SeekTestResult result)
+    {
+        var avg = result.AverageLatencyMs;
+        return avg switch
+        {
+            < 8 => "A",
+            < 12 => "B",
+            < 18 => "C",
+            < 25 => "D",
+            < 35 => "E",
+            _ => "F"
+        };
+    }
+
+    private static int CalculateSeekScore(SeekTestResult result)
+    {
+        var avg = result.AverageLatencyMs;
+        return avg switch
+        {
+            < 5 => 95,
+            < 8 => 85,
+            < 12 => 70,
+            < 18 => 55,
+            < 25 => 40,
+            < 35 => 25,
+            _ => 10
+        };
     }
 
     /// <summary>
