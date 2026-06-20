@@ -50,7 +50,8 @@ public class SanitizationProgressTests
 
         try
         {
-            await File.WriteAllBytesAsync(path, Enumerable.Repeat((byte)0xA5, fileSize).ToArray());
+            var cancellationToken = TestContext.Current.CancellationToken;
+            await File.WriteAllBytesAsync(path, Enumerable.Repeat((byte)0xA5, fileSize).ToArray(), cancellationToken);
             var service = new LinuxDiskSanitizationService();
             var writeProgress = new List<SanitizationProgress>();
             var readProgress = new List<SanitizationProgress>();
@@ -74,7 +75,7 @@ public class SanitizationProgressTests
             Assert.All(readProgress, item => Assert.True(item.IsReadVerifyPhase));
             Assert.Equal(100, writeProgress[^1].ProgressPercent);
             Assert.Equal(100, readProgress[^1].ProgressPercent);
-            Assert.All(await File.ReadAllBytesAsync(path), value => Assert.Equal(0, value));
+            Assert.All(await File.ReadAllBytesAsync(path, cancellationToken), value => Assert.Equal(0, value));
         }
         finally
         {
@@ -90,7 +91,8 @@ public class SanitizationProgressTests
 
         try
         {
-            await File.WriteAllBytesAsync(path, new byte[fileSize]);
+            var cancellationToken = TestContext.Current.CancellationToken;
+            await File.WriteAllBytesAsync(path, new byte[fileSize], cancellationToken);
             var service = new LinuxDiskSanitizationService();
             using var writeLock = new FileStream(path, FileMode.Open, FileAccess.Write, FileShare.None);
 
@@ -101,7 +103,7 @@ public class SanitizationProgressTests
                 fileSize,
                 new CallbackProgress<SanitizationProgress>(_ => { }));
 
-            await Task.Delay(100);
+            await Task.Delay(100, cancellationToken);
             Assert.False(readTask.IsCompleted);
             writeLock.Dispose();
 
@@ -129,7 +131,7 @@ public class SanitizationProgressTests
         Assert.NotNull(method);
 
         var task = Assert.IsAssignableFrom<Task>(
-            method.Invoke(service, new object[] { path, size, progress, CancellationToken.None }));
+            method.Invoke(service, new object[] { path, size, progress, TestContext.Current.CancellationToken }));
         await task;
 
         var result = task.GetType().GetProperty("Result")?.GetValue(task);

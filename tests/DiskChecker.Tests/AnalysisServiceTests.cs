@@ -35,8 +35,9 @@ namespace DiskChecker.Tests
 
             int last = -1;
             var progress = new Progress<int>(p => last = p);
+            var cancellationToken = TestContext.Current.CancellationToken;
 
-            var results = await sut.AnalyzeSurfaceAsync("PHYSICALDRIVE0", progress);
+            var results = await sut.AnalyzeSurfaceAsync("PHYSICALDRIVE0", progress, cancellationToken);
 
             Assert.Single(results);
             Assert.Equal(42, last);
@@ -63,11 +64,12 @@ namespace DiskChecker.Tests
                 });
 
             var sut = new AnalysisService(surface, analyzer, logger);
+            var cancellationToken = TestContext.Current.CancellationToken;
 
-            var analyzeTask = sut.AnalyzeSurfaceAsync("PHYSICALDRIVE0", null);
+            var analyzeTask = sut.AnalyzeSurfaceAsync("PHYSICALDRIVE0", null, cancellationToken);
 
             // Give it a moment to start
-            await Task.Delay(50);
+            await Task.Delay(50, cancellationToken);
 
             await sut.CancelAnalysisAsync();
 

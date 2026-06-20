@@ -63,19 +63,62 @@
                     <StackPanel Spacing="8">
                         <TextBlock Text="💾 Cíl zálohy" FontSize="14" FontWeight="Bold"
                                    Foreground="{DynamicResource ThemeTextPrimaryBrush}"/>
-                        <Grid ColumnDefinitions="Auto,*" ColumnSpacing="8">
-                            <TextBlock Grid.Column="0" Text="Cesta:" FontSize="11"
-                                       Foreground="{DynamicResource ThemeTextMutedBrush}"/>
-                            <TextBlock Grid.Column="1" Text="{Binding BackupTargetPath}" FontSize="11"
-                                       Foreground="{DynamicResource ThemeTextSecondaryBrush}"
-                                       TextTrimming="CharacterEllipsis"/>
-                        </Grid>
-                        <Grid ColumnDefinitions="Auto,*" ColumnSpacing="8">
-                            <TextBlock Grid.Column="0" Text="Volné místo:" FontSize="11"
-                                       Foreground="{DynamicResource ThemeTextMutedBrush}"/>
-                            <TextBlock Grid.Column="1" Text="{Binding BackupTargetFreeText}" FontSize="11"
-                                       Foreground="{DynamicResource ThemeTextSecondaryBrush}"/>
-                        </Grid>
+
+                        <!-- Target drive list -->
+                        <TextBlock Text="Vyberte cílový disk pro zálohu:" FontSize="11"
+                                   Foreground="{DynamicResource ThemeTextMutedBrush}" Margin="0,0,0,4"/>
+                        <ListBox ItemsSource="{Binding BackupTargetDrives}"
+                                 SelectedItem="{Binding SelectedBackupTarget}"
+                                 MaxHeight="200"
+                                 Background="{DynamicResource ThemeCardBackgroundBrush}"
+                                 BorderBrush="{DynamicResource ThemeBorderBrush}"
+                                 BorderThickness="1">
+                            <ListBox.ItemTemplate>
+                                <DataTemplate>
+                                    <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="8" Margin="4,2">
+                                        <TextBlock Grid.Column="0" Text="💿" FontSize="14" VerticalAlignment="Center"/>
+                                        <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                                            <TextBlock Text="{Binding DisplayName}" FontSize="11"
+                                                       Foreground="{DynamicResource ThemeTextPrimaryBrush}"
+                                                       TextTrimming="CharacterEllipsis"/>
+                                            <TextBlock Text="{Binding FreeSpaceText, StringFormat='Volné: {0}'}" FontSize="9"
+                                                       Foreground="{DynamicResource ThemeTextSecondaryBrush}"/>
+                                        </StackPanel>
+                                        <Border Grid.Column="2"
+                                                Background="{Binding IsSelected, Converter={StaticResource BooleanToBrushConverter}, ConverterParameter='Selected:ThemePrimaryBrush;Normal:Transparent'}"
+                                                CornerRadius="10" Width="20" Height="20"
+                                                VerticalAlignment="Center">
+                                            <TextBlock Text="✓" FontSize="12"
+                                                       Foreground="White"
+                                                       HorizontalAlignment="Center" VerticalAlignment="Center"
+                                                       IsVisible="{Binding IsSelected}"/>
+                                        </Border>
+                                    </Grid>
+                                </DataTemplate>
+                            </ListBox.ItemTemplate>
+                        </ListBox>
+
+                        <!-- Selected target details -->
+                        <Border Background="{DynamicResource ThemePrimaryLightBrush}"
+                                CornerRadius="4" Padding="8"
+                                IsVisible="{Binding SelectedBackupTarget, Converter={StaticResource NotNullConverter}}">
+                            <StackPanel Spacing="4">
+                                <Grid ColumnDefinitions="Auto,*" ColumnSpacing="8">
+                                    <TextBlock Grid.Column="0" Text="Cesta:" FontSize="11"
+                                               Foreground="{DynamicResource ThemeTextMutedBrush}"/>
+                                    <TextBlock Grid.Column="1" Text="{Binding BackupTargetPath}" FontSize="11"
+                                               Foreground="{DynamicResource ThemeTextSecondaryBrush}"
+                                               TextTrimming="CharacterEllipsis"/>
+                                </Grid>
+                                <Grid ColumnDefinitions="Auto,*" ColumnSpacing="8">
+                                    <TextBlock Grid.Column="0" Text="Volné místo:" FontSize="11"
+                                               Foreground="{DynamicResource ThemeTextMutedBrush}"/>
+                                    <TextBlock Grid.Column="1" Text="{Binding BackupTargetFreeText}" FontSize="11"
+                                               Foreground="{DynamicResource ThemeTextSecondaryBrush}"/>
+                                </Grid>
+                            </StackPanel>
+                        </Border>
+
                         <TextBlock Text="{Binding BackupSpaceSummary}" FontSize="12" FontWeight="SemiBold"
                                    Foreground="{Binding HasEnoughBackupSpace, Converter={StaticResource BooleanToBrushConverter}, ConverterParameter='Selected:ThemeSuccessBrush;Normal:ThemeDangerBrush'}"
                                    TextWrapping="Wrap"/>

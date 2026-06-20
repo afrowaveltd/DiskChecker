@@ -800,19 +800,24 @@ public partial class SeekTestViewModel : ViewModelBase, INavigableViewModel, IDi
         {
             if (SelectedDrive == null) return;
 
+            // Use GetOrCreateCardAsync to ensure the card is properly persisted before
+            // we create a test session that references it. Creating a DiskCard in memory
+            // without saving it first causes card.Id to be 0, which makes
+            // CreateTestSessionAsync fail because DiskCardId is a required foreign key.
             var card = await _diskCardRepository.GetByDevicePathAsync(SelectedDrive.Path);
             if (card == null)
             {
                 card = new DiskCard
                 {
                     DevicePath = SelectedDrive.Path,
-                    ModelName = SelectedDrive.Name,
+                    ModelName = SelectedDrive.Name ?? "Unknown",
                     SerialNumber = SelectedDrive.SerialNumber ?? "",
                     Capacity = SelectedDrive.TotalSize,
                     DiskType = "Unknown",
                     CreatedAt = DateTime.UtcNow,
                     LastTestedAt = DateTime.UtcNow
                 };
+                card = await _diskCardRepository.CreateAsync(card);
             }
 
             var session = new TestSession

@@ -259,11 +259,16 @@ public class SettingsServiceTests
     }
 
     [Fact]
-    public async Task GetReportRecipientEmail_ReturnsDefaultEmpty()
+    public async Task GetReportRecipientEmail_WhenCleared_ReturnsEmpty()
     {
         var service = new SettingsService();
+        var original = await service.GetReportRecipientEmailAsync();
+
+        await service.SetReportRecipientEmailAsync(string.Empty);
         var result = await service.GetReportRecipientEmailAsync();
-        Assert.Equal("", result);
+        Assert.Equal(string.Empty, result);
+
+        await service.SetReportRecipientEmailAsync(original);
     }
 
     [Fact]

@@ -1,8 +1,10 @@
 using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
+using System.Diagnostics;
 using System.IO;
 using System.Linq;
+using System.Runtime.InteropServices;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
@@ -102,6 +104,10 @@ public partial class BackupViewModel : ViewModelBase, INavigableViewModel, IDisp
     [ObservableProperty] private BackupMode _selectedMode = BackupMode.FileLevel;
     [ObservableProperty] private bool _isRawModeForced;
 
+    // Computed properties for XAML bindings (EnumToBooleanConverter can't be used for Background brushes)
+    public bool IsFileLevelMode => SelectedMode == BackupMode.FileLevel;
+    public bool IsRawImageMode => SelectedMode == BackupMode.RawImage;
+
     [ObservableProperty] private string _statusMessage = "Připraven k zálohování";
     [ObservableProperty] private double _overallProgress;
     [ObservableProperty] private double _currentFileProgress;
@@ -157,6 +163,9 @@ public partial class BackupViewModel : ViewModelBase, INavigableViewModel, IDisp
         SwitchToRawModeCommand = new RelayCommand(() => SelectedMode = BackupMode.RawImage);
         SwitchToFileModeCommand = new RelayCommand(() => SelectedMode = BackupMode.FileLevel);
         NavigateToRestoreCommand = new RelayCommand(NavigateToRestore);
+
+        // Subscribe to collection item changes so space calculations update reactively
+        SubscribeToCollectionChanges();
     }
 
     public void OnNavigatedTo()
@@ -169,6 +178,78 @@ public partial class BackupViewModel : ViewModelBase, INavigableViewModel, IDisp
         }
 
         _ = InitializeAsync();
+    }
+
+    // ── Reactive hooks: CommunityToolkit.Mvvm generates OnXxxChanged partial methods ──
+
+    partial void OnSelectedModeChanged(BackupMode value)
+    {
+        // Notify computed bool properties
+        OnPropertyChanged(nameof(IsFileLevelMode));
+        OnPropertyChanged(nameof(IsRawImageMode));
+        CalculateSpaceRequirements();
+        StartBackupCommand.NotifyCanExecuteChanged();
+    }
+
+    partial void OnPhaseChanged(BackupPhase value)
+    {
+        StartBackupCommand.NotifyCanExecuteChanged();
+    }
+
+    partial void OnHasEnoughSpaceChanged(bool value)
+    {
+        StartBackupCommand.NotifyCanExecuteChanged();
+    }
+
+    partial void OnIsRawModeForcedChanged(bool value)
+    {
+        OnPropertyChanged(nameof(IsFileLevelMode));
+        OnPropertyChanged(nameof(IsRawImageMode));
+    }
+
+    // ── Collection item change tracking ──
+
+    private void SubscribeToCollectionChanges()
+    {
+        SourceFolders.CollectionChanged += (_, e) =>
+        {
+            if (e.NewItems != null)
+            {
+                foreach (BackupFolderItem item in e.NewItems)
+                    item.PropertyChanged += OnFolderItemChanged;
+            }
+            if (e.OldItems != null)
+            {
+                foreach (BackupFolderItem item in e.OldItems)
+                    item.PropertyChanged -= OnFolderItemChanged;
+            }
+        };
+
+        TargetDrives.CollectionChanged += (_, e) =>
+        {
+            if (e.NewItems != null)
+            {
+                foreach (BackupTargetItem item in e.NewItems)
+                    item.PropertyChanged += OnTargetItemChanged;
+            }
+            if (e.OldItems != null)
+            {
+                foreach (BackupTargetItem item in e.OldItems)
+                    item.PropertyChanged -= OnTargetItemChanged;
+            }
+        };
+    }
+
+    private void OnFolderItemChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName == nameof(BackupFolderItem.IsSelected))
+            CalculateSpaceRequirements();
+    }
+
+    private void OnTargetItemChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName == nameof(BackupTargetItem.IsSelected))
+            CalculateSpaceRequirements();
     }
 
     private async Task InitializeAsync()
@@ -226,6 +307,17 @@ public partial class BackupViewModel : ViewModelBase, INavigableViewModel, IDisp
 
         try
         {
+            // On Linux, physical drives are at /dev/sdX or /dev/nvmeXnY.
+            // DriveInfo.GetDrives() returns mount points (/home, /, etc.) which
+            // never match /dev paths. We need to check via lsblk whether any
+            // partition of the source device is mounted and readable.
+            if (RuntimeInformation.IsOSPlatform(OSPlatform.Linux))
+            {
+                await DetectFilesystemAccessLinuxAsync();
+                return;
+            }
+
+            // Windows path: match DriveInfo names against the physical drive path
             var volumes = System.IO.DriveInfo.GetDrives()
                 .Where(d => d.IsReady)
                 .ToList();
@@ -242,6 +334,7 @@ public partial class BackupViewModel : ViewModelBase, INavigableViewModel, IDisp
             }
             else
             {
+                // Physical drive without a mounted volume – try raw access
                 try
                 {
                     using var fs = System.IO.File.OpenRead(SourceDrive.Path);
@@ -267,6 +360,151 @@ public partial class BackupViewModel : ViewModelBase, INavigableViewModel, IDisp
         await Task.CompletedTask;
     }
 
+    /// <summary>
+    /// Linux-specific filesystem detection: uses lsblk to find mounted partitions
+    /// of the source device, then checks if the mount point is readable.
+    /// </summary>
+    private async Task DetectFilesystemAccessLinuxAsync()
+    {
+        try
+        {
+            var deviceName = System.IO.Path.GetFileName(SourceDrive!.Path);
+            var lsblkOutput = await ExecuteCommandAsync("lsblk", $"-J -o NAME,MOUNTPOINT,FSTYPE {deviceName}");
+
+            if (!string.IsNullOrEmpty(lsblkOutput))
+            {
+                using var doc = System.Text.Json.JsonDocument.Parse(lsblkOutput);
+                if (doc.RootElement.TryGetProperty("blockdevices", out var devices))
+                {
+                    foreach (var device in devices.EnumerateArray())
+                    {
+                        // Check the device's own mountpoint first (for partitions like /dev/sda1)
+                        var ownMount = device.TryGetProperty("mountpoint", out var ownMp)
+                            ? ownMp.GetString()
+                            : null;
+                        var ownFsType = device.TryGetProperty("fstype", out var ownFs)
+                            ? ownFs.GetString()
+                            : null;
+
+                        if (!string.IsNullOrWhiteSpace(ownMount) && ownMount != "null")
+                        {
+                            // Found a mounted partition – check if readable
+                            try
+                            {
+                                var testPath = System.IO.Path.Combine(ownMount, ".diskchecker_test_rw");
+                                System.IO.File.WriteAllText(testPath, "test");
+                                System.IO.File.Delete(testPath);
+                                IsRawModeForced = false;
+                                SelectedMode = BackupMode.FileLevel;
+                                StatusMessage = $"Souborový systém čitelný ({ownFsType ?? "unknown"}) — file-level záloha dostupná.";
+                                return;
+                            }
+                            catch
+                            {
+                                // Mount point exists but not writable
+                            }
+                        }
+
+                        // Then check children (for whole disks like /dev/sda with partitions)
+                        if (device.TryGetProperty("children", out var children))
+                        {
+                            foreach (var child in children.EnumerateArray())
+                            {
+                                var mountPoint = child.TryGetProperty("mountpoint", out var mp)
+                                    ? mp.GetString()
+                                    : null;
+                                var fsType = child.TryGetProperty("fstype", out var fs)
+                                    ? fs.GetString()
+                                    : null;
+
+                                if (!string.IsNullOrWhiteSpace(mountPoint) && mountPoint != "null")
+                                {
+                                    // Found a mounted partition – check if readable
+                                    try
+                                    {
+                                        var testPath = System.IO.Path.Combine(mountPoint, ".diskchecker_test_rw");
+                                        System.IO.File.WriteAllText(testPath, "test");
+                                        System.IO.File.Delete(testPath);
+
+                                        IsRawModeForced = false;
+                                        SelectedMode = BackupMode.FileLevel;
+                                        StatusMessage = $"Souborový systém čitelný ({fsType ?? "unknown"}) — file-level záloha dostupná.";
+                                        return;
+                                    }
+                                    catch
+                                    {
+                                        // Mount point exists but isn't writable – still usable for reading
+                                        IsRawModeForced = false;
+                                        SelectedMode = BackupMode.FileLevel;
+                                        StatusMessage = $"Souborový systém čitelný ({fsType ?? "unknown"}, read-only) — file-level záloha dostupná.";
+                                        return;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            // No mounted partitions found – try raw device access
+            try
+            {
+                using var fs = System.IO.File.OpenRead(SourceDrive.Path);
+                IsRawModeForced = true;
+                SelectedMode = BackupMode.RawImage;
+                StatusMessage = "Souborový systém není připojen — pouze raw obraz.";
+            }
+            catch (System.UnauthorizedAccessException)
+            {
+                IsRawModeForced = true;
+                SelectedMode = BackupMode.RawImage;
+                StatusMessage = "⚠️ Root práva vyžadována pro raw přístup. Spusťte s sudo.";
+            }
+            catch
+            {
+                IsRawModeForced = true;
+                SelectedMode = BackupMode.RawImage;
+                StatusMessage = "Disk není přístupný — pouze raw obraz (vyžaduje root).";
+            }
+        }
+        catch
+        {
+            IsRawModeForced = true;
+            SelectedMode = BackupMode.RawImage;
+            StatusMessage = "Nelze detekovat souborový systém — raw obraz bude použit.";
+        }
+    }
+
+    /// <summary>
+    /// Runs a shell command and returns stdout, or null on failure.
+    /// </summary>
+    private static async Task<string?> ExecuteCommandAsync(string command, string arguments)
+    {
+        try
+        {
+            var psi = new System.Diagnostics.ProcessStartInfo
+            {
+                FileName = command,
+                Arguments = arguments,
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                UseShellExecute = false,
+                CreateNoWindow = true
+            };
+
+            using var process = System.Diagnostics.Process.Start(psi);
+            if (process == null) return null;
+
+            var output = await process.StandardOutput.ReadToEndAsync();
+            await process.WaitForExitAsync();
+            return output;
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
     private async Task LoadTargetDrivesAsync()
     {
         TargetDrives.Clear();
@@ -279,9 +517,11 @@ public partial class BackupViewModel : ViewModelBase, INavigableViewModel, IDisp
 
         foreach (var drive in allDrives)
         {
-            if (SourceDrive != null &&
-                (drive.Name.StartsWith(SourceDrive.Path, StringComparison.OrdinalIgnoreCase) ||
-                 SourceDrive.Path.StartsWith(drive.Name, StringComparison.OrdinalIgnoreCase)))
+            // Exclude the source drive. On Linux, SourceDrive.Path is /dev/sdX
+            // and DriveInfo.Name is a mount point like / or /home, so a simple
+            // StartsWith won't work. We need to check via lsblk whether this
+            // mount point belongs to the source device.
+            if (SourceDrive != null && await IsDriveOnSourceDeviceAsync(drive, SourceDrive))
                 continue;
 
             TargetDrives.Add(new BackupTargetItem
@@ -296,6 +536,62 @@ public partial class BackupViewModel : ViewModelBase, INavigableViewModel, IDisp
         }
 
         await Task.CompletedTask;
+    }
+
+    /// <summary>
+    /// Checks whether a DriveInfo mount point belongs to the source physical device.
+    /// On Linux, uses lsblk to resolve the mount point to a physical device.
+    /// On Windows, uses simple path prefix matching.
+    /// </summary>
+    private static async Task<bool> IsDriveOnSourceDeviceAsync(System.IO.DriveInfo drive, CoreDriveInfo sourceDrive)
+    {
+        if (RuntimeInformation.IsOSPlatform(OSPlatform.Linux))
+        {
+            try
+            {
+                // Resolve the mount point to its physical device via lsblk
+                var mountPoint = drive.RootDirectory.FullName.TrimEnd('/');
+                var lsblkOutput = await ExecuteCommandAsync("lsblk", $"-J -o NAME,MOUNTPOINT");
+
+                if (!string.IsNullOrEmpty(lsblkOutput))
+                {
+                    using var doc = JsonDocument.Parse(lsblkOutput);
+                    if (doc.RootElement.TryGetProperty("blockdevices", out var devices))
+                    {
+                        foreach (var device in devices.EnumerateArray())
+                        {
+                            if (device.TryGetProperty("children", out var children))
+                            {
+                                foreach (var child in children.EnumerateArray())
+                                {
+                                    var mp = child.TryGetProperty("mountpoint", out var mpProp)
+                                        ? mpProp.GetString()?.TrimEnd('/')
+                                        : null;
+
+                                    if (mp != null && string.Equals(mp, mountPoint, StringComparison.OrdinalIgnoreCase))
+                                    {
+                                        var parentName = device.TryGetProperty("name", out var nameProp)
+                                            ? nameProp.GetString()
+                                            : null;
+                                        if (parentName != null)
+                                        {
+                                            var parentPath = $"/dev/{parentName}";
+                                            if (string.Equals(parentPath, sourceDrive.Path, StringComparison.OrdinalIgnoreCase))
+                                                return true;
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            catch { /* if lsblk fails, fall through to simple check */ }
+        }
+
+        // Windows / fallback: simple path prefix matching
+        return drive.Name.StartsWith(sourceDrive.Path, StringComparison.OrdinalIgnoreCase) ||
+               sourceDrive.Path.StartsWith(drive.Name, StringComparison.OrdinalIgnoreCase);
     }
 
     private async Task CalculateSystemReserveAsync()
@@ -335,17 +631,70 @@ public partial class BackupViewModel : ViewModelBase, INavigableViewModel, IDisp
 
         try
         {
-            var volumes = System.IO.DriveInfo.GetDrives()
-                .Where(d => d.IsReady)
-                .ToList();
+            string? rootPath = null;
 
-            var matchingVolume = volumes.FirstOrDefault(v =>
-                v.Name.StartsWith(SourceDrive.Path, StringComparison.OrdinalIgnoreCase) ||
-                SourceDrive.Path.StartsWith(v.Name, StringComparison.OrdinalIgnoreCase));
+            // On Linux, physical drives are at /dev/sdX. DriveInfo.GetDrives()
+            // returns mount points (/home, /, etc.) which never match /dev paths.
+            // We need to find the mount point via lsblk.
+            if (RuntimeInformation.IsOSPlatform(OSPlatform.Linux))
+            {
+                var deviceName = Path.GetFileName(SourceDrive.Path);
+                var lsblkOutput = await ExecuteCommandAsync("lsblk", $"-J -o NAME,MOUNTPOINT {deviceName}");
 
-            if (matchingVolume == null) return;
+                if (!string.IsNullOrEmpty(lsblkOutput))
+                {
+                    using var doc = JsonDocument.Parse(lsblkOutput);
+                    if (doc.RootElement.TryGetProperty("blockdevices", out var devices))
+                    {
+                        foreach (var device in devices.EnumerateArray())
+                        {
+                            // Check the device's own mountpoint first (for partitions like /dev/sda1)
+                            var ownMount = device.TryGetProperty("mountpoint", out var ownMp)
+                                ? ownMp.GetString()
+                                : null;
+                            if (!string.IsNullOrWhiteSpace(ownMount) && ownMount != "null")
+                            {
+                                rootPath = ownMount;
+                                break;
+                            }
 
-            var rootPath = matchingVolume.RootDirectory.FullName;
+                            // Then check children (for whole disks like /dev/sda with partitions)
+                            if (device.TryGetProperty("children", out var children))
+                            {
+                                foreach (var child in children.EnumerateArray())
+                                {
+                                    var mountPoint = child.TryGetProperty("mountpoint", out var mp)
+                                        ? mp.GetString()
+                                        : null;
+                                    if (!string.IsNullOrWhiteSpace(mountPoint) && mountPoint != "null")
+                                    {
+                                        rootPath = mountPoint;
+                                        break;
+                                    }
+                                }
+                            }
+                            if (rootPath != null) break;
+                        }
+                    }
+                }
+            }
+            else
+            {
+                // Windows: match DriveInfo names against the physical drive path
+                var volumes = System.IO.DriveInfo.GetDrives()
+                    .Where(d => d.IsReady)
+                    .ToList();
+
+                var matchingVolume = volumes.FirstOrDefault(v =>
+                    v.Name.StartsWith(SourceDrive.Path, StringComparison.OrdinalIgnoreCase) ||
+                    SourceDrive.Path.StartsWith(v.Name, StringComparison.OrdinalIgnoreCase));
+
+                if (matchingVolume != null)
+                    rootPath = matchingVolume.RootDirectory.FullName;
+            }
+
+            if (rootPath == null) return;
+
             var dirs = Directory.GetDirectories(rootPath);
 
             foreach (var dir in dirs)

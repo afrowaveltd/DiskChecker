@@ -7,6 +7,7 @@ using DiskChecker.Infrastructure.Services;
 using Microsoft.Extensions.Logging;
 using NSubstitute;
 using Xunit;
+using TestResult = DiskChecker.Core.Models.TestResult;
 
 namespace DiskChecker.Tests;
 

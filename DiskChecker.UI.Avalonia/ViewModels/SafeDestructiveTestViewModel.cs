@@ -1,8 +1,10 @@
 using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
+using System.Diagnostics;
 using System.IO;
 using System.Linq;
+using System.Runtime.InteropServices;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
@@ -97,6 +99,10 @@ public partial class SafeDestructiveTestViewModel : ViewModelBase, INavigableVie
     [ObservableProperty] private string _backupElapsedText = string.Empty;
     [ObservableProperty] private string _backupEtaText = string.Empty;
     [ObservableProperty] private string _backupCurrentSectorText = string.Empty;
+
+    // ── Backup target selection ──
+    [ObservableProperty] private ObservableCollection<BackupTargetItem> _backupTargetDrives = new();
+    [ObservableProperty] private BackupTargetItem? _selectedBackupTarget;
 
     // ──────────────────────────────────────────────
     //  Test phase properties (mirrors AbsoluteDestructiveTest)
@@ -321,8 +327,12 @@ public partial class SafeDestructiveTestViewModel : ViewModelBase, INavigableVie
 
     private async Task FindBackupTargetAsync()
     {
-        var drives = DriveInfo.GetDrives()
-            .Where(d => d.IsReady && d.DriveType == DriveType.Fixed)
+        BackupTargetDrives.Clear();
+
+        // On Linux, use DriveInfo for mounted volumes (they have free space info).
+        // On Windows, DriveInfo also works for logical volumes.
+        var drives = System.IO.DriveInfo.GetDrives()
+            .Where(d => d.IsReady && d.DriveType == System.IO.DriveType.Fixed)
             .OrderByDescending(d => d.AvailableFreeSpace)
             .ToList();
 
@@ -332,34 +342,154 @@ public partial class SafeDestructiveTestViewModel : ViewModelBase, INavigableVie
             drives = drives.Where(d =>
             {
                 var root = d.RootDirectory.FullName.TrimEnd('\\', '/');
-                var sourceRoot = Path.GetPathRoot(SelectedDrive.Path)?.TrimEnd('\\', '/');
+                var sourceRoot = System.IO.Path.GetPathRoot(SelectedDrive.Path)?.TrimEnd('\\', '/');
                 return !string.Equals(root, sourceRoot, StringComparison.OrdinalIgnoreCase);
             }).ToList();
         }
 
-        if (drives.Count > 0)
+        // On Linux, also add raw physical devices that aren't mounted but could be
+        // used for raw-image backup (requires root).
+        if (RuntimeInformation.IsOSPlatform(OSPlatform.Linux))
         {
-            var best = drives[0];
-            BackupTargetPath = best.RootDirectory.FullName;
-            BackupTargetFreeBytes = best.AvailableFreeSpace;
-            BackupTargetFreeText = FormatBytesLong(best.AvailableFreeSpace);
+            try
+            {
+                var lsblkOutput = await ExecuteCommandAsync("lsblk", "-J -b -o NAME,SIZE,TYPE,MOUNTPOINT,MODEL");
+                if (!string.IsNullOrEmpty(lsblkOutput))
+                {
+                    using var doc = System.Text.Json.JsonDocument.Parse(lsblkOutput);
+                    if (doc.RootElement.TryGetProperty("blockdevices", out var devices))
+                    {
+                        foreach (var device in devices.EnumerateArray())
+                        {
+                            var type = device.TryGetProperty("type", out var t) ? t.GetString() : "";
+                            if (type != "disk") continue;
 
-            // Reserve: RAM size (min 4GB, max 32GB for safety)
-            long systemReserve = Math.Min(Math.Max(4L * 1024 * 1024 * 1024, GetRamBytes() / 2), 32L * 1024 * 1024 * 1024);
-            long usableBytes = Math.Max(0, best.AvailableFreeSpace - systemReserve);
+                            var name = device.TryGetProperty("name", out var n) ? n.GetString() : "";
+                            if (string.IsNullOrEmpty(name)) continue;
 
-            HasEnoughBackupSpace = usableBytes >= DiskTotalBytes;
-            BackupSpaceSummary = HasEnoughBackupSpace
-                ? $"✅ Dostatek místa: {FormatBytesLong(usableBytes)} volných (potřeba {DiskTotalSizeText})"
-                : $"❌ Nedostatek: {FormatBytesLong(usableBytes)} volných, potřeba {DiskTotalSizeText}";
+                            var devPath = $"/dev/{name}";
+                            // Skip source drive
+                            if (SelectedDrive != null &&
+                                string.Equals(devPath, SelectedDrive.Path, StringComparison.OrdinalIgnoreCase))
+                                continue;
+
+                            // Skip if already covered by a DriveInfo entry
+                            if (drives.Any(d => d.Name.Contains(name, StringComparison.OrdinalIgnoreCase)))
+                                continue;
+
+                            var size = device.TryGetProperty("size", out var sz) && sz.ValueKind == System.Text.Json.JsonValueKind.Number
+                                ? sz.GetInt64() : 0;
+                            var model = device.TryGetProperty("model", out var m) ? m.GetString()?.Trim() : null;
+
+                            BackupTargetDrives.Add(new BackupTargetItem
+                            {
+                                DrivePath = devPath,
+                                DisplayName = model != null ? $"{model} ({devPath})" : devPath,
+                                TotalFreeSpace = size, // raw device: total size = "free" for raw backup
+                                FreeSpaceText = FormatBytesLong(size),
+                                IsSelected = false,
+                                AllocatedBytes = 0
+                            });
+                        }
+                    }
+                }
+            }
+            catch { /* non-critical */ }
         }
-        else
+
+        // Populate from DriveInfo
+        foreach (var d in drives)
         {
-            BackupTargetPath = "(nenalezen)";
+            BackupTargetDrives.Add(new BackupTargetItem
+            {
+                DrivePath = d.RootDirectory.FullName,
+                DisplayName = $"{d.Name} ({d.VolumeLabel}) — {d.DriveFormat}",
+                TotalFreeSpace = d.AvailableFreeSpace,
+                FreeSpaceText = FormatBytesLong(d.AvailableFreeSpace),
+                IsSelected = false,
+                AllocatedBytes = 0
+            });
+        }
+
+        // Auto-select the best target
+        var best = BackupTargetDrives.OrderByDescending(t => t.TotalFreeSpace).FirstOrDefault();
+        if (best != null)
+        {
+            best.IsSelected = true;
+            SelectedBackupTarget = best;
+        }
+
+        RecalculateBackupSpace();
+    }
+
+    /// <summary>
+    /// Called when the user changes the selected backup target.
+    /// </summary>
+    partial void OnSelectedBackupTargetChanged(BackupTargetItem? value)
+    {
+        // Deselect all others
+        foreach (var t in BackupTargetDrives)
+            t.IsSelected = t == value;
+
+        RecalculateBackupSpace();
+    }
+
+    private void RecalculateBackupSpace()
+    {
+        if (SelectedBackupTarget == null)
+        {
+            BackupTargetPath = "(není vybrán)";
             BackupTargetFreeBytes = 0;
             BackupTargetFreeText = "0 B";
             HasEnoughBackupSpace = false;
-            BackupSpaceSummary = "❌ Nenalezen žádný cílový disk pro zálohu.";
+            BackupSpaceSummary = "❌ Není vybrán cílový disk pro zálohu.";
+            StartWorkflowCommand.NotifyCanExecuteChanged();
+            return;
+        }
+
+        BackupTargetPath = SelectedBackupTarget.DrivePath;
+        BackupTargetFreeBytes = SelectedBackupTarget.TotalFreeSpace;
+        BackupTargetFreeText = FormatBytesLong(SelectedBackupTarget.TotalFreeSpace);
+
+        // Reserve: RAM size (min 4GB, max 32GB for safety)
+        long systemReserve = Math.Min(Math.Max(4L * 1024 * 1024 * 1024, GetRamBytes() / 2), 32L * 1024 * 1024 * 1024);
+        long usableBytes = Math.Max(0, SelectedBackupTarget.TotalFreeSpace - systemReserve);
+
+        HasEnoughBackupSpace = usableBytes >= DiskTotalBytes;
+        BackupSpaceSummary = HasEnoughBackupSpace
+            ? $"✅ Dostatek místa: {FormatBytesLong(usableBytes)} volných (potřeba {DiskTotalSizeText})"
+            : $"❌ Nedostatek: {FormatBytesLong(usableBytes)} volných, potřeba {DiskTotalSizeText}";
+
+        StartWorkflowCommand.NotifyCanExecuteChanged();
+    }
+
+    /// <summary>
+    /// Runs a shell command and returns stdout, or null on failure.
+    /// </summary>
+    private static async Task<string?> ExecuteCommandAsync(string command, string arguments)
+    {
+        try
+        {
+            var psi = new System.Diagnostics.ProcessStartInfo
+            {
+                FileName = command,
+                Arguments = arguments,
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                UseShellExecute = false,
+                CreateNoWindow = true
+            };
+
+            using var process = System.Diagnostics.Process.Start(psi);
+            if (process == null) return null;
+
+            var output = await process.StandardOutput.ReadToEndAsync();
+            await process.WaitForExitAsync();
+            return output;
+        }
+        catch
+        {
+            return null;
         }
     }
 
@@ -896,6 +1026,7 @@ public partial class SafeDestructiveTestViewModel : ViewModelBase, INavigableVie
                 CreatedAt = DateTime.UtcNow,
                 LastTestedAt = DateTime.UtcNow
             };
+            card = await _diskCardRepository.CreateAsync(card);
         }
 
         var cert = new DiskCertificate
@@ -961,7 +1092,22 @@ public partial class SafeDestructiveTestViewModel : ViewModelBase, INavigableVie
             if (SelectedDrive == null || Certificate == null) return;
 
             var card = await _diskCardRepository.GetByDevicePathAsync(SelectedDrive.Path);
-            if (card == null) return;
+            if (card == null)
+            {
+                // Card must exist before we can attach a test session to it.
+                // Create it now so the foreign key is valid.
+                card = new DiskCard
+                {
+                    DevicePath = SelectedDrive.Path,
+                    ModelName = SelectedDrive.Name ?? DiskDisplayName,
+                    SerialNumber = SelectedDrive.SerialNumber ?? "",
+                    Capacity = SelectedDrive.TotalSize,
+                    DiskType = _smartBefore?.DeviceType ?? "Unknown",
+                    CreatedAt = DateTime.UtcNow,
+                    LastTestedAt = DateTime.UtcNow
+                };
+                card = await _diskCardRepository.CreateAsync(card);
+            }
 
             var session = new TestSession
             {

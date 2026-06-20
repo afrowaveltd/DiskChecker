@@ -26,19 +26,20 @@ namespace DiskChecker.Tests
             var cache = (ConcurrentDictionary<string, (SmartaData Data, DateTime Timestamp)>)cacheField.GetValue(provider)!;
             var key = "test-device";
             var data = new SmartaData { DeviceModel = "T", SerialNumber = "SN1", RetrievedAtUtc = DateTime.UtcNow };
+            var cancellationToken = TestContext.Current.CancellationToken;
             cache[key] = (data, DateTime.UtcNow);
 
-            var statsBefore = await provider.GetSmartCacheStatsAsync();
+            var statsBefore = await provider.GetSmartCacheStatsAsync(cancellationToken);
             Assert.Equal(1, statsBefore.Items);
 
-            await provider.RemoveSmartCacheForDeviceAsync(key);
-            var statsAfterRemove = await provider.GetSmartCacheStatsAsync();
+            await provider.RemoveSmartCacheForDeviceAsync(key, cancellationToken);
+            var statsAfterRemove = await provider.GetSmartCacheStatsAsync(cancellationToken);
             Assert.Equal(0, statsAfterRemove.Items);
 
             // Add again and clear all
             cache[key] = (data, DateTime.UtcNow);
-            await provider.ClearSmartCacheAsync();
-            var statsAfterClear = await provider.GetSmartCacheStatsAsync();
+            await provider.ClearSmartCacheAsync(cancellationToken);
+            var statsAfterClear = await provider.GetSmartCacheStatsAsync(cancellationToken);
             Assert.Equal(0, statsAfterClear.Items);
         }
 
@@ -49,8 +50,9 @@ namespace DiskChecker.Tests
             var provider = new WindowsSmartaProvider(new NullLogger<WindowsSmartaProvider>(), options);
 
             // ensure no exception
-            await provider.SetCacheTtlMinutesAsync(20);
-            await provider.SetCacheTtlMinutesAsync(1);
+            var cancellationToken = TestContext.Current.CancellationToken;
+            await provider.SetCacheTtlMinutesAsync(20, cancellationToken);
+            await provider.SetCacheTtlMinutesAsync(1, cancellationToken);
         }
     }
 }

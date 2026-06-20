@@ -585,7 +585,7 @@ public class SeekTestServiceTests
             TotalSize = 1_000_000_000_000
         };
 
-        var rec = await service.GetRecommendationAsync(drive);
+        var rec = await service.GetRecommendationAsync(drive, TestContext.Current.CancellationToken);
 
         Assert.Equal(SeekTestType.Random, rec.RecommendedType);
         Assert.Equal(3000, rec.RecommendedSeekCount);
@@ -624,7 +624,7 @@ public class SeekTestServiceTests
             TotalSize = 500_000_000_000
         };
 
-        var rec = await service.GetRecommendationAsync(drive);
+        var rec = await service.GetRecommendationAsync(drive, TestContext.Current.CancellationToken);
 
         Assert.NotNull(rec);
         Assert.Equal(3000, rec.RecommendedSeekCount);
@@ -672,7 +672,7 @@ public class SeekTestServiceTests
             TotalSize = 1_000_000_000_000
         };
 
-        var result = await service.RunWithRecommendationAsync(drive);
+        var result = await service.RunWithRecommendationAsync(drive, cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.False(result.IsCompleted);
         Assert.True(result.WasAborted);
@@ -747,7 +747,7 @@ public class SeekTestServiceTests
             TotalSize = 2_000_000_000_000
         };
 
-        var result = await service.RunWithRecommendationAsync(drive);
+        var result = await service.RunWithRecommendationAsync(drive, cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.True(result.IsCompleted);
         Assert.False(result.WasAborted);
@@ -809,7 +809,10 @@ public class SeekTestServiceTests
         };
 
         // User prefers FullStroke even though recommendation says Random
-        var result = await service.RunWithRecommendationAsync(drive, preferredType: SeekTestType.FullStroke);
+        var result = await service.RunWithRecommendationAsync(
+            drive,
+            preferredType: SeekTestType.FullStroke,
+            cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.Equal(SeekTestType.FullStroke, result.TestType);
     }
@@ -830,7 +833,7 @@ public class SeekTestServiceTests
 
         var service = new SeekTestService(smartaProvider, seekExecutor, logger);
 
-        var supported = await service.IsPlatformSupportedAsync();
+        var supported = await service.IsPlatformSupportedAsync(TestContext.Current.CancellationToken);
 
         Assert.True(supported);
     }
@@ -894,7 +897,10 @@ public class SeekTestServiceTests
             SkipSegments = 1000
         };
 
-        var result = await service.RunAsync(request);
+        var result = await service.RunAsync(
+            request,
+            progressCallback: null,
+            cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.Equal("Metadata HDD", result.DriveModel);
         Assert.Equal("ABC123", result.DriveSerialNumber);

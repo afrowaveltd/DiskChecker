@@ -3,12 +3,14 @@
              xmlns:vm="using:DiskChecker.UI.Avalonia.ViewModels"
              xmlns:converters="using:DiskChecker.UI.Avalonia.Converters"
              x:Class="DiskChecker.UI.Avalonia.Views.BackupView"
+             x:DataType="vm:BackupViewModel"
              Background="{DynamicResource ThemeBackgroundBrush}">
 
     <UserControl.Resources>
         <converters:BytesToHumanReadableConverter x:Key="BytesToHumanReadableConverter"/>
         <converters:NotNullConverter x:Key="NotNullConverter"/>
         <converters:IntToBoolConverter x:Key="IntToBoolConverter"/>
+        <converters:InverseBooleanConverter x:Key="InverseBooleanConverter"/>
     </UserControl.Resources>
 
     <Grid>
@@ -111,12 +113,13 @@
                         <StackPanel Orientation="Horizontal" Spacing="8">
                             <Button Content="📁 File-level (složky)"
                                     Command="{Binding SwitchToFileModeCommand}"
-                                    Background="{Binding SelectedMode, Converter={StaticResource EnumToBoolConverter}, ConverterParameter=FileLevel}"
-                                    IsEnabled="{Binding !IsRawModeForced}"
+                                    Background="{Binding IsFileLevelMode, Converter={StaticResource BooleanToBrushConverter}, ConverterParameter=Selected:ThemePrimaryBrush;Normal:ThemeSecondaryBackgroundBrush}"
+                                    IsEnabled="{Binding IsRawModeForced, Converter={StaticResource InverseBooleanConverter}}"
                                     Padding="12,8" CornerRadius="6" FontSize="11"
                                     Cursor="Hand"/>
                             <Button Content="💿 Raw obraz (sektory)"
                                     Command="{Binding SwitchToRawModeCommand}"
+                                    Background="{Binding IsRawImageMode, Converter={StaticResource BooleanToBrushConverter}, ConverterParameter=Selected:ThemePrimaryBrush;Normal:ThemeSecondaryBackgroundBrush}"
                                     Padding="12,8" CornerRadius="6" FontSize="11"
                                     Cursor="Hand"/>
                         </StackPanel>
@@ -131,7 +134,7 @@
                 <Border Background="{DynamicResource ThemeCardBackgroundBrush}"
                         CornerRadius="8" Padding="16"
                         BorderBrush="{DynamicResource ThemeBorderBrush}" BorderThickness="1"
-                        IsVisible="{Binding SelectedMode, Converter={StaticResource EnumToBoolConverter}, ConverterParameter=FileLevel}">
+                        IsVisible="{Binding SelectedMode, Converter={StaticResource EnumToBooleanConverter}, ConverterParameter=FileLevel}">
                     <StackPanel Spacing="8">
                         <Grid ColumnDefinitions="*,Auto">
                             <TextBlock Grid.Column="0" Text="📂 Složky k zálohování" FontSize="14" FontWeight="Bold"
@@ -269,7 +272,7 @@
                 <Border Background="{DynamicResource ThemeCardBackgroundBrush}"
                         CornerRadius="8" Padding="16"
                         BorderBrush="{DynamicResource ThemeBorderBrush}" BorderThickness="1"
-                        IsVisible="{Binding Phase, Converter={StaticResource EnumToBoolConverter}, ConverterParameter=Running}">
+                        IsVisible="{Binding Phase, Converter={StaticResource EnumToBooleanConverter}, ConverterParameter=Running}">
                     <StackPanel Spacing="8">
                         <TextBlock Text="⏳ Průběh zálohy" FontSize="14" FontWeight="Bold"
                                    Foreground="{DynamicResource ThemeTextPrimaryBrush}"/>
@@ -351,13 +354,13 @@
 
                 <Button Grid.Column="1" Content="🔄 Skenovat"
                         Command="{Binding ScanSourceCommand}"
-                        IsVisible="{Binding Phase, Converter={StaticResource EnumToBoolConverter}, ConverterParameter=Ready}"
+                        IsVisible="{Binding Phase, Converter={StaticResource EnumToBooleanConverter}, ConverterParameter=Ready}"
                         Padding="12,8" CornerRadius="6" FontSize="11"
                         Cursor="Hand"/>
 
                 <Button Grid.Column="2" Content="💾 SPUSTIT ZÁLOHU"
                         Command="{Binding StartBackupCommand}"
-                        IsVisible="{Binding Phase, Converter={StaticResource EnumToBoolConverter}, ConverterParameter=Ready}"
+                        IsVisible="{Binding Phase, Converter={StaticResource EnumToBooleanConverter}, ConverterParameter=Ready}"
                         Background="{DynamicResource ThemeSuccessBrush}"
                         Foreground="White"
                         FontWeight="Bold" FontSize="12"
@@ -366,7 +369,7 @@
 
                 <Button Grid.Column="2" Content="⏹ ZRUŠIT"
                         Command="{Binding CancelBackupCommand}"
-                        IsVisible="{Binding Phase, Converter={StaticResource EnumToBoolConverter}, ConverterParameter=Running}"
+                        IsVisible="{Binding Phase, Converter={StaticResource EnumToBooleanConverter}, ConverterParameter=Running}"
                         Background="{DynamicResource ThemeDangerBrush}"
                         Foreground="White"
                         FontWeight="Bold" FontSize="12"
@@ -375,7 +378,7 @@
 
                 <Button Grid.Column="2" Content="🔄 OBNOVIT"
                         Command="{Binding NavigateToRestoreCommand}"
-                        IsVisible="{Binding Phase, Converter={StaticResource EnumToBoolConverter}, ConverterParameter=Completed}"
+                        IsVisible="{Binding Phase, Converter={StaticResource EnumToBooleanConverter}, ConverterParameter=Completed}"
                         Background="{DynamicResource ThemePrimaryBrush}"
                         Foreground="White"
                         FontWeight="Bold" FontSize="12"

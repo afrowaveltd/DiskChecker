@@ -60,6 +60,9 @@ namespace DiskChecker.UI.Avalonia.Converters
                 "ThemeCardBackgroundBrush" => isDark 
                     ? new SolidColorBrush(Color.Parse("#21262D"))
                     : new SolidColorBrush(Color.Parse("#FFFFFF")),
+                "ThemeSecondaryBackgroundBrush" => isDark 
+                    ? new SolidColorBrush(Color.Parse("#161B22"))
+                    : new SolidColorBrush(Color.Parse("#F8F9FA")),
                 "ThemePrimaryBrush" => isDark 
                     ? new SolidColorBrush(Color.Parse("#58A6FF"))
                     : new SolidColorBrush(Color.Parse("#004B93")),
@@ -75,6 +78,15 @@ namespace DiskChecker.UI.Avalonia.Converters
                 "ThemeTextMutedBrush" => isDark 
                     ? new SolidColorBrush(Color.Parse("#8B949E"))
                     : new SolidColorBrush(Color.Parse("#6C757D")),
+                "ThemeSuccessBrush" => isDark 
+                    ? new SolidColorBrush(Color.Parse("#3FB950"))
+                    : new SolidColorBrush(Color.Parse("#27AE60")),
+                "ThemeDangerBrush" => isDark 
+                    ? new SolidColorBrush(Color.Parse("#F85149"))
+                    : new SolidColorBrush(Color.Parse("#E74C3C")),
+                "ThemeCodeBackgroundBrush" => isDark 
+                    ? new SolidColorBrush(Color.Parse("#0B0F15"))
+                    : new SolidColorBrush(Color.Parse("#1E1E1E")),
                 _ => Brushes.Transparent
             };
         }

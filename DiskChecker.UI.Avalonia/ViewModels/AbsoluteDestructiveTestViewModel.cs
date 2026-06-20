@@ -1410,6 +1410,7 @@ public partial class AbsoluteDestructiveTestViewModel : ViewModelBase, INavigabl
                 CreatedAt = DateTime.UtcNow,
                 LastTestedAt = DateTime.UtcNow
             };
+            card = await _diskCardRepository.CreateAsync(card);
         }
 
         var cert = new DiskCertificate
@@ -1500,7 +1501,22 @@ public partial class AbsoluteDestructiveTestViewModel : ViewModelBase, INavigabl
         try
         {
             var card = await _diskCardRepository.GetByDevicePathAsync(SelectedDrive!.Path);
-            if (card == null) return;
+            if (card == null)
+            {
+                // Card must exist before we can attach a test session to it.
+                // Create it now so the foreign key is valid.
+                card = new DiskCard
+                {
+                    DevicePath = SelectedDrive!.Path,
+                    ModelName = SelectedDrive.Name ?? "Unknown",
+                    SerialNumber = SelectedDrive.SerialNumber ?? "",
+                    Capacity = SelectedDrive.TotalSize,
+                    DiskType = _smartBaseline?.DeviceType ?? "Unknown",
+                    CreatedAt = DateTime.UtcNow,
+                    LastTestedAt = DateTime.UtcNow
+                };
+                card = await _diskCardRepository.CreateAsync(card);
+            }
 
             var session = new TestSession
             {
