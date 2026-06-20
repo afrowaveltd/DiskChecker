@@ -1,6 +1,7 @@
 using System.Threading.Tasks;
 using Avalonia.Controls;
 using Avalonia.Controls.ApplicationLifetimes;
+using Avalonia.Platform.Storage;
 using DiskChecker.UI.Avalonia.Views;
 using DiskChecker.UI.Avalonia.Services.Interfaces;
 
@@ -70,6 +71,42 @@ public class DialogService : IDialogService
         
         dialog.Show();
         return null;
+    }
+
+    public async Task<IReadOnlyList<string>> PickFoldersAsync(string title, bool allowMultiple = true)
+    {
+        var mainWindow = GetMainWindow();
+        if (mainWindow == null)
+            return Array.Empty<string>();
+
+        var result = await mainWindow.StorageProvider.OpenFolderPickerAsync(new FolderPickerOpenOptions
+        {
+            Title = title,
+            AllowMultiple = allowMultiple
+        });
+
+        return result
+            .Select(item => item.Path.LocalPath)
+            .Where(path => !string.IsNullOrWhiteSpace(path))
+            .ToList();
+    }
+
+    public async Task<IReadOnlyList<string>> PickFilesAsync(string title, bool allowMultiple = true)
+    {
+        var mainWindow = GetMainWindow();
+        if (mainWindow == null)
+            return Array.Empty<string>();
+
+        var result = await mainWindow.StorageProvider.OpenFilePickerAsync(new FilePickerOpenOptions
+        {
+            Title = title,
+            AllowMultiple = allowMultiple
+        });
+
+        return result
+            .Select(item => item.Path.LocalPath)
+            .Where(path => !string.IsNullOrWhiteSpace(path))
+            .ToList();
     }
 
     private async Task<MessageBoxResult> ShowDialogAsync(string title, string message, DialogType type)

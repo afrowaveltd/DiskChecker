@@ -51,6 +51,10 @@ public partial class BackupFolderItem : ObservableObject
     public long EstimatedSize { get; init; }
     public string EstimatedSizeText { get; init; } = string.Empty;
     public bool IsSystemFolder { get; init; }
+    public bool IsFile { get; init; }
+    public bool IsCustom { get; init; }
+    public string SourceKindText => IsFile ? "soubor" : "složka";
+    public string FullPath => Path;
     
     [ObservableProperty] private bool _isSelected;
 }
@@ -138,6 +142,9 @@ public partial class BackupViewModel : ViewModelBase, INavigableViewModel, IDisp
     public IRelayCommand SelectAllFoldersCommand { get; }
     public IRelayCommand DeselectAllFoldersCommand { get; }
     public IRelayCommand SelectUserFoldersCommand { get; }
+    public IAsyncRelayCommand AddCustomFolderCommand { get; }
+    public IAsyncRelayCommand AddCustomFilesCommand { get; }
+    public IRelayCommand<BackupFolderItem> RemoveSourceCommand { get; }
     public IRelayCommand SwitchToRawModeCommand { get; }
     public IRelayCommand SwitchToFileModeCommand { get; }
     public IRelayCommand NavigateToRestoreCommand { get; }
@@ -160,6 +167,9 @@ public partial class BackupViewModel : ViewModelBase, INavigableViewModel, IDisp
         SelectAllFoldersCommand = new RelayCommand(SelectAllFolders);
         DeselectAllFoldersCommand = new RelayCommand(DeselectAllFolders);
         SelectUserFoldersCommand = new RelayCommand(SelectUserFolders);
+        AddCustomFolderCommand = new AsyncRelayCommand(AddCustomFoldersAsync);
+        AddCustomFilesCommand = new AsyncRelayCommand(AddCustomFilesAsync);
+        RemoveSourceCommand = new RelayCommand<BackupFolderItem>(RemoveSource);
         SwitchToRawModeCommand = new RelayCommand(() => SelectedMode = BackupMode.RawImage);
         SwitchToFileModeCommand = new RelayCommand(() => SelectedMode = BackupMode.FileLevel);
         NavigateToRestoreCommand = new RelayCommand(NavigateToRestore);
@@ -790,6 +800,92 @@ public partial class BackupViewModel : ViewModelBase, INavigableViewModel, IDisp
         return size;
     }
 
+    private async Task AddCustomFoldersAsync()
+    {
+        var paths = await _dialogService.PickFoldersAsync("Vyberte složky k zálohování", allowMultiple: true);
+        foreach (var path in paths)
+        {
+            if (string.IsNullOrWhiteSpace(path) || !Directory.Exists(path))
+                continue;
+
+            if (SourceFolders.Any(f => string.Equals(f.Path, path, StringComparison.OrdinalIgnoreCase)))
+                continue;
+
+            var dirInfo = new DirectoryInfo(path);
+            var estimatedSize = await Task.Run(() => EstimateDirectorySizeDeepSafe(dirInfo));
+            SourceFolders.Add(new BackupFolderItem
+            {
+                Path = path,
+                DisplayName = dirInfo.Name,
+                Icon = "📁",
+                EstimatedSize = estimatedSize,
+                EstimatedSizeText = FormatBytesLong(estimatedSize),
+                IsSystemFolder = false,
+                IsFile = false,
+                IsCustom = true,
+                IsSelected = true
+            });
+        }
+
+        CalculateSpaceRequirements();
+    }
+
+    private async Task AddCustomFilesAsync()
+    {
+        var paths = await _dialogService.PickFilesAsync("Vyberte soubory k zálohování", allowMultiple: true);
+        foreach (var path in paths)
+        {
+            if (string.IsNullOrWhiteSpace(path) || !System.IO.File.Exists(path))
+                continue;
+
+            if (SourceFolders.Any(f => string.Equals(f.Path, path, StringComparison.OrdinalIgnoreCase)))
+                continue;
+
+            var fileInfo = new FileInfo(path);
+            SourceFolders.Add(new BackupFolderItem
+            {
+                Path = path,
+                DisplayName = fileInfo.Name,
+                Icon = "📄",
+                EstimatedSize = fileInfo.Length,
+                EstimatedSizeText = FormatBytesLong(fileInfo.Length),
+                IsSystemFolder = false,
+                IsFile = true,
+                IsCustom = true,
+                IsSelected = true
+            });
+        }
+
+        CalculateSpaceRequirements();
+    }
+
+    private void RemoveSource(BackupFolderItem? item)
+    {
+        if (item == null)
+            return;
+
+        SourceFolders.Remove(item);
+        CalculateSpaceRequirements();
+    }
+
+    private static long EstimateDirectorySizeDeepSafe(DirectoryInfo dir)
+    {
+        long size = 0;
+        try
+        {
+            foreach (var file in dir.EnumerateFiles("*", SearchOption.AllDirectories))
+            {
+                try { size += file.Length; } catch { }
+            }
+        }
+        catch
+        {
+            size = EstimateDirectorySize(dir);
+        }
+
+        return size;
+    }
+
     private void CalculateSpaceRequirements()
     {
         if (SelectedMode == BackupMode.RawImage)
@@ -947,17 +1043,33 @@ public partial class BackupViewModel : ViewModelBase, INavigableViewModel, IDisp
 
         var copyState = new BackupCopyState(0, targetDrives[0].AllocatedBytes, targetDrives, backupRoot);
 
-        foreach (var folder in selectedFolders)
+        foreach (var source in selectedFolders)
         {
             ct.ThrowIfCancellationRequested();
 
-            var folderName = new DirectoryInfo(folder.Path).Name;
-            var destFolder = Path.Combine(copyState.BackupRoot, folderName);
-            Directory.CreateDirectory(destFolder);
+            if (source.IsFile)
+            {
+                var fileInfo = new FileInfo(source.Path);
+                if (!fileInfo.Exists)
+                {
+                    _backupLog.Add($"[{DateTime.Now:HH:mm:ss}] Přeskakuji chybějící soubor: {source.Path}");
+                    continue;
+                }
 
-            _backupLog.Add($"[{DateTime.Now:HH:mm:ss}] Zálohuji: {folder.Path} → {destFolder}");
+                var destPath = Path.Combine(copyState.BackupRoot, fileInfo.Name);
+                _backupLog.Add($"[{DateTime.Now:HH:mm:ss}] Zálohuji soubor: {source.Path} → {destPath}");
+                await CopySingleSourceFileAsync(source.Path, destPath, fileInfo.Length, copyState, ct);
+            }
+            else
+            {
+                var folderName = new DirectoryInfo(source.Path).Name;
+                var destFolder = Path.Combine(copyState.BackupRoot, folderName);
+                Directory.CreateDirectory(destFolder);
 
-            await CopyDirectoryAsync(folder.Path, destFolder, copyState, ct);
+                _backupLog.Add($"[{DateTime.Now:HH:mm:ss}] Zálohuji složku: {source.Path} → {destFolder}");
+
+                await CopyDirectoryAsync(source.Path, destFolder, copyState, ct);
+            }
         }
 
         var manifestPath = Path.Combine(backupRoot, "backup_manifest.json");
@@ -968,7 +1080,9 @@ public partial class BackupViewModel : ViewModelBase, INavigableViewModel, IDisp
             BackupDate = DateTime.Now.ToString("O"),
             Mode = "FileLevel",
             TotalBytes = _totalBytesBackedUp,
-            Folders = selectedFolders.Select(f => f.Path).ToList()
+            Sources = selectedFolders.Select(f => new { f.Path, f.IsFile, f.IsCustom }).ToList(),
+            Folders = selectedFolders.Where(f => !f.IsFile).Select(f => f.Path).ToList(),
+            Files = selectedFolders.Where(f => f.IsFile).Select(f => f.Path).ToList()
         };
         using var manifestStream = System.IO.File.OpenWrite(manifestPath);
         JsonSerializer.Serialize(manifestStream, manifest, _jsonOptions);
@@ -1027,6 +1141,33 @@ public partial class BackupViewModel : ViewModelBase, INavigableViewModel, IDisp
         }
     }
 
+    private async Task CopySingleSourceFileAsync(string sourcePath, string destPath, long fileSize, BackupCopyState state, CancellationToken ct)
+    {
+        if (fileSize > state.TargetRemaining && state.TargetIndex + 1 < state.TargetDrives.Count)
+        {
+            state.TargetIndex++;
+            state.TargetRemaining = state.TargetDrives[state.TargetIndex].AllocatedBytes;
+            state.BackupRoot = Path.Combine(state.TargetDrives[state.TargetIndex].DrivePath,
+                $"DiskChecker_Backup_{DateTime.Now:yyyyMMdd_HHmmss}_part{state.TargetIndex + 1}");
+            Directory.CreateDirectory(state.BackupRoot);
+            destPath = Path.Combine(state.BackupRoot, Path.GetFileName(sourcePath));
+            _backupLog.Add($"[{DateTime.Now:HH:mm:ss}] Přepnuto na cílový disk {state.TargetIndex + 1}: {state.TargetDrives[state.TargetIndex].DrivePath}");
+        }
+
+        if (fileSize > state.TargetRemaining)
+            throw new IOException($"Soubor je větší než zbývající vyhrazené místo na cíli: {sourcePath}");
+
+        Directory.CreateDirectory(Path.GetDirectoryName(destPath)!);
+        CurrentFileName = Path.GetFileName(sourcePath);
+        CurrentFileBytes = fileSize;
+        CurrentFileProgress = 0;
+        await CopyFileWithProgressAsync(sourcePath, destPath, fileSize, ct);
+        _totalBytesBackedUp += fileSize;
+        state.TargetRemaining -= fileSize;
+        OverallProgress = _totalBytesToBackup > 0 ? (double)_totalBytesBackedUp / _totalBytesToBackup * 100 : 0;
+        UpdateSpeedAndEta();
+    }
+
     private async Task CopyFileWithProgressAsync(string sourcePath, string destPath, long fileSize, CancellationToken ct)
     {
         const int bufferSize = 1024 * 1024;
@@ -1059,18 +1200,22 @@ public partial class BackupViewModel : ViewModelBase, INavigableViewModel, IDisp
         var targetDrives = TargetDrives.Where(t => t.IsSelected && t.AllocatedBytes > 0).ToList();
         if (targetDrives.Count == 0) throw new InvalidOperationException("Žádné cílové disky.");
 
-        var backupRoot = Path.Combine(targetDrives[0].DrivePath, $"DiskChecker_RawBackup_{DateTime.Now:yyyyMMdd_HHmmss}");
+        var backupSetName = $"DiskChecker_RawBackup_{DateTime.Now:yyyyMMdd_HHmmss}";
+        var backupRoot = Path.Combine(targetDrives[0].DrivePath, backupSetName);
         Directory.CreateDirectory(backupRoot);
         _backupLog.Add($"[{DateTime.Now:HH:mm:ss}] Vytvořena složka raw zálohy: {backupRoot}");
 
         long totalSize = SourceDrive.TotalSize;
+        var canCreateSingleMountableImage = targetDrives.Count == 1 || targetDrives[0].AllocatedBytes >= totalSize;
         long bytesRead = 0;
         const int sectorSize = 4096;
         var buffer = new byte[sectorSize];
 
         int targetIndex = 0;
         long targetRemaining = targetDrives[0].AllocatedBytes;
-        var currentImagePath = Path.Combine(backupRoot, "disk_image_part1.raw");
+        var currentRoot = backupRoot;
+        var currentImagePath = Path.Combine(currentRoot, canCreateSingleMountableImage ? "disk_image.img" : "disk_image.img.part001");
+        var createdParts = new List<string> { currentImagePath };
         FileStream? currentStream = new FileStream(currentImagePath, FileMode.Create, FileAccess.Write,
             FileShare.None, 1024 * 1024, FileOptions.SequentialScan);
 
@@ -1087,14 +1232,20 @@ public partial class BackupViewModel : ViewModelBase, INavigableViewModel, IDisp
                 int bytesReadNow = await deviceStream.ReadAsync(buffer.AsMemory(0, bytesToRead), ct);
                 if (bytesReadNow == 0) break;
 
-                if (bytesReadNow > targetRemaining && targetIndex + 1 < targetDrives.Count)
+                if (bytesReadNow > targetRemaining)
                 {
+                    if (targetIndex + 1 >= targetDrives.Count)
+                        throw new IOException("Cílové úložiště raw zálohy je plné. Zápis byl zastaven, aby nedošlo k poškození zálohy.");
+
                     await currentStream.FlushAsync(ct);
                     currentStream.Dispose();
 
                     targetIndex++;
                     targetRemaining = targetDrives[targetIndex].AllocatedBytes;
-                    currentImagePath = Path.Combine(backupRoot, $"disk_image_part{targetIndex + 1}.raw");
+                    currentRoot = Path.Combine(targetDrives[targetIndex].DrivePath, $"{backupSetName}_part{targetIndex + 1}");
+                    Directory.CreateDirectory(currentRoot);
+                    currentImagePath = Path.Combine(currentRoot, $"disk_image.img.part{targetIndex + 1:000}");
+                    createdParts.Add(currentImagePath);
                     currentStream = new FileStream(currentImagePath, FileMode.Create, FileAccess.Write,
                         FileShare.None, 1024 * 1024, FileOptions.SequentialScan);
                     _backupLog.Add($"[{DateTime.Now:HH:mm:ss}] Přepnuto na část {targetIndex + 1}: {currentImagePath}");
@@ -1124,9 +1275,16 @@ public partial class BackupViewModel : ViewModelBase, INavigableViewModel, IDisp
             SourceModel = SourceDrive.Name,
             BackupDate = DateTime.Now.ToString("O"),
             Mode = "RawImage",
+            ImageFormat = canCreateSingleMountableImage ? "Raw mountable IMG" : "Split raw IMG parts",
+            MountableImage = canCreateSingleMountableImage ? currentImagePath : null,
             TotalBytes = bytesRead,
             SectorSize = sectorSize,
-            Parts = targetIndex + 1
+            Parts = targetIndex + 1,
+            PartFiles = createdParts.Select(Path.GetFileName).ToList(),
+            PartPaths = createdParts.ToList(),
+            Note = canCreateSingleMountableImage
+                ? "Soubor disk_image.img je byte-for-byte obraz disku a lze jej před mazáním připojit/zkontrolovat běžnými nástroji."
+                : "Obraz je rozdělen do částí na více cílových úložišť; pro kontrolu jej nejprve spojte ve správném pořadí."
         };
         using var manifestStream = System.IO.File.OpenWrite(manifestPath);
         JsonSerializer.Serialize(manifestStream, manifest, _jsonOptions);

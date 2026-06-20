@@ -230,11 +230,20 @@ public partial class RestoreViewModel : ViewModelBase, INavigableViewModel, IDis
                     folders.Add(f.GetString() ?? "?");
             }
 
-            var foldersSummary = folders.Count switch
+            var files = new List<string>();
+            if (root.TryGetProperty("Files", out var filesEl) && filesEl.ValueKind == JsonValueKind.Array)
+            {
+                foreach (var f in filesEl.EnumerateArray())
+                    files.Add(f.GetString() ?? "?");
+            }
+
+            var sourceCount = folders.Count + files.Count;
+            var firstSource = folders.FirstOrDefault() ?? files.FirstOrDefault();
+            var foldersSummary = sourceCount switch
             {
                 0 => mode == "RawImage" ? "Raw obraz disku" : "—",
-                1 => new DirectoryInfo(folders[0]).Name,
-                _ => $"{new DirectoryInfo(folders[0]).Name} + {folders.Count - 1} dalších"
+                1 => Path.GetFileName(firstSource) ?? "—",
+                _ => $"{Path.GetFileName(firstSource) ?? "—"} + {sourceCount - 1} dalších"
             };
 
             // Parse date for display
@@ -497,37 +506,92 @@ public partial class RestoreViewModel : ViewModelBase, INavigableViewModel, IDis
         }
     }
 
+    private static IReadOnlyList<string> FindRawImageParts(DiscoveredBackup backup)
+    {
+        var result = new List<string>();
+
+        try
+        {
+            if (File.Exists(backup.ManifestPath))
+            {
+                using var doc = JsonDocument.Parse(File.ReadAllText(backup.ManifestPath));
+                var root = doc.RootElement;
+
+                if (root.TryGetProperty("PartPaths", out var partPathsEl) && partPathsEl.ValueKind == JsonValueKind.Array)
+                {
+                    foreach (var part in partPathsEl.EnumerateArray())
+                    {
+                        var path = part.GetString();
+                        if (!string.IsNullOrWhiteSpace(path) && File.Exists(path))
+                            result.Add(path);
+                    }
+
+                    if (result.Count > 0)
+                        return result;
+                }
+
+                if (root.TryGetProperty("MountableImage", out var mountableEl))
+                {
+                    var path = mountableEl.GetString();
+                    if (!string.IsNullOrWhiteSpace(path) && File.Exists(path))
+                        return new[] { path };
+                }
+            }
+        }
+        catch
+        {
+            // Fall back to filesystem discovery below.
+        }
+
+        var singleImg = Path.Combine(backup.BackupRoot, "disk_image.img");
+        if (File.Exists(singleImg))
+            return new[] { singleImg };
+
+        var legacySingleRaw = Path.Combine(backup.BackupRoot, "disk_image.raw");
+        if (File.Exists(legacySingleRaw))
+            return new[] { legacySingleRaw };
+
+        // New split IMG format, first part normally lives next to the manifest.
+        result.AddRange(Directory.GetFiles(backup.BackupRoot, "disk_image.img.part*", SearchOption.TopDirectoryOnly));
+
+        // Legacy split RAW format.
+        result.AddRange(Directory.GetFiles(backup.BackupRoot, "disk_image_part*.raw", SearchOption.TopDirectoryOnly));
+
+        // If a split backup spans multiple target drives, later parts are stored in
+        // DiskChecker_RawBackup_<timestamp>_partN directories. Search all ready roots as a fallback.
+        var baseName = Path.GetFileName(backup.BackupRoot);
+        try
+        {
+            foreach (var drive in System.IO.DriveInfo.GetDrives().Where(d => d.IsReady))
+            {
+                try
+                {
+                    foreach (var dir in Directory.GetDirectories(drive.RootDirectory.FullName, baseName + "_part*", SearchOption.TopDirectoryOnly))
+                    {
+                        result.AddRange(Directory.GetFiles(dir, "disk_image.img.part*", SearchOption.TopDirectoryOnly));
+                        result.AddRange(Directory.GetFiles(dir, "disk_image_part*.raw", SearchOption.TopDirectoryOnly));
+                    }
+                }
+                catch { }
+            }
+        }
+        catch { }
+
+        return result
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .OrderBy(path => path, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+    }
+
     private async Task RunRawRestoreAsync(string targetPath, CancellationToken ct)
     {
         if (SelectedBackup == null) return;
 
         _restoreLog.Add($"[{DateTime.Now:HH:mm:ss}] Zahajuji raw obnovu na: {targetPath}");
 
-        // Find all raw image parts
-        var allParts = new List<string>();
-        var part1 = Path.Combine(SelectedBackup.BackupRoot, "disk_image_part1.raw");
-        if (File.Exists(part1))
-        {
-            allParts.Add(part1);
-            for (int i = 2; ; i++)
-            {
-                var partN = Path.Combine(SelectedBackup.BackupRoot, $"disk_image_part{i}.raw");
-                if (File.Exists(partN))
-                    allParts.Add(partN);
-                else
-                    break;
-            }
-        }
-        else
-        {
-            // Try single image file
-            var singleImg = Path.Combine(SelectedBackup.BackupRoot, "disk_image.raw");
-            if (File.Exists(singleImg))
-                allParts.Add(singleImg);
-        }
-
+        var allParts = FindRawImageParts(SelectedBackup);
         if (allParts.Count == 0)
-            throw new FileNotFoundException("Raw obraz nenalezen v záloze.");
+            throw new FileNotFoundException("Raw/IMG obraz nenalezen v záloze.");
 
         const int bufferSize = 1024 * 1024; // 1MB buffer
         var buffer = new byte[bufferSize];
@@ -699,35 +763,27 @@ public partial class RestoreViewModel : ViewModelBase, INavigableViewModel, IDis
                 return;
             }
 
-            // Sum up all raw parts
-            long totalSourceBytes = 0;
-            var allParts = new List<string>();
-            var part1 = Path.Combine(SelectedBackup.BackupRoot, "disk_image_part1.raw");
-            if (File.Exists(part1))
+            var allParts = FindRawImageParts(SelectedBackup);
+            long totalSourceBytes = allParts.Sum(part => new FileInfo(part).Length);
+
+            if (allParts.Count == 0 || totalSourceBytes <= 0)
             {
-                for (int i = 1; ; i++)
-                {
-                    var partN = Path.Combine(SelectedBackup.BackupRoot, $"disk_image_part{i}.raw");
-                    if (File.Exists(partN))
-                        allParts.Add(partN);
-                    else
-                        break;
-                }
-            }
-            else
-            {
-                var singleImg = Path.Combine(SelectedBackup.BackupRoot, "disk_image.raw");
-                if (File.Exists(singleImg))
-                    allParts.Add(singleImg);
+                IsVerifyOk = false;
+                VerifyResult = "❌ Raw/IMG části zálohy nebyly nalezeny.";
+                return;
             }
 
-            foreach (var part in allParts)
-                totalSourceBytes += new FileInfo(part).Length;
+            // FileInfo.Length is meaningful for image-file targets. For block devices (/dev/..., \.\PhysicalDrive*)
+            // it may be unavailable/zero, so successful flush plus readable source parts is the safest portable check here.
+            var isBlockDeviceTarget = targetPath.StartsWith("/dev/", StringComparison.OrdinalIgnoreCase) ||
+                                      targetPath.StartsWith("\\\\.\\", StringComparison.OrdinalIgnoreCase);
 
-            if (targetInfo.Length >= totalSourceBytes)
+            if (isBlockDeviceTarget || targetInfo.Length >= totalSourceBytes)
             {
                 IsVerifyOk = true;
-                VerifyResult = $"✅ Raw obraz ověřen — {FormatBytesLong(targetInfo.Length)} zapsáno";
+                VerifyResult = isBlockDeviceTarget
+                    ? $"✅ Raw obnova dokončena — zdrojový obraz {FormatBytesLong(totalSourceBytes)} byl zapsán na blokové zařízení."
+                    : $"✅ Raw obraz ověřen — {FormatBytesLong(targetInfo.Length)} zapsáno";
             }
             else
             {

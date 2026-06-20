@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using System.Threading.Tasks;
 
 namespace DiskChecker.UI.Avalonia.Services.Interfaces;
@@ -53,4 +54,14 @@ public interface IDialogService
     /// Show input dialog with text box (same as PromptAsync)
     /// </summary>
     Task<string?> ShowInputDialogAsync(string title, string message, string defaultValue = "");
+
+    /// <summary>
+    /// Shows a platform folder picker and returns selected local filesystem paths.
+    /// </summary>
+    Task<IReadOnlyList<string>> PickFoldersAsync(string title, bool allowMultiple = true);
+
+    /// <summary>
+    /// Shows a platform file picker and returns selected local filesystem paths.
+    /// </summary>
+    Task<IReadOnlyList<string>> PickFilesAsync(string title, bool allowMultiple = true);
 }

@@ -76,7 +76,7 @@ public class LinuxDiskDetectionService : IDiskDetectionService
                     ? nameProp.GetString() ?? "" 
                     : "";
                 
-                if (string.IsNullOrEmpty(name))
+                if (!IsRealWholeBlockDeviceName(name))
                     continue;
                 
                 var size = device.TryGetProperty("size", out var sizeProp) 
@@ -215,6 +215,28 @@ public class LinuxDiskDetectionService : IDiskDetectionService
         return drives;
     }
     
+    private static bool IsRealWholeBlockDeviceName(string? name)
+    {
+        if (string.IsNullOrWhiteSpace(name))
+            return false;
+
+        // Exclude pseudo/virtual devices commonly shown by lsblk/sysfs (Snap loop devices,
+        // ram/zram, optical drives, floppies, device-mapper and mdraid logical devices).
+        if (name.StartsWith("loop", StringComparison.OrdinalIgnoreCase) ||
+            name.StartsWith("ram", StringComparison.OrdinalIgnoreCase) ||
+            name.StartsWith("zram", StringComparison.OrdinalIgnoreCase) ||
+            name.StartsWith("fd", StringComparison.OrdinalIgnoreCase) ||
+            name.StartsWith("sr", StringComparison.OrdinalIgnoreCase) ||
+            name.StartsWith("dm-", StringComparison.OrdinalIgnoreCase) ||
+            name.StartsWith("md", StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
+        // Keep real whole-disk naming families only. Partition names are intentionally excluded.
+        return Regex.IsMatch(name, @"^(sd[a-z]+|hd[a-z]+|vd[a-z]+|xvd[a-z]+|nvmed+nd+|mmcblkd+|dasd[a-z]+)$", RegexOptions.IgnoreCase);
+    }
+
     private static CoreBusType DetermineBusType(string? transport, bool isRotational)
     {
         if (string.IsNullOrEmpty(transport))
@@ -339,9 +361,7 @@ public class LinuxDiskDetectionService : IDiskDetectionService
             {
                 var deviceName = Path.GetFileName(devicePath);
                 
-                if (deviceName.StartsWith("loop", StringComparison.Ordinal) || 
-                    deviceName.StartsWith("ram", StringComparison.Ordinal) || 
-                    deviceName.StartsWith("zram", StringComparison.Ordinal))
+                if (!IsRealWholeBlockDeviceName(deviceName))
                 {
                     continue;
                 }
