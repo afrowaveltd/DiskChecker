@@ -1,4 +1,4 @@
-using System.Collections.Concurrent;
+﻿using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Text.Json;
 using DiskChecker.Core.Interfaces;
@@ -207,13 +207,7 @@ public class LinuxSmartaProvider : ISmartaProvider, IAdvancedSmartaProvider
     
     private static string BuildSmartctlArgs(string baseArgs, string devicePath, string deviceType)
     {
-        // For NVMe devices, we need to specify the device type explicitly
-        // smartctl -d nvme -t short /dev/nvme0
-        if (deviceType == "nvme")
-        {
-            return $"-d nvme {baseArgs} {devicePath}";
-        }
-        return $"{baseArgs} {devicePath}";
+        return BuildSmartctlArgsForQuery(baseArgs, devicePath, deviceType);
     }
 
     public async Task<SmartaSelfTestStatus> GetSelfTestStatusAsync(string devicePath, CancellationToken cancellationToken = default)
@@ -346,10 +340,7 @@ public class LinuxSmartaProvider : ISmartaProvider, IAdvancedSmartaProvider
                 foreach (var devicePath in blockDevices)
                 {
                     var deviceName = Path.GetFileName(devicePath);
-                    // Skip non-disk devices
-                    if (deviceName.StartsWith("loop", StringComparison.Ordinal) ||
-                        deviceName.StartsWith("ram", StringComparison.Ordinal) ||
-                        deviceName.StartsWith("zram", StringComparison.Ordinal))
+                    if (!IsRealWholeBlockDeviceName(deviceName))
                     {
                         continue;
                     }
@@ -445,7 +436,7 @@ public class LinuxSmartaProvider : ISmartaProvider, IAdvancedSmartaProvider
     /// Device type probes to try when SMART access fails. Max 3 attempts total.
     /// First attempt is always "auto", then specific bridge types.
     /// </summary>
-    private static readonly string[] DeviceTypeProbes = { "auto", "sat", "usbprolific", "usbjmicron" };
+    private static readonly string[] DeviceTypeProbes = { "auto", "nvme", "sat", "scsi", "usbjmicron", "usbprolific" };
     private const int MaxDeviceTypeProbes = 3;
 
     private async Task<(int ExitCode, string Output, string Error)?> ExecuteSmartctlCommandAsync(string devicePath, string arguments, CancellationToken cancellationToken)
@@ -670,13 +661,31 @@ public class LinuxSmartaProvider : ISmartaProvider, IAdvancedSmartaProvider
     
     private static string BuildSmartctlArgsForQuery(string baseArgs, string devicePath, string deviceType)
     {
-        // For NVMe devices, we need to specify the device type explicitly
-        // smartctl -d nvme -j -a /dev/nvme0
-        if (deviceType == "nvme")
+        if (string.IsNullOrWhiteSpace(deviceType) || deviceType.Equals("auto", StringComparison.OrdinalIgnoreCase))
         {
-            return $"-d nvme {baseArgs} {devicePath}";
+            return $"{baseArgs} {devicePath}";
         }
-        return $"{baseArgs} {devicePath}";
+
+        return $"-d {deviceType} {baseArgs} {devicePath}";
+    }
+
+    private static bool IsRealWholeBlockDeviceName(string? name)
+    {
+        if (string.IsNullOrWhiteSpace(name))
+            return false;
+
+        if (name.StartsWith("loop", StringComparison.OrdinalIgnoreCase) ||
+            name.StartsWith("ram", StringComparison.OrdinalIgnoreCase) ||
+            name.StartsWith("zram", StringComparison.OrdinalIgnoreCase) ||
+            name.StartsWith("fd", StringComparison.OrdinalIgnoreCase) ||
+            name.StartsWith("sr", StringComparison.OrdinalIgnoreCase) ||
+            name.StartsWith("dm-", StringComparison.OrdinalIgnoreCase) ||
+            name.StartsWith("md", StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
+        return System.Text.RegularExpressions.Regex.IsMatch(name, @"^(sd[a-z]+|hd[a-z]+|vd[a-z]+|xvd[a-z]+|nvme\d+n\d+|mmcblk\d+|dasd[a-z]+)$", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
     }
 
     private static string? FindSmartctlPath()
@@ -808,3 +817,8 @@ public class LinuxSmartaProvider : ISmartaProvider, IAdvancedSmartaProvider
         return key.Trim().ToLowerInvariant();
     }
 }
+
+
+
+
+

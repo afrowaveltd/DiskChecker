@@ -1,4 +1,4 @@
-using System.Collections.Concurrent;
+﻿using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Text.RegularExpressions;
 using System.Text.Json;
@@ -255,12 +255,7 @@ public class WindowsSmartaProvider : ISmartaProvider, IAdvancedSmartaProvider
     
     private static string BuildSmartctlArgs(string baseArgs, string devicePath, string deviceType)
     {
-        // For NVMe devices, we need to specify the device type explicitly
-        if (deviceType == "nvme")
-        {
-            return $"-d nvme {baseArgs} {devicePath}";
-        }
-        return $"{baseArgs} {devicePath}";
+        return BuildSmartctlArgsForQuery(baseArgs, devicePath, deviceType);
     }
 
     public async Task<SmartaSelfTestStatus> GetSelfTestStatusAsync(string devicePath, CancellationToken cancellationToken = default)
@@ -499,7 +494,7 @@ public class WindowsSmartaProvider : ISmartaProvider, IAdvancedSmartaProvider
     /// Device type probes to try when SMART access fails. Max 3 attempts total.
     /// First attempt is always "auto", then specific bridge types.
     /// </summary>
-    private static readonly string[] DeviceTypeProbes = { "auto", "sat", "usbprolific", "usbjmicron" };
+    private static readonly string[] DeviceTypeProbes = { "auto", "nvme", "sat", "scsi", "usbjmicron", "usbprolific" };
     private const int MaxDeviceTypeProbes = 3;
 
     private async Task<(int ExitCode, string Output, string Error)?> ExecuteSmartctlCommandAsync(string devicePath, string arguments, CancellationToken cancellationToken)
@@ -620,12 +615,12 @@ public class WindowsSmartaProvider : ISmartaProvider, IAdvancedSmartaProvider
     
     private static string BuildSmartctlArgsForQuery(string baseArgs, string devicePath, string deviceType)
     {
-        // For NVMe devices, we need to specify the device type explicitly
-        if (deviceType == "nvme")
+        if (string.IsNullOrWhiteSpace(deviceType) || deviceType.Equals("auto", StringComparison.OrdinalIgnoreCase))
         {
-            return $"-d nvme {baseArgs} {devicePath}";
+            return $"{baseArgs} {devicePath}";
         }
-        return $"{baseArgs} {devicePath}";
+
+        return $"-d {deviceType} {baseArgs} {devicePath}";
     }
 
     private static string? FindSmartctlPath()
@@ -648,6 +643,12 @@ public class WindowsSmartaProvider : ISmartaProvider, IAdvancedSmartaProvider
                 }
                 return path;
             }
+        }
+
+        var pathFromEnvironment = FindSmartctlPathInPath();
+        if (!string.IsNullOrEmpty(pathFromEnvironment))
+        {
+            return pathFromEnvironment;
         }
 
         return null;
@@ -673,6 +674,12 @@ public class WindowsSmartaProvider : ISmartaProvider, IAdvancedSmartaProvider
                 }
                 return path;
             }
+        }
+
+        var pathFromEnvironment = FindSmartctlPathInPath();
+        if (!string.IsNullOrEmpty(pathFromEnvironment))
+        {
+            return pathFromEnvironment;
         }
 
         // Try 'where' command as fallback
@@ -714,6 +721,37 @@ public class WindowsSmartaProvider : ISmartaProvider, IAdvancedSmartaProvider
         return null;
     }
 
+    private static string? FindSmartctlPathInPath()
+    {
+        var pathVariable = Environment.GetEnvironmentVariable("PATH");
+        if (string.IsNullOrWhiteSpace(pathVariable))
+        {
+            return null;
+        }
+
+        foreach (var directory in pathVariable.Split(Path.PathSeparator, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+        {
+            try
+            {
+                var candidate = Path.Combine(directory, "smartctl.exe");
+                if (File.Exists(candidate))
+                {
+                    lock (s_pathLock)
+                    {
+                        s_cachedSmartctlPath = candidate;
+                    }
+                    return candidate;
+                }
+            }
+            catch
+            {
+                // Ignore invalid PATH entries.
+            }
+        }
+
+        return null;
+    }
+
     private static bool IsSmartctlAvailable()
     {
         return FindSmartctlPath() != null;
@@ -725,3 +763,9 @@ public class WindowsSmartaProvider : ISmartaProvider, IAdvancedSmartaProvider
         return key.Trim().ToLowerInvariant();
     }
 }
+
+
+
+
+
+

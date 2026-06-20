@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
@@ -234,7 +234,7 @@ public class LinuxDiskDetectionService : IDiskDetectionService
         }
 
         // Keep real whole-disk naming families only. Partition names are intentionally excluded.
-        return Regex.IsMatch(name, @"^(sd[a-z]+|hd[a-z]+|vd[a-z]+|xvd[a-z]+|nvmed+nd+|mmcblkd+|dasd[a-z]+)$", RegexOptions.IgnoreCase);
+        return Regex.IsMatch(name, @"^(sd[a-z]+|hd[a-z]+|vd[a-z]+|xvd[a-z]+|nvme\d+n\d+|mmcblk\d+|dasd[a-z]+)$", RegexOptions.IgnoreCase);
     }
 
     private static CoreBusType DetermineBusType(string? transport, bool isRotational)
@@ -707,3 +707,4 @@ public class LinuxDiskDetectionService : IDiskDetectionService
         return (null, null);
     }
 }
+
