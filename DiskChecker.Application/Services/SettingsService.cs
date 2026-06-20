@@ -1,4 +1,4 @@
-using DiskChecker.Core.Interfaces;
+﻿using DiskChecker.Core.Interfaces;
 using System.Text.Json;
 using System.Linq;
 
@@ -37,9 +37,23 @@ public class SettingsService : ISettingsService
     private static readonly JsonSerializerOptions JsonOptions = new() { WriteIndented = true };
     
     public SettingsService()
+        : this(null)
     {
-        var appDataPath = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
-        var appFolder = Path.Combine(appDataPath, "DiskChecker");
+    }
+
+    /// <summary>
+    /// Initializes a new instance of the <see cref="SettingsService"/> class.
+    /// </summary>
+    /// <param name="settingsDirectoryPath">
+    /// Optional settings directory override. This keeps tests and tools from reading or
+    /// overwriting the user's real application settings.
+    /// </param>
+    public SettingsService(string? settingsDirectoryPath)
+    {
+        var appFolder = string.IsNullOrWhiteSpace(settingsDirectoryPath)
+            ? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "DiskChecker")
+            : settingsDirectoryPath;
+
         Directory.CreateDirectory(appFolder);
         
         _settingsFilePath = Path.Combine(appFolder, "settings.json");

@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.IO;
 using System.Threading.Tasks;
 using DiskChecker.Application.Services;
@@ -13,10 +13,15 @@ public class SettingsServiceTests
         return Path.Combine(Path.GetTempPath(), $"DiskCheckerTests_{Guid.NewGuid():N}");
     }
 
+    private static SettingsService CreateService()
+    {
+        return new SettingsService(GetTempSettingsPath());
+    }
+
     [Fact]
     public async Task GetAutoCheckForUpdates_ReturnsDefaultTrue()
     {
-        var service = new SettingsService();
+        var service = CreateService();
         var result = await service.GetAutoCheckForUpdatesAsync();
         Assert.True(result);
     }
@@ -24,7 +29,7 @@ public class SettingsServiceTests
     [Fact]
     public async Task SetAndGetAutoCheckForUpdates_Works()
     {
-        var service = new SettingsService();
+        var service = CreateService();
         await service.SetAutoCheckForUpdatesAsync(false);
         var result = await service.GetAutoCheckForUpdatesAsync();
         Assert.False(result);
@@ -33,7 +38,7 @@ public class SettingsServiceTests
     [Fact]
     public async Task GetMinimizeToTray_ReturnsDefaultTrue()
     {
-        var service = new SettingsService();
+        var service = CreateService();
         var result = await service.GetMinimizeToTrayAsync();
         Assert.True(result);
     }
@@ -41,7 +46,7 @@ public class SettingsServiceTests
     [Fact]
     public async Task SetAndGetMinimizeToTray_Works()
     {
-        var service = new SettingsService();
+        var service = CreateService();
         await service.SetMinimizeToTrayAsync(false);
         var result = await service.GetMinimizeToTrayAsync();
         Assert.False(result);
@@ -50,7 +55,7 @@ public class SettingsServiceTests
     [Fact]
     public async Task GetAutoSaveInterval_ReturnsDefault5()
     {
-        var service = new SettingsService();
+        var service = CreateService();
         var result = await service.GetAutoSaveIntervalAsync();
         Assert.Equal(5, result);
     }
@@ -58,7 +63,7 @@ public class SettingsServiceTests
     [Fact]
     public async Task SetAndGetAutoSaveInterval_Works()
     {
-        var service = new SettingsService();
+        var service = CreateService();
         await service.SetAutoSaveIntervalAsync(10);
         var result = await service.GetAutoSaveIntervalAsync();
         Assert.Equal(10, result);
@@ -67,7 +72,7 @@ public class SettingsServiceTests
     [Fact]
     public async Task GetDefaultExportPath_ReturnsDocumentsFolder()
     {
-        var service = new SettingsService();
+        var service = CreateService();
         var result = await service.GetDefaultExportPathAsync();
         Assert.NotNull(result);
         Assert.NotEmpty(result);
@@ -76,7 +81,7 @@ public class SettingsServiceTests
     [Fact]
     public async Task SetAndGetDefaultExportPath_Works()
     {
-        var service = new SettingsService();
+        var service = CreateService();
         var testPath = "/tmp/test_export";
         await service.SetDefaultExportPathAsync(testPath);
         var result = await service.GetDefaultExportPathAsync();
@@ -86,7 +91,7 @@ public class SettingsServiceTests
     [Fact]
     public async Task GetLanguage_ReturnsDefaultCs()
     {
-        var service = new SettingsService();
+        var service = CreateService();
         var result = await service.GetLanguageAsync();
         Assert.Equal("cs", result);
     }
@@ -94,7 +99,7 @@ public class SettingsServiceTests
     [Fact]
     public async Task SetAndGetLanguage_Works()
     {
-        var service = new SettingsService();
+        var service = CreateService();
         await service.SetLanguageAsync("en");
         var result = await service.GetLanguageAsync();
         Assert.Equal("en", result);
@@ -103,7 +108,7 @@ public class SettingsServiceTests
     [Fact]
     public async Task GetEnableLogging_ReturnsDefaultTrue()
     {
-        var service = new SettingsService();
+        var service = CreateService();
         var result = await service.GetEnableLoggingAsync();
         Assert.True(result);
     }
@@ -111,7 +116,7 @@ public class SettingsServiceTests
     [Fact]
     public async Task SetAndGetEnableLogging_Works()
     {
-        var service = new SettingsService();
+        var service = CreateService();
         await service.SetEnableLoggingAsync(false);
         var result = await service.GetEnableLoggingAsync();
         Assert.False(result);
@@ -120,7 +125,7 @@ public class SettingsServiceTests
     [Fact]
     public async Task GetLogLevel_ReturnsDefaultInformation()
     {
-        var service = new SettingsService();
+        var service = CreateService();
         var result = await service.GetLogLevelAsync();
         Assert.Equal("Information", result);
     }
@@ -128,7 +133,7 @@ public class SettingsServiceTests
     [Fact]
     public async Task SetAndGetLogLevel_Works()
     {
-        var service = new SettingsService();
+        var service = CreateService();
         await service.SetLogLevelAsync("Debug");
         var result = await service.GetLogLevelAsync();
         Assert.Equal("Debug", result);
@@ -137,7 +142,7 @@ public class SettingsServiceTests
     [Fact]
     public async Task GetIsDarkTheme_ReadsFromFile()
     {
-        var service = new SettingsService();
+        var service = CreateService();
         // Dark theme is read from file; just verify it doesn't throw
         var result = await service.GetIsDarkThemeAsync();
         // Value depends on file state, just verify roundtrip works
@@ -149,7 +154,7 @@ public class SettingsServiceTests
     [Fact]
     public async Task SetAndGetIsDarkTheme_Works()
     {
-        var service = new SettingsService();
+        var service = CreateService();
         var original = await service.GetIsDarkThemeAsync();
         await service.SetIsDarkThemeAsync(true);
         Assert.True(await service.GetIsDarkThemeAsync());
@@ -159,7 +164,7 @@ public class SettingsServiceTests
     [Fact]
     public async Task GetSmartCacheTtlMinutes_ReturnsDefault10()
     {
-        var service = new SettingsService();
+        var service = CreateService();
         var result = await service.GetSmartCacheTtlMinutesAsync();
         Assert.Equal(10, result);
     }
@@ -167,7 +172,7 @@ public class SettingsServiceTests
     [Fact]
     public async Task SetAndGetSmartCacheTtlMinutes_Works()
     {
-        var service = new SettingsService();
+        var service = CreateService();
         await service.SetSmartCacheTtlMinutesAsync(20);
         var result = await service.GetSmartCacheTtlMinutesAsync();
         Assert.Equal(20, result);
@@ -176,7 +181,7 @@ public class SettingsServiceTests
     [Fact]
     public async Task SetSmartCacheTtlMinutes_ClampsToMinimum1()
     {
-        var service = new SettingsService();
+        var service = CreateService();
         await service.SetSmartCacheTtlMinutesAsync(0);
         var result = await service.GetSmartCacheTtlMinutesAsync();
         Assert.Equal(1, result);
@@ -185,7 +190,7 @@ public class SettingsServiceTests
     [Fact]
     public async Task GetSmartProbeTimeoutSeconds_RoundtripWorks()
     {
-        var service = new SettingsService();
+        var service = CreateService();
         var original = await service.GetSmartProbeTimeoutSecondsAsync();
         await service.SetSmartProbeTimeoutSecondsAsync(8);
         Assert.Equal(8, await service.GetSmartProbeTimeoutSecondsAsync());
@@ -195,7 +200,7 @@ public class SettingsServiceTests
     [Fact]
     public async Task SetAndGetSmartProbeTimeoutSeconds_Works()
     {
-        var service = new SettingsService();
+        var service = CreateService();
         var original = await service.GetSmartProbeTimeoutSecondsAsync();
         await service.SetSmartProbeTimeoutSecondsAsync(8);
         var result = await service.GetSmartProbeTimeoutSecondsAsync();
@@ -206,7 +211,7 @@ public class SettingsServiceTests
     [Fact]
     public async Task GetSmartProbeParallelism_RoundtripWorks()
     {
-        var service = new SettingsService();
+        var service = CreateService();
         var original = await service.GetSmartProbeParallelismAsync();
         await service.SetSmartProbeParallelismAsync(4);
         Assert.Equal(4, await service.GetSmartProbeParallelismAsync());
@@ -216,7 +221,7 @@ public class SettingsServiceTests
     [Fact]
     public async Task SetAndGetSmartProbeParallelism_Works()
     {
-        var service = new SettingsService();
+        var service = CreateService();
         var original = await service.GetSmartProbeParallelismAsync();
         await service.SetSmartProbeParallelismAsync(4);
         var result = await service.GetSmartProbeParallelismAsync();
@@ -227,7 +232,7 @@ public class SettingsServiceTests
     [Fact]
     public async Task GetUsbRecoveryRetryCount_RoundtripWorks()
     {
-        var service = new SettingsService();
+        var service = CreateService();
         var original = await service.GetUsbRecoveryRetryCountAsync();
         await service.SetUsbRecoveryRetryCountAsync(3);
         Assert.Equal(3, await service.GetUsbRecoveryRetryCountAsync());
@@ -237,7 +242,7 @@ public class SettingsServiceTests
     [Fact]
     public async Task SetAndGetUsbRecoveryRetryCount_Works()
     {
-        var service = new SettingsService();
+        var service = CreateService();
         var original = await service.GetUsbRecoveryRetryCountAsync();
         await service.SetUsbRecoveryRetryCountAsync(5);
         var result = await service.GetUsbRecoveryRetryCountAsync();
@@ -248,7 +253,7 @@ public class SettingsServiceTests
     [Fact]
     public async Task SetUsbRecoveryRetryCount_ClampsToRange()
     {
-        var service = new SettingsService();
+        var service = CreateService();
         await service.SetUsbRecoveryRetryCountAsync(15);
         var result = await service.GetUsbRecoveryRetryCountAsync();
         Assert.Equal(10, result); // Clamped to max 10
@@ -261,7 +266,7 @@ public class SettingsServiceTests
     [Fact]
     public async Task GetReportRecipientEmail_WhenCleared_ReturnsEmpty()
     {
-        var service = new SettingsService();
+        var service = CreateService();
         var original = await service.GetReportRecipientEmailAsync();
 
         await service.SetReportRecipientEmailAsync(string.Empty);
@@ -274,7 +279,7 @@ public class SettingsServiceTests
     [Fact]
     public async Task SetAndGetReportRecipientEmail_Works()
     {
-        var service = new SettingsService();
+        var service = CreateService();
         await service.SetReportRecipientEmailAsync("test@example.com");
         var result = await service.GetReportRecipientEmailAsync();
         Assert.Equal("test@example.com", result);
@@ -283,7 +288,7 @@ public class SettingsServiceTests
     [Fact]
     public async Task SetReportRecipientEmail_TrimsWhitespace()
     {
-        var service = new SettingsService();
+        var service = CreateService();
         await service.SetReportRecipientEmailAsync("  test@example.com  ");
         var result = await service.GetReportRecipientEmailAsync();
         Assert.Equal("test@example.com", result);
@@ -292,7 +297,7 @@ public class SettingsServiceTests
     [Fact]
     public async Task GetEmailSendOnlyForLongRunningTests_RoundtripWorks()
     {
-        var service = new SettingsService();
+        var service = CreateService();
         var original = await service.GetEmailSendOnlyForLongRunningTestsAsync();
         await service.SetEmailSendOnlyForLongRunningTestsAsync(!original);
         Assert.Equal(!original, await service.GetEmailSendOnlyForLongRunningTestsAsync());
@@ -302,7 +307,7 @@ public class SettingsServiceTests
     [Fact]
     public async Task SetAndGetEmailSendOnlyForLongRunningTests_Works()
     {
-        var service = new SettingsService();
+        var service = CreateService();
         var original = await service.GetEmailSendOnlyForLongRunningTestsAsync();
         await service.SetEmailSendOnlyForLongRunningTestsAsync(false);
         var result = await service.GetEmailSendOnlyForLongRunningTestsAsync();
@@ -313,7 +318,7 @@ public class SettingsServiceTests
     [Fact]
     public async Task GetEmailIncludeCertificateAttachment_ReturnsDefaultTrue()
     {
-        var service = new SettingsService();
+        var service = CreateService();
         var result = await service.GetEmailIncludeCertificateAttachmentAsync();
         Assert.True(result);
     }
@@ -321,7 +326,7 @@ public class SettingsServiceTests
     [Fact]
     public async Task SetAndGetEmailIncludeCertificateAttachment_Works()
     {
-        var service = new SettingsService();
+        var service = CreateService();
         await service.SetEmailIncludeCertificateAttachmentAsync(false);
         var result = await service.GetEmailIncludeCertificateAttachmentAsync();
         Assert.False(result);
@@ -330,7 +335,7 @@ public class SettingsServiceTests
     [Fact]
     public async Task GetLockedDisks_ReturnsListWithSystemDisk()
     {
-        var service = new SettingsService();
+        var service = CreateService();
         var result = await service.GetLockedDisksAsync();
         Assert.NotNull(result);
         Assert.Contains(@"\\.\PhysicalDrive0", result);
@@ -339,7 +344,7 @@ public class SettingsServiceTests
     [Fact]
     public async Task LockAndUnlockDisk_Works()
     {
-        var service = new SettingsService();
+        var service = CreateService();
         var testPath = @"\\.\PhysicalDrive5";
 
         await service.LockDiskAsync(testPath);
@@ -354,7 +359,7 @@ public class SettingsServiceTests
     [Fact]
     public async Task LockDisk_DuplicateNotAdded()
     {
-        var service = new SettingsService();
+        var service = CreateService();
         var testPath = @"\\.\PhysicalDrive3";
 
         await service.LockDiskAsync(testPath);
@@ -368,7 +373,7 @@ public class SettingsServiceTests
     [Fact]
     public async Task IsDiskLocked_NullOrEmpty_ReturnsFalse()
     {
-        var service = new SettingsService();
+        var service = CreateService();
         Assert.False(await service.IsDiskLockedAsync(null!));
         Assert.False(await service.IsDiskLockedAsync(""));
     }
@@ -376,7 +381,7 @@ public class SettingsServiceTests
     [Fact]
     public async Task ResetToDefaults_RestoresAllDefaults()
     {
-        var service = new SettingsService();
+        var service = CreateService();
 
         // Change everything
         await service.SetAutoCheckForUpdatesAsync(false);
@@ -413,3 +418,4 @@ public class SettingsServiceTests
         Assert.True(await service.GetEmailIncludeCertificateAttachmentAsync());
     }
 }
+
