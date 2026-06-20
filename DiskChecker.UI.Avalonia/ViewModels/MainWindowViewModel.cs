@@ -630,7 +630,7 @@ public partial class MainWindowViewModel : ViewModelBase
         StatusMessage = "Naviguji na nastavení...";
     }
 
-    private void OnNavigated(object? sender, NavigationEventArgs e)
+    private void OnNavigated(object? sender, AppNavigationEventArgs e)
     {
         CurrentContent = e.ViewModel;
         _currentViewModelType = e.ViewModel?.GetType();

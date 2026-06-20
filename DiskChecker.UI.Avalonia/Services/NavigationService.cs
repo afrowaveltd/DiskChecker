@@ -21,7 +21,7 @@ public class NavigationService : INavigationService
 
     public ViewModelBase? CurrentViewModel { get; private set; }
 
-    public event EventHandler<NavigationEventArgs>? Navigated;
+    public event EventHandler<AppNavigationEventArgs>? Navigated;
 
     public void RegisterViewForViewModel<TViewModel, TView>()
         where TViewModel : ViewModelBase
@@ -55,6 +55,6 @@ public class NavigationService : INavigationService
             navigableViewModel.OnNavigatedTo();
         }
 
-        Navigated?.Invoke(this, new NavigationEventArgs { ViewModel = viewModel });
+        Navigated?.Invoke(this, new AppNavigationEventArgs { ViewModel = viewModel });
     }
 }

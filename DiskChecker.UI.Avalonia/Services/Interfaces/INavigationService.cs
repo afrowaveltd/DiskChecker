@@ -29,13 +29,13 @@ public interface INavigationService
     /// <summary>
     /// Event raised when navigation occurs.
     /// </summary>
-    event EventHandler<NavigationEventArgs>? Navigated;
+    event EventHandler<AppNavigationEventArgs>? Navigated;
 }
 
 /// <summary>
 /// Event args for navigation events.
 /// </summary>
-public class NavigationEventArgs : EventArgs
+public class AppNavigationEventArgs : EventArgs
 {
     /// <summary>
     /// Gets or sets the view model being navigated to.
