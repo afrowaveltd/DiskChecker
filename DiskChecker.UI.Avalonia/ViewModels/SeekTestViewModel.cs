@@ -842,6 +842,14 @@ public partial class SeekTestViewModel : ViewModelBase, INavigableViewModel, IDi
 
             var cert = await _certificateGenerator.GenerateCertificateAsync(session, card);
             cert.CertificateNumber = $"SEEK-{DateTime.UtcNow:yyyyMMdd}-{Guid.NewGuid():N}"[..24];
+            cert.TestType = $"Seek test ({SelectedTestType})";
+            cert.SeekAvgLatencyMs = result.AverageLatencyMs;
+            cert.SeekMinLatencyMs = result.MinLatencyMs;
+            cert.SeekMaxLatencyMs = result.MaxLatencyMs;
+            cert.SeekStdDevLatencyMs = result.LatencyStdDevMs;
+            cert.SeekP95LatencyMs = result.P95LatencyMs;
+            cert.SeekTestSummary = $"{SelectedTestType}: {result.SeekCount} seeků, avg {result.AverageLatencyMs:F2} ms, p95 {result.P95LatencyMs:F2} ms";
+            cert.Notes = session.Notes;
             await _diskCardRepository.CreateCertificateAsync(cert);
 
             StatusMessage = $"✅ Test dokončen – certifikát {cert.CertificateNumber} uložen";

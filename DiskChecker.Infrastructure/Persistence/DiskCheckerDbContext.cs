@@ -185,6 +185,11 @@ public class DiskCheckerDbContext : DbContext
             entity.HasIndex(e => e.GeneratedAt);
             entity.HasIndex(e => e.Status);
 
+            entity.HasOne(e => e.TestSession)
+                .WithMany()
+                .HasForeignKey(e => e.TestSessionId)
+                .OnDelete(DeleteBehavior.Cascade);
+
             entity.OwnsMany(e => e.SmartAttributes, attrs =>
             {
                 attrs.WithOwner().HasForeignKey("DiskCertificateId");

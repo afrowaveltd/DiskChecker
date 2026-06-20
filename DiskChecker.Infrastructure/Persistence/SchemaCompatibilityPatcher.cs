@@ -42,6 +42,10 @@ public static class SchemaCompatibilityPatcher
             EnsureColumn(dbContext, "TestSessions", "SmartBeforeJson");
             EnsureColumn(dbContext, "TestSessions", "SmartAfterJson");
             EnsureColumn(dbContext, "TestSessions", "ChartImagePath");
+            EnsureColumn(dbContext, "TestSessions", "CertificateId");
+            EnsureColumn(dbContext, "TestSessions", "SeekResultsJson");
+            EnsureColumn(dbContext, "TestSessions", "Sanitize1ResultJson");
+            EnsureColumn(dbContext, "TestSessions", "Sanitize2ResultJson");
         }
         if (TableExists(dbContext, "DiskCards"))
         {
@@ -185,6 +189,31 @@ public static class SchemaCompatibilityPatcher
             dbContext.Database.ExecuteSqlRaw("ALTER TABLE TestSessions ADD COLUMN ChartImagePath TEXT NULL;");
             return;
         }
+
+        if (tableName == "TestSessions" && columnName == "CertificateId")
+        {
+            dbContext.Database.ExecuteSqlRaw("ALTER TABLE TestSessions ADD COLUMN CertificateId INTEGER NULL;");
+            return;
+        }
+
+        if (tableName == "TestSessions" && columnName == "SeekResultsJson")
+        {
+            dbContext.Database.ExecuteSqlRaw("ALTER TABLE TestSessions ADD COLUMN SeekResultsJson TEXT NULL;");
+            return;
+        }
+
+        if (tableName == "TestSessions" && columnName == "Sanitize1ResultJson")
+        {
+            dbContext.Database.ExecuteSqlRaw("ALTER TABLE TestSessions ADD COLUMN Sanitize1ResultJson TEXT NULL;");
+            return;
+        }
+
+        if (tableName == "TestSessions" && columnName == "Sanitize2ResultJson")
+        {
+            dbContext.Database.ExecuteSqlRaw("ALTER TABLE TestSessions ADD COLUMN Sanitize2ResultJson TEXT NULL;");
+            return;
+        }
+
         if (tableName == "DiskCards" && columnName == "PowerOnHours")
         {
             dbContext.Database.ExecuteSqlRaw("ALTER TABLE DiskCards ADD COLUMN PowerOnHours INTEGER NULL;");

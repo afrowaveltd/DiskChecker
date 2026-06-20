@@ -3,6 +3,8 @@ using System.Collections.Generic;
 using System.Data.Common;
 using System.Globalization;
 using System.Linq;
+using System.Security.Cryptography;
+using System.Text;
 using System.Threading.Tasks;
 using DiskChecker.Core.Interfaces;
 using DiskChecker.Core.Models;
@@ -73,7 +75,23 @@ public class DiskCardRepository : IDiskCardRepository
 
     public async Task<DiskCard> CreateAsync(DiskCard card)
     {
-        card.CreatedAt = DateTime.UtcNow;
+        ArgumentNullException.ThrowIfNull(card);
+
+        // SerialNumber is unique in the DB. Some Windows/USB drives expose no reliable
+        // serial; older UI flows passed an empty string, which fails on the next such
+        // disk/test. Store a stable NOSN-* fallback and reuse an existing card when possible.
+        card.SerialNumber = BuildSafeSerialIdentity(card);
+
+        var existing = await _context.DiskCards
+            .FirstOrDefaultAsync(c => c.SerialNumber == card.SerialNumber || c.DevicePath == card.DevicePath);
+        if (existing != null)
+        {
+            ApplyCardMetadata(existing, card);
+            await _context.SaveChangesAsync();
+            return existing;
+        }
+
+        card.CreatedAt = card.CreatedAt == default ? DateTime.UtcNow : card.CreatedAt;
         card.LastTestedAt = DateTime.UtcNow;
         
         _context.DiskCards.Add(card);
@@ -604,18 +622,70 @@ public class DiskCardRepository : IDiskCardRepository
 
     public async Task<DiskCertificate> CreateCertificateAsync(DiskCertificate certificate)
     {
-        certificate.CertificateNumber = GenerateCertificateNumber();
-        certificate.GeneratedAt = DateTime.UtcNow;
+        ArgumentNullException.ThrowIfNull(certificate);
+
+        if (certificate.Id > 0)
+        {
+            await UpdateCertificateAsync(certificate);
+            return certificate;
+        }
+
+        if (certificate.DiskCardId <= 0 || !await _context.DiskCards.AnyAsync(c => c.Id == certificate.DiskCardId))
+        {
+            throw new InvalidOperationException($"Certificate cannot be saved because DiskCardId {certificate.DiskCardId} does not exist.");
+        }
+
+        if (certificate.TestSessionId <= 0 || !await _context.TestSessions.AnyAsync(s => s.Id == certificate.TestSessionId))
+        {
+            throw new InvalidOperationException($"Certificate cannot be saved because TestSessionId {certificate.TestSessionId} does not exist.");
+        }
+
+        if (string.IsNullOrWhiteSpace(certificate.CertificateNumber))
+        {
+            certificate.CertificateNumber = GenerateCertificateNumber();
+        }
+        else if (await _context.DiskCertificates.AnyAsync(c => c.CertificateNumber == certificate.CertificateNumber))
+        {
+            certificate.CertificateNumber = GenerateCertificateNumber();
+        }
+
+        if (certificate.GeneratedAt == default)
+        {
+            certificate.GeneratedAt = DateTime.UtcNow;
+        }
         
         _context.DiskCertificates.Add(certificate);
         await _context.SaveChangesAsync();
+
+        var session = await _context.TestSessions.FindAsync(certificate.TestSessionId);
+        if (session != null && session.CertificateId != certificate.Id)
+        {
+            session.CertificateId = certificate.Id;
+            await _context.SaveChangesAsync();
+        }
+
         return certificate;
     }
 
     public async Task UpdateCertificateAsync(DiskCertificate certificate)
     {
+        ArgumentNullException.ThrowIfNull(certificate);
+
+        if (certificate.Id <= 0)
+        {
+            await CreateCertificateAsync(certificate);
+            return;
+        }
+
         _context.DiskCertificates.Update(certificate);
         await _context.SaveChangesAsync();
+
+        var session = await _context.TestSessions.FindAsync(certificate.TestSessionId);
+        if (session != null && session.CertificateId != certificate.Id)
+        {
+            session.CertificateId = certificate.Id;
+            await _context.SaveChangesAsync();
+        }
     }
 
     // ========== Comparisons ==========
@@ -646,6 +716,69 @@ public class DiskCardRepository : IDiskCardRepository
         return disks
             .GroupBy(c => c.OverallGrade)
             .ToDictionary(g => g.Key, g => g.ToList());
+    }
+
+    private static string BuildSafeSerialIdentity(DiskCard card)
+    {
+        var serial = NormalizeIdentityToken(card.SerialNumber);
+        if (IsReliableSerialIdentity(serial))
+        {
+            return serial.Length <= 120 ? serial : serial[..120];
+        }
+
+        var fingerprint = string.Join("|",
+            card.DevicePath?.Trim() ?? string.Empty,
+            card.ModelName?.Trim() ?? string.Empty,
+            card.FirmwareVersion?.Trim() ?? string.Empty,
+            card.Capacity.ToString(CultureInfo.InvariantCulture));
+
+        var hash = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(fingerprint)))[..24];
+        return $"NOSN-{hash}";
+    }
+
+    private static string NormalizeIdentityToken(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return string.Empty;
+        }
+
+        var sb = new StringBuilder(value.Length);
+        foreach (var ch in value.Trim())
+        {
+            if (!char.IsWhiteSpace(ch) && ch != '-' && ch != '_')
+            {
+                sb.Append(char.ToUpperInvariant(ch));
+            }
+        }
+
+        return sb.ToString();
+    }
+
+    private static bool IsReliableSerialIdentity(string? serial)
+    {
+        if (string.IsNullOrWhiteSpace(serial) || serial.Length < 4)
+        {
+            return false;
+        }
+
+        if (serial.StartsWith("NOSN", StringComparison.OrdinalIgnoreCase) || serial.All(ch => ch == serial[0]))
+        {
+            return false;
+        }
+
+        return serial is not "UNKNOWN" and not "N/A" and not "NONE" and not "NOTAVAILABLE" and not "SERIALNUMBER" and not "GENERIC" and not "DEFAULT";
+    }
+
+    private static void ApplyCardMetadata(DiskCard existing, DiskCard incoming)
+    {
+        if (!string.IsNullOrWhiteSpace(incoming.ModelName) && string.IsNullOrWhiteSpace(existing.ModelName)) existing.ModelName = incoming.ModelName;
+        if (!string.IsNullOrWhiteSpace(incoming.DevicePath)) existing.DevicePath = incoming.DevicePath;
+        if (!string.IsNullOrWhiteSpace(incoming.DiskType) && string.IsNullOrWhiteSpace(existing.DiskType)) existing.DiskType = incoming.DiskType;
+        if (!string.IsNullOrWhiteSpace(incoming.InterfaceType) && string.IsNullOrWhiteSpace(existing.InterfaceType)) existing.InterfaceType = incoming.InterfaceType;
+        if (!string.IsNullOrWhiteSpace(incoming.FirmwareVersion) && string.IsNullOrWhiteSpace(existing.FirmwareVersion)) existing.FirmwareVersion = incoming.FirmwareVersion;
+        if (incoming.Capacity > 0 && existing.Capacity <= 0) existing.Capacity = incoming.Capacity;
+        existing.LastTestedAt = DateTime.UtcNow;
     }
 
     private static string GenerateCertificateNumber()
