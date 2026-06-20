@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
@@ -26,7 +26,12 @@ public class SeekTestExecutor : ISeekTestExecutor
     /// On Windows the first direct device read can include handle/device cache spin-up and
     /// storage-stack initialization latency, which can dwarf real seek latency and distort charts.
     /// </summary>
-    private const int WarmupSeekCount = 1;
+    // Two internal warm-up operations are intentionally discarded. The first one primes
+    // the direct-device I/O path; on full-stroke tests the first generated position can
+    // be a near no-op/edge read, so the first *real* measured-looking sample may still
+    // include Windows storage stack/device warm-up overhead. Discarding both internal
+    // samples ensures the first value that reaches results/charts is a stable measurement.
+    private const int WarmupSeekCount = 2;
 
     // ──────────────────────────────────────────────
     //  SMART-informed recommendation constants
@@ -222,9 +227,10 @@ public class SeekTestExecutor : ISeekTestExecutor
 
         try
         {
-            // Generate one extra warm-up seek. The first measured device I/O can include OS/device
-            // initialization overhead (especially on Windows) and is intentionally not reported.
-            // The requested result count remains unchanged because the warm-up sample is discarded.
+            // Generate internal warm-up seeks. Initial direct-device I/O can include OS/device
+            // initialization overhead (especially on Windows) and must never reach persisted
+            // samples, final statistics, or charts. The requested result count remains unchanged
+            // because the internal warm-up samples are discarded during collection.
             var measuredSeekCount = Math.Max(1, request.SeekCount);
             var positions = GenerateSeekPositions(
                 request.TestType,
@@ -476,8 +482,9 @@ public class SeekTestExecutor : ISeekTestExecutor
         if (deviceHandle == null || deviceHandle.IsInvalid)
         {
             _logger?.LogError("Failed to open device {DevicePath} for direct I/O", devicePath);
-            // Return error samples for all positions
-            for (int i = 0; i < totalSeeks; i++)
+            // Return error samples only for reported positions. Warm-up seeks are internal
+            // and must never leak into result samples/final charts.
+            for (int i = 0; i < expectedSamples; i++)
             {
                 samples.Add(new SeekLatencySample
                 {
@@ -1083,3 +1090,6 @@ public class SeekTestExecutor : ISeekTestExecutor
         }
     }
 }
+
+
+
