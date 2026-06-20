@@ -21,6 +21,13 @@ public class SeekTestExecutor : ISeekTestExecutor
     private static readonly bool IsLinux = RuntimeInformation.IsOSPlatform(OSPlatform.Linux);
     private static readonly bool IsWindows = RuntimeInformation.IsOSPlatform(OSPlatform.Windows);
 
+    /// <summary>
+    /// One unreported warm-up seek is executed before every seek test.
+    /// On Windows the first direct device read can include handle/device cache spin-up and
+    /// storage-stack initialization latency, which can dwarf real seek latency and distort charts.
+    /// </summary>
+    private const int WarmupSeekCount = 1;
+
     // ──────────────────────────────────────────────
     //  SMART-informed recommendation constants
     // ──────────────────────────────────────────────
@@ -215,10 +222,13 @@ public class SeekTestExecutor : ISeekTestExecutor
 
         try
         {
-            // Generate seek positions
+            // Generate one extra warm-up seek. The first measured device I/O can include OS/device
+            // initialization overhead (especially on Windows) and is intentionally not reported.
+            // The requested result count remains unchanged because the warm-up sample is discarded.
+            var measuredSeekCount = Math.Max(1, request.SeekCount);
             var positions = GenerateSeekPositions(
                 request.TestType,
-                request.SeekCount,
+                measuredSeekCount + WarmupSeekCount,
                 request.Drive.TotalSize,
                 request.SkipSegments,
                 request.BlockSizeBytes);
@@ -450,7 +460,8 @@ public class SeekTestExecutor : ISeekTestExecutor
         SeekTestResult result,
         CancellationToken cancellationToken)
     {
-        var samples = new List<SeekLatencySample>(positions.Count);
+        var expectedSamples = Math.Max(0, positions.Count - WarmupSeekCount);
+        var samples = new List<SeekLatencySample>(expectedSamples);
         var totalSeeks = positions.Count;
 
         using var timeoutCts = timeoutSeconds > 0
@@ -534,9 +545,10 @@ public class SeekTestExecutor : ISeekTestExecutor
                         linkedCts.Token.ThrowIfCancellationRequested();
 
                         var (sourceLba, destLba) = positions[i];
+                        var isWarmupSeek = i < WarmupSeekCount;
                         var sample = new SeekLatencySample
                         {
-                            Index = i + 1,
+                            Index = isWarmupSeek ? 0 : i - WarmupSeekCount + 1,
                             SourceLba = sourceLba,
                             DestinationLba = destLba,
                             SeekDistance = Math.Abs(destLba - sourceLba),
@@ -596,12 +608,12 @@ public class SeekTestExecutor : ISeekTestExecutor
                                     {
                                         _logger?.LogError("Disk {DevicePath} disappeared during seek test at sample {Index}", devicePath, i + 1);
 
-                                        // Mark all remaining samples as errors
-                                        for (int j = i + 1; j < totalSeeks; j++)
+                                        // Mark all remaining reported samples as errors. Warm-up seek is never exposed.
+                                        for (int j = Math.Max(i + 1, WarmupSeekCount); j < totalSeeks; j++)
                                         {
                                             samples.Add(new SeekLatencySample
                                             {
-                                                Index = j + 1,
+                                                Index = j - WarmupSeekCount + 1,
                                                 HasError = true,
                                                 ErrorMessage = "Disk disappeared — device no longer present",
                                                 TimestampUtc = DateTime.UtcNow
@@ -615,8 +627,8 @@ public class SeekTestExecutor : ISeekTestExecutor
                                             {
                                                 TestId = Guid.Parse(result.TestId),
                                                 PercentComplete = 100.0,
-                                                SeeksCompleted = totalSeeks,
-                                                TotalSeeks = totalSeeks,
+                                                SeeksCompleted = expectedSamples,
+                                                TotalSeeks = expectedSamples,
                                                 CurrentAverageLatencyMs = 0,
                                                 LatestSample = sample,
                                                 TimestampUtc = DateTime.UtcNow
@@ -634,12 +646,12 @@ public class SeekTestExecutor : ISeekTestExecutor
                                 {
                                     _logger?.LogError("Aborting seek test: {Count} consecutive errors on {DevicePath}", consecutiveErrors, devicePath);
 
-                                    // Mark all remaining samples as errors
-                                    for (int j = i + 1; j < totalSeeks; j++)
+                                    // Mark all remaining reported samples as errors. Warm-up seek is never exposed.
+                                    for (int j = Math.Max(i + 1, WarmupSeekCount); j < totalSeeks; j++)
                                     {
                                         samples.Add(new SeekLatencySample
                                         {
-                                            Index = j + 1,
+                                            Index = j - WarmupSeekCount + 1,
                                             HasError = true,
                                             ErrorMessage = $"Skipped — {consecutiveErrors} consecutive errors",
                                             TimestampUtc = DateTime.UtcNow
@@ -655,8 +667,8 @@ public class SeekTestExecutor : ISeekTestExecutor
                                         {
                                             TestId = Guid.Parse(result.TestId),
                                             PercentComplete = 100.0,
-                                            SeeksCompleted = totalSeeks,
-                                            TotalSeeks = totalSeeks,
+                                            SeeksCompleted = expectedSamples,
+                                            TotalSeeks = expectedSamples,
                                             CurrentAverageLatencyMs = 0,
                                             LatestSample = sample,
                                             TimestampUtc = DateTime.UtcNow
@@ -703,22 +715,32 @@ public class SeekTestExecutor : ISeekTestExecutor
                             consecutiveErrors++;
                         }
 
+                        if (isWarmupSeek)
+                        {
+                            // The first direct I/O is only a warm-up. Do not add it to results,
+                            // statistics, progress callbacks, or charts. Also reset transient error
+                            // tracking so a one-off warm-up delay does not poison the real test.
+                            consecutiveErrors = 0;
+                            continue;
+                        }
+
                         samples.Add(sample);
 
-                        // Progress reporting (includes latest sample for real-time UI)
+                        // Progress reporting (includes latest reported sample for real-time UI)
                         if (progressCallback != null && lastProgressTime.Elapsed >= progressInterval)
                         {
                             var successful = samples.Where(s => !s.HasError).ToList();
                             var avgLatency = successful.Count > 0
                                 ? successful.Average(s => s.LatencyMs)
                                 : 0.0;
+                            var reportedCompleted = samples.Count;
 
                             progressCallback(new SeekTestProgress
                             {
                                 TestId = Guid.Parse(result.TestId),
-                                PercentComplete = (double)(i + 1) / totalSeeks * 100.0,
-                                SeeksCompleted = i + 1,
-                                TotalSeeks = totalSeeks,
+                                PercentComplete = expectedSamples > 0 ? (double)reportedCompleted / expectedSamples * 100.0 : 100.0,
+                                SeeksCompleted = reportedCompleted,
+                                TotalSeeks = expectedSamples,
                                 CurrentAverageLatencyMs = avgLatency,
                                 LatestSample = sample,
                                 TimestampUtc = DateTime.UtcNow
