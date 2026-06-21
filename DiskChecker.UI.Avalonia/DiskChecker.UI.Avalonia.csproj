@@ -33,7 +33,6 @@
        "Field not found 'Avalonia.Input.Gestures.PinchEvent'" when constructing chart views. -->
 
   <ItemGroup>
-    <PackageReference Include="Tmds.DBus.Protocol" Version="0.94.2" />
     <PackageReference Include="Avalonia" Version="11.3.12" />
     <PackageReference Include="Avalonia.Desktop" Version="11.3.12" />
     <PackageReference Include="Avalonia.Themes.Fluent" Version="11.3.12" />

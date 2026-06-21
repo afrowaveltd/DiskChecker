@@ -329,75 +329,162 @@ public partial class SafeDestructiveTestViewModel : ViewModelBase, INavigableVie
     {
         BackupTargetDrives.Clear();
 
-        // On Linux, use DriveInfo for mounted volumes (they have free space info).
-        // On Windows, DriveInfo also works for logical volumes.
+        if (RuntimeInformation.IsOSPlatform(OSPlatform.Linux))
+        {
+            await FindBackupTargetsLinuxAsync();
+        }
+        else
+        {
+            FindBackupTargetsWindows();
+        }
+
+        // Auto-select the best target (must have enough space)
+        var best = BackupTargetDrives
+            .Where(t => t.TotalFreeSpace >= DiskTotalBytes)
+            .OrderByDescending(t => t.TotalFreeSpace)
+            .FirstOrDefault();
+        if (best != null)
+        {
+            best.IsSelected = true;
+            SelectedBackupTarget = best;
+        }
+        else if (BackupTargetDrives.Count > 0)
+        {
+            // No target has enough space — still show them but don't auto-select
+            BackupTargetPath = "(není vybrán — žádný disk nemá dostatek místa)";
+            HasEnoughBackupSpace = false;
+            BackupSpaceSummary = $"❌ Žádný z {BackupTargetDrives.Count} cílových disků nemá dostatek místa (potřeba {DiskTotalSizeText}).";
+            StartWorkflowCommand.NotifyCanExecuteChanged();
+            return;
+        }
+
+        RecalculateBackupSpace();
+    }
+
+    // ── Linux: use lsblk to find mounted partitions with free space ──
+
+    private async Task FindBackupTargetsLinuxAsync()
+    {
+        try
+        {
+            // lsblk with filesystem info: NAME, SIZE, FSAVAIL, MOUNTPOINT, FSTYPE, MODEL, TYPE
+            var lsblkOutput = await ExecuteCommandAsync("lsblk", "-J -b -o NAME,SIZE,FSAVAIL,MOUNTPOINT,FSTYPE,MODEL,TYPE");
+            if (string.IsNullOrEmpty(lsblkOutput)) return;
+
+            using var doc = System.Text.Json.JsonDocument.Parse(lsblkOutput);
+            if (!doc.RootElement.TryGetProperty("blockdevices", out var devices)) return;
+
+            // Determine which top-level disk is the source
+            string? sourceDiskName = null;
+            if (SelectedDrive != null)
+            {
+                var sourceDeviceName = System.IO.Path.GetFileName(SelectedDrive.Path);
+                sourceDiskName = FindParentDiskName(devices, sourceDeviceName);
+            }
+
+            // Iterate top-level disks, collect mounted partitions as targets
+            foreach (var disk in devices.EnumerateArray())
+            {
+                var diskName = disk.TryGetProperty("name", out var dn) ? dn.GetString() : "";
+                var diskType = disk.TryGetProperty("type", out var dt) ? dt.GetString() : "";
+
+                // Skip source disk and non-disk devices (like loop, ram)
+                if (diskType != "disk") continue;
+                if (sourceDiskName != null &&
+                    string.Equals(diskName, sourceDiskName, StringComparison.OrdinalIgnoreCase))
+                    continue;
+
+                var diskModel = disk.TryGetProperty("model", out var dm) ? dm.GetString()?.Trim() : null;
+
+                // Check children (partitions)
+                if (disk.TryGetProperty("children", out var children))
+                {
+                    foreach (var part in children.EnumerateArray())
+                    {
+                        var partType = part.TryGetProperty("type", out var pt) ? pt.GetString() : "";
+                        if (partType != "part") continue;
+
+                        var mountPoint = part.TryGetProperty("mountpoint", out var mp) ? mp.GetString() : null;
+                        if (string.IsNullOrWhiteSpace(mountPoint) || mountPoint == "null") continue;
+
+                        var fsAvail = part.TryGetProperty("fsavail", out var fa) &&
+                                      fa.ValueKind == System.Text.Json.JsonValueKind.Number
+                            ? fa.GetInt64() : 0;
+
+                        // Skip if fsavail is null/zero (not a mounted filesystem)
+                        if (fsAvail <= 0) continue;
+
+                        var fsType = part.TryGetProperty("fstype", out var ft) ? ft.GetString() : "";
+                        var partName = part.TryGetProperty("name", out var pn) ? pn.GetString() : "";
+
+                        var displayName = diskModel != null
+                            ? $"{diskModel} — {mountPoint} ({fsType})"
+                            : $"/dev/{diskName} — {mountPoint} ({fsType})";
+
+                        BackupTargetDrives.Add(new BackupTargetItem
+                        {
+                            DrivePath = mountPoint,
+                            DisplayName = displayName,
+                            TotalFreeSpace = fsAvail,
+                            FreeSpaceText = FormatBytesLong(fsAvail),
+                            IsSelected = false,
+                            AllocatedBytes = 0
+                        });
+                    }
+                }
+            }
+        }
+        catch { /* non-critical — fall through to empty list */ }
+    }
+
+    /// <summary>
+    /// Given a device name (e.g. "sda1" or "nvme0n1p2"), finds the parent disk
+    /// name ("sda" or "nvme0n1") in the lsblk device tree.
+    /// Returns the device name itself if it's already a top-level disk.
+    /// </summary>
+    private static string? FindParentDiskName(
+        System.Text.Json.JsonElement devices,
+        string deviceName)
+    {
+        foreach (var disk in devices.EnumerateArray())
+        {
+            var diskName = disk.TryGetProperty("name", out var dn) ? dn.GetString() : "";
+            if (string.Equals(diskName, deviceName, StringComparison.OrdinalIgnoreCase))
+                return diskName; // It's already a top-level disk
+
+            if (disk.TryGetProperty("children", out var children))
+            {
+                foreach (var child in children.EnumerateArray())
+                {
+                    var childName = child.TryGetProperty("name", out var cn) ? cn.GetString() : "";
+                    if (string.Equals(childName, deviceName, StringComparison.OrdinalIgnoreCase))
+                        return diskName; // Found in children → parent is this disk
+                }
+            }
+        }
+        return null;
+    }
+
+    // ── Windows: use DriveInfo ──
+
+    private void FindBackupTargetsWindows()
+    {
         var drives = System.IO.DriveInfo.GetDrives()
             .Where(d => d.IsReady && d.DriveType == System.IO.DriveType.Fixed)
             .OrderByDescending(d => d.AvailableFreeSpace)
             .ToList();
 
-        // Exclude the source drive
+        // Exclude source drive
         if (SelectedDrive != null)
         {
+            var sourceRoot = System.IO.Path.GetPathRoot(SelectedDrive.Path)?.TrimEnd('\\', '/');
             drives = drives.Where(d =>
             {
                 var root = d.RootDirectory.FullName.TrimEnd('\\', '/');
-                var sourceRoot = System.IO.Path.GetPathRoot(SelectedDrive.Path)?.TrimEnd('\\', '/');
                 return !string.Equals(root, sourceRoot, StringComparison.OrdinalIgnoreCase);
             }).ToList();
         }
 
-        // On Linux, also add raw physical devices that aren't mounted but could be
-        // used for raw-image backup (requires root).
-        if (RuntimeInformation.IsOSPlatform(OSPlatform.Linux))
-        {
-            try
-            {
-                var lsblkOutput = await ExecuteCommandAsync("lsblk", "-J -b -o NAME,SIZE,TYPE,MOUNTPOINT,MODEL");
-                if (!string.IsNullOrEmpty(lsblkOutput))
-                {
-                    using var doc = System.Text.Json.JsonDocument.Parse(lsblkOutput);
-                    if (doc.RootElement.TryGetProperty("blockdevices", out var devices))
-                    {
-                        foreach (var device in devices.EnumerateArray())
-                        {
-                            var type = device.TryGetProperty("type", out var t) ? t.GetString() : "";
-                            if (type != "disk") continue;
-
-                            var name = device.TryGetProperty("name", out var n) ? n.GetString() : "";
-                            if (string.IsNullOrEmpty(name)) continue;
-
-                            var devPath = $"/dev/{name}";
-                            // Skip source drive
-                            if (SelectedDrive != null &&
-                                string.Equals(devPath, SelectedDrive.Path, StringComparison.OrdinalIgnoreCase))
-                                continue;
-
-                            // Skip if already covered by a DriveInfo entry
-                            if (drives.Any(d => d.Name.Contains(name, StringComparison.OrdinalIgnoreCase)))
-                                continue;
-
-                            var size = device.TryGetProperty("size", out var sz) && sz.ValueKind == System.Text.Json.JsonValueKind.Number
-                                ? sz.GetInt64() : 0;
-                            var model = device.TryGetProperty("model", out var m) ? m.GetString()?.Trim() : null;
-
-                            BackupTargetDrives.Add(new BackupTargetItem
-                            {
-                                DrivePath = devPath,
-                                DisplayName = model != null ? $"{model} ({devPath})" : devPath,
-                                TotalFreeSpace = size, // raw device: total size = "free" for raw backup
-                                FreeSpaceText = FormatBytesLong(size),
-                                IsSelected = false,
-                                AllocatedBytes = 0
-                            });
-                        }
-                    }
-                }
-            }
-            catch { /* non-critical */ }
-        }
-
-        // Populate from DriveInfo
         foreach (var d in drives)
         {
             BackupTargetDrives.Add(new BackupTargetItem
@@ -410,16 +497,6 @@ public partial class SafeDestructiveTestViewModel : ViewModelBase, INavigableVie
                 AllocatedBytes = 0
             });
         }
-
-        // Auto-select the best target
-        var best = BackupTargetDrives.OrderByDescending(t => t.TotalFreeSpace).FirstOrDefault();
-        if (best != null)
-        {
-            best.IsSelected = true;
-            SelectedBackupTarget = best;
-        }
-
-        RecalculateBackupSpace();
     }
 
     /// <summary>
