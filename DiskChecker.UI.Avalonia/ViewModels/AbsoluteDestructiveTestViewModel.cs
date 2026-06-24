@@ -76,6 +76,7 @@ public partial class AbsoluteDestructiveTestViewModel : ViewModelBase, INavigabl
     private readonly IDiskCardRepository _diskCardRepository;
     private readonly ICertificateGenerator _certificateGenerator;
     private readonly TestCompletionNotificationService _notificationService;
+    private readonly IPowerManagementService _powerManagementService;
 
     // ──────────────────────────────────────────────
     //  State
@@ -87,6 +88,7 @@ public partial class AbsoluteDestructiveTestViewModel : ViewModelBase, INavigabl
     private DateTime _phaseStartTime;
     private DateTime _lastUiUpdate = DateTime.MinValue;
     private const int UiUpdateThrottleMs = 100; // Update UI max every 100ms
+    private IPowerManagementSession? _powerSession;
 
     // SMART snapshots at each checkpoint
     private SmartaData? _smartBaseline;
@@ -258,7 +260,8 @@ public partial class AbsoluteDestructiveTestViewModel : ViewModelBase, INavigabl
         SmartCheckService smartCheckService,
         IDiskCardRepository diskCardRepository,
         ICertificateGenerator certificateGenerator,
-        TestCompletionNotificationService notificationService)
+        TestCompletionNotificationService notificationService,
+        IPowerManagementService powerManagementService)
     {
         _navigationService = navigationService;
         _selectedDiskService = selectedDiskService;
@@ -270,6 +273,7 @@ public partial class AbsoluteDestructiveTestViewModel : ViewModelBase, INavigabl
         _diskCardRepository = diskCardRepository;
         _certificateGenerator = certificateGenerator;
         _notificationService = notificationService;
+        _powerManagementService = powerManagementService;
 
         // Build phase timeline
         Phases.Add(new TestPhaseViewModel { Name = "Příprava", Icon = "🔍", PhaseIndex = 0 });
@@ -536,6 +540,20 @@ public partial class AbsoluteDestructiveTestViewModel : ViewModelBase, INavigabl
 
         try
         {
+            // Start power management session
+            try
+            {
+                _powerSession = await _powerManagementService.BeginTestSessionAsync(_testCancellation.Token);
+                StatusMessage = "🔋 Aktivováno řízení napájení — zabráněno uspání systému";
+            }
+            catch (Exception ex)
+            {
+                // Non-critical — test can continue without power management
+                await _dialogService.ShowWarningAsync("Upozornění", 
+                    $"Nepodařilo se aktivovat řízení napájení: {ex.Message}\n\n" +
+                    "Test bude pokračovat, ale systém se může uspat během dlouhého testu.");
+            }
+
             await RunAllPhasesAsync(_testCancellation.Token);
         }
         catch (OperationCanceledException)
@@ -551,6 +569,23 @@ public partial class AbsoluteDestructiveTestViewModel : ViewModelBase, INavigabl
         }
         finally
         {
+            // Restore power settings
+            if (_powerSession != null)
+            {
+                try
+                {
+                    await _powerSession.RestoreAsync();
+                    _powerSession.Dispose();
+                    _powerSession = null;
+                    StatusMessage = "🔋 Obnoveno původní nastavení napájení";
+                }
+                catch (Exception ex)
+                {
+                    // Log but don't interrupt cleanup
+                    StatusMessage = $"⚠️ Chyba při obnovení nastavení napájení: {ex.Message}";
+                }
+            }
+
             IsTesting = false;
             _testCancellation?.Dispose();
             _testCancellation = null;
@@ -1841,6 +1876,7 @@ public partial class AbsoluteDestructiveTestViewModel : ViewModelBase, INavigabl
         _disposed = true;
         _testCancellation?.Cancel();
         _testCancellation?.Dispose();
+        _powerSession?.Dispose();
         GC.SuppressFinalize(this);
     }
 }

@@ -182,7 +182,10 @@ public partial class App : global::Avalonia.Application
         
         // Shared state for full report preview/print
         services.AddSingleton<ReportDocumentState>();
-        
+
+        // Power Management Service for preventing sleep/power-down during tests
+        services.AddSingleton<IPowerManagementService, PowerManagementService>();
+
         // Platform-specific
         // Load configuration (optional appsettings.json) and bind SMART cache options
         // Load simple appsettings.json (optional) to configure SMART cache TTL without
