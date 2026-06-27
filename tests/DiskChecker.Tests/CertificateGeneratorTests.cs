@@ -1,5 +1,4 @@
 using System;
-using System.Runtime.Versioning;
 using System.Threading.Tasks;
 using DiskChecker.Core.Interfaces;
 using DiskChecker.Core.Models;
@@ -11,7 +10,6 @@ using TestResult = DiskChecker.Core.Models.TestResult;
 
 namespace DiskChecker.Tests;
 
-[SupportedOSPlatform("windows")]
 public class CertificateGeneratorTests
 {
     [Fact]

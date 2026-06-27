@@ -122,8 +122,13 @@
                                     Background="{Binding IsRawImageMode, Converter={StaticResource BooleanToBrushConverter}, ConverterParameter=Selected:ThemePrimaryBrush;Normal:ThemeSecondaryBackgroundBrush}"
                                     Padding="12,8" CornerRadius="6" FontSize="11"
                                     Cursor="Hand"/>
+                            <Button Content="🗄️ VHDx obraz (dynamický)"
+                                    Command="{Binding SwitchToVhdxModeCommand}"
+                                    Background="{Binding IsVhdxImageMode, Converter={StaticResource BooleanToBrushConverter}, ConverterParameter=Selected:ThemePrimaryBrush;Normal:ThemeSecondaryBackgroundBrush}"
+                                    Padding="12,8" CornerRadius="6" FontSize="11"
+                                    Cursor="Hand"/>
                         </StackPanel>
-                        <TextBlock Text="File-level: kopíruje vybrané složky a soubory (vyžaduje čitelný souborový systém).&#xa;Raw obraz: kopie sektor po sektoru (pro BitLocker, neznámé FS, maximální věrnost)."
+                        <TextBlock Text="File-level: kopíruje vybrané složky a soubory (vyžaduje čitelný souborový systém).&#xa;Raw obraz: kopie sektor po sektoru (pro BitLocker, neznámé FS, maximální věrnost).&#xa;VHDx obraz: dynamický VHDx — připojitelný ve Windows i Linuxu, roste jen podle zapsaných dat."
                                    FontSize="9"
                                    Foreground="{DynamicResource ThemeTextMutedBrush}"
                                    TextWrapping="Wrap"/>

@@ -656,7 +656,27 @@ public partial class AbsoluteDestructiveTestViewModel : ViewModelBase, INavigabl
         };
 
         SeekChartTitle = title;
+        ApplySeekChartSeries(points);
+    }
 
+    /// <summary>
+    /// Refreshes the seek chart to show the currently selected seek type.
+    /// Called after a seek phase completes so the chart renders the collected data.
+    /// </summary>
+    private void RefreshSeekChart()
+    {
+        var points = SelectedSeekChartIndex switch
+        {
+            0 => _seekFullStrokePoints,
+            1 => _seekRandomPoints,
+            2 => _seekSkipPoints,
+            _ => _seekFullStrokePoints
+        };
+        ApplySeekChartSeries(points);
+    }
+
+    private void ApplySeekChartSeries(ObservableCollection<ObservablePoint> points)
+    {
         var newSeries = new ISeries[]
         {
             new LineSeries<ObservablePoint>
@@ -1115,8 +1135,10 @@ public partial class AbsoluteDestructiveTestViewModel : ViewModelBase, INavigabl
             SetPhase(index, TestPhaseStatus.Completed,
                 $"avg: {avgLatency:F2} ms | P95: {result.P95LatencyMs:F2} ms | vzorků: {result.SeekCount}");
 
-            // Mark seek charts as available
+            // Mark seek charts as available and force chart refresh.
+            // LiveCharts2 SkiaSharp needs series reassignment to detect ObservableCollection changes.
             HasSeekCharts = true;
+            RefreshSeekChart();
         }, ct);
     }
 
@@ -1514,6 +1536,23 @@ public partial class AbsoluteDestructiveTestViewModel : ViewModelBase, INavigabl
             cert.Sanitize2Errors = _sanitize2Result.ErrorsDetected;
         }
 
+        // Populate generic speed fields used by CertificateView (AvgWriteSpeed, AvgReadSpeed, etc.)
+        // Use the second sanitization as the "final" speed, or first if second unavailable.
+        var finalSanitize = _sanitize2Result ?? _sanitize1Result;
+        if (finalSanitize != null)
+        {
+            cert.AvgWriteSpeed = finalSanitize.WriteSpeedMBps;
+            cert.MaxWriteSpeed = finalSanitize.WriteSpeedMBps; // sanitization reports average, use as max
+            cert.AvgReadSpeed = finalSanitize.ReadSpeedMBps;
+            cert.MaxReadSpeed = finalSanitize.ReadSpeedMBps;
+        }
+
+        // Populate chart profile points for the certificate view
+        cert.WriteProfilePoints = DownsamplePoints(
+            _sanitizePass2WritePoints.Count > 0 ? _sanitizePass2WritePoints : _sanitizePass1WritePoints, 32);
+        cert.ReadProfilePoints = DownsamplePoints(
+            _sanitizePass2ReadPoints.Count > 0 ? _sanitizePass2ReadPoints : _sanitizePass1ReadPoints, 32);
+
         if (cert.Sanitize1AvgWriteMBps > 0 && cert.Sanitize2AvgWriteMBps > 0)
         {
             cert.WriteSpeedChangePercent = ((cert.Sanitize2AvgWriteMBps.Value - cert.Sanitize1AvgWriteMBps.Value)
@@ -1821,6 +1860,27 @@ public partial class AbsoluteDestructiveTestViewModel : ViewModelBase, INavigabl
     {
         var gb = bytes / (1024.0 * 1024.0 * 1024.0);
         return gb >= 1024 ? $"{gb / 1024:F2} TB" : $"{gb:F0} GB";
+    }
+
+    /// <summary>
+    /// Downsamples a collection of ObservablePoint (X=progress%, Y=speed) to a list of
+    /// Y-values suitable for certificate chart rendering.
+    /// </summary>
+    private static List<double> DownsamplePoints(
+        ObservableCollection<ObservablePoint> points, int targetCount)
+    {
+        if (points.Count == 0) return new List<double>();
+        if (points.Count <= targetCount) return points.Select(p => p.Y ?? 0).ToList();
+
+        var result = new List<double>(targetCount);
+        var step = (double)points.Count / targetCount;
+        for (int i = 0; i < targetCount; i++)
+        {
+            var idx = (int)(i * step);
+            if (idx >= points.Count) idx = points.Count - 1;
+            result.Add(points[idx].Y ?? 0);
+        }
+        return result;
     }
 
     private static double Percentile(List<double> sorted, double percentile)

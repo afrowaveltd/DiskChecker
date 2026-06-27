@@ -11,7 +11,6 @@ namespace DiskChecker.Infrastructure;
 
 public static class InfrastructureServiceExtensions
 {
-    [SupportedOSPlatform("windows")]
     public static IServiceCollection AddInfrastructureServices(
         this IServiceCollection services,
         string connectionString)
@@ -19,7 +18,7 @@ public static class InfrastructureServiceExtensions
         // Database context is configured in App.axaml.cs with proper DbContextOptions
         // Do not register DbContext as Singleton here - it's configured with UseSqlite
 
-        // Services (Windows-only due to System.Drawing)
+        // Services (cross-platform via SkiaSharp)
         services.AddScoped<CertificateGenerator>();
         services.AddScoped<IMetricsCollector>(provider => provider.GetRequiredService<MetricsCollector>());
         

@@ -51,6 +51,14 @@ public class LinuxSmartaProvider : ISmartaProvider, IAdvancedSmartaProvider
         return Task.CompletedTask;
     }
 
+    // Sentinel value for "SMART not available" — cached so we don't retry every call
+    private static readonly SmartaData NoSmartSentinel = new()
+    {
+        DeviceModel = "SMART_NOT_AVAILABLE",
+        IsHealthy = false,
+        IsFromCache = true
+    };
+
     public async Task<SmartaData?> GetSmartaDataAsync(string devicePath, CancellationToken cancellationToken = default)
     {
         if (_logger != null && _logger.IsEnabled(LogLevel.Information))
@@ -63,6 +71,9 @@ public class LinuxSmartaProvider : ISmartaProvider, IAdvancedSmartaProvider
         if (_smartCache.TryGetValue(cacheKey, out var cached) && (DateTime.UtcNow - cached.Timestamp) < _cacheTtl)
         {
             Interlocked.Increment(ref _cacheHits);
+            // If cached result is the "no SMART" sentinel, return null (SMART unavailable)
+            if (ReferenceEquals(cached.Data, NoSmartSentinel))
+                return null;
             cached.Data.IsFromCache = true;
             cached.Data.RetrievedAtUtc = cached.Timestamp;
             return cached.Data;
@@ -79,6 +90,13 @@ public class LinuxSmartaProvider : ISmartaProvider, IAdvancedSmartaProvider
             result.IsFromCache = false;
             result.RetrievedAtUtc = DateTime.UtcNow;
             _smartCache[cacheKey] = (result, DateTime.UtcNow);
+        }
+        else
+        {
+            // Cache the "no SMART" result so we don't retry on every call.
+            // Use a longer TTL for negative caching (30 min) to avoid repeated
+            // smartctl invocations that hang on unresponsive devices.
+            _smartCache[cacheKey] = (NoSmartSentinel, DateTime.UtcNow.AddMinutes(20));
         }
 
         return result;

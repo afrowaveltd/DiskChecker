@@ -708,25 +708,61 @@ public partial class SafeDestructiveTestViewModel : ViewModelBase, INavigableVie
 
         Log($"Záloha → {_backupImagePath}");
 
-        const int sectorSize = 4096;
-        var buffer = new byte[sectorSize];
+        // Use 1 MiB blocks for speed (was 4 KiB)
+        const int blockSize = 1024 * 1024;
+        var buffer = new byte[blockSize];
         long totalSize = DiskTotalBytes;
         long bytesRead = 0;
+        long unreadableBytes = 0;
+        int consecutiveErrors = 0;
+        const int maxConsecutiveErrors = 64;
         _phaseStartTime = DateTime.UtcNow;
         _phaseBytesProcessed = 0;
 
         using var sourceStream = new FileStream(DiskPath, FileMode.Open, FileAccess.Read,
-            FileShare.Read, sectorSize, FileOptions.SequentialScan);
+            FileShare.Read, blockSize, FileOptions.SequentialScan);
         using var targetStream = new FileStream(_backupImagePath, FileMode.Create, FileAccess.Write,
-            FileShare.None, 1024 * 1024, FileOptions.SequentialScan);
+            FileShare.None, blockSize, FileOptions.SequentialScan);
 
         while (bytesRead < totalSize)
         {
             ct.ThrowIfCancellationRequested();
 
-            int bytesToRead = (int)Math.Min(sectorSize, totalSize - bytesRead);
-            int bytesReadNow = await sourceStream.ReadAsync(buffer.AsMemory(0, bytesToRead), ct);
-            if (bytesReadNow == 0) break;
+            int bytesToRead = (int)Math.Min(blockSize, totalSize - bytesRead);
+            int bytesReadNow = 0;
+            bool blockReadable = true;
+
+            try
+            {
+                bytesReadNow = await sourceStream.ReadAsync(buffer.AsMemory(0, bytesToRead), ct);
+            }
+            catch (IOException)
+            {
+                blockReadable = false;
+            }
+            catch (UnauthorizedAccessException)
+            {
+                blockReadable = false;
+            }
+
+            if (!blockReadable || bytesReadNow == 0)
+            {
+                // Unreadable sector — write zeros and log
+                Array.Clear(buffer, 0, bytesToRead);
+                bytesReadNow = bytesToRead;
+                unreadableBytes += bytesToRead;
+                consecutiveErrors++;
+
+                if (consecutiveErrors == 1)
+                    Log($"⚠️ Nečitelný sektor na pozici {FormatBytesLong(bytesRead)} — nahrazen nulami");
+
+                if (consecutiveErrors >= maxConsecutiveErrors)
+                    throw new IOException($"Příliš mnoho nečitelných sektorů za sebou ({consecutiveErrors}) — disk je pravděpodobně vážně poškozen. Záloha přerušena.");
+            }
+            else
+            {
+                consecutiveErrors = 0;
+            }
 
             await targetStream.WriteAsync(buffer.AsMemory(0, bytesReadNow), ct);
             bytesRead += bytesReadNow;
@@ -734,7 +770,7 @@ public partial class SafeDestructiveTestViewModel : ViewModelBase, INavigableVie
 
             BackupBytesWritten = bytesRead;
             BackupBytesWrittenText = FormatBytesLong(bytesRead);
-            BackupCurrentSectorText = $"Sektor {bytesRead / sectorSize:N0} / {totalSize / sectorSize:N0}";
+            BackupCurrentSectorText = $"Blok {bytesRead / blockSize:N0} / {totalSize / blockSize:N0}";
 
             double backupProgress = totalSize > 0 ? (double)bytesRead / totalSize * 100 : 0;
             OverallProgress = backupProgress * 0.30; // Backup = 30% of total workflow
@@ -751,6 +787,9 @@ public partial class SafeDestructiveTestViewModel : ViewModelBase, INavigableVie
 
         _backupTotalBytes = bytesRead;
 
+        if (unreadableBytes > 0)
+            Log($"⚠️ Celkem {FormatBytesLong(unreadableBytes)} nečitelných sektorů nahrazeno nulami.");
+
         // Write manifest
         var manifest = new
         {
@@ -759,7 +798,8 @@ public partial class SafeDestructiveTestViewModel : ViewModelBase, INavigableVie
             BackupDate = DateTime.Now.ToString("O"),
             Mode = "RawImage",
             TotalBytes = bytesRead,
-            SectorSize = sectorSize
+            BlockSize = blockSize,
+            UnreadableBytes = unreadableBytes
         };
         using var manifestStream = File.OpenWrite(_backupManifestPath);
         await JsonSerializer.SerializeAsync(manifestStream, manifest, _jsonOptions, ct);
@@ -978,23 +1018,24 @@ public partial class SafeDestructiveTestViewModel : ViewModelBase, INavigableVie
         RestoreImagePath = _backupImagePath;
         Log($"Obnova ← {_backupImagePath}");
 
-        const int sectorSize = 4096;
-        var buffer = new byte[sectorSize];
+        // Use 1 MiB blocks for speed (was 4 KiB)
+        const int blockSize = 1024 * 1024;
+        var buffer = new byte[blockSize];
         long totalSize = _backupTotalBytes;
         long bytesWritten = 0;
         _phaseStartTime = DateTime.UtcNow;
         _phaseBytesProcessed = 0;
 
         using var sourceStream = new FileStream(_backupImagePath, FileMode.Open, FileAccess.Read,
-            FileShare.Read, sectorSize, FileOptions.SequentialScan);
+            FileShare.Read, blockSize, FileOptions.SequentialScan);
         using var targetStream = new FileStream(DiskPath, FileMode.Open, FileAccess.Write,
-            FileShare.None, sectorSize, FileOptions.SequentialScan);
+            FileShare.None, blockSize, FileOptions.SequentialScan);
 
         while (bytesWritten < totalSize)
         {
             ct.ThrowIfCancellationRequested();
 
-            int bytesToRead = (int)Math.Min(sectorSize, totalSize - bytesWritten);
+            int bytesToRead = (int)Math.Min(blockSize, totalSize - bytesWritten);
             int bytesReadNow = await sourceStream.ReadAsync(buffer.AsMemory(0, bytesToRead), ct);
             if (bytesReadNow == 0) break;
 
@@ -1004,7 +1045,7 @@ public partial class SafeDestructiveTestViewModel : ViewModelBase, INavigableVie
 
             RestoreBytesWritten = bytesWritten;
             RestoreBytesWrittenText = FormatBytesLong(bytesWritten);
-            RestoreCurrentSectorText = $"Sektor {bytesWritten / sectorSize:N0} / {totalSize / sectorSize:N0}";
+            RestoreCurrentSectorText = $"Blok {bytesWritten / blockSize:N0} / {totalSize / blockSize:N0}";
 
             double restoreProgress = totalSize > 0 ? (double)bytesWritten / totalSize * 100 : 0;
             OverallProgress = 70 + restoreProgress * 0.30; // Restore = 30% of total workflow
