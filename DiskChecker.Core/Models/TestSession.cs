@@ -343,6 +343,36 @@ public class TestSession
     /// User notes for this test session
     /// </summary>
     public string? Notes { get; set; }
+
+    // ========== Adaptive Sampling & Anomaly Detection ==========
+
+    /// <summary>
+    /// JSON-serialized speed anomalies detected during the test.
+    /// Each anomaly contains high-resolution samples for detailed analysis.
+    /// </summary>
+    public string? AnomaliesJson { get; set; }
+
+    /// <summary>
+    /// Deserialized speed anomalies (not mapped to DB).
+    /// </summary>
+    [NotMapped]
+    public List<SpeedAnomaly> Anomalies
+    {
+        get
+        {
+            if (string.IsNullOrWhiteSpace(AnomaliesJson))
+                return new List<SpeedAnomaly>();
+            try
+            {
+                return JsonSerializer.Deserialize<List<SpeedAnomaly>>(AnomaliesJson) ?? new List<SpeedAnomaly>();
+            }
+            catch
+            {
+                return new List<SpeedAnomaly>();
+            }
+        }
+        set => AnomaliesJson = JsonSerializer.Serialize(value);
+    }
     
     /// <summary>
     /// Gets compact diagnostic flags derived from session notes.

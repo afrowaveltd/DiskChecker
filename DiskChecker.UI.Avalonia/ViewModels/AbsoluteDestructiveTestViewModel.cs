@@ -11,6 +11,7 @@ using CommunityToolkit.Mvvm.Input;
 using DiskChecker.Application.Services;
 using DiskChecker.Core.Interfaces;
 using DiskChecker.Core.Models;
+using DiskChecker.Core.Services;
 using DiskChecker.UI.Avalonia.Services.Interfaces;
 using LiveChartsCore;
 using LiveChartsCore.Defaults;
@@ -104,6 +105,11 @@ public partial class AbsoluteDestructiveTestViewModel : ViewModelBase, INavigabl
     // Sanitization results
     private SanitizationResult? _sanitize1Result;
     private SanitizationResult? _sanitize2Result;
+
+    // Adaptive speed samplers for anomaly detection
+    private AdaptiveSpeedSampler? _samplerPass1;
+    private AdaptiveSpeedSampler? _samplerPass2;
+    private string? _anomalyReport;
 
     // Seek results
     private SeekTestResult? _seekFullStrokeResult;
@@ -857,6 +863,10 @@ public partial class AbsoluteDestructiveTestViewModel : ViewModelBase, INavigabl
             _sanitizePass2WritePoints.Clear();
             _sanitizePass2ReadPoints.Clear();
 
+            // Initialize adaptive sampler for pass 1
+            _samplerPass1 = new AdaptiveSpeedSampler();
+            _samplerPass1.Initialize(SelectedDrive!.TotalSize);
+
             _sanitize1Result = await _sanitizationService.SanitizeDiskAsync(
                 SelectedDrive!.Path,
                 SelectedDrive.TotalSize,
@@ -865,6 +875,9 @@ public partial class AbsoluteDestructiveTestViewModel : ViewModelBase, INavigabl
                 volumeLabel: "",
                 new Progress<SanitizationProgress>(p =>
                 {
+                    // Feed adaptive sampler
+                    _samplerPass1?.AddSample(p.CurrentSpeedMBps, (long)(SelectedDrive!.TotalSize * p.ProgressPercent / 100.0), DateTime.UtcNow);
+
                     // Throttle UI updates to max every 100ms
                     var now = DateTime.UtcNow;
                     if ((now - _lastUiUpdate).TotalMilliseconds < UiUpdateThrottleMs && p.ProgressPercent < 100)
@@ -909,6 +922,9 @@ public partial class AbsoluteDestructiveTestViewModel : ViewModelBase, INavigabl
             // Capture SMART after first sanitization
             _smartAfterSanitize1 = await CaptureSmartAsync(ct);
 
+            // Finalize adaptive sampler for pass 1
+            _samplerPass1?.FinalizePhase();
+
             SetPhase(1, TestPhaseStatus.Completed,
                 $"Write: {_sanitize1Result.WriteSpeedMBps:F1} MB/s | Read: {_sanitize1Result.ReadSpeedMBps:F1} MB/s | Chyby: {_sanitize1Result.ErrorsDetected}");
         }, ct);
@@ -943,6 +959,10 @@ public partial class AbsoluteDestructiveTestViewModel : ViewModelBase, INavigabl
             IsSanitizePass2 = true;
             SanitizeChartTitle = "🧹 2. Sanitizace – Zápis nul + Ověření (finální)";
 
+            // Initialize adaptive sampler for pass 2
+            _samplerPass2 = new AdaptiveSpeedSampler();
+            _samplerPass2.Initialize(SelectedDrive!.TotalSize);
+
             _sanitize2Result = await _sanitizationService.SanitizeDiskAsync(
                 SelectedDrive!.Path,
                 SelectedDrive.TotalSize,
@@ -951,6 +971,9 @@ public partial class AbsoluteDestructiveTestViewModel : ViewModelBase, INavigabl
                 volumeLabel: "",
                 new Progress<SanitizationProgress>(p =>
                 {
+                    // Feed adaptive sampler
+                    _samplerPass2?.AddSample(p.CurrentSpeedMBps, (long)(SelectedDrive!.TotalSize * p.ProgressPercent / 100.0), DateTime.UtcNow);
+
                     // Throttle UI updates to max every 100ms
                     var now = DateTime.UtcNow;
                     if ((now - _lastUiUpdate).TotalMilliseconds < UiUpdateThrottleMs && p.ProgressPercent < 100)
@@ -990,6 +1013,9 @@ public partial class AbsoluteDestructiveTestViewModel : ViewModelBase, INavigabl
                     });
                 }),
                 ct);
+
+            // Finalize adaptive sampler for pass 2
+            _samplerPass2?.FinalizePhase();
 
             SetPhase(5, TestPhaseStatus.Completed,
                 $"Write: {_sanitize2Result.WriteSpeedMBps:F1} MB/s | Read: {_sanitize2Result.ReadSpeedMBps:F1} MB/s | Chyby: {_sanitize2Result.ErrorsDetected}");
@@ -1620,7 +1646,11 @@ public partial class AbsoluteDestructiveTestViewModel : ViewModelBase, INavigabl
                     Skip = _seekSkipResult
                 }),
                 Sanitize1ResultJson = JsonSerializer.Serialize(_sanitize1Result),
-                Sanitize2ResultJson = JsonSerializer.Serialize(_sanitize2Result)
+                Sanitize2ResultJson = JsonSerializer.Serialize(_sanitize2Result),
+                AnomaliesJson = JsonSerializer.Serialize(
+                    (_samplerPass1?.GetAnomalies() ?? new List<SpeedAnomaly>())
+                    .Concat(_samplerPass2?.GetAnomalies() ?? new List<SpeedAnomaly>())
+                    .ToList())
             };
 
             // Build SMART changes
@@ -1700,6 +1730,24 @@ public partial class AbsoluteDestructiveTestViewModel : ViewModelBase, INavigabl
             if (_smartFinal.PendingSectorCount > 0) score -= (double)(_smartFinal.PendingSectorCount * 5);
         }
 
+        // Anomaly-based penalty (adaptive sampling)
+        var allAnomalies = (_samplerPass1?.GetAnomalies() ?? new List<SpeedAnomaly>())
+            .Concat(_samplerPass2?.GetAnomalies() ?? new List<SpeedAnomaly>())
+            .ToList();
+        if (allAnomalies.Count > 0)
+        {
+            var anomalyService = new AnomalyAnalysisService();
+            var anomalyPenalty = anomalyService.ComputeAnomalyPenalty(allAnomalies);
+            score -= anomalyPenalty;
+
+            // Add anomaly report to notes
+            var anomalyReport = anomalyService.GenerateAnomalyReport(allAnomalies);
+            if (!string.IsNullOrWhiteSpace(anomalyReport))
+            {
+                _anomalyReport = anomalyReport;
+            }
+        }
+
         return Math.Clamp(score, 0, 100);
     }
 
@@ -1737,6 +1785,11 @@ public partial class AbsoluteDestructiveTestViewModel : ViewModelBase, INavigabl
         if (errors > 0) notes.Add($"Detekovány chyby během sanitizace: {errors}");
         if (_smartFinal?.ReallocatedSectorCount > 0) notes.Add($"Realokované sektory: {_smartFinal.ReallocatedSectorCount}");
         if (_smartFinal?.PendingSectorCount > 0) notes.Add($"Pending sektory: {_smartFinal.PendingSectorCount}");
+
+        // Include anomaly report if available
+        if (!string.IsNullOrWhiteSpace(_anomalyReport))
+            notes.Add(_anomalyReport);
+
         return string.Join("; ", notes);
     }
 
