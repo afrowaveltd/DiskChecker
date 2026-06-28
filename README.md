@@ -18,13 +18,16 @@ DiskChecker je dnes více než jednoduchá SMART utilita. Obsahuje kompletní ap
   - Linux: detekce blokových zařízení a svazků, typicky nad `/dev/sdX`, `/dev/nvmeXnY`.
   - Rozpoznávání identity disku včetně modelu, sériového čísla, firmware, kapacity, typu sběrnice a připojení.
 - **SMART/SMARTA diagnostika**
-  - Čtení SMART dat přes platformní providery.
+  - Čtení SMART dat přes platformní providery (Windows i Linux).
   - Pokročilé atributy, teploty, self-testy, log self-testů a maintenance akce.
   - Cache SMART dat s konfigurovatelným TTL v `appsettings.json`.
+  - **Negativní cache** – pokud disk SMART nepodporuje (USB adaptéry, RAID řadiče), uloží se sentinel do cache na 30 minut, aby se předešlo opakovaným timeoutům a zamrzání UI.
   - Instrukce a pokus o instalaci závislostí tam, kde jsou potřeba externí nástroje.
 - **Hodnocení zdraví disku**
   - Výpočet skóre a známky A–F.
   - Vyhodnocení kritických SMART atributů, chyb, výkonu a průběhu testů.
+  - **Adaptivní detekce anomálií** – dvouúrovňové vzorkování rychlosti s detekcí výkonových propadů, jejich high-res záznamem a analýzou.
+  - **AnomalyAnalysisService** – párování write+read anomálií, výpočet korelace, detekce opakujících se vzorů, penalizace do skóre.
   - Analytická vrstva pro detekci anomálií a servisní doporučení.
 - **Test povrchu**
   - Profily pro HDD/SSD/NVMe a různé operační režimy.
@@ -39,26 +42,38 @@ DiskChecker je dnes více než jednoduchá SMART utilita. Obsahuje kompletní ap
   - Volitelné vytvoření oddílu a formátování po dokončení.
   - Windows a Linux implementace přes `IDiskSanitizationService`.
   - Recovery informace, detailní chyby a záznam výsledků do testovací session.
+  - **Adaptivní vzorkování** během sanitizace – standardní vzorky pro graf + high-res záznam anomálií pro pozdější analýzu.
+- **Absolutní destruktivní test**
+  - Kompletní workflow: 2× sanitizace (write+read), 3× seek test (full-stroke, random, skip), SMART před/po.
+  - Automatické generování certifikátu s grafy, metrikami a analýzou anomálií.
+  - Detailní report s překryvným porovnáním write/read anomálií.
 - **Bezpečný destruktivní workflow**
   - Samostatná UI část pro bezpečnější průchod destruktivním testem.
+  - Záloha před testem, destruktivní test, obnova po testu.
   - Důraz na potvrzení vybraného zařízení a minimalizaci omylů.
 - **Karty disků**
   - Servisní karta disku podle sériového čísla.
   - Evidence testovacích session, SMART snapshotů, skóre, známky, poznámek, archivace a zámků.
   - Detail disku se souhrnem historie a přechody na certifikáty/porovnání/reporty.
 - **Certifikáty a reporty**
-  - Generování certifikátů o stavu disku.
+  - Generování certifikátů o stavu disku s grafy, metrikami a analýzou anomálií.
+  - **Cross-platform** – PDF i JPEG náhled přes SkiaSharp (Windows, Linux, macOS).
+  - Generování štítků (PNG).
   - PDF/exportní workflow a prohlížeč certifikátů.
   - Kompletní reporty, náhled a tisk/export podle implementovaných možností UI.
 - **Historie a databáze**
   - SQLite databáze `DiskChecker.db`.
   - Starší tabulky testů i nové entity `DiskCards`, `TestSessions`, `DiskCertificates`, `DiskArchives`.
-  - Kompatibilitní patcher schématu při startu aplikace.
+  - Kompatibilitní patcher schématu při startu aplikace (automatické přidávání chybějících sloupců).
 - **Porovnání disků**
   - Porovnání vybraných diskových karet a jejich výkonových/zdravotních metrik.
 - **Záloha a obnova**
-  - UI pro zálohování a obnovu databáze/nastavení a navázaných dat.
-  - Režimy a detaily používání jsou popsány v uživatelské příručce.
+  - **Tři režimy zálohy**: souborová, RAW obraz (sektory), VHDx dynamický obraz.
+  - **VHDx** – standardní Microsoft formát, mountovatelný ve Windows nativně i v Linuxu přes `qemu-nbd`.
+  - **Odolnost vůči chybám** – nečitelné sektory jsou nahrazeny nulami, záloha pokračuje; ochrana proti katastrofickému selhání (limit po sobě jdoucích chyb).
+  - **Větší bloky** (1 MiB) pro rychlejší přenos.
+  - UI pro výběr cílového umístění s přehledem volného místa.
+  - Obnova ze zálohy včetně verifikace.
 - **E-mailová oznámení**
   - Uložení SMTP nastavení.
   - Odesílání reportů a notifikací po dokončení testu.
@@ -69,12 +84,12 @@ DiskChecker je dnes více než jednoduchá SMART utilita. Obsahuje kompletní ap
 
 | Projekt | Role |
 | --- | --- |
-| `DiskChecker.Core` | Doménové modely, rozhraní a základní služby. Obsahuje např. `CoreDriveInfo`, `SmartaData`, `DiskCard`, `TestSession`, `DiskCertificate`, `SurfaceTestResult`, `SeekTestResult`, `IQualityCalculator`, `ISmartaProvider`, `IDiskSanitizationService`. |
-| `DiskChecker.Infrastructure` | Platformní a technická implementace: SMART provideři pro Windows/Linux, detekce svazků, surface/seek executory, sanitizace, SQLite persistence, repozitáře, generátor certifikátů a porovnání disků. |
+| `DiskChecker.Core` | Doménové modely, rozhraní a základní služby. Obsahuje např. `CoreDriveInfo`, `SmartaData`, `DiskCard`, `TestSession`, `DiskCertificate`, `SpeedAnomaly`, `SurfaceTestResult`, `SeekTestResult`, `AdaptiveSpeedSampler`, `AnomalyAnalysisService`, `QualityCalculator`. |
+| `DiskChecker.Infrastructure` | Platformní a technická implementace: SMART provideři pro Windows/Linux, detekce svazků, surface/seek executory, sanitizace, SQLite persistence, repozitáře, generátor certifikátů (SkiaSharp), porovnání disků a SchemaCompatibilityPatcher. |
 | `DiskChecker.Application` | Aplikační/use-case vrstva: SMART check, diskové karty a testovací session, historie, reporty, certifikace, e-mail, nastavení, notifikace, archivace a analýza testů. |
 | `DiskChecker.UI.Avalonia` | Hlavní desktopové UI v Avalonia + MVVM. Obsahuje view modely, views, navigaci, dialogy, lokalizaci, zálohy/obnovu a registraci DI. |
 | `DiskChecker.TUI` | Samostatný terminálový/experimentální projekt mimo hlavní `.slnx` workflow. |
-| `tests/DiskChecker.Tests` | Unit testy pro analýzu, certifikáty, identitu disku, sanitizační progress, seek testy, nastavení, SMART parser/cache a další části. |
+| `tests/DiskChecker.Tests` | Unit testy (164 testů) pro adaptivní vzorkování, analýzu anomálií, certifikáty, identitu disku, sanitizační progress, seek testy, nastavení, SMART parser/cache a další části. |
 
 ## Architektura
 
@@ -99,7 +114,8 @@ DiskChecker je dnes více než jednoduchá SMART utilita. Obsahuje kompletní ap
                                 │
 ┌───────────────────────────────▼─────────────────────────────┐
 │ DiskChecker.Core                                             │
-│ Modely · rozhraní · QualityCalculator · shared contracts     │
+│ Modely · rozhraní · AdaptiveSpeedSampler ·                   │
+│ AnomalyAnalysisService · QualityCalculator · shared contracts│
 └─────────────────────────────────────────────────────────────┘
 ```
 
@@ -112,7 +128,8 @@ Podrobnější technický popis je v dokumentu [`docs/ARCHITECTURE_CS.md`](docs/
   - Projekt záměrně drží Avalonia 11.3.12 kvůli kompatibilitě s `LiveChartsCore.SkiaSharpView.Avalonia 2.0.5`.
 - **CommunityToolkit.Mvvm**
 - **Entity Framework Core + SQLite**
-- **SkiaSharp**, **LiveCharts**, **OxyPlot**
+- **SkiaSharp** – cross-platform rendering pro certifikáty, grafy a štítky
+- **LiveChartsCore** – grafy v UI (povrchový test, seek test, sanitizace)
 - **MailKit/MimeKit** pro SMTP
 - **smartmontools/smartctl** hlavně na Linuxu a pro pokročilé SMART scénáře
 - **xUnit v3**, **NSubstitute** pro testy
@@ -195,7 +212,7 @@ DiskChecker.db
 
 Soubor se vytváří v pracovním adresáři spuštěné aplikace. Databáze obsahuje jak legacy tabulky (`DriveRecords`, `TestRecords`, `SmartaRecords`, `SurfaceTestSamples`), tak nové servisní entity pro karty disků, session, certifikáty, archivaci, SMTP nastavení a replikační frontu.
 
-Při startu aplikace se volá `EnsureCreated()` a následně `SchemaCompatibilityPatcher.Apply(...)`, aby se starší databáze přizpůsobily aktuálnímu schématu.
+Při startu aplikace se volá `EnsureCreated()` a následně `SchemaCompatibilityPatcher.Apply(...)`, aby se starší databáze přizpůsobily aktuálnímu schématu. Patcher automaticky přidává chybějící sloupce (např. `AnomaliesJson`, `Sanitize1ResultJson`, `SeekResultsJson`) bez ztráty existujících dat.
 
 ## Konfigurace
 
@@ -211,22 +228,52 @@ Hlavní desktopový projekt kopíruje `appsettings.json` do výstupu. Aktuálně
 
 Pokud konfigurace chybí nebo je neplatná, aplikace používá výchozí TTL 10 minut.
 
+## Klíčové funkce – detail
+
+### Adaptivní vzorkování a detekce anomálií
+
+Během sanitizačních testů DiskChecker používá dvouúrovňový `AdaptiveSpeedSampler`:
+
+- **Standardní vzorky** (~200 bodů) – pro graf a uložení do databáze, s časovou decimací.
+- **High-res anomálie** (100ms intervaly) – spuštěny při odchylce rychlosti >15 % od rolling baseline. Využívají frozen baseline (nekontaminuje se anomálními vzorky) a hysterézi 5 % (zabraňuje flickeringu).
+
+Po dokončení testu `AnomalyAnalysisService`:
+- Páruje write a read anomálie na stejné pozici disku → **překryvné porovnání**.
+- Počítá korelaci (0–100) podle pozice, odchylky, trvání a směru → ≥70 = pravděpodobná fyzická vada.
+- Detekuje opakující se vzory na stejné pozici.
+- Generuje lidsky čitelný report (součást certifikátu).
+- Počítá penalizaci 0–50 bodů do celkového skóre disku.
+
+### Režimy zálohy
+
+| Režim | Popis | Použití |
+|-------|-------|---------|
+| **Souborová** | Kopíruje vybrané složky a soubory | Běžná záloha dat |
+| **RAW obraz** | Čte sektory přímo z disku (1 MiB bloky) | Kompletní bitová kopie disku |
+| **VHDx dynamický** | Vytváří standardní VHDx obraz (Microsoft formát) | Mountovatelný ve Windows i Linuxu, roste podle dat |
+
+Všechny režimy jsou odolné vůči chybám čtení – nečitelné sektory jsou nahrazeny nulami a záloha pokračuje. Při více než 64 po sobě jdoucích chybách se operace přeruší (ochrana proti katastrofickému selhání disku).
+
+### SMART – negativní cache
+
+Pokud disk nebo adaptér nepodporuje SMART, provider uloží sentinel do cache na 30 minut. Při dalším dotazu se okamžitě vrátí `null` bez opakovaného volání `smartctl` – UI nezamrzá a testy nejsou zdržovány timeouty.
+
 ## Struktura repozitáře
 
 ```text
 DiskChecker/
-├── DiskChecker.Core/              # Doménové modely, rozhraní, QualityCalculator
-├── DiskChecker.Infrastructure/    # Platformní implementace, SMART, testy, sanitizace, SQLite
+├── DiskChecker.Core/              # Doménové modely, rozhraní, AdaptiveSpeedSampler, AnomalyAnalysisService, QualityCalculator
+├── DiskChecker.Infrastructure/    # Platformní implementace, SMART, testy, sanitizace, SQLite, SchemaCompatibilityPatcher
 ├── DiskChecker.Application/       # Aplikační služby a obchodní logika
 ├── DiskChecker.UI.Avalonia/       # Hlavní desktopové UI
-│   ├── ViewModels/                # MVVM view modely obrazovek
+│   ├── ViewModels/                # MVVM view modely (30+ obrazovek)
 │   ├── Views/                     # Avalonia AXAML views
 │   ├── Services/                  # Navigace, dialogy, zálohy, lokalizace, stav dokumentů
 │   ├── Converters/                # UI konvertory
 │   ├── Locales/                   # cs/en překlady
 │   └── Assets/                    # Ikony a assety
 ├── DiskChecker.TUI/               # Terminálový/experimentální projekt
-├── tests/DiskChecker.Tests/       # Unit testy
+├── tests/DiskChecker.Tests/       # Unit testy (164 testů)
 ├── docs/                          # Uživatelská a technická dokumentace
 ├── installer/                     # Linux/Windows instalační podklady
 ├── scripts/                       # Pomocné build skripty
@@ -242,6 +289,7 @@ DiskChecker/
 - Nikdy netestujte systémový disk destruktivním režimem.
 - U externích USB adaptérů může být SMART částečně nedostupný nebo zkreslený.
 - Během dlouhých testů neodpojujte disk a nepřerušujte napájení.
+- Před destruktivním testem vždy ověřte, že máte platnou zálohu dat.
 
 ## Testování
 
@@ -249,7 +297,15 @@ DiskChecker/
 dotnet test
 ```
 
-Testovací projekt pokrývá zejména výpočty/analýzy, generování certifikátů, identitu disků, sanitizační progress, seek testy, nastavení a SMART parsery/cache.
+Testovací projekt (164 testů) pokrývá:
+- Adaptivní vzorkování a detekci anomálií (11 testů)
+- Analýzu anomálií – překryvy, korelace, penalizace, reporty
+- Generování certifikátů
+- Identitu disků
+- Sanitizační progress
+- Seek testy
+- Nastavení
+- SMART parsery a cache
 
 ## Licence
 
