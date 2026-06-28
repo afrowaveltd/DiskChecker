@@ -214,6 +214,12 @@ public static class SchemaCompatibilityPatcher
             return;
         }
 
+        if (tableName == "TestSessions" && columnName == "AnomaliesJson")
+        {
+            dbContext.Database.ExecuteSqlRaw("ALTER TABLE TestSessions ADD COLUMN AnomaliesJson TEXT NULL;");
+            return;
+        }
+
         if (tableName == "DiskCards" && columnName == "PowerOnHours")
         {
             dbContext.Database.ExecuteSqlRaw("ALTER TABLE DiskCards ADD COLUMN PowerOnHours INTEGER NULL;");
