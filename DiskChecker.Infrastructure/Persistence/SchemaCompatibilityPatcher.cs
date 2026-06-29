@@ -46,6 +46,7 @@ public static class SchemaCompatibilityPatcher
             EnsureColumn(dbContext, "TestSessions", "SeekResultsJson");
             EnsureColumn(dbContext, "TestSessions", "Sanitize1ResultJson");
             EnsureColumn(dbContext, "TestSessions", "Sanitize2ResultJson");
+            EnsureColumn(dbContext, "TestSessions", "AnomaliesJson");
         }
         if (TableExists(dbContext, "DiskCards"))
         {

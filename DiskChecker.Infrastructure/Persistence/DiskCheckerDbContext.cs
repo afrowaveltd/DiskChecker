@@ -106,6 +106,12 @@ public class DiskCheckerDbContext : DbContext
             entity.Property(e => e.SmartBeforeJson).HasColumnType("TEXT");
             entity.Property(e => e.SmartAfterJson).HasColumnType("TEXT");
 
+            // JSON columns for test results and anomaly detection
+            entity.Property(e => e.SeekResultsJson).HasColumnType("TEXT");
+            entity.Property(e => e.Sanitize1ResultJson).HasColumnType("TEXT");
+            entity.Property(e => e.Sanitize2ResultJson).HasColumnType("TEXT");
+            entity.Property(e => e.AnomaliesJson).HasColumnType("TEXT");
+
             entity.HasIndex(e => e.SessionId).IsUnique();
             entity.HasIndex(e => e.DiskCardId);
             entity.HasIndex(e => e.StartedAt);

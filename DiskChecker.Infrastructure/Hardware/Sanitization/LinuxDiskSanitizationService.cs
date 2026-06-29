@@ -362,7 +362,9 @@ public class LinuxDiskSanitizationService : IDiskSanitizationService
 
                     chunkStopwatch.Stop();
                     bytesWritten += bytesToWrite;
-                    fileStream.Flush(flushToDisk: true);
+                    // The stream uses FileOptions.WriteThrough for write-through semantics.
+                    // Flush after each chunk can block indefinitely on some devices (USB, etc.)
+                    // and skew timing measurements. Omitted to match Windows behavior.
 
                     if (result.Errors >= 10)
                     {
@@ -395,7 +397,8 @@ public class LinuxDiskSanitizationService : IDiskSanitizationService
                     });
                 }
 
-                fileStream.Flush(flushToDisk: true);
+                // Note: final flush omitted to match Windows behavior.
+                // FileOptions.WriteThrough already ensures data is written through to the device.
             }
 
             result.Success = true;
