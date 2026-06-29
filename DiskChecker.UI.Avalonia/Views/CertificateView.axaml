@@ -16,19 +16,19 @@
                     BorderThickness="0,0,0,1" Padding="16,10" MinHeight="60">
                 <Grid ColumnDefinitions="*,Auto">
                     <StackPanel Grid.Column="0">
-                        <TextBlock Text="📄 Certifikát disku" Classes="PageTitle"/>
-                        <TextBlock Text="Interní náhled certifikátu v aplikaci (bez nutnosti externího PDF)" Classes="PageSubtitle"/>
+                        <TextBlock Text="{Binding L[CertificateView.Title]}" Classes="PageTitle"/>
+                        <TextBlock Text="{Binding L[CertificateView.InternalPreview]}" Classes="PageSubtitle"/>
                     </StackPanel>
 
                     <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
-                        <CheckBox Content="ČB tisk" IsChecked="{Binding IsBlackAndWhiteMode}" VerticalAlignment="Center"/>
-                        <Button Content="💾 Uložit PDF" Command="{Binding ExportPdfCommand}"
+                        <CheckBox Content="{Binding L[CertificateView.PrintGrayscale]}" IsChecked="{Binding IsBlackAndWhiteMode}" VerticalAlignment="Center"/>
+                        <Button Content="{Binding L[CertificateView.SavePdf]}" Command="{Binding ExportPdfCommand}"
                                 Background="{DynamicResource ThemeSuccessBrush}" Foreground="White" FontWeight="Bold" Padding="12,6"/>
-                        <Button Content="🖨️ Tisk" Command="{Binding PrintCommand}"
+                        <Button Content="{Binding L[Certificate.Print]}" Command="{Binding PrintCommand}"
                                 Background="{DynamicResource ThemeInfoBrush}" Foreground="White" FontWeight="Bold" Padding="12,6"/>
-                        <Button Content="🏷️ Štítek" Command="{Binding PrintLabelCommand}"
+                        <Button Content="{Binding L[CertificateView.Label]}" Command="{Binding PrintLabelCommand}"
                                 Background="{DynamicResource ThemeWarningBrush}" Foreground="White" FontWeight="Bold" Padding="12,6"/>
-                        <Button Content="🏠 Zpět" Command="{Binding GoBackCommand}"
+                        <Button Content="{Binding L[CertificateView.Back]}" Command="{Binding GoBackCommand}"
                                 Background="{DynamicResource ThemeSecondaryBackgroundBrush}" Foreground="{DynamicResource ThemeTextPrimaryBrush}"
                                 BorderBrush="{DynamicResource ThemeBorderBrush}" FontWeight="Bold" Padding="12,6"/>
                     </StackPanel>
@@ -45,9 +45,9 @@
                 <ScrollViewer>
                     <StackPanel Spacing="18">
                         <StackPanel HorizontalAlignment="Center" Spacing="4">
-                            <TextBlock Text="CERTIFIKÁT KVALITY DISKU" FontSize="24" FontWeight="Bold"
+                            <TextBlock Text="{Binding L[Certificate.Title]}" FontSize="24" FontWeight="Bold"
                                        Foreground="#2A6FD6" HorizontalAlignment="Center"/>
-                            <TextBlock Text="DiskChecker – Profesionální diagnóza disků"
+                            <TextBlock Text="{Binding L[CertificateView.DiagnosticTitle]}"
                                        FontSize="11" Foreground="#5B6470" HorizontalAlignment="Center"/>
                         </StackPanel>
 
@@ -56,35 +56,35 @@
                         <Grid ColumnDefinitions="2*,*" ColumnSpacing="16">
                             <Border Grid.Column="0" Background="{Binding PanelBackground}" Padding="14" CornerRadius="8">
                                 <Grid ColumnDefinitions="Auto,*" RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto" RowSpacing="4" ColumnSpacing="10">
-                                    <TextBlock Grid.Row="0" Grid.Column="0" Text="Model:" FontWeight="Bold"/>
+                                    <TextBlock Grid.Row="0" Grid.Column="0" Text="{Binding L[Disk.Model]}" FontWeight="Bold"/>
                                     <TextBlock Grid.Row="0" Grid.Column="1" Text="{Binding DiskModel}"/>
 
-                                    <TextBlock Grid.Row="1" Grid.Column="0" Text="Sériové číslo:" FontWeight="Bold"/>
+                                    <TextBlock Grid.Row="1" Grid.Column="0" Text="{Binding L[Disk.Serial]}" FontWeight="Bold"/>
                                     <TextBlock Grid.Row="1" Grid.Column="1" Text="{Binding SerialNumber}" FontFamily="Consolas"/>
 
-                                    <TextBlock Grid.Row="2" Grid.Column="0" Text="Kapacita:" FontWeight="Bold"/>
+                                    <TextBlock Grid.Row="2" Grid.Column="0" Text="{Binding L[Disk.Capacity]}" FontWeight="Bold"/>
                                     <TextBlock Grid.Row="2" Grid.Column="1" Text="{Binding Capacity}"/>
 
                                     <TextBlock Grid.Row="3" Grid.Column="0" Text="Typ disku:" FontWeight="Bold"/>
                                     <TextBlock Grid.Row="3" Grid.Column="1" Text="{Binding DiskType}"/>
 
-                                    <TextBlock Grid.Row="4" Grid.Column="0" Text="Provozní hodiny:" FontWeight="Bold"/>
+                                    <TextBlock Grid.Row="4" Grid.Column="0" Text="{Binding L[CertificateView.PowerOnHours]}" FontWeight="Bold"/>
                                     <TextBlock Grid.Row="4" Grid.Column="1" Text="{Binding SmartPowerOnHoursText}"/>
 
-                                    <TextBlock Grid.Row="5" Grid.Column="0" Text="Počet startů:" FontWeight="Bold"/>
+                                    <TextBlock Grid.Row="5" Grid.Column="0" Text="{Binding L[CertificateView.StartCount]}" FontWeight="Bold"/>
                                     <TextBlock Grid.Row="5" Grid.Column="1" Text="{Binding SmartPowerCyclesText}"/>
 
-                                    <TextBlock Grid.Row="6" Grid.Column="0" Text="Číslo certifikátu:" FontWeight="Bold"/>
+                                    <TextBlock Grid.Row="6" Grid.Column="0" Text="{Binding L[CertificateView.CertNumber]}" FontWeight="Bold"/>
                                     <TextBlock Grid.Row="6" Grid.Column="1" Text="{Binding CertificateNumber}"/>
 
-                                    <TextBlock Grid.Row="7" Grid.Column="0" Text="Vygenerováno:" FontWeight="Bold"/>
+                                    <TextBlock Grid.Row="7" Grid.Column="0" Text="{Binding L[CertificateView.GeneratedLabel]}" FontWeight="Bold"/>
                                     <TextBlock Grid.Row="7" Grid.Column="1" Text="{Binding CurrentDateTime, StringFormat='{}{0:dd.MM.yyyy HH:mm}'}"/>
                                 </Grid>
                             </Border>
 
                             <Border Grid.Column="1" Background="{Binding SealBackground}" Padding="16" CornerRadius="12" BorderBrush="{Binding GradeColor}" BorderThickness="2">
                                 <Grid RowDefinitions="Auto,Auto,*" MinHeight="230">
-                                    <TextBlock Grid.Row="0" Text="KONEČNÁ ZNÁMKA" FontSize="12" FontWeight="Bold" HorizontalAlignment="Center" Margin="0,0,0,8"/>
+                                    <TextBlock Grid.Row="0" Text="{Binding L[Grade.Final]}" FontSize="12" FontWeight="Bold" HorizontalAlignment="Center" Margin="0,0,0,8"/>
                                     <Border Grid.Row="1" Width="120" Height="120" CornerRadius="60" BorderBrush="{Binding GradeColor}" BorderThickness="4" Background="White" HorizontalAlignment="Center">
                                         <TextBlock Text="{Binding Grade}" FontSize="58" FontWeight="Bold" Foreground="{Binding GradeColor}"
                                                    HorizontalAlignment="Center" VerticalAlignment="Center"
@@ -103,7 +103,7 @@
                         <Grid ColumnDefinitions="*,*" ColumnSpacing="16">
                             <Border Grid.Column="0" Background="{Binding PanelBackground}" Padding="12" CornerRadius="8">
                                 <StackPanel Spacing="4">
-                                    <TextBlock Text="Výsledky testu" FontWeight="Bold" FontSize="13"/>
+                                    <TextBlock Text="{Binding L[CertificateView.TestResults]}" FontWeight="Bold" FontSize="13"/>
                                     <TextBlock Text="{Binding TestType, StringFormat='Typ: {0}'}"/>
                                     <TextBlock Text="{Binding TestDuration, StringFormat='Doba: {0}'}"/>
                                     <TextBlock Text="{Binding Errors, StringFormat='Chyby: {0}'}"/>
@@ -113,7 +113,7 @@
 
                             <Border Grid.Column="1" Background="{Binding PanelBackground}" Padding="12" CornerRadius="8">
                                 <StackPanel Spacing="4">
-                                    <TextBlock Text="Výkon" FontWeight="Bold" FontSize="13"/>
+                                    <TextBlock Text="{Binding L[CertificateView.Performance]}" FontWeight="Bold" FontSize="13"/>
                                     <TextBlock Text="{Binding AvgWriteSpeed, StringFormat='Průměrný zápis: {0}'}"/>
                                     <TextBlock Text="{Binding AvgReadSpeed, StringFormat='Průměrné čtení: {0}'}"/>
                                     <TextBlock Text="{Binding HealthStatus, StringFormat='Stav: {0}'}"/>
@@ -124,16 +124,16 @@
 
                         <Border Background="{Binding PanelBackground}" Padding="12" CornerRadius="8">
                             <StackPanel Spacing="6">
-                                <TextBlock Text="SMART souhrn" FontWeight="Bold" FontSize="13"/>
+                                <TextBlock Text="{Binding L[Certificate.SmartSummary]}" FontWeight="Bold" FontSize="13"/>
                                 <TextBlock Text="{Binding SmartPowerOnHoursText, StringFormat='Provozní hodiny: {0}'}"/>
                                 <TextBlock Text="{Binding SmartPowerCyclesText, StringFormat='Počet startů: {0}'}"/>
                                 <TextBlock Text="{Binding SmartReallocatedSectorsText, StringFormat='Realokované sektory: {0}'}"/>
                                 <TextBlock Text="{Binding SmartPendingSectorsText, StringFormat='Čekající sektory: {0}'}"/>
                                 <Separator Margin="0,4,0,2"/>
-                                <TextBlock Text="Legenda známek" FontWeight="Bold" FontSize="12"/>
-                                <TextBlock Text="A = výborný stav • B = velmi dobrý stav" FontSize="11"/>
-                                <TextBlock Text="C = dobrý stav • D = opotřebený disk" FontSize="11"/>
-                                <TextBlock Text="E = rizikový disk • F = kritický / vadný" FontSize="11"/>
+                                <TextBlock Text="{Binding L[Grade.Legend]}" FontWeight="Bold" FontSize="12"/>
+                                <TextBlock Text="{Binding L[CertificateView.GradeAB]}" FontSize="11"/>
+                                <TextBlock Text="{Binding L[CertificateView.GradeCD]}" FontSize="11"/>
+                                <TextBlock Text="{Binding L[CertificateView.GradeEF]}" FontSize="11"/>
                             </StackPanel>
                         </Border>
 
@@ -145,7 +145,7 @@
                                 <TextBlock Text="{Binding SeekTestSummaryText, StringFormat='Souhrn: {0}'}"
                                            FontSize="11" TextWrapping="Wrap"/>
                                 <Grid ColumnDefinitions="Auto,*" RowDefinitions="Auto,Auto,Auto,Auto" RowSpacing="2" ColumnSpacing="8">
-                                    <TextBlock Grid.Row="0" Grid.Column="0" Text="Průměr:" FontSize="11"/>
+                                    <TextBlock Grid.Row="0" Grid.Column="0" Text="{Binding L[CertificateView.Average]}" FontSize="11"/>
                                     <TextBlock Grid.Row="0" Grid.Column="1" Text="{Binding SeekAvgLatencyMsText}" FontSize="11" FontWeight="SemiBold"/>
                                     <TextBlock Grid.Row="1" Grid.Column="0" Text="Minimum:" FontSize="11"/>
                                     <TextBlock Grid.Row="1" Grid.Column="1" Text="{Binding SeekMinLatencyMsText}" FontSize="11"/>
@@ -161,8 +161,8 @@
                         <Border Background="{Binding PanelBackground}" Padding="12" CornerRadius="8"
                                 IsVisible="{Binding HasBeforeAfterComparison}">
                             <StackPanel Spacing="6">
-                                <TextBlock Text="🧹 Porovnání sanitizací (před/po seek testech)" FontWeight="Bold" FontSize="13"/>
-                                <TextBlock Text="Rychlost zápisu:" FontSize="11" FontWeight="SemiBold"/>
+                                <TextBlock Text="{Binding L[CertificateView.SanitizeComparison]}" FontWeight="Bold" FontSize="13"/>
+                                <TextBlock Text="{Binding L[CertificateView.WriteSpeed]}" FontSize="11" FontWeight="SemiBold"/>
                                 <Grid ColumnDefinitions="Auto,Auto,Auto" RowDefinitions="Auto" ColumnSpacing="8">
                                     <TextBlock Grid.Column="0" Text="{Binding Sanitize1WriteText, StringFormat='1. sanitizace: {0}'}" FontSize="11"/>
                                     <TextBlock Grid.Column="1" Text="→" FontSize="11" Foreground="{DynamicResource ThemeTextMutedBrush}"/>
@@ -171,7 +171,7 @@
                                 <TextBlock Text="{Binding WriteSpeedChangeText, StringFormat='Změna: {0}'}" FontSize="11"
                                            Foreground="{DynamicResource ThemeTextSecondaryBrush}"/>
                                 <Separator Margin="0,2"/>
-                                <TextBlock Text="Rychlost čtení:" FontSize="11" FontWeight="SemiBold"/>
+                                <TextBlock Text="{Binding L[CertificateView.ReadSpeed]}" FontSize="11" FontWeight="SemiBold"/>
                                 <Grid ColumnDefinitions="Auto,Auto,Auto" RowDefinitions="Auto" ColumnSpacing="8">
                                     <TextBlock Grid.Column="0" Text="{Binding Sanitize1ReadText, StringFormat='1. sanitizace: {0}'}" FontSize="11"/>
                                     <TextBlock Grid.Column="1" Text="→" FontSize="11" Foreground="{DynamicResource ThemeTextMutedBrush}"/>
@@ -186,7 +186,7 @@
                         <Border Background="{Binding PanelBackground}" Padding="12" CornerRadius="8"
                                 IsVisible="{Binding HasBeforeAfterComparison}">
                             <StackPanel Spacing="4">
-                                <TextBlock Text="📉 SMART změny během testu" FontWeight="Bold" FontSize="13"/>
+                                <TextBlock Text="{Binding L[CertificateView.SmartChanges]}" FontWeight="Bold" FontSize="13"/>
                                 <TextBlock Text="{Binding SmartDeltaSummaryText}" FontSize="11"
                                            TextWrapping="Wrap"
                                            Foreground="{DynamicResource ThemeTextSecondaryBrush}"/>
@@ -195,7 +195,7 @@
 
                         <Border Background="{Binding PanelBackground}" Padding="12" CornerRadius="8">
                             <StackPanel Spacing="8">
-                                <TextBlock Text="Výkonový profil testu" FontWeight="Bold" FontSize="13"/>
+                                <TextBlock Text="{Binding L[CertificateView.PerformanceProfile]}" FontWeight="Bold" FontSize="13"/>
 
                                 <Grid ColumnDefinitions="Auto,*" RowDefinitions="* ,Auto" RowSpacing="4" ColumnSpacing="8">
                                     <Grid Grid.Row="0" Grid.Column="0" RowDefinitions="Auto,*,Auto" Height="120">
@@ -232,11 +232,11 @@
                                 <StackPanel Orientation="Horizontal" Spacing="16">
                                      <StackPanel Orientation="Horizontal" Spacing="6">
                                          <Border Width="10" Height="10" Background="{Binding ChartStrokeWrite}" CornerRadius="2"/>
-                                         <TextBlock Text="Zápis" FontSize="11"/>
+                                         <TextBlock Text="{Binding L[CertificateView.Write]}" FontSize="11"/>
                                      </StackPanel>
                                      <StackPanel Orientation="Horizontal" Spacing="6">
                                          <Border Width="10" Height="10" Background="{Binding ChartStrokeRead}" CornerRadius="2"/>
-                                         <TextBlock Text="Čtení" FontSize="11"/>
+                                         <TextBlock Text="{Binding L[CertificateView.Read]}" FontSize="11"/>
                                      </StackPanel>
                                     <StackPanel Orientation="Horizontal" Spacing="6" IsVisible="{Binding HasTemperatureProfile}">
                                         <Border Width="10" Height="10" Background="#FF7C3AED" CornerRadius="2"/>
@@ -247,12 +247,12 @@
                          </Border>
 
                         <StackPanel Spacing="4">
-                            <TextBlock Text="Doporučení" FontWeight="Bold" FontSize="13"/>
+                            <TextBlock Text="{Binding L[Certificate.Recommendations]}" FontWeight="Bold" FontSize="13"/>
                             <TextBlock Text="{Binding RecommendationText}" TextWrapping="Wrap"/>
                         </StackPanel>
 
                         <StackPanel Spacing="4" IsVisible="{Binding HasDiagnosticHighlights}">
-                            <TextBlock Text="Diagnostické signály" FontWeight="Bold" FontSize="13"/>
+                            <TextBlock Text="{Binding L[Certificate.DiagnosticSignals]}" FontWeight="Bold" FontSize="13"/>
                             <Border Background="{Binding DiagnosticBadgeBackground}" CornerRadius="999" Padding="10,4" HorizontalAlignment="Left">
                                 <TextBlock Text="{Binding DiagnosticBadgeText}" FontSize="11" FontWeight="Bold"
                                            Foreground="{Binding DiagnosticBadgeForeground}"/>
@@ -263,7 +263,7 @@
                         </StackPanel>
 
                         <StackPanel Spacing="4" IsVisible="{Binding HasScoringReasons}">
-                            <TextBlock Text="Důvody hodnocení" FontWeight="Bold" FontSize="13"/>
+                            <TextBlock Text="{Binding L[Certificate.Reasons]}" FontWeight="Bold" FontSize="13"/>
                             <Border Background="{Binding PanelBackground}" Padding="10" CornerRadius="6">
                                 <TextBlock Text="{Binding ScoringReasonsText}" TextWrapping="Wrap"/>
                             </Border>
@@ -295,7 +295,7 @@
                         <Grid ColumnDefinitions="*,*" ColumnSpacing="16">
                             <Border Grid.Column="0" Background="{Binding PanelBackground}" Padding="12" CornerRadius="8">
                                 <StackPanel Spacing="6">
-                                    <TextBlock Text="Detail vybraného testu" FontWeight="Bold" FontSize="13"/>
+                                    <TextBlock Text="{Binding L[CertificateView.TestDetail]}" FontWeight="Bold" FontSize="13"/>
                                     <TextBlock Text="{Binding SelectedSessionSummary}" TextWrapping="Wrap" FontFamily="Consolas" FontSize="11"/>
                                 </StackPanel>
                             </Border>
@@ -309,7 +309,7 @@
 
                         <Border Background="{Binding PanelBackground}" Padding="12" CornerRadius="8">
                             <StackPanel Spacing="6">
-                                <TextBlock Text="Teplotní korelace" FontWeight="Bold" FontSize="13"/>
+                                <TextBlock Text="{Binding L[CertificateView.TemperatureCorrelation]}" FontWeight="Bold" FontSize="13"/>
                                 <TextBlock Text="{Binding SelectedSessionThermalSummary}" TextWrapping="Wrap" FontFamily="Consolas" FontSize="11"/>
                             </StackPanel>
                         </Border>
@@ -348,14 +348,14 @@
                     HorizontalAlignment="Center" VerticalAlignment="Center"
                     BoxShadow="0 8 32 0 #44000000">
                 <StackPanel Spacing="16" HorizontalAlignment="Center">
-                    <TextBlock Text="🖨️ Tisk certifikátu" FontSize="18" FontWeight="Bold"
+                    <TextBlock Text="{Binding L[CertificateView.PrintCertificate]}" FontSize="18" FontWeight="Bold"
                                HorizontalAlignment="Center"
                                Foreground="{DynamicResource ThemeTextPrimaryBrush}"/>
                     <ProgressBar IsIndeterminate="True" MinWidth="260" Height="6"/>
                     <TextBlock Text="{Binding PrintProgressMessage}" FontSize="12"
                                HorizontalAlignment="Center"
                                Foreground="{DynamicResource ThemeTextMutedBrush}"/>
-                    <TextBlock Text="Prosím čekejte, nevypínejte aplikaci..." FontSize="10"
+                    <TextBlock Text="{Binding L[CertificateView.PleaseWait]}" FontSize="10"
                                HorizontalAlignment="Center"
                                Foreground="{DynamicResource ThemeTextMutedBrush}"/>
                 </StackPanel>

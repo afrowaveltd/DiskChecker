@@ -21,6 +21,7 @@ namespace DiskChecker.Application.Services
     {
         private readonly ICertificateGenerator _certificateGenerator;
         private readonly IDiskCardRepository _diskCardRepository;
+        private readonly ILocaleProvider? _locale;
         private readonly ILogger<CertificateExportService>? _logger;
 
         private const int MaxChartPoints = 512;
@@ -30,10 +31,12 @@ namespace DiskChecker.Application.Services
         public CertificateExportService(
             ICertificateGenerator certificateGenerator,
             IDiskCardRepository diskCardRepository,
+            ILocaleProvider? locale = null,
             ILogger<CertificateExportService>? logger = null)
         {
             _certificateGenerator = certificateGenerator ?? throw new ArgumentNullException(nameof(certificateGenerator));
             _diskCardRepository = diskCardRepository ?? throw new ArgumentNullException(nameof(diskCardRepository));
+            _locale = locale;
             _logger = logger;
         }
 
@@ -52,7 +55,7 @@ namespace DiskChecker.Application.Services
             try
             {
                 _logger?.LogInformation("Starting certificate export for session {SessionId}", sessionId);
-                progress?.Report(new CertificateExportProgress("Načítám data testu...", 10));
+                progress?.Report(new CertificateExportProgress(_locale?.GetString("CertificateExport.LoadingTestData", "Načítám data testu...") ?? "Načítám data testu...", 10));
 
                 // Load session without samples first (performance optimization)
                 var session = await _diskCardRepository.GetTestSessionWithoutSamplesAsync(sessionId);
@@ -68,7 +71,7 @@ namespace DiskChecker.Application.Services
                     throw new InvalidOperationException($"Karta disku pro session {sessionId} nebyla nalezena.");
                 }
 
-                progress?.Report(new CertificateExportProgress("Načítám vzorky rychlosti...", 30));
+                progress?.Report(new CertificateExportProgress(_locale?.GetString("CertificateExport.LoadingSpeedSamples", "Načítám vzorky rychlosti...") ?? "Načítám vzorky rychlosti...", 30));
 
                 // Load and downsample speed samples based on test type
                 if (session.TestType == TestType.Sanitization)
@@ -80,22 +83,22 @@ namespace DiskChecker.Application.Services
                     await LoadAndDownsampleStandardSamplesAsync(session, sessionId, progress, cancellationToken);
                 }
 
-                progress?.Report(new CertificateExportProgress("Generuji certifikát...", 70));
+                progress?.Report(new CertificateExportProgress(_locale?.GetString("CertificateExport.GeneratingCertificate", "Generuji certifikát...") ?? "Generuji certifikát...", 70));
 
                 // Generate certificate
                 var certificate = await _certificateGenerator.GenerateCertificateAsync(session, card);
 
-                progress?.Report(new CertificateExportProgress("Vytvářím PDF...", 85));
+                progress?.Report(new CertificateExportProgress(_locale?.GetString("CertificateExport.GeneratingPdf", "Vytvářím PDF...") ?? "Vytvářím PDF...", 85));
 
                 // Generate PDF
                 var pdfPath = await _certificateGenerator.GeneratePdfAsync(certificate);
 
-                progress?.Report(new CertificateExportProgress("Ukládám certifikát...", 95));
+                progress?.Report(new CertificateExportProgress(_locale?.GetString("CertificateExport.SavingCertificate", "Ukládám certifikát...") ?? "Ukládám certifikát...", 95));
 
                 // Save certificate to database
                 await _diskCardRepository.CreateCertificateAsync(certificate);
 
-                progress?.Report(new CertificateExportProgress("Hotovo!", 100));
+                progress?.Report(new CertificateExportProgress(_locale?.GetString("CertificateExport.Done", "Hotovo!") ?? "Hotovo!", 100));
 
                 _logger?.LogInformation(
                     "Certificate export completed successfully. Certificate: {CertificateNumber}, PDF: {PdfPath}",
@@ -130,7 +133,7 @@ namespace DiskChecker.Application.Services
 
                 var progressPercent = 30 + ((70 - 30) * (remainder + 1) / SanitizationMaxRemainders);
                 progress?.Report(new CertificateExportProgress(
-                    $"Načítám vzorky ({remainder + 1}/{SanitizationMaxRemainders})...",
+                    string.Format(_locale?.GetString("CertificateExport.LoadingSamplesProgress", "Načítám vzorky ({{0}}/{{1}})...") ?? "Načítám vzorky ({{0}}/{{1}})...", remainder + 1, SanitizationMaxRemainders),
                     progressPercent));
 
                 try

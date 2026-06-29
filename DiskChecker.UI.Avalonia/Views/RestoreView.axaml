@@ -11,7 +11,7 @@
                 Background="{DynamicResource ThemePrimaryLowBrush}"
                 BorderBrush="{DynamicResource ThemePrimaryBrush}" BorderThickness="1">
             <StackPanel Spacing="6">
-                <TextBlock Text="🔄 OBNOVA ZÁLOHY" FontSize="20" FontWeight="Bold"
+                <TextBlock Text="{Binding L[RestoreView.Title]}" FontSize="20" FontWeight="Bold"
                            Foreground="{DynamicResource ThemePrimaryBrush}"/>
                 <TextBlock Text="{Binding StatusMessage}" FontSize="13"
                            Foreground="{DynamicResource ThemeForegroundBrush}" Opacity="0.8"/>
@@ -24,12 +24,12 @@
                 IsVisible="{Binding Phase, Converter={StaticResource EnumEqConverter}, ConverterParameter=Idle}">
             <StackPanel Spacing="12" HorizontalAlignment="Center">
                 <TextBlock Text="📭" FontSize="48" HorizontalAlignment="Center"/>
-                <TextBlock Text="Nenalezeny žádné zálohy" FontSize="16" FontWeight="Bold"
+                <TextBlock Text="{Binding L[Restore.NoBackups]}" FontSize="16" FontWeight="Bold"
                            HorizontalAlignment="Center"/>
-                <TextBlock Text="Nejprve proveďte zálohu disku v sekci Zálohování."
+                <TextBlock Text="{Binding L[RestoreView.NoBackupsHint]}"
                            FontSize="13" Opacity="0.7" HorizontalAlignment="Center"
                            TextWrapping="Wrap" MaxWidth="400"/>
-                <Button Content="💾 Přejít na zálohování" HorizontalAlignment="Center"
+                <Button Content="{Binding L[RestoreView.GoToBackup]}" HorizontalAlignment="Center"
                         Command="{Binding GoBackCommand}" Classes="Primary"/>
             </StackPanel>
         </Border>
@@ -41,7 +41,7 @@
             <StackPanel Spacing="12" HorizontalAlignment="Center">
                 <ProgressBar IsIndeterminate="True" Height="6" Width="200"
                              Foreground="{DynamicResource ThemePrimaryBrush}"/>
-                <TextBlock Text="🔍 Hledám existující zálohy..." FontSize="14"
+                <TextBlock Text="{Binding L[RestoreView.Scanning]}" FontSize="14"
                            HorizontalAlignment="Center"/>
             </StackPanel>
         </Border>
@@ -54,7 +54,7 @@
             <Border Grid.Row="0" Grid.Column="0" Padding="12" CornerRadius="8"
                     Background="{DynamicResource ThemeCardBrush}" Margin="0,0,6,0">
                 <StackPanel Spacing="8">
-                    <TextBlock Text="📦 NALEZENÉ ZÁLOHY" FontSize="14" FontWeight="Bold"/>
+                    <TextBlock Text="{Binding L[RestoreView.FoundBackups]}" FontSize="14" FontWeight="Bold"/>
                     <ScrollViewer Height="200">
                         <ItemsControl ItemsSource="{Binding DiscoveredBackups}">
                             <ItemsControl.ItemTemplate>
@@ -92,7 +92,7 @@
             <Border Grid.Row="0" Grid.Column="1" Padding="12" CornerRadius="8"
                     Background="{DynamicResource ThemeCardBrush}" Margin="6,0,0,0">
                 <StackPanel Spacing="8">
-                    <TextBlock Text="💿 CÍLOVÝ DISK" FontSize="14" FontWeight="Bold"/>
+                    <TextBlock Text="{Binding L[RestoreView.TargetDisk]}" FontSize="14" FontWeight="Bold"/>
                     <ScrollViewer Height="200">
                         <ItemsControl ItemsSource="{Binding TargetDisks}">
                             <ItemsControl.ItemTemplate>
@@ -125,14 +125,14 @@
                     Background="{DynamicResource ThemeCardBrush}" Margin="0,12,0,0"
                     IsVisible="{Binding HasSelectedBackup}">
                 <Grid ColumnDefinitions="*,Auto" RowDefinitions="Auto,Auto,Auto,Auto">
-                    <TextBlock Grid.Row="0" Grid.Column="0" Text="📋 DETAIL VYBRANÉ ZÁLOHY"
+                    <TextBlock Grid.Row="0" Grid.Column="0" Text="{Binding L[RestoreView.BackupDetail]}"
                                FontSize="14" FontWeight="Bold" Margin="0,0,0,8"/>
                     <Button Grid.Row="0" Grid.Column="1" Content="🔄 Znovu hledat"
                             Command="{Binding ScanForBackupsCommand}" Classes="Secondary" VerticalAlignment="Top"/>
 
                     <StackPanel Grid.Row="1" Grid.Column="0" Grid.ColumnSpan="2" Spacing="4">
                         <TextBlock FontSize="12">
-                            <Run Text="Zdrojový disk: " FontWeight="SemiBold"/>
+                            <Run Text="{Binding L[RestoreView.SourceDiskLabel]}" FontWeight="SemiBold"/>
                             <Run Text="{Binding SelectedBackup.SourceModel}"/>
                         </TextBlock>
                         <TextBlock FontSize="12">
@@ -140,11 +140,11 @@
                             <Run Text="{Binding SelectedBackup.SourceDrivePath}" FontFamily="Consolas"/>
                         </TextBlock>
                         <TextBlock FontSize="12">
-                            <Run Text="Datum zálohy: " FontWeight="SemiBold"/>
+                            <Run Text="{Binding L[RestoreView.BackupDateLabel]}" FontWeight="SemiBold"/>
                             <Run Text="{Binding SelectedBackup.BackupDate}"/>
                         </TextBlock>
                         <TextBlock FontSize="12">
-                            <Run Text="Režim: " FontWeight="SemiBold"/>
+                            <Run Text="{Binding L[RestoreView.ModeLabel]}" FontWeight="SemiBold"/>
                             <Run Text="{Binding SelectedBackup.Mode}"/>
                         </TextBlock>
                         <TextBlock FontSize="12">
@@ -152,11 +152,11 @@
                             <Run Text="{Binding SelectedBackup.TotalBytesText}"/>
                         </TextBlock>
                         <TextBlock FontSize="12">
-                            <Run Text="Částí: " FontWeight="SemiBold"/>
+                            <Run Text="{Binding L[RestoreView.PartsLabel]}" FontWeight="SemiBold"/>
                             <Run Text="{Binding SelectedBackup.Parts}"/>
                         </TextBlock>
                         <TextBlock FontSize="12" TextWrapping="Wrap">
-                            <Run Text="Složky: " FontWeight="SemiBold"/>
+                            <Run Text="{Binding L[RestoreView.FoldersLabel]}" FontWeight="SemiBold"/>
                             <Run Text="{Binding SelectedBackup.FoldersSummary}"/>
                         </TextBlock>
                     </StackPanel>
@@ -218,7 +218,7 @@
                 Background="{DynamicResource ThemeCardBrush}"
                 IsVisible="{Binding Phase, Converter={StaticResource EnumEqConverter}, ConverterParameter=Completed}">
             <StackPanel Spacing="8">
-                <TextBlock Text="✅ OBNOVA DOKONČENA" FontSize="16" FontWeight="Bold"
+                <TextBlock Text="{Binding L[RestoreView.RestoreCompleted]}" FontSize="16" FontWeight="Bold"
                            Foreground="{DynamicResource ThemeSuccessBrush}"/>
                 <TextBlock Text="{Binding VerifyResult}" FontSize="13" TextWrapping="Wrap"/>
                 <TextBlock Text="{Binding RestoreLogText}" FontSize="10" FontFamily="Consolas"
@@ -243,9 +243,9 @@
         <!-- ═══ BOTTOM BUTTONS ═══ -->
         <StackPanel Grid.Row="4" Orientation="Horizontal" Spacing="12"
                     HorizontalAlignment="Right" Margin="0,16,0,0">
-            <Button Content="↩️ Zpět" Command="{Binding GoBackCommand}" Classes="Secondary"
+            <Button Content="{Binding L[RestoreView.Back]}" Command="{Binding GoBackCommand}" Classes="Secondary"
                     IsVisible="{Binding Phase, Converter={StaticResource EnumNeqConverter}, ConverterParameter=Running}"/>
-            <Button Content="⏹️ Přerušit" Command="{Binding CancelRestoreCommand}" Classes="Danger"
+            <Button Content="{Binding L[RestoreView.Interrupt]}" Command="{Binding CancelRestoreCommand}" Classes="Danger"
                     IsVisible="{Binding Phase, Converter={StaticResource EnumInConverter}, ConverterParameter='Running,Verifying'}"/>
             <Button Content="💾 SPUSTIT OBNOVU" Command="{Binding StartRestoreCommand}" Classes="Primary"
                     IsVisible="{Binding Phase, Converter={StaticResource EnumEqConverter}, ConverterParameter=Ready}"/>

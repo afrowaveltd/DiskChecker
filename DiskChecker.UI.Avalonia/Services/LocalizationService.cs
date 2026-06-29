@@ -1,7 +1,10 @@
 using System;
 using System.Collections.Generic;
+using System.ComponentModel;
 using System.IO;
+using System.Runtime.CompilerServices;
 using System.Text.Json;
+using DiskChecker.Core.Interfaces;
 
 namespace DiskChecker.UI.Avalonia.Services;
 
@@ -9,8 +12,9 @@ namespace DiskChecker.UI.Avalonia.Services;
 /// Flat JSON dictionary localization service.
 /// Loads locale files from the Locales folder (e.g. cs.json, en.json).
 /// Falls back to Czech if a key is missing in the current locale.
+/// Implements INotifyPropertyChanged so XAML bindings refresh on locale change.
 /// </summary>
-public class LocaleService
+public class LocaleService : ILocaleProvider, INotifyPropertyChanged
 {
     private const string LocalesFolder = "Locales";
     private const string FallbackLocale = "cs";
@@ -18,10 +22,13 @@ public class LocaleService
     private readonly Dictionary<string, string> _current = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, string> _fallback = new(StringComparer.OrdinalIgnoreCase);
     private string _currentLocale = FallbackLocale;
+    private int _generation; // incremented on each locale change to trigger binding refresh
 
     public string CurrentLocale => _currentLocale;
+    public int Generation => _generation;
 
     public event Action? LocaleChanged;
+    public event PropertyChangedEventHandler? PropertyChanged;
 
     public LocaleService()
     {
@@ -55,6 +62,25 @@ public class LocaleService
     }
 
     /// <summary>
+    /// Indexer for XAML binding: {Binding L[KeyName]}
+    /// </summary>
+    public string this[string key] => Get(key);
+
+    public string GetString(string key)
+    {
+        return Get(key);
+    }
+
+    public string GetString(string key, string fallback)
+    {
+        return _current.TryGetValue(key, out var value)
+            ? value
+            : _fallback.TryGetValue(key, out var fb)
+                ? fb
+                : fallback;
+    }
+
+    /// <summary>
     /// Switch to a different locale. Loads the JSON file and merges with fallback.
     /// </summary>
     public void SetLocale(string locale)
@@ -62,7 +88,10 @@ public class LocaleService
         _current.Clear();
         LoadLocale(locale, _current);
         _currentLocale = locale;
+        _generation++;
         LocaleChanged?.Invoke();
+        PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(Generation)));
+        PropertyChanged?.Invoke(this, new PropertyChangedEventArgs("Item"));
     }
 
     /// <summary>

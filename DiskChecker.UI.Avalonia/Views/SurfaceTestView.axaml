@@ -18,8 +18,8 @@
                 Classes="PageHeader">
             <Grid ColumnDefinitions="*,Auto">
                 <StackPanel>
-                    <TextBlock Text="🧪 Test Povrchu Disku" Classes="PageTitle"/>
-                    <TextBlock Text="Kompletní zápis a ověření celého povrchu disku" Classes="PageSubtitle"/>
+                    <TextBlock Text="{Binding L[SurfaceTest.Title]}" Classes="PageTitle"/>
+                    <TextBlock Text="{Binding L[SurfaceTest.Description]}" Classes="PageSubtitle"/>
                     <Border Margin="0,4,0,0" Padding="8,4" CornerRadius="6"
                             BorderBrush="{DynamicResource ThemeBorderBrush}" BorderThickness="1"
                             Classes.status-error="{Binding IsStatusError}"
@@ -42,7 +42,7 @@
                      </Border>
                 </StackPanel>
                 <Button Grid.Column="1"
-                        Content="← Zpět na přehled"
+                        Content="{Binding L[SurfaceTest.BackToOverview]}"
                         Command="{Binding GoBackCommand}"
                         Background="{DynamicResource ThemeSecondaryBackgroundBrush}"
                         Foreground="{DynamicResource ThemeTextPrimaryBrush}"
@@ -64,7 +64,7 @@
                     <Grid ColumnDefinitions="Auto,*,Auto">
                         <TextBlock Text="💿" FontSize="24" Margin="0,0,12,0" VerticalAlignment="Center"/>
                         <StackPanel Grid.Column="1" VerticalAlignment="Center">
-                            <TextBlock Text="Vybraný disk" FontSize="10" Foreground="{DynamicResource ThemeTextMutedBrush}"/>
+                            <TextBlock Text="{Binding L[SurfaceTest.SelectedDisk]}" FontSize="10" Foreground="{DynamicResource ThemeTextMutedBrush}"/>
                             <ComboBox ItemsSource="{Binding AvailableDrives}"
                                       SelectedItem="{Binding SelectedDrive}"
                                       IsEnabled="{Binding CanChangeDisk}"
@@ -93,7 +93,7 @@
                         BorderThickness="1"
                         IsVisible="{Binding Volumes.Count, Converter={StaticResource IntToBoolConverter}}">
                     <StackPanel>
-                        <TextBlock Text="Oddíly disku" FontSize="12" FontWeight="Bold"/>
+                        <TextBlock Text="{Binding L[Disk.Partitions]}" FontSize="12" FontWeight="Bold"/>
                         <ItemsControl ItemsSource="{Binding Volumes}" Margin="0,6,0,0">
                             <ItemsControl.ItemTemplate>
                                 <DataTemplate>
@@ -150,7 +150,7 @@
                         CornerRadius="6" 
                         Padding="12,6">
                     <StackPanel Orientation="Horizontal" Spacing="6">
-                        <TextBlock Text="⚠ Chyby：" FontSize="11" Foreground="{DynamicResource ThemeTextSecondaryBrush}"/>
+                        <TextBlock Text="{Binding L[SurfaceTest.Errors]}" FontSize="11" Foreground="{DynamicResource ThemeTextSecondaryBrush}"/>
                         <TextBlock Text="{Binding ErrorCount}" FontSize="14" FontWeight="Bold" Foreground="{DynamicResource ThemeDangerBrush}"/>
                     </StackPanel>
                 </Border>
@@ -172,7 +172,7 @@
                             <StackPanel Grid.Column="0" Margin="0,0,8,0">
                                 <StackPanel Orientation="Horizontal" Spacing="6">
                                     <Ellipse Width="8" Height="8" Fill="{DynamicResource ThemeSuccessBrush}"/>
-                                    <TextBlock Text="ZÁPIS DAT (0-50%)" FontSize="11" FontWeight="Bold" Foreground="{DynamicResource ThemeTextPrimaryBrush}"/>
+                                    <TextBlock Text="{Binding L[WriteShort]}" FontSize="11" FontWeight="Bold" Foreground="{DynamicResource ThemeTextPrimaryBrush}"/>
                                 </StackPanel>
                                 <ProgressBar Value="{Binding WriteProgress}" Maximum="100" Height="10"
                                            Background="{DynamicResource ThemeBorderLightBrush}"
@@ -188,7 +188,7 @@
                             <StackPanel Grid.Column="1">
                                 <StackPanel Orientation="Horizontal" Spacing="6">
                                     <Ellipse Width="8" Height="8" Fill="{DynamicResource ThemeWarningBrush}"/>
-                                    <TextBlock Text="OVĚŘENÍ DAT (50-100%)" FontSize="11" FontWeight="Bold" Foreground="{DynamicResource ThemeTextPrimaryBrush}"/>
+                                    <TextBlock Text="{Binding L[Verify]}" FontSize="11" FontWeight="Bold" Foreground="{DynamicResource ThemeTextPrimaryBrush}"/>
                                 </StackPanel>
                                 <ProgressBar Value="{Binding VerifyProgress}" Maximum="100" Height="10"
                                            Background="{DynamicResource ThemeBorderLightBrush}"
@@ -211,22 +211,22 @@
                                     <Grid ColumnDefinitions="Auto,*,*,*,*">
                                         <StackPanel Grid.Column="0" Orientation="Horizontal" Margin="0,0,8,0">
                                             <Ellipse Width="8" Height="8" Fill="{DynamicResource ThemeChartWriteBrush}" Margin="0,0,4,0"/>
-                                            <TextBlock Text="ZÁPIS" FontSize="10" FontWeight="Bold" Foreground="{DynamicResource ThemeChartWriteBrush}" VerticalAlignment="Center"/>
+                                            <TextBlock Text="{Binding L[WriteShort]}" FontSize="10" FontWeight="Bold" Foreground="{DynamicResource ThemeChartWriteBrush}" VerticalAlignment="Center"/>
                                         </StackPanel>
                                         <StackPanel Grid.Column="1" HorizontalAlignment="Center">
-                                            <TextBlock Text="Akt" FontSize="8" Foreground="{DynamicResource ThemeTextMutedBrush}" HorizontalAlignment="Center"/>
+                                            <TextBlock Text="{Binding L[SurfaceTest.Current]}" FontSize="8" Foreground="{DynamicResource ThemeTextMutedBrush}" HorizontalAlignment="Center"/>
                                             <TextBlock Text="{Binding WriteCurrentSpeed, StringFormat='{}{0:F0}'}" FontSize="14" FontWeight="Bold" Foreground="{DynamicResource ThemeChartWriteBrush}" HorizontalAlignment="Center"/>
                                         </StackPanel>
                                         <StackPanel Grid.Column="2" HorizontalAlignment="Center">
-                                            <TextBlock Text="Min" FontSize="8" Foreground="{DynamicResource ThemeTextMutedBrush}" HorizontalAlignment="Center"/>
+                                            <TextBlock Text="{Binding L[SurfaceTest.Min]}" FontSize="8" Foreground="{DynamicResource ThemeTextMutedBrush}" HorizontalAlignment="Center"/>
                                             <TextBlock Text="{Binding WriteMinSpeed, StringFormat='{}{0:F0}'}" FontSize="14" FontWeight="Bold" Foreground="{DynamicResource ThemeChartWriteLightBrush}" HorizontalAlignment="Center"/>
                                         </StackPanel>
                                         <StackPanel Grid.Column="3" HorizontalAlignment="Center">
-                                            <TextBlock Text="Max" FontSize="8" Foreground="{DynamicResource ThemeTextMutedBrush}" HorizontalAlignment="Center"/>
+                                            <TextBlock Text="{Binding L[SurfaceTest.Max]}" FontSize="8" Foreground="{DynamicResource ThemeTextMutedBrush}" HorizontalAlignment="Center"/>
                                             <TextBlock Text="{Binding WriteMaxSpeed, StringFormat='{}{0:F0}'}" FontSize="14" FontWeight="Bold" Foreground="{DynamicResource ThemeChartWriteDarkBrush}" HorizontalAlignment="Center"/>
                                         </StackPanel>
                                         <StackPanel Grid.Column="4" HorizontalAlignment="Center">
-                                            <TextBlock Text="Prům" FontSize="8" Foreground="{DynamicResource ThemeTextMutedBrush}" HorizontalAlignment="Center"/>
+                                            <TextBlock Text="{Binding L[SurfaceTest.Avg]}" FontSize="8" Foreground="{DynamicResource ThemeTextMutedBrush}" HorizontalAlignment="Center"/>
                                             <TextBlock Text="{Binding WriteAvgSpeed, StringFormat='{}{0:F0}'}" FontSize="14" FontWeight="Bold" Foreground="{DynamicResource ThemeChartWriteDarkBrush}" HorizontalAlignment="Center"/>
                                         </StackPanel>
                                     </Grid>
@@ -237,7 +237,7 @@
                                     <Grid ColumnDefinitions="Auto,*,*,*,*">
                                         <StackPanel Grid.Column="0" Orientation="Horizontal" Margin="0,0,8,0">
                                             <Ellipse Width="8" Height="8" Fill="{DynamicResource ThemeChartReadBrush}" Margin="0,0,4,0"/>
-                                            <TextBlock Text="ČTENÍ" FontSize="10" FontWeight="Bold" Foreground="{DynamicResource ThemeChartReadBrush}" VerticalAlignment="Center"/>
+                                            <TextBlock Text="{Binding L[ReadShort]}" FontSize="10" FontWeight="Bold" Foreground="{DynamicResource ThemeChartReadBrush}" VerticalAlignment="Center"/>
                                         </StackPanel>
                                         <StackPanel Grid.Column="1" HorizontalAlignment="Center">
                                             <TextBlock Text="Akt" FontSize="8" Foreground="{DynamicResource ThemeTextMutedBrush}" HorizontalAlignment="Center"/>
@@ -252,7 +252,7 @@
                                             <TextBlock Text="{Binding ReadMaxSpeed, StringFormat='{}{0:F0}'}" FontSize="14" FontWeight="Bold" Foreground="{DynamicResource ThemeChartReadDarkBrush}" HorizontalAlignment="Center"/>
                                         </StackPanel>
                                         <StackPanel Grid.Column="4" HorizontalAlignment="Center">
-                                            <TextBlock Text="Prům" FontSize="8" Foreground="{DynamicResource ThemeTextMutedBrush}" HorizontalAlignment="Center"/>
+                                            <TextBlock Text="{Binding L[SurfaceTest.Avg]}" FontSize="8" Foreground="{DynamicResource ThemeTextMutedBrush}" HorizontalAlignment="Center"/>
                                             <TextBlock Text="{Binding ReadAvgSpeed, StringFormat='{}{0:F0}'}" FontSize="14" FontWeight="Bold" Foreground="{DynamicResource ThemeChartReadDarkBrush}" HorizontalAlignment="Center"/>
                                         </StackPanel>
                                     </Grid>
@@ -266,9 +266,9 @@
                                 <!-- Legend -->
                                 <StackPanel Grid.Row="0" Orientation="Horizontal" Spacing="12" Margin="0,0,0,8">
                                     <Border Background="{DynamicResource ThemeChartWriteBrush}" Width="10" Height="10" CornerRadius="2"/>
-                                    <TextBlock Text="Zápis" FontSize="10" Foreground="{DynamicResource ThemeChartWriteBrush}" VerticalAlignment="Center"/>
+                                    <TextBlock Text="{Binding L[Write]}" FontSize="10" Foreground="{DynamicResource ThemeChartWriteBrush}" VerticalAlignment="Center"/>
                                     <Border Background="{DynamicResource ThemeChartReadBrush}" Width="10" Height="10" CornerRadius="2" Margin="8,0,0,0"/>
-                                    <TextBlock Text="Čtení" FontSize="10" Foreground="{DynamicResource ThemeChartReadBrush}" VerticalAlignment="Center" Margin="4,0,0,0"/>
+                                    <TextBlock Text="{Binding L[Read]}" FontSize="10" Foreground="{DynamicResource ThemeChartReadBrush}" VerticalAlignment="Center" Margin="4,0,0,0"/>
 
                                     <Ellipse Width="7" Height="7"
                                              Fill="{DynamicResource ThemeChartWriteBrush}"
@@ -290,12 +290,12 @@
                                             <TextBlock Text="{Binding DisplayMaxSpeed, StringFormat='0 - {0:F0} MB/s'}" FontSize="10" Foreground="{DynamicResource ThemeTextSecondaryBrush}" FontWeight="SemiBold"/>
                                         </StackPanel>
                                         <StackPanel Orientation="Horizontal" Spacing="4">
-                                            <TextBlock Text="Bodů:" FontSize="10" Foreground="{DynamicResource ThemeTextMutedBrush}"/>
+                                            <TextBlock Text="{Binding L[Grade.Points]}" FontSize="10" Foreground="{DynamicResource ThemeTextMutedBrush}"/>
                                             <TextBlock Text="{Binding ChartPointCount}" FontSize="10" Foreground="{DynamicResource ThemeTextSecondaryBrush}" FontWeight="SemiBold"/>
                                         </StackPanel>
                                         <StackPanel Orientation="Horizontal" Spacing="4" VerticalAlignment="Center">
                                             <CheckBox IsChecked="{Binding IsDataWindowZoomEnabled}" VerticalAlignment="Center"/>
-                                            <TextBlock Text="Výřez kolem aktuální pozice" FontSize="10" Foreground="{DynamicResource ThemeTextSecondaryBrush}" VerticalAlignment="Center"/>
+                                            <TextBlock Text="{Binding L[SurfaceTest.ZoomView]}" FontSize="10" Foreground="{DynamicResource ThemeTextSecondaryBrush}" VerticalAlignment="Center"/>
                                         </StackPanel>
                                         <StackPanel Orientation="Horizontal" Spacing="4" VerticalAlignment="Center">
                                             <TextBlock Text="Okno:" FontSize="10" Foreground="{DynamicResource ThemeTextMutedBrush}" VerticalAlignment="Center"/>
@@ -365,7 +365,7 @@
                                             <TextBlock Text="%" FontSize="10" Foreground="{DynamicResource ThemeTextMutedBrush}" VerticalAlignment="Center" IsVisible="{Binding IsZoomByPercent}"/>
                                         </StackPanel>
                                         <StackPanel Orientation="Horizontal" Spacing="4" VerticalAlignment="Center">
-                                            <TextBlock Text="Pozice:" FontSize="10" Foreground="{DynamicResource ThemeTextMutedBrush}" VerticalAlignment="Center"/>
+                                            <TextBlock Text="{Binding L[SurfaceTest.Position]}" FontSize="10" Foreground="{DynamicResource ThemeTextMutedBrush}" VerticalAlignment="Center"/>
                                             <TextBlock Text="{Binding CurrentDataPercent, StringFormat='{}{0:F1}%'}" FontSize="10" Foreground="{DynamicResource ThemeTextSecondaryBrush}" FontWeight="SemiBold" VerticalAlignment="Center"/>
                                         </StackPanel>
                                     </StackPanel>
@@ -381,7 +381,7 @@
                                                         LegendPosition="Hidden"
                                                         AnimationsSpeed="0:0:0"/>
 
-                                    <TextBlock Text="📈 Spusťte test pro zobrazení grafu"
+                                    <TextBlock Text="{Binding L[SurfaceTest.RunTestForGraph]}"
                                                VerticalAlignment="Center"
                                                HorizontalAlignment="Center"
                                                FontSize="12"
@@ -403,7 +403,7 @@
                     <Grid RowDefinitions="Auto,*,Auto">
                         <!-- Test Profiles -->
                         <StackPanel Grid.Row="0">
-                            <TextBlock Text="📋 Profily testů" FontSize="12" FontWeight="Bold" 
+                            <TextBlock Text="{Binding L[SurfaceTest.TestProfiles]}" FontSize="12" FontWeight="Bold" 
                                       Foreground="{DynamicResource ThemeTextPrimaryBrush}" Margin="0,0,0,10"/>
                             <ItemsControl ItemsSource="{Binding TestProfiles}">
                                 <ItemsControl.ItemTemplate>
@@ -459,7 +459,7 @@
                                     <StackPanel Spacing="2">
                                         <StackPanel Orientation="Horizontal" Margin="0,0,0,2">
                                             <Ellipse Width="6" Height="6" Fill="{DynamicResource ThemeChartWriteBrush}" Margin="0,0,4,0"/>
-                                            <TextBlock Text="Zápis" FontSize="9" FontWeight="Bold" Foreground="{DynamicResource ThemeChartWriteBrush}"/>
+                                            <TextBlock Text="{Binding L[Write]}" FontSize="9" FontWeight="Bold" Foreground="{DynamicResource ThemeChartWriteBrush}"/>
                                         </StackPanel>
                                         <Grid ColumnDefinitions="*,Auto" Margin="0,1">
                                             <TextBlock Text="Min:" FontSize="9" Foreground="{DynamicResource ThemeTextSecondaryBrush}"/>
@@ -470,7 +470,7 @@
                                             <TextBlock Grid.Column="1" Text="{Binding WriteMaxSpeed, StringFormat='{}{0:F0} MB/s'}" FontSize="9" FontWeight="Bold" Foreground="{DynamicResource ThemeChartWriteDarkBrush}"/>
                                         </Grid>
                                         <Grid ColumnDefinitions="*,Auto" Margin="0,1">
-                                            <TextBlock Text="Průměr:" FontSize="9" Foreground="{DynamicResource ThemeTextSecondaryBrush}"/>
+                                            <TextBlock Text="{Binding L[SurfaceTest.AvgLabel]}" FontSize="9" Foreground="{DynamicResource ThemeTextSecondaryBrush}"/>
                                             <TextBlock Grid.Column="1" Text="{Binding WriteAvgSpeed, StringFormat='{}{0:F0} MB/s'}" FontSize="9" FontWeight="Bold" Foreground="{DynamicResource ThemeChartWriteDarkBrush}"/>
                                         </Grid>
                                     </StackPanel>
@@ -481,7 +481,7 @@
                                     <StackPanel Spacing="2">
                                         <StackPanel Orientation="Horizontal" Margin="0,0,0,2">
                                             <Ellipse Width="6" Height="6" Fill="{DynamicResource ThemeChartReadBrush}" Margin="0,0,4,0"/>
-                                            <TextBlock Text="Čtení" FontSize="9" FontWeight="Bold" Foreground="{DynamicResource ThemeChartReadBrush}"/>
+                                            <TextBlock Text="{Binding L[Read]}" FontSize="9" FontWeight="Bold" Foreground="{DynamicResource ThemeChartReadBrush}"/>
                                         </StackPanel>
                                         <Grid ColumnDefinitions="*,Auto" Margin="0,1">
                                             <TextBlock Text="Min:" FontSize="9" Foreground="{DynamicResource ThemeTextSecondaryBrush}"/>
@@ -492,7 +492,7 @@
                                             <TextBlock Grid.Column="1" Text="{Binding ReadMaxSpeed, StringFormat='{}{0:F0} MB/s'}" FontSize="9" FontWeight="Bold" Foreground="{DynamicResource ThemeChartReadDarkBrush}"/>
                                         </Grid>
                                         <Grid ColumnDefinitions="*,Auto" Margin="0,1">
-                                            <TextBlock Text="Průměr:" FontSize="9" Foreground="{DynamicResource ThemeTextSecondaryBrush}"/>
+                                            <TextBlock Text="{Binding L[SurfaceTest.AvgLabel]}" FontSize="9" Foreground="{DynamicResource ThemeTextSecondaryBrush}"/>
                                             <TextBlock Grid.Column="1" Text="{Binding ReadAvgSpeed, StringFormat='{}{0:F0} MB/s'}" FontSize="9" FontWeight="Bold" Foreground="{DynamicResource ThemeChartReadDarkBrush}"/>
                                         </Grid>
                                     </StackPanel>
@@ -500,7 +500,7 @@
                                 
                                 <!-- Time & Errors -->
                                 <Grid ColumnDefinitions="*,Auto" Margin="0,4">
-                                    <TextBlock Text="Zbývající čas:" FontSize="10" Foreground="{DynamicResource ThemeTextSecondaryBrush}"/>
+                                    <TextBlock Text="{Binding L[SurfaceTest.RemainingTime]}" FontSize="10" Foreground="{DynamicResource ThemeTextSecondaryBrush}"/>
                                     <TextBlock Grid.Column="1" Text="{Binding TimeRemaining}" FontSize="10" FontWeight="Bold" Foreground="{DynamicResource ThemeTextPrimaryBrush}" Margin="8,0,0,0"/>
                                 </Grid>
                                 <Grid ColumnDefinitions="*,Auto" Margin="0,4">
@@ -528,7 +528,7 @@
                                     </Style>
                                 </Button.Styles>
                             </Button>
-                            <Button Content="■ Zrušit Test"
+                            <Button Content="{Binding L[SurfaceTest.CancelTest]}"
                                    Command="{Binding CancelTestCommand}"
                                    IsEnabled="{Binding IsTesting}"
                                    Background="{DynamicResource ThemeDangerBrush}"

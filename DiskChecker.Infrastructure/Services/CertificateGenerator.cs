@@ -22,6 +22,7 @@ public class CertificateGenerator : ICertificateGenerator
 {
     private readonly ILogger<CertificateGenerator>? _logger;
     private readonly ISettingsService? _settingsService;
+    private readonly ILocaleProvider? _locale;
     private readonly string _certificatesDirectory;
     private readonly string _labelsDirectory;
     private readonly string _chartCacheDirectory;
@@ -39,10 +40,11 @@ public class CertificateGenerator : ICertificateGenerator
     private const string FontSansSerifFallback = "Noto Sans";
     private const string FontSansSerifSystem = "Arial";
 
-    public CertificateGenerator(ILogger<CertificateGenerator>? logger = null, ISettingsService? settingsService = null)
+    public CertificateGenerator(ILogger<CertificateGenerator>? logger = null, ISettingsService? settingsService = null, ILocaleProvider? locale = null)
     {
         _logger = logger;
         _settingsService = settingsService;
+        _locale = locale;
 
         var basePath = GetCertificateBasePath();
         _certificatesDirectory = Path.Combine(basePath, "Certificates");
@@ -198,7 +200,7 @@ public class CertificateGenerator : ICertificateGenerator
     /// <summary>
     /// Renders the certificate as a JPEG using SkiaSharp (cross-platform).
     /// </summary>
-    private static Task<byte[]> RenderCertificateJpegAsync(DiskCertificate cert)
+    private Task<byte[]> RenderCertificateJpegAsync(DiskCertificate cert)
     {
         ArgumentNullException.ThrowIfNull(cert);
 
@@ -234,8 +236,8 @@ public class CertificateGenerator : ICertificateGenerator
             canvas.DrawRect(20, 20, CertWidth - 40, CertHeight - 40, borderPaint);
 
             // Title
-            DrawText(canvas, "CERTIFIKÁT KVALITY DISKU", 48, 42, titleFont, accentPaint);
-            DrawText(canvas, "DiskChecker – Profesionální diagnóza disků", 52, 98, smallFont, mutedPaint);
+            DrawText(canvas, _locale?.GetString("CertificatePdf.Title", "CERTIFIKÁT KVALITY DISKU") ?? "CERTIFIKÁT KVALITY DISKU", 48, 42, titleFont, accentPaint);
+            DrawText(canvas, _locale?.GetString("CertificatePdf.Subtitle", "DiskChecker – Profesionální diagnóza disků") ?? "DiskChecker – Profesionální diagnóza disků", 52, 98, smallFont, mutedPaint);
 
             // Info panel
             float y = 140;
@@ -249,19 +251,19 @@ public class CertificateGenerator : ICertificateGenerator
                 DrawText(canvas, value, 250, yy, valueFont, textPaint);
             }
 
-            DrawLine("Model:", cert.DiskModel, 0);
-            DrawLine("Sériové číslo:", cert.SerialNumber, 1);
-            DrawLine("Kapacita:", cert.Capacity, 2);
-            DrawLine("Typ disku:", cert.DiskType, 3);
-            DrawLine("Provozní hodiny:", cert.PowerOnHours > 0 ? cert.PowerOnHours.ToString("#,0", CultureInfo.InvariantCulture) : "N/A", 4);
-            DrawLine("Počet startů:", cert.PowerCycles > 0 ? cert.PowerCycles.ToString("#,0", CultureInfo.InvariantCulture) : "N/A", 5);
-            DrawLine("Číslo certifikátu:", cert.CertificateNumber, 6);
-            DrawLine("Vygenerováno:", cert.GeneratedAt.ToString("dd.MM.yyyy HH:mm"), 7);
+            DrawLine(_locale?.GetString("CertificatePdf.Model", "Model:") ?? "Model:", cert.DiskModel, 0);
+            DrawLine(_locale?.GetString("CertificatePdf.SerialNumber", "Sériové číslo:") ?? "Sériové číslo:", cert.SerialNumber, 1);
+            DrawLine(_locale?.GetString("CertificatePdf.Capacity", "Kapacita:") ?? "Kapacita:", cert.Capacity, 2);
+            DrawLine(_locale?.GetString("CertificatePdf.DiskType", "Typ disku:") ?? "Typ disku:", cert.DiskType, 3);
+            DrawLine(_locale?.GetString("CertificatePdf.PowerOnHours", "Provozní hodiny:") ?? "Provozní hodiny:", cert.PowerOnHours > 0 ? cert.PowerOnHours.ToString("#,0", CultureInfo.InvariantCulture) : _locale?.GetString("CertificatePdf.NA", "N/A") ?? "N/A", 4);
+            DrawLine(_locale?.GetString("CertificatePdf.PowerCycles", "Počet startů:") ?? "Počet startů:", cert.PowerCycles > 0 ? cert.PowerCycles.ToString("#,0", CultureInfo.InvariantCulture) : _locale?.GetString("CertificatePdf.NA", "N/A") ?? "N/A", 5);
+            DrawLine(_locale?.GetString("CertificatePdf.CertificateNumber", "Číslo certifikátu:") ?? "Číslo certifikátu:", cert.CertificateNumber, 6);
+            DrawLine(_locale?.GetString("CertificatePdf.GeneratedAt", "Vygenerováno:") ?? "Vygenerováno:", cert.GeneratedAt.ToString("dd.MM.yyyy HH:mm"), 7);
 
             // Grade seal
             canvas.DrawRect(838, y, 350, 300, panelPaint);
             canvas.DrawRect(838, y, 350, 300, borderPaint);
-            DrawText(canvas, "KONEČNÁ ZNÁMKA", 926, y + 18, labelFont, textPaint);
+            DrawText(canvas, _locale?.GetString("CertificatePdf.FinalGrade", "KONEČNÁ ZNÁMKA") ?? "KONEČNÁ ZNÁMKA", 926, y + 18, labelFont, textPaint);
 
             const float sealSize = 150f;
             float sealX = 943f;
@@ -275,42 +277,42 @@ public class CertificateGenerator : ICertificateGenerator
             float gradeY = sealY + (sealSize - gradeFont.Size) / 2f;
             DrawText(canvas, gradeText, gradeX, gradeY, gradeFont, gradePaint);
 
-            var scoreText = $"Skóre: {cert.Score:F0}/100";
+            var scoreText = string.Format(_locale?.GetString("CertificatePdf.Score", "Skóre: {{0}}/100") ?? "Skóre: {{0}}/100", cert.Score);
             float scoreWidth = scoreFont.MeasureText(scoreText);
             DrawText(canvas, scoreText, sealX + (sealSize - scoreWidth) / 2f, sealY + sealSize + 8f, scoreFont, textPaint);
 
             // Test results
             y += 330;
-            DrawText(canvas, "Výsledky testu", 48, y, sectionFont, accentPaint);
+            DrawText(canvas, _locale?.GetString("CertificatePdf.TestResults", "Výsledky testu") ?? "Výsledky testu", 48, y, sectionFont, accentPaint);
             y += 34;
             canvas.DrawRect(48, y, CertWidth - 96, 170, panelPaint);
             canvas.DrawRect(48, y, CertWidth - 96, 170, borderPaint);
-            DrawText(canvas, $"Typ: {cert.TestType}", 64, y + 16, valueFont, textPaint);
+            DrawText(canvas, string.Format(_locale?.GetString("CertificatePdf.TestType", "Typ: {{0}}") ?? "Typ: {{0}}", cert.TestType), 64, y + 16, valueFont, textPaint);
             DrawText(canvas, $"Doba: {cert.TestDuration:hh\\:mm\\:ss}", 64, y + 46, valueFont, textPaint);
-            DrawText(canvas, $"Chyby: {cert.ErrorCount}", 64, y + 76, valueFont, textPaint);
-            DrawText(canvas, $"Teplota: {cert.TemperatureRange}", 64, y + 106, valueFont, textPaint);
-            DrawText(canvas, $"Průměrný zápis: {cert.AvgWriteSpeed:F1} MB/s", 520, y + 16, valueFont, textPaint);
-            DrawText(canvas, $"Průměrné čtení: {cert.AvgReadSpeed:F1} MB/s", 520, y + 46, valueFont, textPaint);
-            DrawText(canvas, $"Stav: {cert.HealthStatus}", 520, y + 76, valueFont, textPaint);
+            DrawText(canvas, string.Format(_locale?.GetString("CertificatePdf.ErrorCount", "Chyby: {{0}}") ?? "Chyby: {{0}}", cert.ErrorCount), 64, y + 76, valueFont, textPaint);
+            DrawText(canvas, string.Format(_locale?.GetString("CertificatePdf.TemperatureRange", "Teplota: {{0}}") ?? "Teplota: {{0}}", cert.TemperatureRange), 64, y + 106, valueFont, textPaint);
+            DrawText(canvas, string.Format(_locale?.GetString("CertificatePdf.AvgWriteSpeed", "Průměrný zápis: {{0}} MB/s") ?? "Průměrný zápis: {{0}} MB/s", cert.AvgWriteSpeed), 520, y + 16, valueFont, textPaint);
+            DrawText(canvas, string.Format(_locale?.GetString("CertificatePdf.AvgReadSpeed", "Průměrné čtení: {{0}} MB/s") ?? "Průměrné čtení: {{0}} MB/s", cert.AvgReadSpeed), 520, y + 46, valueFont, textPaint);
+            DrawText(canvas, string.Format(_locale?.GetString("CertificatePdf.HealthStatus", "Stav: {{0}}") ?? "Stav: {{0}}", cert.HealthStatus), 520, y + 76, valueFont, textPaint);
 
             // SMART summary
             y += 190;
-            DrawText(canvas, "SMART souhrn", 48, y, sectionFont, accentPaint);
+            DrawText(canvas, _locale?.GetString("CertificatePdf.SmartSummary", "SMART souhrn") ?? "SMART souhrn", 48, y, sectionFont, accentPaint);
             y += 34;
             canvas.DrawRect(48, y, CertWidth - 96, 190, panelPaint);
             canvas.DrawRect(48, y, CertWidth - 96, 190, borderPaint);
-            DrawText(canvas, $"Provozní hodiny: {(cert.PowerOnHours > 0 ? cert.PowerOnHours.ToString("#,0", CultureInfo.InvariantCulture) : "N/A")}", 64, y + 16, valueFont, textPaint);
-            DrawText(canvas, $"Počet startů: {(cert.PowerCycles > 0 ? cert.PowerCycles.ToString("#,0", CultureInfo.InvariantCulture) : "N/A")}", 64, y + 44, valueFont, textPaint);
-            DrawText(canvas, $"Realokované sektory: {cert.ReallocatedSectors}", 520, y + 16, valueFont, textPaint);
-            DrawText(canvas, $"Čekající sektory: {cert.PendingSectors}", 520, y + 44, valueFont, textPaint);
-            DrawText(canvas, "Legenda známek:", 64, y + 82, valueFont, accentPaint);
-            DrawText(canvas, "A = výborný stav | B = velmi dobrý stav", 64, y + 110, smallFont, textPaint);
-            DrawText(canvas, "C = dobrý stav | D = opotřebený disk", 64, y + 132, smallFont, textPaint);
-            DrawText(canvas, "E = rizikový disk | F = kritický / vadný", 64, y + 154, smallFont, textPaint);
+            DrawText(canvas, string.Format(_locale?.GetString("CertificatePdf.SmartPowerOnHours", "Provozní hodiny: {{0}}") ?? "Provozní hodiny: {{0}}", cert.PowerOnHours > 0 ? cert.PowerOnHours.ToString("#,0", CultureInfo.InvariantCulture) : _locale?.GetString("CertificatePdf.NA", "N/A") ?? "N/A"), 64, y + 16, valueFont, textPaint);
+            DrawText(canvas, string.Format(_locale?.GetString("CertificatePdf.SmartPowerCycles", "Počet startů: {{0}}") ?? "Počet startů: {{0}}", cert.PowerCycles > 0 ? cert.PowerCycles.ToString("#,0", CultureInfo.InvariantCulture) : _locale?.GetString("CertificatePdf.NA", "N/A") ?? "N/A"), 64, y + 44, valueFont, textPaint);
+            DrawText(canvas, string.Format(_locale?.GetString("CertificatePdf.SmartReallocatedSectors", "Realokované sektory: {{0}}") ?? "Realokované sektory: {{0}}", cert.ReallocatedSectors), 520, y + 16, valueFont, textPaint);
+            DrawText(canvas, string.Format(_locale?.GetString("CertificatePdf.SmartPendingSectors", "Čekající sektory: {{0}}") ?? "Čekající sektory: {{0}}", cert.PendingSectors), 520, y + 44, valueFont, textPaint);
+            DrawText(canvas, _locale?.GetString("CertificatePdf.GradeLegend", "Legenda známek:") ?? "Legenda známek:", 64, y + 82, valueFont, accentPaint);
+            DrawText(canvas, _locale?.GetString("CertificatePdf.GradeAB", "A = výborný stav | B = velmi dobrý stav") ?? "A = výborný stav | B = velmi dobrý stav", 64, y + 110, smallFont, textPaint);
+            DrawText(canvas, _locale?.GetString("CertificatePdf.GradeCD", "C = dobrý stav | D = opotřebený disk") ?? "C = dobrý stav | D = opotřebený disk", 64, y + 132, smallFont, textPaint);
+            DrawText(canvas, _locale?.GetString("CertificatePdf.GradeEF", "E = rizikový disk | F = kritický / vadný") ?? "E = rizikový disk | F = kritický / vadný", 64, y + 154, smallFont, textPaint);
 
             // Performance chart
             y += 220;
-            DrawText(canvas, "Výkonový profil testu", 48, y, sectionFont, accentPaint);
+            DrawText(canvas, _locale?.GetString("CertificatePdf.PerformanceProfile", "Výkonový profil testu") ?? "Výkonový profil testu", 48, y, sectionFont, accentPaint);
             y += 34;
 
             float chartX = 72f;
@@ -344,35 +346,35 @@ public class CertificateGenerator : ICertificateGenerator
                 DrawProfilePolyline(canvas, writePen, writePoints, maxSpeed, chartX + 30, chartY + 14, chartW - 50, chartH - 40);
                 DrawProfilePolyline(canvas, readPen, readPoints, maxSpeed, chartX + 30, chartY + 14, chartW - 50, chartH - 40);
 
-                DrawText(canvas, "MB/s", chartX - 4, chartY + 8, smallFont, mutedPaint);
+                DrawText(canvas, _locale?.GetString("CertificatePdf.Mbps", "MB/s") ?? "MB/s", chartX - 4, chartY + 8, smallFont, mutedPaint);
                 DrawText(canvas, $"{maxSpeed:F0}", chartX - 22, chartY + 14, smallFont, mutedPaint);
                 DrawText(canvas, $"{maxSpeed / 2:F0}", chartX - 22, chartY + (chartH - 40) / 2 + 10, smallFont, mutedPaint);
                 DrawText(canvas, "0", chartX - 12, chartY + chartH - 30, smallFont, mutedPaint);
-                DrawText(canvas, "0 %", chartX + 26, chartY + chartH - 18, smallFont, mutedPaint);
-                DrawText(canvas, "25 %", chartX + (chartW * 0.25f) - 8, chartY + chartH - 18, smallFont, mutedPaint);
-                DrawText(canvas, "50 %", chartX + chartW / 2 - 8, chartY + chartH - 18, smallFont, mutedPaint);
-                DrawText(canvas, "75 %", chartX + (chartW * 0.75f) - 8, chartY + chartH - 18, smallFont, mutedPaint);
-                DrawText(canvas, "100 %", chartX + chartW - 40, chartY + chartH - 18, smallFont, mutedPaint);
+                DrawText(canvas, _locale?.GetString("CertificatePdf.Percent0", "0 %") ?? "0 %", chartX + 26, chartY + chartH - 18, smallFont, mutedPaint);
+                DrawText(canvas, _locale?.GetString("CertificatePdf.Percent25", "25 %") ?? "25 %", chartX + (chartW * 0.25f) - 8, chartY + chartH - 18, smallFont, mutedPaint);
+                DrawText(canvas, _locale?.GetString("CertificatePdf.Percent50", "50 %") ?? "50 %", chartX + chartW / 2 - 8, chartY + chartH - 18, smallFont, mutedPaint);
+                DrawText(canvas, _locale?.GetString("CertificatePdf.Percent75", "75 %") ?? "75 %", chartX + (chartW * 0.75f) - 8, chartY + chartH - 18, smallFont, mutedPaint);
+                DrawText(canvas, _locale?.GetString("CertificatePdf.Percent100", "100 %") ?? "100 %", chartX + chartW - 40, chartY + chartH - 18, smallFont, mutedPaint);
 
                 using var legendWritePaint = new SKPaint { Color = new SKColor(220, 38, 38), IsAntialias = true };
                 using var legendReadPaint = new SKPaint { Color = new SKColor(5, 150, 105), IsAntialias = true };
-                DrawText(canvas, "Zápis", chartX + chartW - 150, chartY + 8, smallFont, legendWritePaint);
-                DrawText(canvas, "Čtení", chartX + chartW - 90, chartY + 8, smallFont, legendReadPaint);
+                DrawText(canvas, _locale?.GetString("CertificatePdf.Write", "Zápis") ?? "Zápis", chartX + chartW - 150, chartY + 8, smallFont, legendWritePaint);
+                DrawText(canvas, _locale?.GetString("CertificatePdf.Read", "Čtení") ?? "Čtení", chartX + chartW - 90, chartY + 8, smallFont, legendReadPaint);
             }
 
             // Recommendation
             y += 290;
-            DrawText(canvas, "Doporučení", 48, y, sectionFont, accentPaint);
+            DrawText(canvas, _locale?.GetString("CertificatePdf.Recommendations", "Doporučení") ?? "Doporučení", 48, y, sectionFont, accentPaint);
             y += 34;
             canvas.DrawRect(48, y, CertWidth - 96, 140, panelPaint);
             canvas.DrawRect(48, y, CertWidth - 96, 140, borderPaint);
-            DrawTextWrapped(canvas, cert.RecommendationNotes ?? "Není k dispozici", 64, y + 16, CertWidth - 130, 100, valueFont, textPaint);
+            DrawTextWrapped(canvas, cert.RecommendationNotes ?? _locale?.GetString("CertificatePdf.NotAvailable", "Není k dispozici") ?? "Není k dispozici", 64, y + 16, CertWidth - 130, 100, valueFont, textPaint);
 
             // Diagnostic notes
             if (!string.IsNullOrWhiteSpace(cert.Notes))
             {
                 y += 160;
-                DrawText(canvas, "Důvody hodnocení", 48, y, sectionFont, accentPaint);
+                DrawText(canvas, _locale?.GetString("CertificatePdf.Reasons", "Důvody hodnocení") ?? "Důvody hodnocení", 48, y, sectionFont, accentPaint);
                 y += 34;
                 float notesHeight = Math.Max(60, valueFont.MeasureText(cert.Notes) / (CertWidth - 130) * valueFont.Size * 1.5f + 20);
                 canvas.DrawRect(48, y, CertWidth - 96, notesHeight, panelPaint);
@@ -629,20 +631,20 @@ public class CertificateGenerator : ICertificateGenerator
         return $"{bytes} B";
     }
 
-    private static string GenerateRecommendation(TestSession session)
+    private string GenerateRecommendation(TestSession session)
     {
         if (session.Result == TestResult.Pass
             && !string.Equals(session.Grade, "E", StringComparison.OrdinalIgnoreCase)
             && !string.Equals(session.Grade, "F", StringComparison.OrdinalIgnoreCase))
-            return "Disk je v dobrém stavu a lze jej bezpečně používat.";
+            return _locale?.GetString("CertificatePdf.Recommendation.Good", "Disk je v dobrém stavu a lze jej bezpečně používat.") ?? "Disk je v dobrém stavu a lze jej bezpečně používat.";
 
         if (session.SmartBefore?.ReallocatedSectorCount > 0 || session.SmartBefore?.PendingSectorCount > 0)
-            return "Disk vykazuje známky opotřebení. Doporučujeme pravidelnou kontrolu SMART a zálohování důležitých dat.";
+            return _locale?.GetString("CertificatePdf.Recommendation.Worn", "Disk vykazuje známky opotřebení. Doporučujeme pravidelnou kontrolu SMART a zálohování důležitých dat.") ?? "Disk vykazuje známky opotřebení. Doporučujeme pravidelnou kontrolu SMART a zálohování důležitých dat.";
 
         if (session.Errors.Count > 0)
-            return "Během testu byly detekovány chyby. Zvažte výměnu disku, zejména pokud se chyby opakují.";
+            return _locale?.GetString("CertificatePdf.Recommendation.Errors", "Během testu byly detekovány chyby. Zvažte výměnu disku, zejména pokud se chyby opakují.") ?? "Během testu byly detekovány chyby. Zvažte výměnu disku, zejména pokud se chyby opakují.";
 
-        return "Disk vyžaduje pozornost. Doporučujeme další diagnostiku nebo výměnu.";
+        return _locale?.GetString("CertificatePdf.Recommendation.Attention", "Disk vyžaduje pozornost. Doporučujeme další diagnostiku nebo výměnu.") ?? "Disk vyžaduje pozornost. Doporučujeme další diagnostiku nebo výměnu.";
     }
 
     private static string ResolveDisplaySerial(string? smartSerial, string? storedSerial)
@@ -814,14 +816,14 @@ public class CertificateGenerator : ICertificateGenerator
             canvas.DrawRect(10, 10, labelWidth - 20, labelHeight - 20, borderPaint);
 
             // Title
-            DrawText(canvas, "CERTIFIKÁT KVALITY DISKU", 20, 20, titleFont, accentPaint);
+            DrawText(canvas, _locale?.GetString("CertificatePdf.Label.Title", "CERTIFIKÁT KVALITY DISKU") ?? "CERTIFIKÁT KVALITY DISKU", 20, 20, titleFont, accentPaint);
 
             // Info
-            DrawText(canvas, $"Model: {certificate.DiskModel}", 20, 60, valueFont, textPaint);
-            DrawText(canvas, $"S/N: {certificate.SerialNumber}", 20, 84, valueFont, textPaint);
-            DrawText(canvas, $"Kapacita: {certificate.Capacity}", 20, 108, valueFont, textPaint);
-            DrawText(canvas, $"Známka: {certificate.Grade}  |  Skóre: {certificate.Score:F0}/100", 20, 132, valueFont, textPaint);
-            DrawText(canvas, $"Datum: {certificate.GeneratedAt:dd.MM.yyyy HH:mm}", 20, 156, valueFont, textPaint);
+            DrawText(canvas, string.Format(_locale?.GetString("CertificatePdf.Label.Model", "Model: {{0}}") ?? "Model: {{0}}", certificate.DiskModel), 20, 60, valueFont, textPaint);
+            DrawText(canvas, string.Format(_locale?.GetString("CertificatePdf.Label.SerialNumber", "S/N: {{0}}") ?? "S/N: {{0}}", certificate.SerialNumber), 20, 84, valueFont, textPaint);
+            DrawText(canvas, string.Format(_locale?.GetString("CertificatePdf.Label.Capacity", "Kapacita: {{0}}") ?? "Kapacita: {{0}}", certificate.Capacity), 20, 108, valueFont, textPaint);
+            DrawText(canvas, string.Format(_locale?.GetString("CertificatePdf.Label.GradeScore", "Známka: {{0}}  |  Skóre: {{1:F0}}/100") ?? "Známka: {{0}}  |  Skóre: {{1:F0}}/100", certificate.Grade, certificate.Score), 20, 132, valueFont, textPaint);
+            DrawText(canvas, string.Format(_locale?.GetString("CertificatePdf.Label.Date", "Datum: {{0}}") ?? "Datum: {{0}}", certificate.GeneratedAt.ToString("dd.MM.yyyy HH:mm")), 20, 156, valueFont, textPaint);
 
             // Grade seal
             float sealX = labelWidth - 160;
@@ -836,7 +838,7 @@ public class CertificateGenerator : ICertificateGenerator
             DrawText(canvas, gradeText, gradeX, gradeY, gradeFont, gradePaint);
 
             // Footer
-            DrawText(canvas, $"DiskChecker v1.0 | {certificate.CertificateNumber}", 20, labelHeight - 30, smallFont, textPaint);
+            DrawText(canvas, string.Format(_locale?.GetString("CertificatePdf.Label.Footer", "DiskChecker v1.0 | {{0}}") ?? "DiskChecker v1.0 | {{0}}", certificate.CertificateNumber), 20, labelHeight - 30, smallFont, textPaint);
 
             using var image = surface.Snapshot();
             using var data = image.Encode(SKEncodedImageFormat.Png, 90);

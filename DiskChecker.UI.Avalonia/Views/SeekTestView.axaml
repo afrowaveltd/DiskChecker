@@ -52,8 +52,8 @@
         <Border Grid.Row="0" Classes="PageHeader">
             <Grid ColumnDefinitions="*,Auto">
                 <StackPanel>
-                    <TextBlock Text="🎯 Seek Test" Classes="PageTitle"/>
-                    <TextBlock Text="Měření latence polohování hlaviček disku" Classes="PageSubtitle"/>
+                    <TextBlock Text="{Binding L[SeekTest.Title]}" Classes="PageTitle"/>
+                    <TextBlock Text="{Binding L[SeekTest.Description]}" Classes="PageSubtitle"/>
                     <Border Margin="0,4,0,0" Padding="8,4" CornerRadius="6"
                             BorderBrush="{DynamicResource ThemeBorderBrush}" BorderThickness="1">
                         <Border.Styles>
@@ -65,7 +65,7 @@
                     </Border>
                 </StackPanel>
                 <Button Grid.Column="1"
-                        Content="← Zpět na přehled"
+                        Content="{Binding L[SeekTest.BackToOverview]}"
                         Command="{Binding GoBackCommand}"
                         Background="{DynamicResource ThemeSecondaryBackgroundBrush}"
                         Foreground="{DynamicResource ThemeTextPrimaryBrush}"
@@ -89,7 +89,7 @@
                             <TextBlock Text="💿" FontSize="20" HorizontalAlignment="Center" VerticalAlignment="Center"/>
                         </Border>
                         <StackPanel Grid.Column="1" VerticalAlignment="Center">
-                            <TextBlock Text="Vybraný disk" Classes="SeekLabel"/>
+                            <TextBlock Text="{Binding L[SeekTest.SelectedDisk]}" Classes="SeekLabel"/>
                             <TextBlock Text="{Binding DriveDisplayName}" FontSize="15" FontWeight="Bold"/>
                             <TextBlock Text="{Binding DriveCapacityText}" Classes="PageMetaText"/>
                         </StackPanel>
@@ -98,7 +98,7 @@
                                 Background="{DynamicResource ThemePrimaryLightBrush}"
                                 BorderBrush="{DynamicResource ThemeBorderBrush}" BorderThickness="1">
                             <StackPanel>
-                                <TextBlock Text="Doporučení SMART" Classes="SeekLabel" HorizontalAlignment="Center"/>
+                                <TextBlock Text="{Binding L[SeekTest.SmartRecommendation]}" Classes="SeekLabel" HorizontalAlignment="Center"/>
                                 <TextBlock Text="{Binding RecommendationText}" FontSize="12" FontWeight="Bold"
                                           HorizontalAlignment="Center" TextWrapping="Wrap" MaxWidth="300"/>
                             </StackPanel>
@@ -126,9 +126,9 @@
                         IsVisible="{Binding IsDiskTooFragile}"
                         VerticalAlignment="Center">
                     <StackPanel>
-                        <TextBlock Text="⚠️ DISK PŘÍLIŠ OPOTŘEBENÝ" FontSize="14" FontWeight="Bold"
+                        <TextBlock Text="{Binding L[SeekTest.DiskTooWorn]}" FontSize="14" FontWeight="Bold"
                                   Foreground="{DynamicResource ThemeDangerBrush}"/>
-                        <TextBlock Text="Seek test nelze na tomto disku spustit – hrozí jeho poškození."
+                        <TextBlock Text="{Binding L[SeekTest.CannotRun]}"
                                   FontSize="11" Foreground="{DynamicResource ThemeTextSecondaryBrush}"
                                   TextWrapping="Wrap" Margin="0,4,0,0"/>
                     </StackPanel>
@@ -144,7 +144,7 @@
                 <Border Classes="SeekCard">
                     <Grid RowDefinitions="Auto,Auto" ColumnDefinitions="3*,2*" ColumnSpacing="14" RowSpacing="12">
                         <Grid Grid.Row="0" Grid.ColumnSpan="2" ColumnDefinitions="*,Auto">
-                            <TextBlock Text="⚙️ Konfigurace testu" Classes="SeekSectionTitle"/>
+                            <TextBlock Text="{Binding L[SeekTest.TestConfiguration]}" Classes="SeekSectionTitle"/>
                             <TextBlock Grid.Column="1"
                                        Text="{Binding MaxSafeSeekCount, StringFormat='Max bezpečně: {0}'}"
                                        FontSize="10"
@@ -155,7 +155,7 @@
                         <!-- Test Type Selection -->
                         <Border Grid.Row="1" Grid.Column="0" Classes="SeekPanel">
                             <StackPanel Spacing="8">
-                                <TextBlock Text="Typ testu" FontSize="12" FontWeight="SemiBold"/>
+                                <TextBlock Text="{Binding L[SeekTest.TestType]}" FontSize="12" FontWeight="SemiBold"/>
                                 <ListBox ItemsSource="{Binding TestTypeOptions}"
                                          SelectedIndex="{Binding SelectedTestType, Converter={StaticResource EnumToIndexConverter}}"
                                          IsEnabled="{Binding IsNotTesting}"
@@ -180,9 +180,9 @@
                             <Border Classes="SeekPanel">
                                 <StackPanel Spacing="8">
                                     <Grid ColumnDefinitions="*,Auto">
-                                        <TextBlock Text="Počet seeků" FontSize="12" FontWeight="SemiBold"/>
+                                        <TextBlock Text="{Binding L[SeekTest.SeekCount]}" FontSize="12" FontWeight="SemiBold"/>
                                         <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="4">
-                                            <TextBlock Text="Doporučeno:" Classes="SeekLabel" VerticalAlignment="Center"/>
+                                            <TextBlock Text="{Binding L[SeekTest.Recommended]}" Classes="SeekLabel" VerticalAlignment="Center"/>
                                             <TextBlock Text="{Binding RecommendedSeekCount}" FontSize="10"
                                                        FontWeight="Bold" Foreground="{DynamicResource ThemePrimaryBrush}"
                                                        VerticalAlignment="Center"/>
@@ -197,7 +197,7 @@
                                             BorderThickness="1"
                                             CornerRadius="5" Padding="8,6"
                                             IsVisible="{Binding IsSeekCountExceedsSafe}">
-                                        <TextBlock Text="⚠️ Počet seeků překračuje bezpečný limit ze SMART dat."
+                                        <TextBlock Text="{Binding L[SeekTest.SeekCountWarning]}"
                                                    FontSize="10" Foreground="{DynamicResource ThemeWarningTextBrush}"
                                                    TextWrapping="Wrap"/>
                                     </Border>
@@ -207,7 +207,7 @@
                             <!-- Skip Segments (only for Skip type) -->
                             <Border Classes="SeekPanel" IsVisible="{Binding IsSkipSelected}">
                                 <StackPanel Spacing="8">
-                                    <TextBlock Text="Skip segmenty" FontSize="12" FontWeight="SemiBold"/>
+                                    <TextBlock Text="{Binding L[SeekTest.SkipSegments]}" FontSize="12" FontWeight="SemiBold"/>
                                     <NumericUpDown Value="{Binding SelectedSkipSegments}"
                                                    Minimum="100" Maximum="10000" Increment="100"
                                                    IsEnabled="{Binding IsNotTesting}"
@@ -218,15 +218,15 @@
                             <!-- Advanced options -->
                             <Border Classes="SeekPanel">
                                 <StackPanel Spacing="8">
-                                    <TextBlock Text="🔧 Pokročilé" FontSize="12" FontWeight="SemiBold"/>
+                                    <TextBlock Text="{Binding L[SeekTest.Advanced]}" FontSize="12" FontWeight="SemiBold"/>
                                     <Grid ColumnDefinitions="Auto,*" RowDefinitions="Auto,Auto" ColumnSpacing="10" RowSpacing="8">
-                                        <TextBlock Text="Block size" Classes="SeekLabel"
+                                        <TextBlock Text="{Binding L[SeekTest.BlockSize]}" Classes="SeekLabel"
                                                    VerticalAlignment="Center"/>
                                         <NumericUpDown Grid.Column="1" Value="{Binding BlockSizeBytes}"
                                                        Minimum="512" Maximum="65536" Increment="512"
                                                        IsEnabled="{Binding IsNotTesting}"
                                                        HorizontalAlignment="Stretch"/>
-                                        <TextBlock Grid.Row="1" Text="Timeout (s)" Classes="SeekLabel"
+                                        <TextBlock Grid.Row="1" Text="{Binding L[SeekTest.Timeout]}" Classes="SeekLabel"
                                                    VerticalAlignment="Center"/>
                                         <NumericUpDown Grid.Row="1" Grid.Column="1" Value="{Binding TimeoutSeconds}"
                                                        Minimum="30" Maximum="3600" Increment="30"
@@ -238,20 +238,20 @@
 
                             <!-- Action Buttons -->
                             <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
-                                <Button Content="▶️ Spustit test"
+                                <Button Content="{Binding L[SeekTest.StartTest]}"
                                         Command="{Binding StartTestCommand}"
                                         Classes="Primary"
                                         HorizontalAlignment="Stretch"
                                         Padding="16,10"
                                         IsVisible="{Binding IsNotTesting}"/>
-                                <Button Content="⏹️ Zrušit test"
+                                <Button Content="{Binding L[SeekTest.CancelTest]}"
                                         Command="{Binding AbortTestCommand}"
                                         Classes="Danger"
                                         HorizontalAlignment="Stretch"
                                         Padding="16,10"
                                         IsVisible="{Binding IsTesting}"/>
                                 <Button Grid.Column="1"
-                                        Content="🔄 Znovu načíst"
+                                        Content="{Binding L[SeekTest.Reload]}"
                                         Command="{Binding LoadRecommendationCommand}"
                                         Classes="Secondary"
                                         Padding="12,10"
@@ -267,7 +267,7 @@
                         CornerRadius="8" Padding="16"
                         IsVisible="{Binding IsTesting}">
                     <StackPanel Spacing="8">
-                        <TextBlock Text="📊 Průběh testu" FontSize="14" FontWeight="Bold"/>
+                        <TextBlock Text="{Binding L[SeekTest.TestProgress]}" FontSize="14" FontWeight="Bold"/>
 
                         <!-- Pre-positioning indicator -->
                         <Border CornerRadius="4" Padding="6,4"
@@ -275,7 +275,7 @@
                                 IsVisible="{Binding IsPrePositioned}">
                             <StackPanel Orientation="Horizontal" Spacing="4">
                                 <TextBlock Text="📍" FontSize="10"/>
-                                <TextBlock Text="Hlavička napozicována na LBA 0 – test spuštěn" FontSize="10"
+                                <TextBlock Text="{Binding L[SeekTest.HeadPositioned]}" FontSize="10"
                                           Foreground="{DynamicResource ThemeSuccessBrush}"/>
                             </StackPanel>
                         </Border>
@@ -320,7 +320,7 @@
                                 IsVisible="{Binding HasLatestSample}">
                             <StackPanel Orientation="Horizontal" Spacing="8">
                                 <TextBlock Text="🔍" FontSize="12" VerticalAlignment="Center"/>
-                                <TextBlock Text="Poslední vzorek:" FontSize="10"
+                                <TextBlock Text="{Binding L[SeekTest.LatestSample]}" FontSize="10"
                                           Foreground="{DynamicResource ThemeTextMutedBrush}"
                                           VerticalAlignment="Center"/>
                                 <TextBlock Text="{Binding LatestSampleText}" FontSize="11" FontWeight="SemiBold"
@@ -342,7 +342,7 @@
                                                     LegendPosition="Hidden"
                                                     AnimationsSpeed="0:0:0"
                                                     Height="200"/>
-                                <TextBlock Text="📈 Čekám na data..."
+                                <TextBlock Text="{Binding L[SeekTest.WaitingForData]}"
                                            VerticalAlignment="Center"
                                            HorizontalAlignment="Center"
                                            FontSize="12"
@@ -359,7 +359,7 @@
                         CornerRadius="8" Padding="16"
                         IsVisible="{Binding HasResults}">
                     <StackPanel Spacing="10">
-                        <TextBlock Text="📈 Výsledky" FontSize="14" FontWeight="Bold"/>
+                        <TextBlock Text="{Binding L[SeekTest.Results]}" FontSize="14" FontWeight="Bold"/>
 
                         <!-- Summary -->
                         <Border Background="{DynamicResource ThemeSecondaryBackgroundBrush}"
@@ -374,7 +374,7 @@
                             <Border Grid.Column="0" Background="{DynamicResource ThemeSecondaryBackgroundBrush}"
                                     CornerRadius="6" Padding="10,8" Margin="0,0,4,0">
                                 <StackPanel HorizontalAlignment="Center">
-                                    <TextBlock Text="Průměr" FontSize="9" Foreground="{DynamicResource ThemeTextMutedBrush}"
+                                    <TextBlock Text="{Binding L[SeekTest.Average]}" FontSize="9" Foreground="{DynamicResource ThemeTextMutedBrush}"
                                               HorizontalAlignment="Center"/>
                                     <TextBlock Text="{Binding AverageLatencyMs, StringFormat='{}{0:F2} ms'}"
                                               FontSize="16" FontWeight="Bold"
@@ -386,7 +386,7 @@
                             <Border Grid.Column="1" Background="{DynamicResource ThemeSecondaryBackgroundBrush}"
                                     CornerRadius="6" Padding="10,8" Margin="2,0">
                                 <StackPanel HorizontalAlignment="Center">
-                                    <TextBlock Text="Medián" FontSize="9" Foreground="{DynamicResource ThemeTextMutedBrush}"
+                                    <TextBlock Text="{Binding L[SeekTest.Median]}" FontSize="9" Foreground="{DynamicResource ThemeTextMutedBrush}"
                                               HorizontalAlignment="Center"/>
                                     <TextBlock Text="{Binding MedianLatencyMs, StringFormat='{}{0:F2} ms'}"
                                               FontSize="16" FontWeight="Bold"
@@ -398,7 +398,7 @@
                             <Border Grid.Column="2" Background="{DynamicResource ThemeSecondaryBackgroundBrush}"
                                     CornerRadius="6" Padding="10,8" Margin="2,0">
                                 <StackPanel HorizontalAlignment="Center">
-                                    <TextBlock Text="Minimum" FontSize="9" Foreground="{DynamicResource ThemeTextMutedBrush}"
+                                    <TextBlock Text="{Binding L[SeekTest.Min]}" FontSize="9" Foreground="{DynamicResource ThemeTextMutedBrush}"
                                               HorizontalAlignment="Center"/>
                                     <TextBlock Text="{Binding MinLatencyMs, StringFormat='{}{0:F2} ms'}"
                                               FontSize="16" FontWeight="Bold"
@@ -410,7 +410,7 @@
                             <Border Grid.Column="3" Background="{DynamicResource ThemeSecondaryBackgroundBrush}"
                                     CornerRadius="6" Padding="10,8" Margin="4,0,0,0">
                                 <StackPanel HorizontalAlignment="Center">
-                                    <TextBlock Text="Maximum" FontSize="9" Foreground="{DynamicResource ThemeTextMutedBrush}"
+                                    <TextBlock Text="{Binding L[SeekTest.Max]}" FontSize="9" Foreground="{DynamicResource ThemeTextMutedBrush}"
                                               HorizontalAlignment="Center"/>
                                     <TextBlock Text="{Binding MaxLatencyMs, StringFormat='{}{0:F2} ms'}"
                                               FontSize="16" FontWeight="Bold"
@@ -422,7 +422,7 @@
                             <Border Grid.Row="1" Grid.Column="0" Background="{DynamicResource ThemeSecondaryBackgroundBrush}"
                                     CornerRadius="6" Padding="10,8" Margin="0,6,4,0">
                                 <StackPanel HorizontalAlignment="Center">
-                                    <TextBlock Text="StdDev" FontSize="9" Foreground="{DynamicResource ThemeTextMutedBrush}"
+                                    <TextBlock Text="{Binding L[SeekTest.StdDev]}" FontSize="9" Foreground="{DynamicResource ThemeTextMutedBrush}"
                                               HorizontalAlignment="Center"/>
                                     <TextBlock Text="{Binding StdDevLatencyMs, StringFormat='{}{0:F2} ms'}"
                                               FontSize="16" FontWeight="Bold"
@@ -446,7 +446,7 @@
                             <Border Grid.Row="1" Grid.Column="2" Background="{DynamicResource ThemeSecondaryBackgroundBrush}"
                                     CornerRadius="6" Padding="10,8" Margin="2,6,2,0">
                                 <StackPanel HorizontalAlignment="Center">
-                                    <TextBlock Text="P99" FontSize="9" Foreground="{DynamicResource ThemeTextMutedBrush}"
+                                    <TextBlock Text="{Binding L[SeekTest.P99]}" FontSize="9" Foreground="{DynamicResource ThemeTextMutedBrush}"
                                               HorizontalAlignment="Center"/>
                                     <TextBlock Text="{Binding P99LatencyMs, StringFormat='{}{0:F2} ms'}"
                                               FontSize="16" FontWeight="Bold"
@@ -478,15 +478,15 @@
                                 <StackPanel Orientation="Horizontal" Spacing="12" Margin="4,0,0,2">
                                     <StackPanel Orientation="Horizontal" Spacing="4">
                                         <Ellipse Width="8" Height="8" Fill="DodgerBlue" Margin="0,0,2,0"/>
-                                        <TextBlock Text="Vzorky (běžné)" FontSize="9" Foreground="{DynamicResource ThemeTextSecondaryBrush}"/>
+                                        <TextBlock Text="{Binding L[SeekTest.NormalSamples]}" FontSize="9" Foreground="{DynamicResource ThemeTextSecondaryBrush}"/>
                                     </StackPanel>
                                     <StackPanel Orientation="Horizontal" Spacing="4">
                                         <Ellipse Width="10" Height="10" Fill="Orange" Margin="0,0,2,0"/>
-                                        <TextBlock Text="Outliery (> avg + 2σ)" FontSize="9" Foreground="{DynamicResource ThemeTextSecondaryBrush}"/>
+                                        <TextBlock Text="{Binding L[SeekTest.Outliers]}" FontSize="9" Foreground="{DynamicResource ThemeTextSecondaryBrush}"/>
                                     </StackPanel>
                                     <StackPanel Orientation="Horizontal" Spacing="4">
                                         <Ellipse Width="11" Height="11" Fill="Red" Margin="0,0,2,0"/>
-                                        <TextBlock Text="Extrémní (> avg + 3σ)" FontSize="9" Foreground="{DynamicResource ThemeTextSecondaryBrush}"/>
+                                        <TextBlock Text="{Binding L[SeekTest.Extreme]}" FontSize="9" Foreground="{DynamicResource ThemeTextSecondaryBrush}"/>
                                     </StackPanel>
                                 </StackPanel>
                                 <!-- Legend row 2: reference lines -->
@@ -494,12 +494,12 @@
                                     <StackPanel Orientation="Horizontal" Spacing="4">
                                         <Border Width="14" Height="2" Background="OrangeRed" CornerRadius="1"
                                                 VerticalAlignment="Center" Margin="0,0,2,0"/>
-                                        <TextBlock Text="Průměr" FontSize="9" Foreground="{DynamicResource ThemeTextSecondaryBrush}"/>
+                                        <TextBlock Text="{Binding L[SeekTest.Average]}" FontSize="9" Foreground="{DynamicResource ThemeTextSecondaryBrush}"/>
                                     </StackPanel>
                                     <StackPanel Orientation="Horizontal" Spacing="4">
                                         <Border Width="14" Height="2" Background="MediumPurple" CornerRadius="1"
                                                 VerticalAlignment="Center" Margin="0,0,2,0"/>
-                                        <TextBlock Text="Medián" FontSize="9" Foreground="{DynamicResource ThemeTextSecondaryBrush}"/>
+                                        <TextBlock Text="{Binding L[SeekTest.Median]}" FontSize="9" Foreground="{DynamicResource ThemeTextSecondaryBrush}"/>
                                     </StackPanel>
                                     <StackPanel Orientation="Horizontal" Spacing="4">
                                         <Border Width="14" Height="2" Background="Gold" CornerRadius="1"
@@ -531,7 +531,7 @@
                                                         LegendPosition="Hidden"
                                                         AnimationsSpeed="0:0:0"
                                                         Height="250"/>
-                                    <TextBlock Text="📈 Žádná data k zobrazení"
+                                    <TextBlock Text="{Binding L[SeekTest.NoData]}"
                                                VerticalAlignment="Center"
                                                HorizontalAlignment="Center"
                                                FontSize="12"
@@ -546,7 +546,7 @@
                                 CornerRadius="6" Padding="8"
                                 IsVisible="{Binding Samples.Count, Converter={StaticResource IntToBoolConverter}}">
                             <StackPanel Spacing="4">
-                                <TextBlock Text="Vzorky latence (prvních 50)" FontSize="10"
+                                <TextBlock Text="{Binding L[SeekTest.LatencySamples]}" FontSize="10"
                                           Foreground="{DynamicResource ThemeTextMutedBrush}"/>
                                 <ScrollViewer MaxHeight="200">
                                     <ItemsControl ItemsSource="{Binding Samples}">

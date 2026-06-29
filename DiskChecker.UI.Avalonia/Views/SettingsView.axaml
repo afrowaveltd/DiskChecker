@@ -15,12 +15,12 @@
                 Classes="PageHeader">
             <Grid ColumnDefinitions="*,Auto">
                 <StackPanel>
-                    <TextBlock Text="⚙️ Nastavení" Classes="PageTitle"/>
-                    <TextBlock Text="Konfigurace aplikace a preferencí" Classes="PageSubtitle"/>
+                    <TextBlock Text="{Binding L[Settings.Title]}" Classes="PageTitle"/>
+                    <TextBlock Text="{Binding L[Settings.Description]}" Classes="PageSubtitle"/>
                     <TextBlock Text="{Binding StatusMessage}" Classes="PageMetaText" Margin="0,2,0,0"/>
                 </StackPanel>
                 <Button Grid.Column="1"
-                        Content="← Zpět"
+                        Content="{Binding L[Settings.BackButton]}"
                         Command="{Binding GoBackCommand}"
                         Background="{DynamicResource ThemeSecondaryBackgroundBrush}"
                         Foreground="{DynamicResource ThemeTextPrimaryBrush}"
@@ -43,71 +43,75 @@
                        CornerRadius="8"
                        Padding="16">
                     <StackPanel Spacing="10">
-                        <TextBlock Text="📋 Obecné nastavení" 
+                        <TextBlock Text="{Binding L[Settings.General]}" 
                                   FontSize="14" FontWeight="Bold"
                                   Foreground="{DynamicResource ThemeTextPrimaryBrush}"
                                   Margin="0,0,0,8"/>
                         
                         <Grid ColumnDefinitions="200,*">
-                            <TextBlock Grid.Column="0" Text="Jazyk aplikace:" 
+                            <TextBlock Grid.Column="0" Text="{Binding L[Settings.LanguageLabel]}" 
                                       FontSize="11" VerticalAlignment="Center"
                                       Foreground="{DynamicResource ThemeTextSecondaryBrush}"/>
-                            <ComboBox Grid.Column="1" SelectedIndex="0"
+                            <ComboBox Grid.Column="1"
+                                      ItemsSource="{Binding AvailableLanguages}"
+                                      SelectedItem="{Binding Language}"
                                       HorizontalAlignment="Stretch"
                                       Background="{DynamicResource ThemeCardBackgroundBrush}"
                                       BorderBrush="{DynamicResource ThemeBorderBrush}">
-                                <ComboBoxItem Content="Čeština"/>
-                                <ComboBoxItem Content="English"/>
-                                <ComboBoxItem Content="Deutsch"/>
+                                <ComboBox.ItemTemplate>
+                                    <DataTemplate>
+                                        <TextBlock Text="{Binding}"/>
+                                    </DataTemplate>
+                                </ComboBox.ItemTemplate>
                             </ComboBox>
                         </Grid>
                         
                         <Grid ColumnDefinitions="200,*">
-                            <TextBlock Grid.Column="0" Text="Automatické ukládání:" 
+                            <TextBlock Grid.Column="0" Text="{Binding L[Settings.AutoSaveLabel]}" 
                                       FontSize="11" VerticalAlignment="Center"
                                       Foreground="{DynamicResource ThemeTextSecondaryBrush}"/>
-                            <CheckBox Grid.Column="1" Content="Ukládat výsledky automaticky"
+                            <CheckBox Grid.Column="1" Content="{Binding L[Settings.AutoSaveContent]}"
                                      IsChecked="{Binding AutoSaveResults}"
                                      FontSize="11"/>
                         </Grid>
                         
                         <Grid ColumnDefinitions="200,*">
-                            <TextBlock Grid.Column="0" Text="Upozornění:" 
+                            <TextBlock Grid.Column="0" Text="{Binding L[Settings.Notifications]}" 
                                       FontSize="11" VerticalAlignment="Center"
                                       Foreground="{DynamicResource ThemeTextSecondaryBrush}"/>
-                            <CheckBox Grid.Column="1" Content="Zobrazovat upozornění při dokončení"
+                            <CheckBox Grid.Column="1" Content="{Binding L[Settings.NotificationsContent]}"
                                      IsChecked="{Binding ShowNotifications}"
                                      FontSize="11"/>
                         </Grid>
                         
                         <Grid ColumnDefinitions="200,*">
-                            <TextBlock Grid.Column="0" Text="Příjemce reportů:" 
+                            <TextBlock Grid.Column="0" Text="{Binding L[Settings.EmailRecipientLabel]}" 
                                       FontSize="11" VerticalAlignment="Center"
                                       Foreground="{DynamicResource ThemeTextSecondaryBrush}"/>
                             <TextBox Grid.Column="1"
                                     Text="{Binding ReportRecipientEmail}"
-                                    Watermark="např. servis@firma.cz"
+                                    Watermark="{Binding L[Settings.EmailHint]}"
                                     Background="{DynamicResource ThemeCardBackgroundBrush}"
                                     BorderBrush="{DynamicResource ThemeBorderBrush}"
                                     Padding="8,4"/>
                         </Grid>
 
                         <Grid ColumnDefinitions="200,*">
-                            <TextBlock Grid.Column="0" Text="Kdy posílat e-mail:" 
+                            <TextBlock Grid.Column="0" Text="{Binding L[Settings.EmailWhenLabel]}" 
                                       FontSize="11" VerticalAlignment="Center"
                                       Foreground="{DynamicResource ThemeTextSecondaryBrush}"/>
                             <CheckBox Grid.Column="1"
-                                     Content="Posílat automaticky jen pro dlouhotrvající testy (např. sanitizace)"
+                                     Content="{Binding L[Settings.EmailLongTests]}"
                                      IsChecked="{Binding EmailSendOnlyForLongRunningTests}"
                                      FontSize="11"/>
                         </Grid>
 
                         <Grid ColumnDefinitions="200,*">
-                            <TextBlock Grid.Column="0" Text="Příloha certifikátu:" 
+                            <TextBlock Grid.Column="0" Text="{Binding L[Settings.CertificateAttachment]}" 
                                       FontSize="11" VerticalAlignment="Center"
                                       Foreground="{DynamicResource ThemeTextSecondaryBrush}"/>
                             <CheckBox Grid.Column="1"
-                                     Content="Přikládat PDF certifikát do e-mailu"
+                                     Content="{Binding L[Settings.CertificateAttachmentContent]}"
                                      IsChecked="{Binding EmailIncludeCertificateAttachment}"
                                      FontSize="11"/>
                         </Grid>
@@ -121,27 +125,27 @@
                        CornerRadius="8"
                        Padding="16">
                     <StackPanel Spacing="10">
-                        <TextBlock Text="🧪 Nastavení testů" 
+                        <TextBlock Text="{Binding L[Settings.TestSettings]}" 
                                   FontSize="14" FontWeight="Bold"
                                   Foreground="{DynamicResource ThemeTextPrimaryBrush}"
                                   Margin="0,0,0,8"/>
                         
                         <Grid ColumnDefinitions="200,*">
-                            <TextBlock Grid.Column="0" Text="Výchozí test:" 
+                            <TextBlock Grid.Column="0" Text="{Binding L[Settings.DefaultTest]}" 
                                       FontSize="11" VerticalAlignment="Center"
                                       Foreground="{DynamicResource ThemeTextSecondaryBrush}"/>
                             <ComboBox Grid.Column="1" SelectedIndex="0"
                                       HorizontalAlignment="Stretch"
                                       Background="{DynamicResource ThemeCardBackgroundBrush}"
                                       BorderBrush="{DynamicResource ThemeBorderBrush}">
-                                <ComboBoxItem Content="Rychlý test"/>
-                                <ComboBoxItem Content="Plný test"/>
-                                <ComboBoxItem Content="Sanitizace"/>
+                                <ComboBoxItem Content="{Binding L[Settings.DefaultTestQuick]}"/>
+                                <ComboBoxItem Content="{Binding L[Settings.DefaultTestFull]}"/>
+                                <ComboBoxItem Content="{Binding L[Settings.DefaultTestSanitize]}"/>
                             </ComboBox>
                         </Grid>
                         
                         <Grid ColumnDefinitions="200,*">
-                            <TextBlock Grid.Column="0" Text="SMART cache TTL (min):" 
+                            <TextBlock Grid.Column="0" Text="{Binding L[Settings.SmartCacheTTL]}" 
                                       FontSize="11" VerticalAlignment="Center"
                                       Foreground="{DynamicResource ThemeTextSecondaryBrush}"/>
                             <TextBox Grid.Column="1" 
@@ -152,7 +156,7 @@
                         </Grid>
                         
                         <Grid ColumnDefinitions="200,*">
-                            <TextBlock Grid.Column="0" Text="USB recovery retry:" 
+                            <TextBlock Grid.Column="0" Text="{Binding L[Settings.UsbRecoveryRetry]}" 
                                       FontSize="11" VerticalAlignment="Center"
                                       Foreground="{DynamicResource ThemeTextSecondaryBrush}"/>
                             <TextBox Grid.Column="1"
@@ -163,7 +167,7 @@
                         </Grid>
                           
                         <Grid ColumnDefinitions="200,*">
-                            <TextBlock Grid.Column="0" Text="Timeout testů (s):" 
+                            <TextBlock Grid.Column="0" Text="{Binding L[Settings.TestTimeoutLabel]}" 
                                       FontSize="11" VerticalAlignment="Center"
                                       Foreground="{DynamicResource ThemeTextSecondaryBrush}"/>
                             <TextBox Grid.Column="1" 
@@ -182,17 +186,17 @@
                        CornerRadius="8"
                        Padding="16">
                     <StackPanel Spacing="10">
-                        <TextBlock Text="💾 Úložiště dat" 
+                        <TextBlock Text="{Binding L[Settings.Storage]}" 
                                   FontSize="14" FontWeight="Bold"
                                   Foreground="{DynamicResource ThemeTextPrimaryBrush}"
                                   Margin="0,0,0,8"/>
                         
                         <Grid ColumnDefinitions="200,*">
-                            <TextBlock Grid.Column="0" Text="Databáze:" 
+                            <TextBlock Grid.Column="0" Text="{Binding L[Settings.Database]}" 
                                       FontSize="11" VerticalAlignment="Center"
                                       Foreground="{DynamicResource ThemeTextSecondaryBrush}"/>
                             <TextBlock Grid.Column="1" 
-                                      Text="~/.local/share/DiskChecker/DiskChecker.db"
+                                      Text="{Binding L[Settings.DatabasePath]}"
                                       FontSize="10"
                                       FontFamily="Consolas"
                                       Foreground="{DynamicResource ThemeTextMutedBrush}"
@@ -200,7 +204,7 @@
                         </Grid>
                         
                         <Grid ColumnDefinitions="200,*">
-                            <TextBlock Grid.Column="0" Text="Velikost databáze:" 
+                            <TextBlock Grid.Column="0" Text="{Binding L[Settings.DatabaseSize]}" 
                                       FontSize="11" VerticalAlignment="Center"
                                       Foreground="{DynamicResource ThemeTextSecondaryBrush}"/>
                             <TextBlock Grid.Column="1" 
@@ -211,7 +215,7 @@
                         </Grid>
                         
                         <StackPanel Orientation="Horizontal" Spacing="8" Margin="0,8,0,0">
-                            <Button Content="📂 Otevřít složku"
+                            <Button Content="{Binding L[Settings.OpenFolder]}"
                                    Command="{Binding OpenDataFolderCommand}"
                                    Background="{DynamicResource ThemeSecondaryBackgroundBrush}"
                                    Foreground="{DynamicResource ThemeTextPrimaryBrush}"
@@ -219,7 +223,7 @@
                                    CornerRadius="6"
                                    Padding="10,6"
                                    FontSize="10"/>
-                            <Button Content="🗑️ Vyčistit cache"
+                            <Button Content="{Binding L[Settings.ClearCache]}"
                                    Command="{Binding ClearCacheCommand}"
                                    Background="{DynamicResource ThemeSecondaryBackgroundBrush}"
                                    Foreground="{DynamicResource ThemeTextPrimaryBrush}"
@@ -238,22 +242,22 @@
                        CornerRadius="8"
                        Padding="16">
                     <StackPanel Spacing="10">
-                        <TextBlock Text="🔧 Záloha a obnovení" 
+                        <TextBlock Text="{Binding L[Settings.BackupRestore]}" 
                                   FontSize="14" FontWeight="Bold"
                                   Foreground="{DynamicResource ThemeTextPrimaryBrush}"
                                   Margin="0,0,0,8"/>
                         
                         <Grid ColumnDefinitions="200,*">
-                            <TextBlock Grid.Column="0" Text="Automatická záloha:" 
+                            <TextBlock Grid.Column="0" Text="{Binding L[Settings.AutoBackupLabel]}" 
                                       FontSize="11" VerticalAlignment="Center"
                                       Foreground="{DynamicResource ThemeTextSecondaryBrush}"/>
-                            <CheckBox Grid.Column="1" Content="Zálohovat každý týden"
+                            <CheckBox Grid.Column="1" Content="{Binding L[Settings.AutoBackupContent]}"
                                      IsChecked="{Binding AutoBackup}"
                                      FontSize="11"/>
                         </Grid>
                         
                         <Grid ColumnDefinitions="200,*">
-                            <TextBlock Grid.Column="0" Text="Poslední záloha:" 
+                            <TextBlock Grid.Column="0" Text="{Binding L[Settings.LastBackup]}" 
                                       FontSize="11" VerticalAlignment="Center"
                                       Foreground="{DynamicResource ThemeTextSecondaryBrush}"/>
                             <TextBlock Grid.Column="1" 
@@ -264,7 +268,7 @@
                         </Grid>
                         
                         <StackPanel Orientation="Horizontal" Spacing="8" Margin="0,8,0,0">
-                            <Button Content="💾 Vytvořit zálohu"
+                            <Button Content="{Binding L[Settings.CreateBackup]}"
                                    Command="{Binding CreateBackupCommand}"
                                    Background="{DynamicResource ThemePrimaryBrush}"
                                    Foreground="White"
@@ -272,7 +276,7 @@
                                    Padding="12,6"
                                    FontWeight="SemiBold"
                                    FontSize="10"/>
-                            <Button Content="📂 Obnovit ze zálohy"
+                            <Button Content="{Binding L[Settings.RestoreBackup]}"
                                    Command="{Binding RestoreBackupCommand}"
                                    Background="{DynamicResource ThemeSecondaryBackgroundBrush}"
                                    Foreground="{DynamicResource ThemeTextPrimaryBrush}"
@@ -291,19 +295,19 @@
                        CornerRadius="8"
                        Padding="16">
                     <StackPanel Spacing="6">
-                        <TextBlock Text="ℹ️ O aplikaci" 
+                        <TextBlock Text="{Binding L[Settings.About]}" 
                                   FontSize="14" FontWeight="Bold"
                                   Foreground="{DynamicResource ThemeTextPrimaryBrush}"
                                   Margin="0,0,0,8"/>
                         
                         <TextBlock FontSize="11" Foreground="{DynamicResource ThemeTextSecondaryBrush}">
-                            <Run Text="DiskChecker v1.0.0"/>
+                            <Run Text="{Binding L[Settings.AboutVersion]}"/>
                         </TextBlock>
                         <TextBlock FontSize="10" Foreground="{DynamicResource ThemeTextMutedBrush}">
-                            <Run Text="Profesionální nástroj pro diagnostiku disků"/>
+                            <Run Text="{Binding L[Settings.AboutDesc]}"/>
                         </TextBlock>
                         <TextBlock FontSize="10" Foreground="{DynamicResource ThemeTextMutedBrush}">
-                            <Run Text="© 2024-2026 DiskChecker Project"/>
+                            <Run Text="{Binding L[Settings.AboutCopyright]}"/>
                         </TextBlock>
                     </StackPanel>
                 </Border>
@@ -313,7 +317,7 @@
         <!-- ========== STATUS BAR ========== -->
         <Border Grid.Row="2" Classes="StatusBar">
             <StackPanel Orientation="Horizontal" Margin="16,0" Spacing="12">
-                <Button Content="💾 Uložit nastavení"
+                <Button Content="{Binding L[Settings.SaveButton]}"
                        Command="{Binding SaveSettingsCommand}"
                        Background="{DynamicResource ThemeSuccessBrush}"
                        Foreground="White"
@@ -321,7 +325,7 @@
                        Padding="12,4"
                        FontWeight="SemiBold"
                        FontSize="10"/>
-                <Button Content="↺ Obnovit výchozí"
+                <Button Content="{Binding L[Settings.ResetButton]}"
                        Command="{Binding ResetSettingsCommand}"
                        Background="{DynamicResource ThemeSecondaryBackgroundBrush}"
                        Foreground="{DynamicResource ThemeTextPrimaryBrush}"

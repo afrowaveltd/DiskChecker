@@ -1,6 +1,8 @@
 using System;
 using System.Collections.Generic;
+using System.Collections.ObjectModel;
 using System.Diagnostics;
+using System.Linq;
 using System.Runtime.InteropServices;
 using Avalonia;
 using Avalonia.Media;
@@ -9,6 +11,7 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using DiskChecker.Core.Interfaces;
 using DiskChecker.UI.Avalonia.Services.Interfaces;
+using DiskChecker.UI.Avalonia.Services;
 
 namespace DiskChecker.UI.Avalonia.ViewModels;
 
@@ -16,6 +19,7 @@ public partial class MainWindowViewModel : ViewModelBase
 {
     private readonly INavigationService _navigationService;
     private readonly ISettingsService _settingsService;
+    private readonly LocaleService _localeService;
     private ViewModelBase? _currentContent;
     private string _statusMessage = "Připraven";
     private Type? _currentViewModelType;
@@ -33,20 +37,113 @@ public partial class MainWindowViewModel : ViewModelBase
     // Theme properties
     private bool _isDarkTheme;
 
-    public MainWindowViewModel(INavigationService navigationService, ISettingsService settingsService)
+    public MainWindowViewModel(INavigationService navigationService, ISettingsService settingsService, LocaleService localeService)
     {
         _navigationService = navigationService;
         _settingsService = settingsService;
+        _localeService = localeService ?? throw new ArgumentNullException(nameof(localeService));
         _navigationService.Navigated += OnNavigated;
+        
+        // Subscribe to locale changes to refresh language list display
+        _localeService.LocaleChanged += OnLocaleChanged;
         
         // Load theme preference
         _ = LoadThemePreferenceAsync();
+        
+        // Load available languages
+        RefreshAvailableLanguages();
+        
+        // Load language preference
+        _ = LoadLanguagePreferenceAsync();
         
         // Load system information
         LoadSystemInfo();
         
         // Navigate to initial view
         _navigationService.NavigateTo<DiskSelectionViewModel>();
+    }
+    
+    private void OnLocaleChanged()
+    {
+        // Refresh language names in the current locale
+        RefreshAvailableLanguages();
+        OnPropertyChanged(nameof(CurrentLanguageFlag));
+    }
+    
+    private void RefreshAvailableLanguages()
+    {
+        AvailableLanguages.Clear();
+        foreach (var loc in _localeService.GetAvailableLocales())
+        {
+            var flag = loc switch
+            {
+                "cs" => "🇨🇿",
+                "en" => "🇬🇧",
+                "de" => "🇩🇪",
+                _ => "🌐"
+            };
+            var name = _localeService.Get($"Language.{loc}");
+            if (name.StartsWith("[[", StringComparison.Ordinal)) name = loc; // fallback if key missing
+            AvailableLanguages.Add(new LanguageItem { Code = loc, Name = name, Flag = flag });
+        }
+        if (AvailableLanguages.Count == 0)
+        {
+            AvailableLanguages.Add(new LanguageItem { Code = "cs", Name = "Čeština", Flag = "🇨🇿" });
+            AvailableLanguages.Add(new LanguageItem { Code = "en", Name = "English", Flag = "🇬🇧" });
+        }
+    }
+    
+    public ObservableCollection<LanguageItem> AvailableLanguages { get; } = new();
+    
+    private LanguageItem? _currentLanguageItem;
+    public LanguageItem? CurrentLanguageItem
+    {
+        get => _currentLanguageItem;
+        set
+        {
+            if (value != null && SetProperty(ref _currentLanguageItem, value))
+            {
+                _localeService.SetLocale(value.Code);
+                _ = SaveLanguagePreferenceAsync(value.Code);
+                OnPropertyChanged(nameof(CurrentLanguageFlag));
+                // Close menu after selection
+                IsLanguageMenuOpen = false;
+            }
+        }
+    }
+    
+    public string CurrentLanguageFlag
+    {
+        get
+        {
+            return _currentLanguageItem?.Flag ?? (_currentLanguage switch
+            {
+                "cs" => "🇨🇿",
+                "en" => "🇬🇧",
+                "de" => "🇩🇪",
+                _ => "🌐"
+            });
+        }
+    }
+    
+    private string _currentLanguage = "cs";
+    
+    private bool _isLanguageMenuOpen;
+    public bool IsLanguageMenuOpen
+    {
+        get => _isLanguageMenuOpen;
+        set => SetProperty(ref _isLanguageMenuOpen, value);
+    }
+    
+    [RelayCommand]
+    private void ToggleLanguageMenu()
+    {
+        IsLanguageMenuOpen = !IsLanguageMenuOpen;
+    }
+    
+    private async System.Threading.Tasks.Task SaveLanguagePreferenceAsync(string locale)
+    {
+        await _settingsService.SetLanguageAsync(locale);
     }
     
     private async System.Threading.Tasks.Task LoadThemePreferenceAsync()
@@ -164,6 +261,19 @@ public partial class MainWindowViewModel : ViewModelBase
         }
     }
 
+    private async System.Threading.Tasks.Task LoadLanguagePreferenceAsync()
+    {
+        var lang = await _settingsService.GetLanguageAsync();
+        if (!string.IsNullOrEmpty(lang))
+        {
+            _currentLanguage = lang;
+            _localeService.SetLocale(lang);
+            // Find matching LanguageItem
+            CurrentLanguageItem = AvailableLanguages.FirstOrDefault(li => li.Code == lang);
+            OnPropertyChanged(nameof(CurrentLanguageFlag));
+        }
+    }
+    
     private void LoadSystemInfo()
     {
         try
@@ -632,6 +742,9 @@ public partial class MainWindowViewModel : ViewModelBase
 
     private void OnNavigated(object? sender, AppNavigationEventArgs e)
     {
+        // Close language menu when navigating
+        IsLanguageMenuOpen = false;
+        
         CurrentContent = e.ViewModel;
         _currentViewModelType = e.ViewModel?.GetType();
         

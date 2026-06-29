@@ -15,7 +15,7 @@
                     BorderBrush="{DynamicResource ThemeBorderBrush}" BorderThickness="1">
                 <Grid ColumnDefinitions="Auto,*,Auto">
                     <StackPanel Grid.Column="0" Spacing="4">
-                        <TextBlock Text="💣 ABSOLUTNÍ DESTRUKTIVNÍ TEST" FontSize="18" FontWeight="Bold"
+                        <TextBlock Text="{Binding L[DestructiveTest.Title]}" FontSize="18" FontWeight="Bold"
                                    Foreground="{DynamicResource ThemeTextPrimaryBrush}"/>
                         <!-- Selected disk always visible -->
                         <Border Background="{DynamicResource ThemePrimaryLightBrush}"
@@ -27,7 +27,7 @@
                                     <TextBlock Text="{Binding SelectedDrive.Name}" FontSize="13" FontWeight="Bold"
                                                Foreground="{DynamicResource ThemeTextPrimaryBrush}"/>
                                     <TextBlock FontSize="10" Foreground="{DynamicResource ThemeTextMutedBrush}">
-                                        <Run Text="Cesta: "/>
+                                        <Run Text="{Binding L[Disk.Path]}"/>
                                         <Run Text="{Binding SelectedDrive.Path}" FontWeight="SemiBold"/>
                                     </TextBlock>
                                 </StackPanel>
@@ -37,7 +37,7 @@
 
                     <StackPanel Grid.Column="2" Spacing="8" VerticalAlignment="Center" HorizontalAlignment="Right">
                         <!-- Start button -->
-                        <Button Content="▶ Spustit test"
+                        <Button Content="{Binding L[DestructiveTest.StartTest]}"
                                 Command="{Binding StartTestCommand}"
                                 IsVisible="{Binding !IsTesting}"
                                 Background="{DynamicResource ThemeDangerBrush}"
@@ -46,7 +46,7 @@
                                 Padding="20,10" CornerRadius="8"
                                 Cursor="Hand"/>
                         <!-- Cancel button -->
-                        <Button Content="⏹ Přerušit test"
+                        <Button Content="{Binding L[DestructiveTest.CancelTest]}"
                                 Command="{Binding CancelTestCommand}"
                                 IsVisible="{Binding IsTesting}"
                                 Background="#E74C3C"
@@ -55,7 +55,7 @@
                                 Padding="20,10" CornerRadius="8"
                                 Cursor="Hand"/>
                         <!-- Back button -->
-                        <Button Content="↩ Zpět"
+                        <Button Content="{Binding L[Common.Back]}"
                                 Command="{Binding GoBackCommand}"
                                 IsVisible="{Binding !IsTesting}"
                                 Padding="12,6" CornerRadius="6"
@@ -70,9 +70,9 @@
                     BorderBrush="{DynamicResource ThemeWarningBrush}" BorderThickness="1"
                     IsVisible="{Binding ShowManualProfileSelector}">
                 <StackPanel Spacing="8">
-                    <TextBlock Text="⚠️ SMART data nejsou dostupná" FontSize="14" FontWeight="Bold"
+                    <TextBlock Text="{Binding L[SMART.DataUnavailable]}" FontSize="14" FontWeight="Bold"
                                Foreground="{DynamicResource ThemeWarningBrush}"/>
-                    <TextBlock Text="Vyberte manuální testovací profil podle předpokládaného stavu disku:"
+                    <TextBlock Text="{Binding L[DestructiveTest.SelectManualProfile]}"
                                FontSize="11" Foreground="{DynamicResource ThemeTextSecondaryBrush}"
                                TextWrapping="Wrap"/>
                     <ListBox ItemsSource="{Binding ManualProfiles}"
@@ -110,7 +110,7 @@
                                 <Run Text="{Binding ElapsedTime}"/>
                             </TextBlock>
                             <TextBlock FontSize="11" Foreground="{DynamicResource ThemeTextMutedBrush}">
-                                <Run Text="Zbývá: "/>
+                                <Run Text="{Binding L[DestructiveTest.Remaining]}"/>
                                 <Run Text="{Binding EstimatedRemaining}"/>
                             </TextBlock>
                         </StackPanel>
@@ -132,7 +132,7 @@
                     CornerRadius="8" Padding="12"
                     BorderBrush="{DynamicResource ThemeBorderBrush}" BorderThickness="1">
                 <StackPanel Spacing="4">
-                    <TextBlock Text="📋 Průběh fází" FontSize="13" FontWeight="Bold"
+                    <TextBlock Text="{Binding L[DestructiveTest.PhaseProgress]}" FontSize="13" FontWeight="Bold"
                                Foreground="{DynamicResource ThemeTextPrimaryBrush}" Margin="0,0,0,4"/>
                     <ItemsControl ItemsSource="{Binding Phases}">
                         <ItemsControl.ItemTemplate>
@@ -198,7 +198,7 @@
                                         IsVisible="{Binding ShowSanitizePass1Write}"/>
                                 <Border Width="14" Height="2" Background="{DynamicResource ThemeTextMutedBrush}" CornerRadius="1" VerticalAlignment="Center"
                                         IsVisible="{Binding !ShowSanitizePass1Write}"/>
-                                <TextBlock Text="1. Zápis" FontSize="9" Foreground="{DynamicResource ThemeTextSecondaryBrush}"/>
+                                <TextBlock Text="{Binding L[DestructiveTest.Sanitize.Write1]}" FontSize="9" Foreground="{DynamicResource ThemeTextSecondaryBrush}"/>
                             </StackPanel>
                         </Button>
                         <Button Command="{Binding ToggleSanitizeSeriesCommand}" CommandParameter="pass1read"
@@ -208,7 +208,7 @@
                                         IsVisible="{Binding ShowSanitizePass1Read}"/>
                                 <Border Width="14" Height="2" Background="{DynamicResource ThemeTextMutedBrush}" CornerRadius="1" VerticalAlignment="Center"
                                         IsVisible="{Binding !ShowSanitizePass1Read}"/>
-                                <TextBlock Text="1. Čtení" FontSize="9" Foreground="{DynamicResource ThemeTextSecondaryBrush}"/>
+                                <TextBlock Text="{Binding L[DestructiveTest.Sanitize.Read1]}" FontSize="9" Foreground="{DynamicResource ThemeTextSecondaryBrush}"/>
                             </StackPanel>
                         </Button>
                         <Button Command="{Binding ToggleSanitizeSeriesCommand}" CommandParameter="pass2write"
@@ -218,7 +218,7 @@
                                         IsVisible="{Binding ShowSanitizePass2Write}"/>
                                 <Border Width="14" Height="2" Background="{DynamicResource ThemeTextMutedBrush}" CornerRadius="1" VerticalAlignment="Center"
                                         IsVisible="{Binding !ShowSanitizePass2Write}"/>
-                                <TextBlock Text="2. Zápis" FontSize="9" Foreground="{DynamicResource ThemeTextSecondaryBrush}"/>
+                                <TextBlock Text="{Binding L[DestructiveTest.Sanitize.Write2]}" FontSize="9" Foreground="{DynamicResource ThemeTextSecondaryBrush}"/>
                             </StackPanel>
                         </Button>
                         <Button Command="{Binding ToggleSanitizeSeriesCommand}" CommandParameter="pass2read"
@@ -228,7 +228,7 @@
                                         IsVisible="{Binding ShowSanitizePass2Read}"/>
                                 <Border Width="14" Height="2" Background="{DynamicResource ThemeTextMutedBrush}" CornerRadius="1" VerticalAlignment="Center"
                                         IsVisible="{Binding !ShowSanitizePass2Read}"/>
-                                <TextBlock Text="2. Čtení" FontSize="9" Foreground="{DynamicResource ThemeTextSecondaryBrush}"/>
+                                <TextBlock Text="{Binding L[DestructiveTest.Sanitize.Read2]}" FontSize="9" Foreground="{DynamicResource ThemeTextSecondaryBrush}"/>
                             </StackPanel>
                         </Button>
                     </StackPanel>
@@ -251,7 +251,7 @@
                 <StackPanel Spacing="4">
                     <TextBlock FontSize="13" FontWeight="Bold"
                                Foreground="{DynamicResource ThemeTextPrimaryBrush}">
-                        <Run Text="📈 Aktuální fáze: "/>
+                        <Run Text="{Binding L[DestructiveTest.CurrentPhase]}"/>
                         <Run Text="{Binding CurrentPhaseName}"/>
                     </TextBlock>
                     <lvc:CartesianChart Series="{Binding CurrentPhaseSeries}"
@@ -277,17 +277,17 @@
                                    Foreground="{DynamicResource ThemeTextPrimaryBrush}"/>
                         <!-- Toggle buttons -->
                         <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="4">
-                            <Button Content="↔️ Full Stroke"
+                            <Button Content="{Binding L[DestructiveTest.Toggle.FullStroke]}"
                                     Command="{Binding SwitchSeekChartCommand}"
                                     CommandParameter="0"
                                     Padding="8,4" CornerRadius="4" FontSize="10"
                                     Cursor="Hand"/>
-                            <Button Content="🎲 Náhodný"
+                            <Button Content="{Binding L[DestructiveTest.Toggle.Random]}"
                                     Command="{Binding SwitchSeekChartCommand}"
                                     CommandParameter="1"
                                     Padding="8,4" CornerRadius="4" FontSize="10"
                                     Cursor="Hand"/>
-                            <Button Content="⏭️ Skip"
+                            <Button Content="{Binding L[DestructiveTest.Toggle.Skip]}"
                                     Command="{Binding SwitchSeekChartCommand}"
                                     CommandParameter="2"
                                     Padding="8,4" CornerRadius="4" FontSize="10"
@@ -304,7 +304,7 @@
                                             AnimationsSpeed="0:0:0"
                                             Height="220"/>
                         <!-- Overlay shown when no seek charts available yet -->
-                        <TextBlock Text="📈 Seek grafy budou zobrazeny po dokončení seek testů"
+                        <TextBlock Text="{Binding L[DestructiveTest.SeekGraphsPending]}"
                                    VerticalAlignment="Center"
                                    HorizontalAlignment="Center"
                                    FontSize="12"
@@ -319,14 +319,14 @@
                     CornerRadius="8" Padding="12"
                     BorderBrush="{DynamicResource ThemeBorderBrush}" BorderThickness="1">
                 <StackPanel Spacing="6">
-                    <TextBlock Text="🔧 SMART Telemetrie" FontSize="13" FontWeight="Bold"
+                    <TextBlock Text="{Binding L[DestructiveTest.SmartTelemetry]}" FontSize="13" FontWeight="Bold"
                                Foreground="{DynamicResource ThemeTextPrimaryBrush}"/>
 
                     <!-- Baseline -->
                     <Border Background="{DynamicResource ThemeSecondaryBackgroundBrush}"
                             CornerRadius="4" Padding="8">
                         <StackPanel Spacing="2">
-                            <TextBlock Text="📊 Výchozí stav" FontSize="11" FontWeight="SemiBold"
+                            <TextBlock Text="{Binding L[DestructiveTest.InitialState]}" FontSize="11" FontWeight="SemiBold"
                                        Foreground="{DynamicResource ThemeTextSecondaryBrush}"/>
                             <TextBlock Text="{Binding SmartBaselineSummary}" FontSize="10"
                                        Foreground="{DynamicResource ThemeTextMutedBrush}"
@@ -339,7 +339,7 @@
                             CornerRadius="4" Padding="8"
                             IsVisible="{Binding HasResults}">
                         <StackPanel Spacing="2">
-                            <TextBlock Text="📉 SMART Delta (před → po)" FontSize="11" FontWeight="SemiBold"
+                            <TextBlock Text="{Binding L[DestructiveTest.SmartDelta.Title]}" FontSize="11" FontWeight="SemiBold"
                                        Foreground="{DynamicResource ThemeTextSecondaryBrush}"/>
                             <TextBlock Text="{Binding SmartDeltaSummary}" FontSize="10"
                                        Foreground="{DynamicResource ThemeTextMutedBrush}"
@@ -376,7 +376,7 @@
                     <Grid ColumnDefinitions="Auto,*,Auto">
                         <TextBlock Grid.Column="0" Text="⚠️" FontSize="20" VerticalAlignment="Center"/>
                         <StackPanel Grid.Column="1" Margin="8,0">
-                            <TextBlock Text="DISK PŘESTAL ODPOVÍDAT" FontSize="14" FontWeight="Bold"
+                            <TextBlock Text="{Binding L[DestructiveTest.Recovery.Title]}" FontSize="14" FontWeight="Bold"
                                        Foreground="{DynamicResource ThemeWarningBrush}"/>
                             <TextBlock Text="{Binding DiskRecoveryStatus}" FontSize="11"
                                        Foreground="{DynamicResource ThemeTextSecondaryBrush}"
@@ -406,14 +406,14 @@
                     BorderBrush="{DynamicResource ThemeBorderBrush}" BorderThickness="1"
                     IsVisible="{Binding HasResults}">
                 <StackPanel Spacing="12">
-                    <TextBlock Text="🏆 Výsledky testu" FontSize="16" FontWeight="Bold"
+                    <TextBlock Text="{Binding L[DestructiveTest.TestResults]}" FontSize="16" FontWeight="Bold"
                                Foreground="{DynamicResource ThemeSuccessBrush}"/>
 
                     <!-- Sanitization comparison -->
                     <Border Background="{DynamicResource ThemeSecondaryBackgroundBrush}"
                             CornerRadius="6" Padding="10">
                         <StackPanel Spacing="4">
-                            <TextBlock Text="🧹 Porovnání sanitizací" FontSize="12" FontWeight="SemiBold"
+                            <TextBlock Text="{Binding L[DestructiveTest.SanitizeComparison]}" FontSize="12" FontWeight="SemiBold"
                                        Foreground="{DynamicResource ThemeTextPrimaryBrush}"/>
                             <TextBlock Text="{Binding SanitizeComparisonSummary}" FontSize="10"
                                        Foreground="{DynamicResource ThemeTextSecondaryBrush}"
@@ -425,7 +425,7 @@
                     <Border Background="{DynamicResource ThemeSecondaryBackgroundBrush}"
                             CornerRadius="6" Padding="10">
                         <StackPanel Spacing="4">
-                            <TextBlock Text="🎯 Výsledky seek testů" FontSize="12" FontWeight="SemiBold"
+                            <TextBlock Text="{Binding L[DestructiveTest.SeekResults]}" FontSize="12" FontWeight="SemiBold"
                                        Foreground="{DynamicResource ThemeTextPrimaryBrush}"/>
                             <TextBlock Text="{Binding SeekResultsSummary}" FontSize="10"
                                        Foreground="{DynamicResource ThemeTextSecondaryBrush}"
@@ -449,7 +449,7 @@
                     <Border Background="{DynamicResource ThemeSecondaryBackgroundBrush}"
                             CornerRadius="6" Padding="10">
                         <StackPanel Spacing="4">
-                            <TextBlock Text="🔬 SMART změny" FontSize="12" FontWeight="SemiBold"
+                            <TextBlock Text="{Binding L[DestructiveTest.SmartChanges]}" FontSize="12" FontWeight="SemiBold"
                                        Foreground="{DynamicResource ThemeTextPrimaryBrush}"/>
                             <TextBlock Text="{Binding SmartChangeDetails}" FontSize="10"
                                        Foreground="{DynamicResource ThemeTextSecondaryBrush}"
@@ -461,7 +461,7 @@
                     <Border Background="{DynamicResource ThemeSecondaryBackgroundBrush}"
                             CornerRadius="6" Padding="10">
                         <StackPanel Spacing="4">
-                            <TextBlock Text="📄 Kompletní shrnutí" FontSize="12" FontWeight="SemiBold"
+                            <TextBlock Text="{Binding L[DestructiveTest.CompleteSummary]}" FontSize="12" FontWeight="SemiBold"
                                        Foreground="{DynamicResource ThemeTextPrimaryBrush}"/>
                             <TextBlock Text="{Binding ResultsSummary}" FontSize="10"
                                        Foreground="{DynamicResource ThemeTextSecondaryBrush}"
@@ -470,7 +470,7 @@
                     </Border>
 
                     <!-- Certificate button -->
-                    <Button Content="🎯 Zobrazit certifikát"
+                    <Button Content="{Binding L[DestructiveTest.ShowCertificate]}"
                             Command="{Binding GenerateCertificateCommand}"
                             IsVisible="{Binding IsCertificateReady}"
                             Background="{DynamicResource ThemePrimaryBrush}"

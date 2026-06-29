@@ -25,12 +25,12 @@
         <Border Grid.Row="0" Classes="PageHeader">
             <Grid ColumnDefinitions="*,Auto">
                 <StackPanel>
-                    <TextBlock Text="💾 Záloha disku" Classes="PageTitle"/>
-                    <TextBlock Text="Inteligentní záloha před destruktivním testováním" Classes="PageSubtitle"/>
+                    <TextBlock Text="{Binding L[Backup.Title]}" Classes="PageTitle"/>
+                    <TextBlock Text="{Binding L[BackupView.Description]}" Classes="PageSubtitle"/>
                     <TextBlock Text="{Binding StatusMessage}" Classes="PageMetaText" Margin="0,2,0,0"/>
                 </StackPanel>
                 <Button Grid.Column="1"
-                        Content="← Zpět"
+                        Content="{Binding L[Common.Back]}"
                         Command="{Binding GoBackCommand}"
                         Background="{DynamicResource ThemeSecondaryBackgroundBrush}"
                         Foreground="{DynamicResource ThemeTextPrimaryBrush}"
@@ -61,7 +61,7 @@
                                HorizontalAlignment="Center" VerticalAlignment="Center"/>
                 </Border>
                 <StackPanel Grid.Column="1" Margin="12,0" VerticalAlignment="Center">
-                    <TextBlock Text="KRITICKÉ VAROVÁNÍ"
+                    <TextBlock Text="{Binding L[BackupView.CriticalWarning]}"
                                FontSize="14" FontWeight="Bold"
                                Foreground="#FCA5A5"/>
                     <TextBlock Text="{Binding FailureWarning}"
@@ -81,7 +81,7 @@
                         CornerRadius="8" Padding="16"
                         BorderBrush="{DynamicResource ThemeBorderBrush}" BorderThickness="1">
                     <StackPanel Spacing="6">
-                        <TextBlock Text="📀 Zdrojový disk" FontSize="14" FontWeight="Bold"
+                        <TextBlock Text="{Binding L[BackupView.SourceDisk]}" FontSize="14" FontWeight="Bold"
                                    Foreground="{DynamicResource ThemeTextPrimaryBrush}"/>
                         <Grid ColumnDefinitions="Auto,*" RowDefinitions="Auto,Auto,Auto" ColumnSpacing="12" RowSpacing="4">
                             <TextBlock Grid.Row="0" Grid.Column="0" Text="Disk:"
@@ -89,7 +89,7 @@
                             <TextBlock Grid.Row="0" Grid.Column="1" Text="{Binding SourceDrive.Name}"
                                        Foreground="{DynamicResource ThemeTextPrimaryBrush}" FontWeight="SemiBold" FontSize="10"/>
 
-                            <TextBlock Grid.Row="1" Grid.Column="0" Text="Cesta:"
+                            <TextBlock Grid.Row="1" Grid.Column="0" Text="{Binding L[BackupView.Path]}"
                                        Foreground="{DynamicResource ThemeTextMutedBrush}" FontSize="10"/>
                             <TextBlock Grid.Row="1" Grid.Column="1" Text="{Binding SourceDrive.Path}"
                                        Foreground="{DynamicResource ThemeTextSecondaryBrush}" FontSize="10" FontFamily="Courier New"/>
@@ -108,10 +108,10 @@
                         CornerRadius="8" Padding="16"
                         BorderBrush="{DynamicResource ThemeBorderBrush}" BorderThickness="1">
                     <StackPanel Spacing="8">
-                        <TextBlock Text="⚙️ Režim zálohy" FontSize="14" FontWeight="Bold"
+                        <TextBlock Text="{Binding L[BackupView.BackupMode]}" FontSize="14" FontWeight="Bold"
                                    Foreground="{DynamicResource ThemeTextPrimaryBrush}"/>
                         <StackPanel Orientation="Horizontal" Spacing="8">
-                            <Button Content="📁 File-level (složky)"
+                            <Button Content="{Binding L[BackupView.FileLevel]}"
                                     Command="{Binding SwitchToFileModeCommand}"
                                     Background="{Binding IsFileLevelMode, Converter={StaticResource BooleanToBrushConverter}, ConverterParameter=Selected:ThemePrimaryBrush;Normal:ThemeSecondaryBackgroundBrush}"
                                     IsEnabled="{Binding IsRawModeForced, Converter={StaticResource InverseBooleanConverter}}"
@@ -122,13 +122,13 @@
                                     Background="{Binding IsRawImageMode, Converter={StaticResource BooleanToBrushConverter}, ConverterParameter=Selected:ThemePrimaryBrush;Normal:ThemeSecondaryBackgroundBrush}"
                                     Padding="12,8" CornerRadius="6" FontSize="11"
                                     Cursor="Hand"/>
-                            <Button Content="🗄️ VHDx obraz (dynamický)"
+                            <Button Content="{Binding L[BackupView.VhdxImage]}"
                                     Command="{Binding SwitchToVhdxModeCommand}"
                                     Background="{Binding IsVhdxImageMode, Converter={StaticResource BooleanToBrushConverter}, ConverterParameter=Selected:ThemePrimaryBrush;Normal:ThemeSecondaryBackgroundBrush}"
                                     Padding="12,8" CornerRadius="6" FontSize="11"
                                     Cursor="Hand"/>
                         </StackPanel>
-                        <TextBlock Text="File-level: kopíruje vybrané složky a soubory (vyžaduje čitelný souborový systém).&#xa;Raw obraz: kopie sektor po sektoru (pro BitLocker, neznámé FS, maximální věrnost).&#xa;VHDx obraz: dynamický VHDx — připojitelný ve Windows i Linuxu, roste jen podle zapsaných dat."
+                        <TextBlock Text="{Binding L[BackupView.ModeDescription]}"
                                    FontSize="9"
                                    Foreground="{DynamicResource ThemeTextMutedBrush}"
                                    TextWrapping="Wrap"/>
@@ -142,16 +142,16 @@
                         IsVisible="{Binding SelectedMode, Converter={StaticResource EnumToBooleanConverter}, ConverterParameter=FileLevel}">
                     <StackPanel Spacing="8">
                         <Grid ColumnDefinitions="*,Auto">
-                            <TextBlock Grid.Column="0" Text="📂 Složky k zálohování" FontSize="14" FontWeight="Bold"
+                            <TextBlock Grid.Column="0" Text="{Binding L[BackupView.FoldersToBackup]}" FontSize="14" FontWeight="Bold"
                                        Foreground="{DynamicResource ThemeTextPrimaryBrush}"/>
                             <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="4">
-                                <Button Content="Vše" Command="{Binding SelectAllFoldersCommand}"
+                                <Button Content="{Binding L[Backup.Folders.All]}" Command="{Binding SelectAllFoldersCommand}"
                                         Padding="8,4" CornerRadius="4" FontSize="9" Cursor="Hand"/>
-                                <Button Content="Nic" Command="{Binding DeselectAllFoldersCommand}"
+                                <Button Content="{Binding L[Backup.Folders.None]}" Command="{Binding DeselectAllFoldersCommand}"
                                         Padding="8,4" CornerRadius="4" FontSize="9" Cursor="Hand"/>
-                                <Button Content="👤 Uživatelské" Command="{Binding SelectUserFoldersCommand}"
+                                <Button Content="{Binding L[BackupView.UserFolders]}" Command="{Binding SelectUserFoldersCommand}"
                                         Padding="8,4" CornerRadius="4" FontSize="9" Cursor="Hand"/>
-                                <Button Content="➕ Složka" Command="{Binding AddCustomFolderCommand}"
+                                <Button Content="{Binding L[BackupView.AddFolder]}" Command="{Binding AddCustomFolderCommand}"
                                         Padding="8,4" CornerRadius="4" FontSize="9" Cursor="Hand"/>
                                 <Button Content="➕ Soubory" Command="{Binding AddCustomFilesCommand}"
                                         Padding="8,4" CornerRadius="4" FontSize="9" Cursor="Hand"/>
@@ -176,7 +176,7 @@
                                                                    Foreground="{DynamicResource ThemeTextPrimaryBrush}"/>
                                                         <TextBlock Text="{Binding SourceKindText}" FontSize="9"
                                                                    Foreground="{DynamicResource ThemeTextMutedBrush}"/>
-                                                        <TextBlock Text="(systémová)" FontSize="9"
+                                                        <TextBlock Text="{Binding L[BackupView.SystemReserve]}" FontSize="9"
                                                                    Foreground="{DynamicResource ThemeTextMutedBrush}"
                                                                    IsVisible="{Binding IsSystemFolder}"/>
                                                     </StackPanel>
@@ -203,7 +203,7 @@
                             </ItemsControl>
                         </ScrollViewer>
 
-                        <Button Content="🔄 Znovu skenovat složky"
+                        <Button Content="{Binding L[BackupView.RescanFolders]}"
                                 Command="{Binding ScanSourceCommand}"
                                 Padding="10,6" CornerRadius="6" FontSize="10"
                                 HorizontalAlignment="Left" Cursor="Hand"/>
@@ -215,9 +215,9 @@
                         CornerRadius="8" Padding="16"
                         BorderBrush="{DynamicResource ThemeBorderBrush}" BorderThickness="1">
                     <StackPanel Spacing="8">
-                        <TextBlock Text="💽 Cílové disky" FontSize="14" FontWeight="Bold"
+                        <TextBlock Text="{Binding L[BackupView.TargetDisks]}" FontSize="14" FontWeight="Bold"
                                    Foreground="{DynamicResource ThemeTextPrimaryBrush}"/>
-                        <TextBlock Text="Vyberte, kam uložit zálohu. Data lze rozdělit mezi více disků."
+                        <TextBlock Text="{Binding L[BackupView.SelectTargetHint]}"
                                    FontSize="9" Foreground="{DynamicResource ThemeTextMutedBrush}"/>
 
                         <ItemsControl ItemsSource="{Binding TargetDrives}">
@@ -260,20 +260,20 @@
                         CornerRadius="8" Padding="16"
                         BorderBrush="{DynamicResource ThemeBorderBrush}" BorderThickness="1">
                     <StackPanel Spacing="6">
-                        <TextBlock Text="📐 Kalkulace místa" FontSize="14" FontWeight="Bold"
+                        <TextBlock Text="{Binding L[BackupView.SpaceCalculation]}" FontSize="14" FontWeight="Bold"
                                    Foreground="{DynamicResource ThemeTextPrimaryBrush}"/>
                         <Grid ColumnDefinitions="Auto,*" RowDefinitions="Auto,Auto,Auto,Auto" ColumnSpacing="12" RowSpacing="4">
-                            <TextBlock Grid.Row="0" Grid.Column="0" Text="Potřebné místo:"
+                            <TextBlock Grid.Row="0" Grid.Column="0" Text="{Binding L[Backup.Space.Needed]}"
                                        Foreground="{DynamicResource ThemeTextMutedBrush}" FontSize="10"/>
                             <TextBlock Grid.Row="0" Grid.Column="1" Text="{Binding TotalRequiredText}"
                                        Foreground="{DynamicResource ThemeTextPrimaryBrush}" FontWeight="SemiBold" FontSize="10"/>
 
-                            <TextBlock Grid.Row="1" Grid.Column="0" Text="Dostupné místo:"
+                            <TextBlock Grid.Row="1" Grid.Column="0" Text="{Binding L[Backup.Space.Available]}"
                                        Foreground="{DynamicResource ThemeTextMutedBrush}" FontSize="10"/>
                             <TextBlock Grid.Row="1" Grid.Column="1" Text="{Binding TotalAvailableText}"
                                        Foreground="{DynamicResource ThemeTextSecondaryBrush}" FontSize="10"/>
 
-                            <TextBlock Grid.Row="2" Grid.Column="0" Text="Systémová rezerva:"
+                            <TextBlock Grid.Row="2" Grid.Column="0" Text="{Binding L[Backup.Space.Reserve]}"
                                        Foreground="{DynamicResource ThemeTextMutedBrush}" FontSize="10"/>
                             <TextBlock Grid.Row="2" Grid.Column="1" Text="{Binding SystemReserveText}"
                                        Foreground="{DynamicResource ThemeTextSecondaryBrush}" FontSize="10"/>
@@ -293,13 +293,13 @@
                         BorderBrush="{DynamicResource ThemeBorderBrush}" BorderThickness="1"
                         IsVisible="{Binding Phase, Converter={StaticResource EnumToBooleanConverter}, ConverterParameter=Running}">
                     <StackPanel Spacing="8">
-                        <TextBlock Text="⏳ Průběh zálohy" FontSize="14" FontWeight="Bold"
+                        <TextBlock Text="{Binding L[BackupView.BackupProgress]}" FontSize="14" FontWeight="Bold"
                                    Foreground="{DynamicResource ThemeTextPrimaryBrush}"/>
 
                         <!-- Overall progress -->
                         <StackPanel Spacing="2">
                             <Grid ColumnDefinitions="*,Auto">
-                                <TextBlock Grid.Column="0" Text="Celkový progres:" FontSize="10"
+                                <TextBlock Grid.Column="0" Text="{Binding L[Backup.Progress.Overall]}" FontSize="10"
                                            Foreground="{DynamicResource ThemeTextMutedBrush}"/>
                                 <TextBlock Grid.Column="1" Text="{Binding OverallProgress, StringFormat={}{0:F1}%}"
                                            FontSize="10" Foreground="{DynamicResource ThemePrimaryBrush}"/>
@@ -348,7 +348,7 @@
                         BorderBrush="{DynamicResource ThemeBorderBrush}" BorderThickness="1"
                         IsVisible="{Binding BackupLogText, Converter={StaticResource NotNullConverter}}">
                     <StackPanel Spacing="4">
-                        <TextBlock Text="📋 Log zálohy" FontSize="12" FontWeight="SemiBold"
+                        <TextBlock Text="{Binding L[BackupView.BackupLog]}" FontSize="12" FontWeight="SemiBold"
                                    Foreground="{DynamicResource ThemeTextPrimaryBrush}"/>
                         <Border Background="{DynamicResource ThemeCodeBackgroundBrush}"
                                 CornerRadius="4" Padding="8" MaxHeight="200">
@@ -371,13 +371,13 @@
                            Foreground="{DynamicResource ThemeTextSecondaryBrush}"
                            VerticalAlignment="Center" FontSize="11"/>
 
-                <Button Grid.Column="1" Content="🔄 Skenovat"
+                <Button Grid.Column="1" Content="{Binding L[Backup.ScanButton]}"
                         Command="{Binding ScanSourceCommand}"
                         IsVisible="{Binding Phase, Converter={StaticResource EnumToBooleanConverter}, ConverterParameter=Ready}"
                         Padding="12,8" CornerRadius="6" FontSize="11"
                         Cursor="Hand"/>
 
-                <Button Grid.Column="2" Content="💾 SPUSTIT ZÁLOHU"
+                <Button Grid.Column="2" Content="{Binding L[Backup.StartButton]}"
                         Command="{Binding StartBackupCommand}"
                         IsVisible="{Binding Phase, Converter={StaticResource EnumToBooleanConverter}, ConverterParameter=Ready}"
                         Background="{DynamicResource ThemeSuccessBrush}"
@@ -386,7 +386,7 @@
                         Padding="20,10" CornerRadius="8"
                         Cursor="Hand"/>
 
-                <Button Grid.Column="2" Content="⏹ ZRUŠIT"
+                <Button Grid.Column="2" Content="{Binding L[Backup.CancelButton]}"
                         Command="{Binding CancelBackupCommand}"
                         IsVisible="{Binding Phase, Converter={StaticResource EnumToBooleanConverter}, ConverterParameter=Running}"
                         Background="{DynamicResource ThemeDangerBrush}"
@@ -395,7 +395,7 @@
                         Padding="20,10" CornerRadius="8"
                         Cursor="Hand"/>
 
-                <Button Grid.Column="2" Content="🔄 OBNOVIT"
+                <Button Grid.Column="2" Content="{Binding L[Backup.RestoreButton]}"
                         Command="{Binding NavigateToRestoreCommand}"
                         IsVisible="{Binding Phase, Converter={StaticResource EnumToBooleanConverter}, ConverterParameter=Completed}"
                         Background="{DynamicResource ThemePrimaryBrush}"

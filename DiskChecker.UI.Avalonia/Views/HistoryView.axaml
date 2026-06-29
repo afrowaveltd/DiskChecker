@@ -17,12 +17,12 @@
                 Classes="PageHeader">
             <Grid ColumnDefinitions="*,Auto">
                 <StackPanel>
-                    <TextBlock Text="📜 Historie testů" Classes="PageTitle"/>
-                    <TextBlock Text="Přehled všech provedených testů disku" Classes="PageSubtitle"/>
+                    <TextBlock Text="{Binding L[HistoryView.TestHistory]}" Classes="PageTitle"/>
+                    <TextBlock Text="{Binding L[HistoryView.AllTestsOverview]}" Classes="PageSubtitle"/>
                     <TextBlock Text="{Binding StatusMessage}" Classes="PageMetaText" Margin="0,2,0,0"/>
                 </StackPanel>
                 <Button Grid.Column="1"
-                        Content="← Zpět"
+                        Content="{Binding L[Common.Back]}"
                         Command="{Binding GoBackCommand}"
                         Background="{DynamicResource ThemeSecondaryBackgroundBrush}"
                         Foreground="{DynamicResource ThemeTextPrimaryBrush}"
@@ -38,14 +38,14 @@
         <Border Grid.Row="1" Padding="16,8">
             <Grid ColumnDefinitions="*,Auto">
                 <StackPanel Orientation="Horizontal" Spacing="8">
-                    <Button Content="🔄 Obnovit"
+                    <Button Content="{Binding L[HistoryView.Refresh]}"
                             Command="{Binding RefreshCommand}"
                             Background="{DynamicResource ThemePrimaryBrush}"
                             Foreground="White"
                             CornerRadius="6"
                             Padding="10,6"
                             FontWeight="SemiBold"/>
-                    <Button Content="🗑️ Vymazat historii"
+                    <Button Content="{Binding L[HistoryView.ClearHistory]}"
                             Command="{Binding ClearHistoryCommand}"
                             Background="{DynamicResource ThemeSecondaryBackgroundBrush}"
                             Foreground="{DynamicResource ThemeTextPrimaryBrush}"
@@ -55,7 +55,7 @@
                 </StackPanel>
                 
                 <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8">
-                    <TextBlock Text="Filtr:" FontSize="10" 
+                    <TextBlock Text="{Binding L[HistoryView.Filter]}" FontSize="10" 
                               Foreground="{DynamicResource ThemeTextMutedBrush}"
                               VerticalAlignment="Center"/>
                     <ComboBox ItemsSource="{Binding FilterOptions}"
@@ -84,10 +84,10 @@
                         BorderThickness="0"
                         SelectionMode="Single">
                 <dg:DataGrid.Columns>
-                    <dg:DataGridTextColumn Header="Datum" Binding="{Binding TestDate, StringFormat='{}{0:dd.MM.yyyy HH:mm}'}" Width="130"/>
-                    <dg:DataGridTextColumn Header="Disk" Binding="{Binding DiskName}" Width="*"/>
-                    <dg:DataGridTextColumn Header="Typ" Binding="{Binding TestType}" Width="90"/>
-                    <dg:DataGridTemplateColumn Header="Známka" Width="70">
+                    <dg:DataGridTextColumn Header="{Binding L[HistoryView.Date]}" Binding="{Binding TestDate, StringFormat='{}{0:dd.MM.yyyy HH:mm}'}" Width="130"/>
+                    <dg:DataGridTextColumn Header="{Binding L[HistoryView.Disk]}" Binding="{Binding DiskName}" Width="*"/>
+                    <dg:DataGridTextColumn Header="{Binding L[HistoryView.Type]}" Binding="{Binding TestType}" Width="90"/>
+                    <dg:DataGridTemplateColumn Header="{Binding L[HistoryView.Grade]}" Width="70">
                         <dg:DataGridTemplateColumn.CellTemplate>
                             <DataTemplate>
                                 <Border Background="{Binding Grade, Converter={StaticResource GradeToColorConverter}}"
@@ -101,12 +101,12 @@
                             </DataTemplate>
                         </dg:DataGridTemplateColumn.CellTemplate>
                     </dg:DataGridTemplateColumn>
-                    <dg:DataGridTextColumn Header="Skóre" Binding="{Binding Score, StringFormat='{}{0}%'}" Width="60"/>
-                    <dg:DataGridTextColumn Header="Chyby" Binding="{Binding ErrorCount}" Width="60"/>
-                    <dg:DataGridTemplateColumn Header="Akce" Width="80">
+                    <dg:DataGridTextColumn Header="{Binding L[HistoryView.Score]}" Binding="{Binding Score, StringFormat='{}{0}%'}" Width="60"/>
+                    <dg:DataGridTextColumn Header="{Binding L[HistoryView.Errors]}" Binding="{Binding ErrorCount}" Width="60"/>
+                    <dg:DataGridTemplateColumn Header="{Binding L[HistoryView.Actions]}" Width="80">
                         <dg:DataGridTemplateColumn.CellTemplate>
                             <DataTemplate>
-                                <Button Content="📋 Detail"
+                                <Button Content="{Binding L[HistoryView.Detail]}"
                                         Command="{Binding $parent[DataGrid].DataContext.ViewDetailsCommand}"
                                         CommandParameter="{Binding}"
                                         Background="{DynamicResource ThemeSecondaryBackgroundBrush}"
@@ -126,12 +126,12 @@
         <Border Grid.Row="3" Classes="StatusBar">
             <StackPanel Orientation="Horizontal" Margin="16,0" Spacing="8">
                 <TextBlock FontSize="10" Foreground="{DynamicResource ThemeTextMutedBrush}" VerticalAlignment="Center">
-                    <Run Text="Celkem testů: "/>
+                    <Run Text="{Binding L[HistoryView.TotalTests]}" />
                     <Run Text="{Binding Tests.Count}" FontWeight="Bold"/>
                 </TextBlock>
                 <TextBlock Text="|" Foreground="{DynamicResource ThemeTextMutedBrush}" VerticalAlignment="Center"/>
                 <TextBlock FontSize="10" Foreground="{DynamicResource ThemeTextMutedBrush}" VerticalAlignment="Center">
-                    <Run Text="Průměrné skóre: "/>
+                    <Run Text="{Binding L[HistoryView.AvgScore]}" />
                     <Run Text="{Binding AverageScore, StringFormat='{}{0:F1}%'}" FontWeight="Bold"/>
                 </TextBlock>
             </StackPanel>

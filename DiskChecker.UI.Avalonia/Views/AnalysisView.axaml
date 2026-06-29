@@ -15,12 +15,12 @@
                 Classes="PageHeader">
             <Grid ColumnDefinitions="*,Auto">
                 <StackPanel>
-                    <TextBlock Text="🔬 Analýza povrchu disku" Classes="PageTitle"/>
-                    <TextBlock Text="Komplexní kontrola fyzického stavu disku" Classes="PageSubtitle"/>
+                    <TextBlock Text="{Binding L[AnalysisView.SurfaceAnalysis]}" Classes="PageTitle"/>
+                    <TextBlock Text="{Binding L[AnalysisView.ComplexCheck]}" Classes="PageSubtitle"/>
                     <TextBlock Text="{Binding StatusMessage}" Classes="PageMetaText" Margin="0,2,0,0"/>
                 </StackPanel>
                 <Button Grid.Column="1"
-                        Content="← Zpět"
+                        Content="{Binding L[Common.Back]}"
                         Command="{Binding $parent[UserControl].DataContext.NavigationService.NavigateToDiskSelectionCommand}"
                         Background="{DynamicResource ThemeSecondaryBackgroundBrush}"
                         Foreground="{DynamicResource ThemeTextPrimaryBrush}"
@@ -44,7 +44,7 @@
                    Padding="16"
                    Margin="0,0,8,0">
                 <StackPanel Spacing="12">
-                    <TextBlock Text="⚙️ Nastavení testu" 
+                    <TextBlock Text="{Binding L[AnalysisView.TestSettings]}" 
                               FontSize="14" FontWeight="Bold" 
                               Foreground="{DynamicResource ThemeTextPrimaryBrush}"
                               Margin="0,0,0,8"/>
@@ -52,19 +52,19 @@
                     <Border Background="{DynamicResource ThemePanelBackgroundBrush}" 
                            CornerRadius="6" Padding="10">
                         <StackPanel Spacing="8">
-                            <CheckBox Content="Rychlý test (jen důležité sektory)" 
+                            <CheckBox Content="{Binding L[AnalysisView.QuickTest]}" 
                                       IsChecked="True"
                                       FontSize="11"/>
-                            <CheckBox Content="Detailní analýza (všechny sektory)" 
+                            <CheckBox Content="{Binding L[AnalysisView.DetailedAnalysis]}" 
                                       IsChecked="False"
                                       FontSize="11"/>
-                            <CheckBox Content="Automatické opravy chyb" 
+                            <CheckBox Content="{Binding L[AnalysisView.AutoFix]}" 
                                       IsChecked="False"
                                       FontSize="11"/>
                         </StackPanel>
                     </Border>
 
-                    <TextBlock Text="📊 Priorita testu" 
+                    <TextBlock Text="{Binding L[AnalysisView.TestPriority]}" 
                               FontSize="12" FontWeight="SemiBold"
                               Foreground="{DynamicResource ThemeTextPrimaryBrush}"
                               Margin="0,8,0,4"/>
@@ -74,15 +74,15 @@
                               Background="{DynamicResource ThemeCardBackgroundBrush}"
                               BorderBrush="{DynamicResource ThemeBorderBrush}"
                               Padding="10,6">
-                        <ComboBoxItem Content="🔋 Nízká (na pozadí)"/>
-                        <ComboBoxItem Content="⚡ Normální"/>
-                        <ComboBoxItem Content="🔥 Vysoká (může zpomalit)"/>
+                        <ComboBoxItem Content="{Binding L[AnalysisView.LowPriority]}"/>
+                        <ComboBoxItem Content="{Binding L[AnalysisView.Normal]}"/>
+                        <ComboBoxItem Content="{Binding L[AnalysisView.HighPriority]}"/>
                     </ComboBox>
 
                     <Border Height="1" Background="{DynamicResource ThemeBorderBrush}" Margin="0,8"/>
 
                     <StackPanel Spacing="8">
-                        <Button Content="▶️ Spustit analýzu"
+                        <Button Content="{Binding L[AnalysisView.StartAnalysis]}"
                                 Command="{Binding StartAnalysisCommand}"
                                 IsEnabled="{Binding IsAnalyzing, Converter={StaticResource InverseBooleanConverter}}"
                                 Background="{DynamicResource ThemeSuccessBrush}"
@@ -98,7 +98,7 @@
                             </Button.Styles>
                         </Button>
 
-                        <Button Content="⏹️ Zastavit analýzu"
+                        <Button Content="{Binding L[AnalysisView.StopAnalysis]}"
                                 Command="{Binding CancelAnalysisCommand}"
                                 IsEnabled="{Binding IsAnalyzing}"
                                 Background="{DynamicResource ThemeDangerBrush}"
@@ -119,17 +119,17 @@
                     <Border Background="{DynamicResource ThemePanelBackgroundBrush}" 
                            CornerRadius="6" Padding="10" Margin="0,8,0,0">
                         <StackPanel>
-                            <TextBlock Text="📊 Rychlé statistiky" 
+                            <TextBlock Text="{Binding L[AnalysisView.QuickStats]}" 
                                       FontSize="11" FontWeight="SemiBold"
                                       Foreground="{DynamicResource ThemeTextPrimaryBrush}"
                                       Margin="0,0,0,6"/>
                             <Grid ColumnDefinitions="*,*">
                                 <StackPanel>
-                                    <TextBlock Text="Testů" FontSize="9" Foreground="{DynamicResource ThemeTextMutedBrush}"/>
+                                    <TextBlock Text="{Binding L[AnalysisView.Tests]}" FontSize="9" Foreground="{DynamicResource ThemeTextMutedBrush}"/>
                                     <TextBlock Text="0" FontSize="16" FontWeight="Bold" Foreground="{DynamicResource ThemePrimaryBrush}"/>
                                 </StackPanel>
                                 <StackPanel Grid.Column="1">
-                                    <TextBlock Text="Chyb" FontSize="9" Foreground="{DynamicResource ThemeTextMutedBrush}"/>
+                                    <TextBlock Text="{Binding L[AnalysisView.Errors]}" FontSize="9" Foreground="{DynamicResource ThemeTextMutedBrush}"/>
                                     <TextBlock Text="0" FontSize="16" FontWeight="Bold" Foreground="{DynamicResource ThemeSuccessBrush}"/>
                                 </StackPanel>
                             </Grid>
@@ -151,7 +151,7 @@
                        Margin="0,0,0,8">
                     <StackPanel Spacing="8">
                         <Grid ColumnDefinitions="*,Auto">
-                            <TextBlock Grid.Column="0" Text="📈 Průběh analýzy" 
+                            <TextBlock Grid.Column="0" Text="{Binding L[AnalysisView.Progress]}" 
                                       FontSize="14" FontWeight="Bold"
                                       Foreground="{DynamicResource ThemeTextPrimaryBrush}"/>
                             <TextBlock Grid.Column="1" 
@@ -167,7 +167,7 @@
                                     Background="{DynamicResource ThemeBorderLightBrush}"
                                     Foreground="{DynamicResource ThemePrimaryBrush}"/>
                         
-                        <TextBlock Text="{Binding ProgressPercentage, StringFormat='{}{0}% dokončeno'}"
+                        <TextBlock Text="{Binding L[AnalysisView.PercentDone]}"
                                   HorizontalAlignment="Center" FontSize="10"
                                   Foreground="{DynamicResource ThemeTextMutedBrush}"/>
                     </StackPanel>
@@ -181,7 +181,7 @@
                        CornerRadius="8"
                        Padding="16">
                     <Grid RowDefinitions="Auto,*">
-                        <TextBlock Grid.Row="0" Text="📋 Výsledky testu" 
+                        <TextBlock Grid.Row="0" Text="{Binding L[AnalysisView.TestResults]}" 
                                   FontSize="14" FontWeight="Bold"
                                   Foreground="{DynamicResource ThemeTextPrimaryBrush}"
                                   Margin="0,0,0,10"/>
@@ -201,7 +201,7 @@
                                                               FontWeight="SemiBold"
                                                               FontSize="11"/>
                                                     <TextBlock Grid.Column="1" 
-                                                              Text="{Binding ErrorCount, StringFormat='Chyby: {0}'}" 
+                                                              Text="{Binding ErrorCount, StringFormat='{}{0}'}" 
                                                               Foreground="{DynamicResource ThemeTextMutedBrush}"
                                                               FontSize="10"/>
                                                 </Grid>

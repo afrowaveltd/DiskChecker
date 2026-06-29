@@ -23,12 +23,12 @@
                 BorderThickness="0,0,0,1" Padding="16,10" MinHeight="60">
             <Grid ColumnDefinitions="*,Auto">
                 <StackPanel Grid.Column="0">
-                    <TextBlock Text="📜 Prohlížeč Certifikátů" Classes="PageTitle"/>
-                    <TextBlock Text="Všechny uložené certifikáty s rekonstruovanými grafy a detaily" Classes="PageSubtitle"/>
+                    <TextBlock Text="{Binding L[CertificateBrowser.Title]}" Classes="PageTitle"/>
+                    <TextBlock Text="{Binding L[CertificateBrowser.Description]}" Classes="PageSubtitle"/>
                 </StackPanel>
 
                 <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
-                    <Button Content="🔄 Obnovit"
+                    <Button Content="{Binding L[Common.Refresh]}"
                             Command="{Binding RefreshCommand}"
                             Background="{DynamicResource ThemeInfoBrush}" Foreground="White"
                             FontWeight="Bold" Padding="12,6" Cursor="Hand"/>
@@ -42,7 +42,7 @@
                             IsEnabled="{Binding HasSelectedCertificate}"
                             Background="{DynamicResource ThemePrimaryBrush}" Foreground="White"
                             FontWeight="Bold" Padding="12,6" Cursor="Hand"/>
-                    <Button Content="🏠 Zpět"
+                    <Button Content="{Binding L[CertificateBrowser.Back]}"
                             Command="{Binding GoBackCommand}"
                             Background="{DynamicResource ThemeSecondaryBackgroundBrush}" Foreground="{DynamicResource ThemeTextPrimaryBrush}"
                             BorderBrush="{DynamicResource ThemeBorderBrush}"
@@ -54,7 +54,7 @@
         <!-- ========== SEARCH AND FILTER ========== -->
         <Border Grid.Row="1" Background="{DynamicResource ThemeSecondaryBackgroundBrush}" Padding="16,8">
             <Grid ColumnDefinitions="*,Auto,Auto">
-                <TextBox Grid.Column="0" Watermark="🔍 Hledat podle modelu, sériového čísla, čísla certifikátu..."
+                <TextBox Grid.Column="0" Watermark="{Binding L[CertificateBrowser.SearchWatermark]}"
                          Text="{Binding SearchText}" Width="350" HorizontalAlignment="Left"/>
 
                 <ComboBox Grid.Column="1" ItemsSource="{Binding GradeFilters}"
@@ -80,7 +80,7 @@
                     BorderBrush="{DynamicResource ThemeBorderBrush}" BorderThickness="1"
                     CornerRadius="8">
                 <Grid RowDefinitions="Auto,*">
-                    <TextBlock Grid.Row="0" Text="📋 Seznam certifikátů" FontSize="13" FontWeight="Bold"
+                    <TextBlock Grid.Row="0" Text="{Binding L[CertificateBrowser.CertificateList]}" FontSize="13" FontWeight="Bold"
                                Margin="12,10,12,6" Foreground="{DynamicResource ThemeTextPrimaryBrush}"/>
 
                     <DataGrid Grid.Row="1" ItemsSource="{Binding FilteredCertificates}"
@@ -97,14 +97,14 @@
                               HorizontalGridLinesBrush="{DynamicResource ThemeBorderLightBrush}"
                               VerticalGridLinesBrush="{DynamicResource ThemeBorderLightBrush}">
                         <DataGrid.Columns>
-                            <DataGridTextColumn Header="Číslo cert." Binding="{Binding CertificateNumber}" Width="140" FontFamily="Consolas"/>
+                            <DataGridTextColumn Header="{Binding L[Certificate.Number]}" Binding="{Binding CertificateNumber}" Width="140" FontFamily="Consolas"/>
                             <DataGridTextColumn Header="Model" Binding="{Binding DiskModel}" Width="150"/>
-                            <DataGridTextColumn Header="Sériové č." Binding="{Binding SerialNumber}" Width="130" FontFamily="Consolas"/>
-                            <DataGridTextColumn Header="Známka" Binding="{Binding Grade}" Width="55"/>
-                            <DataGridTextColumn Header="Skóre" Binding="{Binding ScoreText}" Width="50"/>
-                            <DataGridTextColumn Header="Typ testu" Binding="{Binding TestType}" Width="100"/>
-                            <DataGridTextColumn Header="Vygenerováno" Binding="{Binding GeneratedAtText}" Width="120"/>
-                            <DataGridTextColumn Header="Doporučeno" Binding="{Binding RecommendedText}" Width="80"/>
+                            <DataGridTextColumn Header="{Binding L[CertificateBrowser.SerialNumber]}" Binding="{Binding SerialNumber}" Width="130" FontFamily="Consolas"/>
+                            <DataGridTextColumn Header="{Binding L[Certificate.Grade]}" Binding="{Binding Grade}" Width="55"/>
+                            <DataGridTextColumn Header="{Binding L[Certificate.Score]}" Binding="{Binding ScoreText}" Width="50"/>
+                            <DataGridTextColumn Header="{Binding L[Certificate.TestType]}" Binding="{Binding TestType}" Width="100"/>
+                            <DataGridTextColumn Header="{Binding L[CertificateBrowser.Generated]}" Binding="{Binding GeneratedAtText}" Width="120"/>
+                            <DataGridTextColumn Header="{Binding L[Certificate.Recommended]}" Binding="{Binding RecommendedText}" Width="80"/>
                         </DataGrid.Columns>
                     </DataGrid>
 
@@ -112,9 +112,9 @@
                     <Panel Grid.Row="1" IsVisible="{Binding FilteredCount, Converter={StaticResource IntToBoolConverter}, ConverterParameter=Invert}">
                         <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center">
                             <TextBlock Text="📜" FontSize="48" HorizontalAlignment="Center"/>
-                            <TextBlock Text="Žádné certifikáty" FontSize="16" FontWeight="Bold"
+                            <TextBlock Text="{Binding L[CertificateBrowser.NoCertificates]}" FontSize="16" FontWeight="Bold"
                                        HorizontalAlignment="Center" Margin="0,8,0,4"/>
-                            <TextBlock Text="Vygenerujte certifikát z karty disku"
+                            <TextBlock Text="{Binding L[CertificateBrowser.GenerateHint]}"
                                        FontSize="11" Foreground="{DynamicResource ThemeTextSecondaryBrush}" HorizontalAlignment="Center"/>
                         </StackPanel>
                     </Panel>
@@ -139,9 +139,9 @@
                     <Panel IsVisible="{Binding !HasSelectedCertificate}">
                         <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center" Spacing="8">
                             <TextBlock Text="📄" FontSize="64" HorizontalAlignment="Center"/>
-                            <TextBlock Text="Vyberte certifikát ze seznamu" FontSize="16" FontWeight="Bold"
+                            <TextBlock Text="{Binding L[Certificate.SelectPrompt]}" FontSize="16" FontWeight="Bold"
                                        HorizontalAlignment="Center" Foreground="#5B6470"/>
-                            <TextBlock Text="Zobrazí se kompletní rekonstrukce certifikátu včetně grafů"
+                            <TextBlock Text="{Binding L[CertificateBrowser.ReconstructionInfo]}"
                                        FontSize="11" Foreground="#8B949E" HorizontalAlignment="Center"/>
                         </StackPanel>
                     </Panel>
@@ -151,9 +151,9 @@
                     <StackPanel Spacing="16" Margin="20">
                         <!-- Title -->
                         <StackPanel HorizontalAlignment="Center" Spacing="4">
-                            <TextBlock Text="CERTIFIKÁT KVALITY DISKU" FontSize="22" FontWeight="Bold"
+                            <TextBlock Text="{Binding L[CertificateBrowser.CertTitle]}" FontSize="22" FontWeight="Bold"
                                        Foreground="#2A6FD6" HorizontalAlignment="Center"/>
-                            <TextBlock Text="DiskChecker – Profesionální diagnóza disků"
+                            <TextBlock Text="{Binding L[CertificateBrowser.DiagnosticTitle]}"
                                        FontSize="10" Foreground="#5B6470" HorizontalAlignment="Center"/>
                             <TextBlock Text="{Binding CertificateNumber}" FontSize="11" FontFamily="Consolas"
                                        Foreground="#8B949E" HorizontalAlignment="Center" Margin="0,2,0,0"/>
@@ -168,7 +168,7 @@
                                     <TextBlock Grid.Row="0" Grid.Column="0" Text="Model:" FontWeight="Bold" FontSize="11"/>
                                     <TextBlock Grid.Row="0" Grid.Column="1" Text="{Binding DiskModel}" FontSize="11"/>
 
-                                    <TextBlock Grid.Row="1" Grid.Column="0" Text="Sériové číslo:" FontWeight="Bold" FontSize="11"/>
+                                    <TextBlock Grid.Row="1" Grid.Column="0" Text="{Binding L[CertificateBrowser.SerialNumberLabel]}" FontWeight="Bold" FontSize="11"/>
                                     <TextBlock Grid.Row="1" Grid.Column="1" Text="{Binding SerialNumber}" FontFamily="Consolas" FontSize="11"/>
 
                                     <TextBlock Grid.Row="2" Grid.Column="0" Text="Kapacita:" FontWeight="Bold" FontSize="11"/>
@@ -180,13 +180,13 @@
                                     <TextBlock Grid.Row="4" Grid.Column="0" Text="Firmware:" FontWeight="Bold" FontSize="11"/>
                                     <TextBlock Grid.Row="4" Grid.Column="1" Text="{Binding Firmware}" FontSize="11"/>
 
-                                    <TextBlock Grid.Row="5" Grid.Column="0" Text="Rozhraní:" FontWeight="Bold" FontSize="11"/>
+                                    <TextBlock Grid.Row="5" Grid.Column="0" Text="{Binding L[CertificateBrowser.Interface]}" FontWeight="Bold" FontSize="11"/>
                                     <TextBlock Grid.Row="5" Grid.Column="1" Text="{Binding Interface}" FontSize="11"/>
 
-                                    <TextBlock Grid.Row="6" Grid.Column="0" Text="Provozní hodiny:" FontWeight="Bold" FontSize="11"/>
+                                    <TextBlock Grid.Row="6" Grid.Column="0" Text="{Binding L[CertificateBrowser.PowerOnHours]}" FontWeight="Bold" FontSize="11"/>
                                     <TextBlock Grid.Row="6" Grid.Column="1" Text="{Binding SmartPowerOnHoursText}" FontSize="11"/>
 
-                                    <TextBlock Grid.Row="7" Grid.Column="0" Text="Vygenerováno:" FontWeight="Bold" FontSize="11"/>
+                                    <TextBlock Grid.Row="7" Grid.Column="0" Text="{Binding L[CertificateBrowser.GeneratedLabel]}" FontWeight="Bold" FontSize="11"/>
                                     <TextBlock Grid.Row="7" Grid.Column="1" Text="{Binding GeneratedAtText}" FontSize="11"/>
                                 </Grid>
                             </Border>
@@ -194,7 +194,7 @@
                             <Border Grid.Column="1" Background="{Binding SealBackground}" Padding="14" CornerRadius="12"
                                     BorderBrush="{Binding GradeColor}" BorderThickness="2">
                                 <Grid RowDefinitions="Auto,Auto,*" MinHeight="200">
-                                    <TextBlock Grid.Row="0" Text="KONEČNÁ ZNÁMKA" FontSize="11" FontWeight="Bold"
+                                    <TextBlock Grid.Row="0" Text="{Binding L[CertificateBrowser.FinalGrade]}" FontSize="11" FontWeight="Bold"
                                                HorizontalAlignment="Center" Margin="0,0,0,6"/>
                                     <Border Grid.Row="1" Width="100" Height="100" CornerRadius="50"
                                             BorderBrush="{Binding GradeColor}" BorderThickness="4" Background="White"
@@ -219,7 +219,7 @@
                         <Grid ColumnDefinitions="*,*" ColumnSpacing="14">
                             <Border Grid.Column="0" Background="{Binding PanelBackground}" Padding="10" CornerRadius="8">
                                 <StackPanel Spacing="3">
-                                    <TextBlock Text="Výsledky testu" FontWeight="Bold" FontSize="12"/>
+                                    <TextBlock Text="{Binding L[CertificateBrowser.TestResults]}" FontWeight="Bold" FontSize="12"/>
                                     <TextBlock Text="{Binding TestType, StringFormat='Typ: {0}'}" FontSize="11"/>
                                     <TextBlock Text="{Binding TestDuration, StringFormat='Doba: {0}'}" FontSize="11"/>
                                     <TextBlock Text="{Binding Errors, StringFormat='Chyby: {0}'}" FontSize="11"/>
@@ -229,7 +229,7 @@
 
                             <Border Grid.Column="1" Background="{Binding PanelBackground}" Padding="10" CornerRadius="8">
                                 <StackPanel Spacing="3">
-                                    <TextBlock Text="Výkon" FontWeight="Bold" FontSize="12"/>
+                                    <TextBlock Text="{Binding L[CertificateBrowser.Performance]}" FontWeight="Bold" FontSize="12"/>
                                     <TextBlock Text="{Binding AvgWriteSpeed, StringFormat='Prům. zápis: {0}'}" FontSize="11"/>
                                     <TextBlock Text="{Binding AvgReadSpeed, StringFormat='Prům. čtení: {0}'}" FontSize="11"/>
                                     <TextBlock Text="{Binding MaxWriteSpeed, StringFormat='Max zápis: {0}'}" FontSize="11"/>
@@ -248,9 +248,9 @@
                                 <TextBlock Text="{Binding SmartReallocatedSectorsText, StringFormat='Realokované sektory: {0}'}" FontSize="11"/>
                                 <TextBlock Text="{Binding SmartPendingSectorsText, StringFormat='Čekající sektory: {0}'}" FontSize="11"/>
                                 <Separator Margin="0,3"/>
-                                <TextBlock Text="Legenda známek" FontWeight="Bold" FontSize="11"/>
-                                <TextBlock Text="A = výborný • B = velmi dobrý • C = dobrý" FontSize="10"/>
-                                <TextBlock Text="D = opotřebený • E = rizikový • F = kritický" FontSize="10"/>
+                                <TextBlock Text="{Binding L[CertificateBrowser.GradeLegend]}" FontWeight="Bold" FontSize="11"/>
+                                <TextBlock Text="{Binding L[CertificateBrowser.GradeA]}" FontSize="10"/>
+                                <TextBlock Text="{Binding L[CertificateBrowser.GradeD]}" FontSize="10"/>
                             </StackPanel>
                         </Border>
 
@@ -262,7 +262,7 @@
                                 <TextBlock Text="{Binding SeekTestSummaryText, StringFormat='Souhrn: {0}'}"
                                            FontSize="10" TextWrapping="Wrap"/>
                                 <Grid ColumnDefinitions="Auto,*" RowDefinitions="Auto,Auto,Auto,Auto" RowSpacing="2" ColumnSpacing="8">
-                                    <TextBlock Grid.Row="0" Grid.Column="0" Text="Průměr:" FontSize="10"/>
+                                    <TextBlock Grid.Row="0" Grid.Column="0" Text="{Binding L[CertificateBrowser.Average]}" FontSize="10"/>
                                     <TextBlock Grid.Row="0" Grid.Column="1" Text="{Binding SeekAvgLatencyMsText}" FontSize="10" FontWeight="SemiBold"/>
                                     <TextBlock Grid.Row="1" Grid.Column="0" Text="Minimum:" FontSize="10"/>
                                     <TextBlock Grid.Row="1" Grid.Column="1" Text="{Binding SeekMinLatencyMsText}" FontSize="10"/>
@@ -278,8 +278,8 @@
                         <Border Background="{Binding PanelBackground}" Padding="10" CornerRadius="8"
                                 IsVisible="{Binding HasBeforeAfterComparison}">
                             <StackPanel Spacing="4">
-                                <TextBlock Text="🧹 Porovnání sanitizací" FontWeight="Bold" FontSize="12"/>
-                                <TextBlock Text="Rychlost zápisu:" FontSize="10" FontWeight="SemiBold"/>
+                                <TextBlock Text="{Binding L[CertificateBrowser.SanitizeComparison]}" FontWeight="Bold" FontSize="12"/>
+                                <TextBlock Text="{Binding L[CertificateBrowser.WriteSpeed]}" FontSize="10" FontWeight="SemiBold"/>
                                 <Grid ColumnDefinitions="Auto,Auto,Auto" RowDefinitions="Auto" ColumnSpacing="8">
                                     <TextBlock Grid.Column="0" Text="{Binding Sanitize1WriteText, StringFormat='1. sanitizace: {0}'}" FontSize="10"/>
                                     <TextBlock Grid.Column="1" Text="→" FontSize="10" Foreground="{DynamicResource ThemeTextMutedBrush}"/>
@@ -288,7 +288,7 @@
                                 <TextBlock Text="{Binding WriteSpeedChangeText, StringFormat='Změna: {0}'}" FontSize="10"
                                            Foreground="{DynamicResource ThemeTextSecondaryBrush}"/>
                                 <Separator Margin="0,2"/>
-                                <TextBlock Text="Rychlost čtení:" FontSize="10" FontWeight="SemiBold"/>
+                                <TextBlock Text="{Binding L[CertificateBrowser.ReadSpeed]}" FontSize="10" FontWeight="SemiBold"/>
                                 <Grid ColumnDefinitions="Auto,Auto,Auto" RowDefinitions="Auto" ColumnSpacing="8">
                                     <TextBlock Grid.Column="0" Text="{Binding Sanitize1ReadText, StringFormat='1. sanitizace: {0}'}" FontSize="10"/>
                                     <TextBlock Grid.Column="1" Text="→" FontSize="10" Foreground="{DynamicResource ThemeTextMutedBrush}"/>
@@ -303,7 +303,7 @@
                         <Border Background="{Binding PanelBackground}" Padding="10" CornerRadius="8"
                                 IsVisible="{Binding HasBeforeAfterComparison}">
                             <StackPanel Spacing="3">
-                                <TextBlock Text="📉 SMART změny během testu" FontWeight="Bold" FontSize="12"/>
+                                <TextBlock Text="{Binding L[CertificateBrowser.SmartChanges]}" FontWeight="Bold" FontSize="12"/>
                                 <TextBlock Text="{Binding SmartDeltaSummaryText}" FontSize="10"
                                            TextWrapping="Wrap" Foreground="{DynamicResource ThemeTextSecondaryBrush}"/>
                             </StackPanel>
@@ -325,7 +325,7 @@
                         <!-- Performance Graph -->
                         <Border Background="{Binding PanelBackground}" Padding="12" CornerRadius="8">
                             <StackPanel Spacing="6">
-                                <TextBlock Text="📈 Výkonový profil testu" FontWeight="Bold" FontSize="12"/>
+                                <TextBlock Text="{Binding L[CertificateBrowser.PerformanceProfile]}" FontWeight="Bold" FontSize="12"/>
 
                                 <Grid ColumnDefinitions="Auto,*" RowDefinitions="*,Auto" RowSpacing="4" ColumnSpacing="8">
                                     <Grid Grid.Row="0" Grid.Column="0" RowDefinitions="Auto,*,Auto" Height="100">
@@ -365,11 +365,11 @@
                                 <StackPanel Orientation="Horizontal" Spacing="14">
                                     <StackPanel Orientation="Horizontal" Spacing="5">
                                         <Border Width="10" Height="10" Background="{Binding ChartStrokeWrite}" CornerRadius="2"/>
-                                        <TextBlock Text="Zápis" FontSize="10"/>
+                                        <TextBlock Text="{Binding L[CertificateBrowser.Write]}" FontSize="10"/>
                                     </StackPanel>
                                     <StackPanel Orientation="Horizontal" Spacing="5">
                                         <Border Width="10" Height="10" Background="{Binding ChartStrokeRead}" CornerRadius="2"/>
-                                        <TextBlock Text="Čtení" FontSize="10"/>
+                                        <TextBlock Text="{Binding L[CertificateBrowser.Read]}" FontSize="10"/>
                                     </StackPanel>
                                     <StackPanel Orientation="Horizontal" Spacing="5" IsVisible="{Binding HasTemperatureProfile}">
                                         <Border Width="10" Height="10" Background="#FF7C3AED" CornerRadius="2"/>
@@ -383,7 +383,7 @@
                         <Border Background="{Binding PanelBackground}" Padding="10" CornerRadius="8"
                                 IsVisible="{Binding HasDiagnosticHighlights}">
                             <StackPanel Spacing="4">
-                                <TextBlock Text="🔍 Diagnostické signály" FontWeight="Bold" FontSize="12"/>
+                                <TextBlock Text="{Binding L[CertificateBrowser.DiagnosticSignals]}" FontWeight="Bold" FontSize="12"/>
                                 <Border Background="{Binding DiagnosticBadgeBackground}" CornerRadius="999" Padding="8,3" HorizontalAlignment="Left">
                                     <TextBlock Text="{Binding DiagnosticBadgeText}" FontSize="10" FontWeight="Bold"
                                                Foreground="{Binding DiagnosticBadgeForeground}"/>
@@ -396,7 +396,7 @@
                         <Border Background="{Binding PanelBackground}" Padding="10" CornerRadius="8"
                                 IsVisible="{Binding HasScoringReasons}">
                             <StackPanel Spacing="3">
-                                <TextBlock Text="📝 Důvody hodnocení" FontWeight="Bold" FontSize="12"/>
+                                <TextBlock Text="{Binding L[CertificateBrowser.Reasons]}" FontWeight="Bold" FontSize="12"/>
                                 <TextBlock Text="{Binding ScoringReasonsText}" TextWrapping="Wrap" FontSize="10"/>
                             </StackPanel>
                         </Border>
@@ -404,7 +404,7 @@
                         <!-- Recommendation -->
                         <Border Background="{Binding PanelBackground}" Padding="10" CornerRadius="8">
                             <StackPanel Spacing="3">
-                                <TextBlock Text="✅ Doporučení" FontWeight="Bold" FontSize="12"/>
+                                <TextBlock Text="{Binding L[CertificateBrowser.Recommendations]}" FontWeight="Bold" FontSize="12"/>
                                 <TextBlock Text="{Binding RecommendationText}" TextWrapping="Wrap" FontSize="10"/>
                                 <TextBlock Text="{Binding Recommended, StringFormat='Doporučeno k použití: {0}'}" FontSize="10"
                                            FontWeight="SemiBold" Margin="0,4,0,0"/>
@@ -415,7 +415,7 @@
                         <Border Background="{Binding PanelBackground}" Padding="10" CornerRadius="8"
                                 IsVisible="{Binding Notes, Converter={StaticResource NotNullConverter}}">
                             <StackPanel Spacing="3">
-                                <TextBlock Text="📋 Poznámky" FontWeight="Bold" FontSize="12"/>
+                                <TextBlock Text="{Binding L[CertificateBrowser.Notes]}" FontWeight="Bold" FontSize="12"/>
                                 <TextBlock Text="{Binding Notes}" TextWrapping="Wrap" FontSize="10"/>
                             </StackPanel>
                         </Border>
@@ -439,7 +439,7 @@
                     <TextBlock Text="{Binding FilteredCount, StringFormat='Zobrazeno: {0}'}" FontSize="10"
                                Foreground="{DynamicResource ThemeTextMutedBrush}"/>
                     <Panel IsVisible="{Binding IsLoading}">
-                        <TextBlock Text="⏳ Načítám..." FontSize="10" Foreground="{DynamicResource ThemeWarningBrush}"/>
+                        <TextBlock Text="{Binding L[CertificateBrowser.Loading]}" FontSize="10" Foreground="{DynamicResource ThemeWarningBrush}"/>
                     </Panel>
                 </StackPanel>
             </Grid>

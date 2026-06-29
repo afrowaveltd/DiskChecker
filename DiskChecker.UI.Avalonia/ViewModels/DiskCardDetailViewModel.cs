@@ -70,8 +70,8 @@ public partial class DiskCardDetailViewModel : ViewModelBase, INavigableViewMode
         TestSessions = new ObservableCollection<TestSession>();
         Certificates = new ObservableCollection<DiskCertificate>();
         SmartHistory = new ObservableCollection<SmartHistoryItem>();
-        SpeedChartModel = new PlotModel { Title = "Rychlost testu" };
-        TemperatureChartModel = new PlotModel { Title = "Teplota během testu" };
+        SpeedChartModel = new PlotModel { Title = L.Get("DiskCardDetail.Status.SpeedTest") };
+        TemperatureChartModel = new PlotModel { Title = L.Get("DiskCardDetail.Status.TemperatureDuringTest") };
     }
 
     #region Properties
@@ -224,10 +224,10 @@ public partial class DiskCardDetailViewModel : ViewModelBase, INavigableViewMode
         ContainsDiagnosticMarker(SelectedSession?.Notes, "histor");
 
     public string SelectedSessionDiagnosticBadgeText => SelectedSessionHasCriticalDiagnostics
-        ? "KRITICKÉ SIGNÁLY"
+        ? L.Get("CertificateView.Badge.Critical")
         : SelectedSessionHasWarningDiagnostics
-            ? "VAROVNÉ SIGNÁLY"
-            : "STABILNÍ PRŮBĚH";
+            ? L.Get("CertificateView.Badge.Warning")
+            : L.Get("CertificateView.Badge.Stable");
 
     public string SelectedSessionDiagnosticBadgeBackground => SelectedSessionHasCriticalDiagnostics
         ? "#FDECEC"
@@ -278,10 +278,10 @@ public partial class DiskCardDetailViewModel : ViewModelBase, INavigableViewMode
     public bool HasCard => CurrentCard != null;
     public bool HasSelectedSession => SelectedSession != null;
 
-    public string DiskModel => CurrentCard?.ModelName ?? "Neznámý";
+    public string DiskModel => CurrentCard?.ModelName ?? L.Get("Grade.Unknown");
     public string DiskSerial => CurrentCard?.SerialNumber ?? "-";
     public string DiskCapacity => FormatCapacity(CurrentCard?.Capacity ?? 0);
-    public string DiskType => CurrentCard?.DiskType ?? "Neznámý";
+    public string DiskType => CurrentCard?.DiskType ?? L.Get("Grade.Unknown");
     public string DiskInterface => CurrentCard?.InterfaceType ?? "-";
     public string DiskFirmware => CurrentCard?.FirmwareVersion ?? "-";
     public string OverallGrade => CurrentCard?.OverallGrade ?? "?";
@@ -323,7 +323,7 @@ public partial class DiskCardDetailViewModel : ViewModelBase, INavigableViewMode
     {
         if (session == null) return;
         SelectedSession = session;
-        StatusMessage = $"Test: {session.TestType} - {session.StartedAt:dd.MM.yyyy HH:mm}";
+        StatusMessage = string.Format(L.Get("DiskCardDetail.Status.TestSelected"), session.TestType, session.StartedAt.ToString("dd.MM.yyyy HH:mm"));
     }
 
     [RelayCommand]
@@ -334,7 +334,7 @@ public partial class DiskCardDetailViewModel : ViewModelBase, INavigableViewMode
         try
         {
             IsLoading = true;
-            StatusMessage = "Generuji certifikát...";
+            StatusMessage = L.Get("DiskCardDetail.Status.GeneratingCert");
 
             // Get latest test session ID
             var sessions = await _diskCardRepository.GetTestSessionsAsync(CurrentCard.Id);
@@ -342,7 +342,7 @@ public partial class DiskCardDetailViewModel : ViewModelBase, INavigableViewMode
 
             if (latestSession == null)
             {
-                await _dialogService.ShowErrorAsync("Chyba", "Neexistuje žádný test pro tento disk.");
+                await _dialogService.ShowErrorAsync(L.Get("Common.Error"), L.Get("DiskCardDetail.Status.NoTestForCert"));
                 return;
             }
 
@@ -358,18 +358,18 @@ public partial class DiskCardDetailViewModel : ViewModelBase, INavigableViewMode
 
             if (!result.IsSuccess)
             {
-                await _dialogService.ShowErrorAsync("Chyba", $"Nepodařilo se vygenerovat certifikát: {result.ErrorMessage}");
+                await _dialogService.ShowErrorAsync(L.Get("Common.Error"), string.Format(L.Get("DiskCardDetail.Error.GenerateCert"), result.ErrorMessage));
                 return;
             }
 
             // Update local state
             LatestCertificate = result.Certificate;
-            StatusMessage = $"Certifikát vygenerován: {result.Certificate!.CertificateNumber}";
+            StatusMessage = string.Format(L.Get("DiskCardDetail.Status.CertGenerated"), result.Certificate!.CertificateNumber);
             
             var openPdf = await _dialogService.ShowConfirmationAsync(
-                "Certifikát",
-                $"Certifikát vytvořen:\n{result.Certificate.CertificateNumber}\n\nZnámka: {result.Certificate.Grade}\nSkóre: {result.Certificate.Score:F0}/100\n\n" +
-                $"PDF uloženo:\n{result.PdfPath}\n\nOtevřít PDF?");
+                L.Get("DiskCardDetail.Dialog.Certificate"),
+                string.Format(L.Get("DiskCardDetail.Dialog.CertCreated"), result.Certificate.CertificateNumber, result.Certificate.Grade, result.Certificate.Score) +
+                string.Format(L.Get("DiskCardDetail.Dialog.PdfSaved"), result.PdfPath));
 
             if (openPdf)
             {
@@ -378,8 +378,8 @@ public partial class DiskCardDetailViewModel : ViewModelBase, INavigableViewMode
         }
         catch (Exception ex)
         {
-            StatusMessage = $"Chyba: {ex.Message}";
-            await _dialogService.ShowErrorAsync("Chyba", $"Nepodařilo se vygenerovat certifikát: {ex.Message}");
+            StatusMessage = string.Format(L.Get("Common.Error"), ex.Message);
+            await _dialogService.ShowErrorAsync(L.Get("Common.Error"), string.Format(L.Get("DiskCardDetail.Error.GenerateCert"), ex.Message));
         }
         finally
         {
@@ -392,7 +392,7 @@ public partial class DiskCardDetailViewModel : ViewModelBase, INavigableViewMode
     {
         if (CurrentCard == null)
         {
-            StatusMessage = "Karta disku není načtena.";
+            StatusMessage = L.Get("DiskCardDetail.Status.CardNotLoaded");
             return;
         }
 
@@ -424,7 +424,7 @@ public partial class DiskCardDetailViewModel : ViewModelBase, INavigableViewMode
     {
         if (CurrentCard == null) return;
 
-        var note = await _dialogService.ShowInputDialogAsync("Poznámka", "Zadejte poznámku:", CurrentCard.Notes ?? "");
+        var note = await _dialogService.ShowInputDialogAsync(L.Get("DiskCardDetail.Dialog.NoteTitle"), L.Get("DiskCardDetail.Dialog.NotePrompt"), CurrentCard.Notes ?? "");
         if (note == null)
         {
             return;
@@ -433,7 +433,7 @@ public partial class DiskCardDetailViewModel : ViewModelBase, INavigableViewMode
         CurrentCard.Notes = note;
         Notes = note;
         await _diskCardRepository.UpdateAsync(CurrentCard);
-        StatusMessage = "Poznámka uložena";
+        StatusMessage = L.Get("DiskCardDetail.Dialog.NoteSaved");
     }
 
     [RelayCommand]
@@ -457,7 +457,7 @@ public partial class DiskCardDetailViewModel : ViewModelBase, INavigableViewMode
         try
         {
             IsLoading = true;
-            StatusMessage = "Hledám kartu disku...";
+            StatusMessage = L.Get("DiskCardDetail.Status.SearchingCard");
 
             var identityKey = DriveIdentityResolver.BuildIdentityKey(
                 disk.Path,
@@ -490,19 +490,19 @@ public partial class DiskCardDetailViewModel : ViewModelBase, INavigableViewMode
                 };
 
                 card = await _diskCardRepository.CreateAsync(card);
-                StatusMessage = "Vytvořena nová karta disku";
+                StatusMessage = L.Get("DiskCardDetail.Status.NewCardCreated");
             }
             else
             {
-                StatusMessage = "Karta disku načtena";
+                StatusMessage = L.Get("DiskCardDetail.Status.CardLoaded");
             }
 
             await LoadCardAsync(card.Id);
         }
         catch (Exception ex)
         {
-            StatusMessage = $"Chyba: {ex.Message}";
-            await _dialogService.ShowErrorAsync("Chyba", $"Nepodařilo se načíst kartu: {ex.Message}");
+            StatusMessage = string.Format(L.Get("Common.Error"), ex.Message);
+            await _dialogService.ShowErrorAsync(L.Get("Common.Error"), string.Format(L.Get("DiskCardDetail.Error.LoadCard"), ex.Message));
         }
         finally
         {
@@ -515,7 +515,7 @@ public partial class DiskCardDetailViewModel : ViewModelBase, INavigableViewMode
         try
         {
             IsLoading = true;
-            StatusMessage = "Načítám detail...";
+            StatusMessage = L.Get("DiskCardDetail.Status.LoadingDetail");
 
             CurrentCard = await _diskCardRepository.GetByIdAsync(cardId);
 
@@ -573,11 +573,11 @@ public partial class DiskCardDetailViewModel : ViewModelBase, INavigableViewMode
                     SelectedSession = TestSessions.FirstOrDefault();
                 }
 
-                StatusMessage = $"Karta načtena: {CurrentCard.ModelName}";
+                StatusMessage = string.Format(L.Get("DiskCardDetail.Status.CardLoadedName"), CurrentCard.ModelName);
             }
             else
             {
-                StatusMessage = "Karta nenalezena";
+                StatusMessage = L.Get("DiskCardDetail.Status.CardNotFound");
             }
         }
         finally
@@ -601,9 +601,9 @@ public partial class DiskCardDetailViewModel : ViewModelBase, INavigableViewMode
         return drivePath;
     }
 
-    private static string FormatCapacity(long bytes)
+    private string FormatCapacity(long bytes)
     {
-        if (bytes <= 0) return "Neznámý";
+        if (bytes <= 0) return L.Get("Grade.Unknown");
         var gb = bytes / (1024.0 * 1024.0 * 1024.0);
         if (gb >= 1000) return $"{gb / 1024.0:F2} TB";
         return $"{gb:F0} GB";
@@ -613,11 +613,11 @@ public partial class DiskCardDetailViewModel : ViewModelBase, INavigableViewMode
     {
         if (SelectedSession == null)
         {
-            SelectedSessionSmartSummary = "Vyberte test pro zobrazení SMART snapshotu.";
+            SelectedSessionSmartSummary = L.Get("DiskCardDetail.Status.SelectTestForSmart");
             SelectedSessionSmartJson = string.Empty;
-            SelectedSessionDegradationSummary = "Porovnání degradace bude dostupné po výběru testu.";
-            SelectedSessionErrorSummary = "Vyberte test pro zobrazení detailu chyb.";
-            SelectedSessionDiagnosticSummary = "Vyberte test pro diagnostický rozbor průběhu výkonu.";
+            SelectedSessionDegradationSummary = L.Get("DiskCardDetail.Status.DegradationCompare");
+            SelectedSessionErrorSummary = L.Get("DiskCardDetail.Status.SelectTestForErrors");
+            SelectedSessionDiagnosticSummary = L.Get("DiskCardDetail.Status.SelectTestForDiagnostics");
             SelectedSessionDiagnosticHighlights = string.Empty;
             return;
         }
@@ -628,9 +628,9 @@ public partial class DiskCardDetailViewModel : ViewModelBase, INavigableViewMode
         var smartSnapshot = SelectedSession.SmartBefore;
         if (smartSnapshot == null)
         {
-            SelectedSessionSmartSummary = "K vybranému testu není uložen SMART snapshot. Test ale může být jinak platný a hodnocení tím není zhoršeno.";
+            SelectedSessionSmartSummary = L.Get("DiskCardDetail.Status.NoSmartSnapshot");
             SelectedSessionSmartJson = string.Empty;
-            SelectedSessionDegradationSummary = "Nelze porovnat degradaci bez SMART snapshotu.";
+            SelectedSessionDegradationSummary = L.Get("DiskCardDetail.Status.NoDegradationCompare");
             SelectedSessionErrorSummary = BuildErrorSummary(SelectedSession);
             return;
         }
@@ -645,11 +645,11 @@ public partial class DiskCardDetailViewModel : ViewModelBase, INavigableViewMode
         SelectedSessionDiagnosticHighlights = BuildDiagnosticHighlights(SelectedSession.Notes);
     }
     
-    private static string BuildErrorSummary(TestSession session)
+    private string BuildErrorSummary(TestSession session)
     {
         if (session.Errors.Count == 0)
         {
-            return "Pro vybraný test nejsou evidované detailní chyby.";
+            return L.Get("DiskCardDetail.Status.NoErrorsForTest");
         }
 
         var builder = new StringBuilder();
@@ -675,12 +675,12 @@ public partial class DiskCardDetailViewModel : ViewModelBase, INavigableViewMode
         var previousSmart = previousSession?.SmartBefore;
         if (previousSession == null || previousSmart == null)
         {
-            return "K vybranému testu není starší SMART snapshot pro porovnání degradace.";
+            return L.Get("DiskCardDetail.Status.NoPreviousSmart");
         }
 
         var lines = new List<string>
         {
-            $"Porovnání proti testu {previousSession.StartedAt:dd.MM.yyyy HH:mm}:"
+            string.Format(L.Get("DiskCardDetail.Status.ComparisonAgainst"), previousSession.StartedAt.ToString("dd.MM.yyyy HH:mm"))
         };
 
         AppendDelta(lines, "Power-On Hours", selectedSmart.PowerOnHours, previousSmart.PowerOnHours);
@@ -693,11 +693,11 @@ public partial class DiskCardDetailViewModel : ViewModelBase, INavigableViewMode
         return string.Join(Environment.NewLine, lines);
     }
 
-    private static void AppendDelta(List<string> lines, string name, int? current, int? previous, string suffix = "")
+    private void AppendDelta(List<string> lines, string name, int? current, int? previous, string suffix = "")
     {
         if (!current.HasValue || !previous.HasValue)
         {
-            lines.Add($"• {name}: N/A");
+            lines.Add($"\u2022 {name}: {L.Get("CertificatePdf.NA")}");
             return;
         }
 
@@ -706,11 +706,11 @@ public partial class DiskCardDetailViewModel : ViewModelBase, INavigableViewMode
         lines.Add($"• {name}: {current.Value}{suffixWithSpace} (Δ {delta:+#;-#;0}{suffixWithSpace})");
     }
 
-    private static string BuildSmartSummary(SmartaData snapshot)
+    private string BuildSmartSummary(SmartaData snapshot)
     {
         var builder = new StringBuilder();
         builder.AppendLine($"Model: {snapshot.DeviceModel}");
-        builder.AppendLine($"Sériové číslo: {snapshot.SerialNumber}");
+        builder.AppendLine(string.Format(L.Get("DiskCardDetail.Status.SerialNumber"), snapshot.SerialNumber));
         builder.AppendLine($"Firmware: {snapshot.FirmwareVersion}");
         builder.AppendLine($"Teplota: {(snapshot.Temperature.HasValue ? $"{snapshot.Temperature}°C" : "N/A")}");
         builder.AppendLine($"Power-On Hours: {snapshot.PowerOnHours?.ToString() ?? "N/A"}");
@@ -721,45 +721,45 @@ public partial class DiskCardDetailViewModel : ViewModelBase, INavigableViewMode
         return builder.ToString();
     }
 
-    private static string BuildDiagnosticSummary(TestSession session)
+    private string BuildDiagnosticSummary(TestSession session)
     {
         var notes = session.Notes ?? string.Empty;
         var flags = new List<string>();
 
         if (notes.Contains("kritické", StringComparison.OrdinalIgnoreCase) || notes.Contains("kritický", StringComparison.OrdinalIgnoreCase))
         {
-            flags.Add("kritické signály výkonu");
+            flags.Add(L.Get("DiskCardDetail.Status.CriticalSignals"));
         }
 
         if (notes.Contains("propad", StringComparison.OrdinalIgnoreCase))
         {
-            flags.Add("výrazné propady rychlosti");
+            flags.Add(L.Get("DiskCardDetail.Status.SpeedDrops"));
         }
 
         if (notes.Contains("nestabil", StringComparison.OrdinalIgnoreCase))
         {
-            flags.Add("nestabilní průběh");
+            flags.Add(L.Get("DiskCardDetail.Status.UnstableProgress"));
         }
 
         if (notes.Contains("histor", StringComparison.OrdinalIgnoreCase))
         {
-            flags.Add("odchylka od historie");
+            flags.Add(L.Get("DiskCardDetail.Status.HistoryDeviation"));
         }
 
         if (notes.Contains("SMART", StringComparison.OrdinalIgnoreCase))
         {
-            flags.Add("SMART kontext");
+            flags.Add(L.Get("DiskCardDetail.Status.SmartContext"));
         }
 
         if (flags.Count == 0)
         {
-            return "Diagnostika neodhalila výrazné signály mimo standardní výsledek testu.";
+            return L.Get("DiskCardDetail.Status.NoDiagnosticSignals");
         }
 
-        return "Detekované diagnostické signály: " + string.Join(", ", flags) + ".";
+        return L.Get("DiskCardDetail.Status.DetectedSignals") + string.Join(", ", flags) + ".";
     }
 
-    private static string BuildDiagnosticHighlights(string? notes)
+    private string BuildDiagnosticHighlights(string? notes)
     {
         if (string.IsNullOrWhiteSpace(notes))
         {
@@ -790,16 +790,16 @@ public partial class DiskCardDetailViewModel : ViewModelBase, INavigableViewMode
         return string.Join(Environment.NewLine, parts.Select(p => $"• {p}"));
     }
 
-    private static bool ContainsDiagnosticMarker(string? notes, string marker)
+    private bool ContainsDiagnosticMarker(string? notes, string marker)
     {
         return !string.IsNullOrWhiteSpace(notes) && notes.Contains(marker, StringComparison.OrdinalIgnoreCase);
     }
 
-    private static string BuildHistoryFlags(string? notes)
+    private string BuildHistoryFlags(string? notes)
     {
         if (string.IsNullOrWhiteSpace(notes))
         {
-            return "OK";
+            return L.Get("DiskCardDetail.Status.Ok");
         }
 
         var flags = new List<string>();
@@ -828,10 +828,10 @@ public partial class DiskCardDetailViewModel : ViewModelBase, INavigableViewMode
             flags.Add("SMART");
         }
 
-        return flags.Count == 0 ? "OK" : string.Join(" | ", flags);
+        return flags.Count == 0 ? L.Get("DiskCardDetail.Status.Ok") : string.Join(" | ", flags);
     }
 
-    private static string FormatSmartJson(string json)
+    private string FormatSmartJson(string json)
     {
         try
         {

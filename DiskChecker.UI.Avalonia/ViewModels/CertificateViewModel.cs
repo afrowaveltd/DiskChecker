@@ -300,7 +300,7 @@ public partial class CertificateViewModel : ViewModelBase, INavigableViewModel
    // Certificate display properties
    public string CertificateNumber => Certificate?.CertificateNumber ?? "-";
 
-   public string DiskModel => Certificate?.DiskModel ?? "Neznámý";
+   public string DiskModel => Certificate?.DiskModel ?? L.Get("CertificateView.Unknown");
    public string SerialNumber => Certificate?.SerialNumber ?? "-";
    public string Capacity => Certificate?.Capacity ?? "-";
    public string DiskType => Certificate?.DiskType ?? "-";
@@ -364,7 +364,7 @@ public partial class CertificateViewModel : ViewModelBase, INavigableViewModel
    public string SmartDeltaSummaryText => Certificate?.SmartDeltaSummary ?? "—";
 
    public string ScoringReasonsText => string.IsNullOrWhiteSpace(Certificate?.Notes)
-       ? "Bez významných varování."
+       ? L.Get("CertificateView.NoWarnings")
        : Certificate.Notes;
 
    /// <summary>
@@ -379,10 +379,10 @@ public partial class CertificateViewModel : ViewModelBase, INavigableViewModel
        ContainsDiagnosticMarker(Certificate?.Notes, "histor");
 
    public string DiagnosticBadgeText => DiagnosticHasCriticalSignals
-       ? "KRITICKÉ SIGNÁLY"
+       ? L.Get("CertificateView.Badge.Critical")
        : DiagnosticHasWarningSignals
-           ? "VAROVNÉ SIGNÁLY"
-           : "STABILNÍ PRŮBĚH";
+           ? L.Get("CertificateView.Badge.Warning")
+           : L.Get("CertificateView.Badge.Stable");
 
    public string DiagnosticBadgeBackground => DiagnosticHasCriticalSignals
        ? "#FDECEC"
@@ -438,21 +438,21 @@ public partial class CertificateViewModel : ViewModelBase, INavigableViewModel
    {
       if(_selectedDiskService.SelectedDisk == null)
       {
-         StatusMessage = "Není vybrán žádný disk";
+         StatusMessage = L.Get("CertificateView.Status.NoDisk");
          return;
       }
 
       try
       {
          IsLoading = true;
-         StatusMessage = "Generuji certifikát...";
+         StatusMessage = L.Get("CertificateView.Status.Generating");
 
          var card = await _diskCardRepository.GetByDevicePathAsync(_selectedDiskService.SelectedDisk.Path);
 
          if(card == null)
          {
-            StatusMessage = "Karta disku nenalezena. Proveďte nejprve test.";
-            await _dialogService.ShowErrorAsync("Chyba", "Karta disku nenalezena. Proveďte nejprve test disku.");
+            StatusMessage = L.Get("CertificateView.Status.CardNotFound");
+            await _dialogService.ShowErrorAsync(L.Get("Common.Error"), L.Get("CertificateView.Error.CardNotFound"));
             return;
          }
 
@@ -461,16 +461,16 @@ public partial class CertificateViewModel : ViewModelBase, INavigableViewModel
 
          if(latestSession == null)
          {
-            StatusMessage = "Žádný test nenalezen. Proveďte nejprve test.";
-            await _dialogService.ShowErrorAsync("Chyba", "Pro tento disk nebyl proveden žádný test. Proveďte nejprve test.");
+            StatusMessage = L.Get("CertificateView.Status.NoTest");
+            await _dialogService.ShowErrorAsync(L.Get("Common.Error"), L.Get("CertificateView.Error.NoTest"));
             return;
          }
 
          _selectedSession = await _diskCardRepository.GetTestSessionAsync(latestSession.Id);
          if(_selectedSession == null)
          {
-            StatusMessage = "Detail testu se nepodařilo načíst.";
-            await _dialogService.ShowErrorAsync("Chyba", "Nepodařilo se načíst detail posledního testu.");
+            StatusMessage = L.Get("CertificateView.Status.TestDetailError");
+            await _dialogService.ShowErrorAsync(L.Get("Common.Error"), L.Get("CertificateView.Error.TestDetail"));
             return;
          }
 
@@ -478,18 +478,18 @@ public partial class CertificateViewModel : ViewModelBase, INavigableViewModel
          await PrepareCertificateGraphAsync(Certificate, updateView: true);
          await _diskCardRepository.CreateCertificateAsync(Certificate);
 
-         StatusMessage = $"Certifikát vygenerován: {Certificate.CertificateNumber}";
+         StatusMessage = string.Format(L.Get("CertificateView.Status.Generated"), Certificate.CertificateNumber);
       }
       catch(InvalidOperationException ex)
       {
-         StatusMessage = $"Chyba: {ex.Message}";
-         await _dialogService.ShowErrorAsync("Chyba", $"Nepodařilo se vygenerovat certifikát: {ex.Message}");
+         StatusMessage = string.Format(L.Get("Common.Error"), ex.Message);
+         await _dialogService.ShowErrorAsync(L.Get("Common.Error"), string.Format(L.Get("CertificateView.Error.GenerateFailed"), ex.Message));
       }
       catch(DbUpdateException ex)
       {
          var message = ex.InnerException?.Message ?? ex.Message;
          StatusMessage = $"Chyba: {message}";
-         await _dialogService.ShowErrorAsync("Chyba", $"Nepodařilo se uložit certifikát: {message}");
+         await _dialogService.ShowErrorAsync(L.Get("Common.Error"), string.Format(L.Get("CertificateView.Error.SaveFailed"), message));
       }
       finally
       {
@@ -502,23 +502,23 @@ public partial class CertificateViewModel : ViewModelBase, INavigableViewModel
    {
       if(Certificate == null)
       {
-         StatusMessage = "Nejprve vygenerujte certifikát";
+         StatusMessage = L.Get("CertificateView.Status.GenerateFirst");
          return;
       }
 
       try
       {
          IsLoading = true;
-         StatusMessage = "Exportuji PDF...";
+         StatusMessage = L.Get("CertificateView.Status.ExportingPdf");
 
          await PrepareCertificateGraphAsync(Certificate, updateView: false);
          var pdfPath = await _certificateGenerator.GeneratePdfAsync(Certificate);
 
-         StatusMessage = $"PDF uloženo: {pdfPath}";
+         StatusMessage = string.Format(L.Get("CertificateView.Status.PdfSaved"), pdfPath);
 
          var openPdf = await _dialogService.ShowConfirmationAsync(
-             "PDF Export",
-             $"PDF certifikát uložen:\n{pdfPath}\n\nOtevřít soubor?");
+             L.Get("CertificateView.Dialog.PdfExport"),
+             string.Format(L.Get("CertificateView.Dialog.PdfSavedMessage"), pdfPath));
 
          if(openPdf)
          {
@@ -527,8 +527,8 @@ public partial class CertificateViewModel : ViewModelBase, INavigableViewModel
       }
       catch(InvalidOperationException ex)
       {
-         StatusMessage = $"Chyba: {ex.Message}";
-         await _dialogService.ShowErrorAsync("Chyba", $"Nepodařilo se exportovat PDF: {ex.Message}");
+         StatusMessage = string.Format(L.Get("Common.Error"), ex.Message);
+         await _dialogService.ShowErrorAsync(L.Get("Common.Error"), string.Format(L.Get("CertificateView.Error.ExportPdf"), ex.Message));
       }
       finally
       {
@@ -541,7 +541,7 @@ public partial class CertificateViewModel : ViewModelBase, INavigableViewModel
    {
       if(Certificate == null)
       {
-         StatusMessage = "Nejprve vygenerujte certifikát";
+         StatusMessage = L.Get("CertificateView.Status.GenerateFirst");
          return;
       }
 
@@ -549,45 +549,45 @@ public partial class CertificateViewModel : ViewModelBase, INavigableViewModel
       {
          IsLoading = true;
          IsPrinting = true;
-         PrintProgressMessage = "Připravuji data grafu...";
-         StatusMessage = "Připravuji certifikát k tisku...";
+         PrintProgressMessage = L.Get("CertificateView.Print.PreparingGraph");
+         StatusMessage = L.Get("CertificateView.Status.PreparingPrint");
 
          await PrepareCertificateGraphAsync(Certificate, updateView: false);
 
-         PrintProgressMessage = "Generuji PDF soubor...";
-         StatusMessage = "Generuji PDF certifikát...";
+         PrintProgressMessage = L.Get("CertificateView.Print.GeneratingPdf");
+         StatusMessage = L.Get("CertificateView.Status.GeneratingPdf");
 
          var pdfPath = await _certificateGenerator.GeneratePdfAsync(Certificate);
 
-         PrintProgressMessage = "Otevírám PDF pro bezpečný tisk...";
-         StatusMessage = "Otevírám PDF certifikát...";
+         PrintProgressMessage = L.Get("CertificateView.Print.OpeningPdf");
+         StatusMessage = L.Get("CertificateView.Status.OpeningPdf");
 
          await Task.Run(() => DocumentLauncher.OpenFile(pdfPath));
 
-         StatusMessage = "PDF certifikát byl otevřen. Pro tisk použijte Ctrl+P v otevřené aplikaci.";
+         StatusMessage = L.Get("CertificateView.Status.PdfOpened");
          PrintProgressMessage = string.Empty;
 
          await _dialogService.ShowInfoAsync(
-             "Tisk certifikátu",
-             $"Certifikát byl otevřen ve výchozí aplikaci:\n{pdfPath}\n\nPro bezpečný tisk použijte přímo tisk v otevřeném PDF (Ctrl+P).\nAutomatický tisk přes systémové shell rozhraní byl vypnut kvůli přetížení systému.");
+             L.Get("CertificateView.Dialog.PrintCertificate"),
+             string.Format(L.Get("CertificateView.Dialog.PrintMessage"), pdfPath));
       }
       catch(InvalidOperationException ex)
       {
          StatusMessage = $"Chyba tisku: {ex.Message}";
          PrintProgressMessage = string.Empty;
-         await _dialogService.ShowErrorAsync("Chyba", $"Nepodařilo se připravit tisk: {ex.Message}");
+         await _dialogService.ShowErrorAsync(L.Get("Common.Error"), string.Format(L.Get("CertificateView.Error.PrintPrepare"), ex.Message));
       }
       catch(IOException ex)
       {
          StatusMessage = $"Chyba tisku: {ex.Message}";
          PrintProgressMessage = string.Empty;
-         await _dialogService.ShowErrorAsync("Chyba", $"Nepodařilo se připravit tisk: {ex.Message}");
+         await _dialogService.ShowErrorAsync(L.Get("Common.Error"), string.Format(L.Get("CertificateView.Error.PrintPrepare"), ex.Message));
       }
       catch(Win32Exception ex)
       {
          StatusMessage = $"Chyba tisku: {ex.Message}";
          PrintProgressMessage = string.Empty;
-         await _dialogService.ShowErrorAsync("Chyba", $"Nepodařilo se otevřít PDF pro tisk: {ex.Message}");
+         await _dialogService.ShowErrorAsync(L.Get("Common.Error"), string.Format(L.Get("CertificateView.Error.OpenPdf"), ex.Message));
       }
       finally
       {
@@ -602,39 +602,39 @@ public partial class CertificateViewModel : ViewModelBase, INavigableViewModel
    {
       if(Certificate == null)
       {
-         StatusMessage = "Nejprve vygenerujte certifikát";
+         StatusMessage = L.Get("CertificateView.Status.GenerateFirst");
          return;
       }
 
       try
       {
          IsLoading = true;
-         StatusMessage = "Generuji štítek...";
+         StatusMessage = L.Get("CertificateView.Status.GeneratingLabel");
 
          await PrepareCertificateGraphAsync(Certificate, updateView: false);
          var labelPath = await _certificateGenerator.GenerateLabelAsync(Certificate);
 
          await Task.Run(() => DocumentLauncher.OpenFile(labelPath));
 
-         StatusMessage = "Štítek byl otevřen. Pro tisk použijte tisk v otevřené aplikaci.";
+         StatusMessage = L.Get("CertificateView.Status.LabelOpened");
          await _dialogService.ShowInfoAsync(
-             "Tisk štítku",
-             $"Štitek byl otevřen ve výchozí aplikaci:\n{labelPath}\n\nPro bezpečný tisk použijte přímo tisk v otevřené aplikaci.\nAutomatický tisk přes systémové shell rozhraní byl vypnut kvůli přetížení systému.");
+             L.Get("CertificateView.Dialog.PrintLabel"),
+             string.Format(L.Get("CertificateView.Dialog.LabelMessage"), labelPath));
       }
       catch(InvalidOperationException ex)
       {
          StatusMessage = $"Chyba tisku štítku: {ex.Message}";
-         await _dialogService.ShowErrorAsync("Chyba", $"Nepodařilo se připravit tisk štítku: {ex.Message}");
+         await _dialogService.ShowErrorAsync(L.Get("Common.Error"), string.Format(L.Get("CertificateView.Error.PrintLabelPrepare"), ex.Message));
       }
       catch(IOException ex)
       {
          StatusMessage = $"Chyba tisku štítku: {ex.Message}";
-         await _dialogService.ShowErrorAsync("Chyba", $"Nepodařilo se připravit tisk štítku: {ex.Message}");
+         await _dialogService.ShowErrorAsync(L.Get("Common.Error"), string.Format(L.Get("CertificateView.Error.PrintLabelPrepare"), ex.Message));
       }
       catch(Win32Exception ex)
       {
          StatusMessage = $"Chyba tisku štítku: {ex.Message}";
-         await _dialogService.ShowErrorAsync("Chyba", $"Nepodařilo se otevřít štítek pro tisk: {ex.Message}");
+         await _dialogService.ShowErrorAsync(L.Get("Common.Error"), string.Format(L.Get("CertificateView.Error.OpenLabel"), ex.Message));
       }
       finally
       {
@@ -684,7 +684,7 @@ public partial class CertificateViewModel : ViewModelBase, INavigableViewModel
       try
       {
          IsLoading = true;
-         StatusMessage = "Načítám certifikát...";
+         StatusMessage = L.Get("CertificateView.Status.Loading");
          _writeGraphSamples = [];
          _readGraphSamples = [];
 
@@ -713,7 +713,7 @@ public partial class CertificateViewModel : ViewModelBase, INavigableViewModel
 
          if(_selectedSession == null && _selectedDiskService.SelectedTestSessionId.HasValue)
          {
-            StatusMessage = "Načítám detail testu pro certifikát...";
+            StatusMessage = L.Get("CertificateView.Status.LoadingTestDetail");
             _selectedSession = await _diskCardRepository.GetTestSessionWithoutSamplesAsync(_selectedDiskService.SelectedTestSessionId.Value);
             if(_selectedSession != null)
             {
@@ -734,7 +734,7 @@ public partial class CertificateViewModel : ViewModelBase, INavigableViewModel
 
          if(card == null)
          {
-            StatusMessage = "Karta disku nenalezena.";
+            StatusMessage = L.Get("CertificateView.Status.CardNotFound");
             return;
          }
 
@@ -751,7 +751,7 @@ public partial class CertificateViewModel : ViewModelBase, INavigableViewModel
             var latestSessionId = sessions.OrderByDescending(s => s.StartedAt).Select(s => (int?)s.Id).FirstOrDefault();
             if(latestSessionId.HasValue)
             {
-               StatusMessage = "Načítám poslední test pro certifikát...";
+               StatusMessage = L.Get("CertificateView.Status.LoadingLastTest");
                _selectedSession = await _diskCardRepository.GetTestSessionWithoutSamplesAsync(latestSessionId.Value);
                if(_selectedSession != null)
                {
@@ -824,33 +824,33 @@ public partial class CertificateViewModel : ViewModelBase, INavigableViewModel
                UpdateDetailedSummaries(_selectedSession);
                SelectedSessionItem = AvailableSessions.FirstOrDefault(s => s.Id == _selectedSession.Id);
             }
-            StatusMessage = $"Certifikát načten: {latestCert.CertificateNumber}";
+            StatusMessage = string.Format(L.Get("CertificateView.Status.Loaded"), latestCert.CertificateNumber);
           }
           else
           {
              ResetGraphToDefaults();
-             StatusMessage = "Žádný certifikát nenalezen. Vygenerujte nový.";
+             StatusMessage = L.Get("CertificateView.Status.NoCertificate");
           }
        }
        catch(DbException ex)
        {
           StatusMessage = $"Chyba při načítání certifikátu: {ex.Message}";
-          await _dialogService.ShowErrorAsync("Chyba", $"Nepodařilo se načíst certifikát: {ex.Message}");
+          await _dialogService.ShowErrorAsync(L.Get("Common.Error"), string.Format(L.Get("CertificateView.Error.Load"), ex.Message));
        }
        catch(InvalidOperationException ex)
        {
           StatusMessage = $"Chyba při načítání certifikátu: {ex.Message}";
-          await _dialogService.ShowErrorAsync("Chyba", $"Nepodařilo se načíst certifikát: {ex.Message}");
+          await _dialogService.ShowErrorAsync(L.Get("Common.Error"), string.Format(L.Get("CertificateView.Error.Load"), ex.Message));
        }
        catch(IOException ex)
        {
           StatusMessage = $"Chyba při načítání certifikátu: {ex.Message}";
-          await _dialogService.ShowErrorAsync("Chyba", $"Nepodařilo se načíst certifikát: {ex.Message}");
+          await _dialogService.ShowErrorAsync(L.Get("Common.Error"), string.Format(L.Get("CertificateView.Error.Load"), ex.Message));
        }
        catch(ExternalException ex)
        {
           StatusMessage = $"Chyba při načítání certifikátu: {ex.Message}";
-          await _dialogService.ShowErrorAsync("Chyba", $"Nepodařilo se vykreslit certifikát: {ex.Message}");
+          await _dialogService.ShowErrorAsync(L.Get("Common.Error"), string.Format(L.Get("CertificateView.Error.Render"), ex.Message));
        }
        finally
        {
@@ -953,7 +953,7 @@ public partial class CertificateViewModel : ViewModelBase, INavigableViewModel
 
       if((_writeGraphSamples.Count == 0 && _readGraphSamples.Count == 0) && sessionId > 0)
       {
-         StatusMessage = "Načítám data grafu certifikátu...";
+         StatusMessage = L.Get("CertificateView.Status.LoadingGraphData");
          var speedSeries = await LoadCertificateGraphSamplesProgressiveAsync(sessionId);
          _writeGraphSamples = DownsampleToLimit(speedSeries.WriteSamples, 512);
          _readGraphSamples = DownsampleToLimit(speedSeries.ReadSamples, 512);
@@ -1257,12 +1257,12 @@ public partial class CertificateViewModel : ViewModelBase, INavigableViewModel
        return result;
     }
 
-    private static string BuildThermalSummary(TestSession session)
+    private string BuildThermalSummary(TestSession session)
     {
        var tempSamples = session.TemperatureSamples.OrderBy(t => t.ProgressPercent).ToList();
        if(tempSamples.Count == 0)
        {
-          return "Teplotní vzorky nejsou pro tuto relaci dostupné.";
+          return L.Get("CertificateView.Thermal.Unavailable");
        }
 
        var minTemp = tempSamples.Min(t => t.TemperatureCelsius);
@@ -1271,12 +1271,12 @@ public partial class CertificateViewModel : ViewModelBase, INavigableViewModel
        return $"Teplota MIN/AVG/MAX: {minTemp}/{avgTemp:F1}/{maxTemp} °C | Vzorky: {tempSamples.Count}";
     }
 
-    private static string BuildSmartSummary(TestSession session)
+    private string BuildSmartSummary(TestSession session)
     {
        var smart = session.SmartBefore;
        if(smart == null)
        {
-          return "SMART snapshot není k dispozici.";
+          return L.Get("CertificateView.Smart.Unavailable");
        }
 
        return
@@ -1286,7 +1286,7 @@ public partial class CertificateViewModel : ViewModelBase, INavigableViewModel
            $"Reallocated: {smart.ReallocatedSectorCount?.ToString() ?? "N/A"} | Pending: {smart.PendingSectorCount?.ToString() ?? "N/A"} | Uncorrectable: {smart.UncorrectableErrorCount?.ToString() ?? "N/A"}";
     }
 
-    private static string BuildDiagnosticHighlightsText(string? notes)
+    private string BuildDiagnosticHighlightsText(string? notes)
     {
        if(string.IsNullOrWhiteSpace(notes))
        {
@@ -1317,7 +1317,7 @@ public partial class CertificateViewModel : ViewModelBase, INavigableViewModel
        return string.Join(Environment.NewLine, parts.Select(p => $"• {p}"));
     }
 
-    private static bool ContainsDiagnosticMarker(string? notes, string marker)
+    private bool ContainsDiagnosticMarker(string? notes, string marker)
     {
        return !string.IsNullOrWhiteSpace(notes) && notes.Contains(marker, StringComparison.OrdinalIgnoreCase);
     }

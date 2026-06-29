@@ -25,29 +25,29 @@
                 </Grid.ColumnDefinitions>
 
                 <StackPanel Grid.Column="0">
-                    <TextBlock Text="📋 Detail Karty Disku" Classes="PageTitle"/>
-                    <TextBlock Text="Kompletní historie testů a zdraví disku" Classes="PageSubtitle"/>
+                    <TextBlock Text="{Binding L[DiskCardDetailView.Title]}" Classes="PageTitle"/>
+                    <TextBlock Text="{Binding L[DiskCardDetailView.Subtitle]}" Classes="PageSubtitle"/>
                 </StackPanel>
 
                 <StackPanel Grid.Column="1" Orientation="Horizontal">
-                    <Button Content="📄 Generovat certifikát"
+                    <Button Content="{Binding L[DiskCardDetailView.GenerateCert]}"
                             Command="{Binding GenerateCertificateCommand}"
                             IsEnabled="{Binding HasTestSessions}"
                             Background="{DynamicResource ThemeSuccessBrush}" Foreground="White"
                             FontWeight="Bold" Padding="12,6" Margin="0,0,8,0"
                             Cursor="Hand"/>
-                    <Button Content="🧭 Interní prohlížeč"
+                    <Button Content="{Binding L[DiskCardDetailView.InternalViewer]}"
                             Command="{Binding OpenCertificateViewerCommand}"
                             IsEnabled="{Binding HasTestSessions}"
                             Background="{DynamicResource ThemeInfoBrush}" Foreground="White"
                             FontWeight="Bold" Padding="12,6" Margin="0,0,8,0"
                             Cursor="Hand"/>
-                    <Button Content="🏅 Všechny certifikáty"
+                    <Button Content="{Binding L[DiskCardDetailView.AllCerts]}"
                             Command="{Binding BrowseAllCertificatesCommand}"
                             Background="{DynamicResource ThemePrimaryBrush}" Foreground="White"
                             FontWeight="Bold" Padding="12,6" Margin="0,0,8,0"
                             Cursor="Hand"/>
-                    <Button Content="🏠 Zpět na přehled"
+                    <Button Content="{Binding L[DiskCardDetailView.BackToOverview]}"
                             Command="{Binding NavigateBackCommand}"
                             Background="{DynamicResource ThemeSecondaryBackgroundBrush}" Foreground="{DynamicResource ThemeTextPrimaryBrush}"
                             BorderBrush="{DynamicResource ThemeBorderBrush}"
@@ -69,14 +69,14 @@
 
                 <!-- Basic Info -->
                 <StackPanel Grid.Column="0">
-                    <TextBlock Text="💾 Informace o disku" FontSize="14" FontWeight="Bold" Margin="0,0,0,10"/>
+                    <TextBlock Text="{Binding L[DiskCardDetailView.DiskInfo]}" FontSize="14" FontWeight="Bold" Margin="0,0,0,10"/>
                     
                     <Grid Margin="0,3">
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="100"/>
                             <ColumnDefinition Width="*"/>
                         </Grid.ColumnDefinitions>
-                        <TextBlock Grid.Column="0" Text="Model:" FontSize="11" Foreground="{DynamicResource ThemeTextMutedBrush}"/>
+                        <TextBlock Grid.Column="0" Text="{Binding L[DiskCardDetailView.Model]}" FontSize="11" Foreground="{DynamicResource ThemeTextMutedBrush}"/>
                         <TextBlock Grid.Column="1" Text="{Binding Card.ModelName}" FontSize="12" FontWeight="Bold"/>
                     </Grid>
                     <Grid Margin="0,3">
@@ -84,7 +84,7 @@
                             <ColumnDefinition Width="100"/>
                             <ColumnDefinition Width="*"/>
                         </Grid.ColumnDefinitions>
-                        <TextBlock Grid.Column="0" Text="Sériové č.:" FontSize="11" Foreground="{DynamicResource ThemeTextMutedBrush}"/>
+                        <TextBlock Grid.Column="0" Text="{Binding L[DiskCardDetailView.SerialNumber]}" FontSize="11" Foreground="{DynamicResource ThemeTextMutedBrush}"/>
                         <TextBlock Grid.Column="1" Text="{Binding Card.SerialNumber}" FontSize="11" FontFamily="Consolas"/>
                     </Grid>
                     <Grid Margin="0,3">
@@ -92,7 +92,7 @@
                             <ColumnDefinition Width="100"/>
                             <ColumnDefinition Width="*"/>
                         </Grid.ColumnDefinitions>
-                        <TextBlock Grid.Column="0" Text="Kapacita:" FontSize="11" Foreground="{DynamicResource ThemeTextMutedBrush}"/>
+                        <TextBlock Grid.Column="0" Text="{Binding L[DiskCardDetailView.Capacity]}" FontSize="11" Foreground="{DynamicResource ThemeTextMutedBrush}"/>
                         <TextBlock Grid.Column="1" Text="{Binding Card.CapacityText}" FontSize="11"/>
                     </Grid>
                     <Grid Margin="0,3">
@@ -100,7 +100,7 @@
                             <ColumnDefinition Width="100"/>
                             <ColumnDefinition Width="*"/>
                         </Grid.ColumnDefinitions>
-                        <TextBlock Grid.Column="0" Text="Typ disku:" FontSize="11" Foreground="{DynamicResource ThemeTextMutedBrush}"/>
+                        <TextBlock Grid.Column="0" Text="{Binding L[DiskCardDetailView.DiskType]}" FontSize="11" Foreground="{DynamicResource ThemeTextMutedBrush}"/>
                         <TextBlock Grid.Column="1" Text="{Binding Card.DiskType}" FontSize="11"/>
                     </Grid>
                     <Grid Margin="0,3">
@@ -108,7 +108,7 @@
                             <ColumnDefinition Width="100"/>
                             <ColumnDefinition Width="*"/>
                         </Grid.ColumnDefinitions>
-                        <TextBlock Grid.Column="0" Text="Počet testů:" FontSize="11" Foreground="{DynamicResource ThemeTextMutedBrush}"/>
+                        <TextBlock Grid.Column="0" Text="{Binding L[DiskCardDetailView.TestCount]}" FontSize="11" Foreground="{DynamicResource ThemeTextMutedBrush}"/>
                         <TextBlock Grid.Column="1" Text="{Binding Card.TestCount}" FontSize="11" FontWeight="Bold"/>
                     </Grid>
                 </StackPanel>
@@ -118,13 +118,13 @@
 
                 <!-- Grade & Score -->
                 <StackPanel Grid.Column="2" VerticalAlignment="Center" HorizontalAlignment="Center">
-                    <TextBlock Text="Celkové hodnocení" FontSize="11" Foreground="{DynamicResource ThemeTextMutedBrush}" HorizontalAlignment="Center"/>
+                    <TextBlock Text="{Binding L[DiskCardDetailView.OverallRating]}" FontSize="11" Foreground="{DynamicResource ThemeTextMutedBrush}" HorizontalAlignment="Center"/>
                     <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" Margin="0,5">
                         <TextBlock Text="{Binding Card.OverallGrade}" FontSize="42" FontWeight="Bold"
                                    Foreground="{Binding GradeColor}"/>
                     </StackPanel>
                     <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
-                        <TextBlock Text="Skóre: " FontSize="12"/>
+                        <TextBlock Text="{Binding L[DiskCardDetailView.Score]}" FontSize="12"/>
                         <TextBlock Text="{Binding Card.OverallScore, StringFormat={}{0:F0}}" FontSize="12" FontWeight="Bold"/>
                         <TextBlock Text="%" FontSize="12"/>
                     </StackPanel>
@@ -135,7 +135,7 @@
         <!-- ========== TABS ========== -->
         <TabControl Grid.Row="2" Margin="20,15,20,15">
             <!-- Test History Tab -->
-            <TabItem Header="📊 Historie testů">
+            <TabItem Header="{Binding L[DiskCardDetailView.TestHistory]}">
                 <Grid Margin="10">
                     <DataGrid ItemsSource="{Binding TestSessions}"
                               SelectedItem="{Binding SelectedSession}"
@@ -145,11 +145,11 @@
                               GridLinesVisibility="Horizontal"
                               FontSize="12">
                         <DataGrid.Columns>
-                            <DataGridTextColumn Header="Datum" Binding="{Binding TestedAt, StringFormat={}{0:dd.MM.yyyy HH:mm}}" Width="130"/>
-                            <DataGridTextColumn Header="Typ testu" Binding="{Binding TestType}" Width="120"/>
-                            <DataGridTextColumn Header="Známka" Binding="{Binding Grade}" Width="60"/>
-                            <DataGridTextColumn Header="Skóre" Binding="{Binding Score, StringFormat={}{0:F0}}" Width="60"/>
-                            <dg:DataGridTemplateColumn Header="Signály" Width="170">
+                            <DataGridTextColumn Header="{Binding L[DiskCardDetailView.Date]}" Binding="{Binding TestedAt, StringFormat={}{0:dd.MM.yyyy HH:mm}}" Width="130"/>
+                            <DataGridTextColumn Header="{Binding L[DiskCardDetailView.TestType]}" Binding="{Binding TestType}" Width="120"/>
+                            <DataGridTextColumn Header="{Binding L[DiskCardDetailView.Grade]}" Binding="{Binding Grade}" Width="60"/>
+                            <DataGridTextColumn Header="{Binding L[DiskCardDetailView.Score]}" Binding="{Binding Score, StringFormat={}{0:F0}}" Width="60"/>
+                            <dg:DataGridTemplateColumn Header="{Binding L[DiskCardDetailView.Signals]}" Width="170">
                                 <dg:DataGridTemplateColumn.CellTemplate>
                                     <DataTemplate>
                                         <Border Background="{Binding DiagnosticBadgeBackground}"
@@ -165,27 +165,27 @@
                                     </DataTemplate>
                                 </dg:DataGridTemplateColumn.CellTemplate>
                             </dg:DataGridTemplateColumn>
-                            <DataGridTextColumn Header="Flagy" Binding="{Binding DiagnosticFlagsText}" Width="120"/>
-                            <DataGridTextColumn Header="Sektory" Binding="{Binding SectorsTested}" Width="80"/>
-                            <DataGridTextColumn Header="Chyby" Binding="{Binding ErrorCount}" Width="60"/>
-                            <DataGridTextColumn Header="Teplota" Binding="{Binding Temperature, StringFormat={}{0}°C}" Width="80"/>
-                            <DataGridTextColumn Header="Throttle" Binding="{Binding ThermalThrottlingText}" Width="90"/>
-                            <DataGridTextColumn Header="Trvání" Binding="{Binding Duration, StringFormat={}{0} min}" Width="70"/>
-                            <DataGridTextColumn Header="Poznámky" Binding="{Binding Notes}" Width="*"/>
+                            <DataGridTextColumn Header="{Binding L[DiskCardDetailView.Flags]}" Binding="{Binding DiagnosticFlagsText}" Width="120"/>
+                            <DataGridTextColumn Header="{Binding L[DiskCardDetailView.Sectors]}" Binding="{Binding SectorsTested}" Width="80"/>
+                            <DataGridTextColumn Header="{Binding L[DiskCardDetailView.Errors]}" Binding="{Binding ErrorCount}" Width="60"/>
+                            <DataGridTextColumn Header="{Binding L[DiskCardDetailView.Temperature]}" Binding="{Binding Temperature, StringFormat={}{0}°C}" Width="80"/>
+                            <DataGridTextColumn Header="{Binding L[DiskCardDetailView.Throttle]}" Binding="{Binding ThermalThrottlingText}" Width="90"/>
+                            <DataGridTextColumn Header="{Binding L[DiskCardDetailView.Duration]}" Binding="{Binding Duration, StringFormat={}{0} min}" Width="70"/>
+                            <DataGridTextColumn Header="{Binding L[DiskCardDetailView.Notes]}" Binding="{Binding Notes}" Width="*"/>
                         </DataGrid.Columns>
                     </DataGrid>
                 </Grid>
             </TabItem>
 
             <!-- SMART History Tab -->
-            <TabItem Header="📈 SMART trend">
+            <TabItem Header="{Binding L[DiskCardDetailView.SmartTrend]}">
                 <Grid Margin="10">
                     <Grid.RowDefinitions>
                         <RowDefinition Height="Auto"/>
                         <RowDefinition Height="*"/>
                     </Grid.RowDefinitions>
 
-                    <TextBlock Grid.Row="0" Text="Vývoj SMART atributů v čase" FontSize="11" Foreground="{DynamicResource ThemeTextMutedBrush}" Margin="0,0,0,10"/>
+                    <TextBlock Grid.Row="0" Text="{Binding L[DiskCardDetailView.SmartEvolution]}" FontSize="11" Foreground="{DynamicResource ThemeTextMutedBrush}" Margin="0,0,0,10"/>
 
                     <DataGrid Grid.Row="1" ItemsSource="{Binding SmartHistory}"
                               AutoGenerateColumns="False"
@@ -194,22 +194,22 @@
                               GridLinesVisibility="Horizontal"
                               FontSize="12">
                         <DataGrid.Columns>
-                            <DataGridTextColumn Header="Datum" Binding="{Binding TestedAt, StringFormat={}{0:dd.MM.yyyy HH:mm}}" Width="130"/>
-                            <DataGridTextColumn Header="Známka" Binding="{Binding Grade}" Width="65"/>
-                            <DataGridTextColumn Header="Skóre" Binding="{Binding Score, StringFormat={}{0:F0}}" Width="65"/>
-                            <DataGridTextColumn Header="Teplota" Binding="{Binding Temperature, StringFormat={}{0}°C}" Width="80"/>
-                            <DataGridTextColumn Header="Provozní hodiny" Binding="{Binding PowerOnHours}" Width="110"/>
-                            <DataGridTextColumn Header="Reallocated" Binding="{Binding ReallocatedSectors}" Width="90"/>
-                            <DataGridTextColumn Header="Pending" Binding="{Binding PendingSectors}" Width="70"/>
-                            <DataGridTextColumn Header="Uncorrectable" Binding="{Binding ReadErrors}" Width="95"/>
-                            <DataGridTextColumn Header="Media errors" Binding="{Binding ReallocEvents}" Width="90"/>
-                            <DataGridTextColumn Header="Poznámky" Binding="{Binding Notes}" Width="*"/>
+                            <DataGridTextColumn Header="{Binding L[DiskCardDetailView.Date]}" Binding="{Binding TestedAt, StringFormat={}{0:dd.MM.yyyy HH:mm}}" Width="130"/>
+                            <DataGridTextColumn Header="{Binding L[DiskCardDetailView.Grade]}" Binding="{Binding Grade}" Width="65"/>
+                            <DataGridTextColumn Header="{Binding L[DiskCardDetailView.Score]}" Binding="{Binding Score, StringFormat={}{0:F0}}" Width="65"/>
+                            <DataGridTextColumn Header="{Binding L[DiskCardDetailView.Temperature]}" Binding="{Binding Temperature, StringFormat={}{0}°C}" Width="80"/>
+                            <DataGridTextColumn Header="{Binding L[DiskCardDetailView.PowerOnHours]}" Binding="{Binding PowerOnHours}" Width="110"/>
+                            <DataGridTextColumn Header="{Binding L[DiskCardDetailView.Reallocated]}" Binding="{Binding ReallocatedSectors}" Width="90"/>
+                            <DataGridTextColumn Header="{Binding L[DiskCardDetailView.Pending]}" Binding="{Binding PendingSectors}" Width="70"/>
+                            <DataGridTextColumn Header="{Binding L[DiskCardDetailView.Uncorrectable]}" Binding="{Binding ReadErrors}" Width="95"/>
+                            <DataGridTextColumn Header="{Binding L[DiskCardDetailView.MediaErrors]}" Binding="{Binding ReallocEvents}" Width="90"/>
+                            <DataGridTextColumn Header="{Binding L[DiskCardDetailView.Notes]}" Binding="{Binding Notes}" Width="*"/>
                         </DataGrid.Columns>
                     </DataGrid>
                 </Grid>
             </TabItem>
 
-            <TabItem Header="🧾 SMART snapshot">
+            <TabItem Header="{Binding L[DiskCardDetailView.SmartSnapshot]}">
                 <Grid Margin="10" RowDefinitions="Auto,Auto,Auto,Auto,Auto,*">
                     <Border Grid.Row="0" Background="{DynamicResource ThemeSecondaryBackgroundBrush}" Padding="10" CornerRadius="6" Margin="0,0,0,10">
                         <StackPanel Spacing="8">
@@ -247,13 +247,13 @@
                                   FontSize="11"
                                   ScrollViewer.VerticalScrollBarVisibility="Auto"
                                   ScrollViewer.HorizontalScrollBarVisibility="Auto"
-                                  Watermark="Vyberte test se SMART snapshotem"/>
+                                  Watermark="{Binding L[DiskCardDetailView.SelectTestWithSmart]}"/>
                      </Border>
                  </Grid>
              </TabItem>
 
             <!-- Notes Tab -->
-            <TabItem Header="📝 Poznámky">
+            <TabItem Header="{Binding L[DiskCardDetailView.Notes]}">
                 <Grid Margin="10">
                     <Grid.RowDefinitions>
                         <RowDefinition Height="*"/>
@@ -264,12 +264,12 @@
                              Text="{Binding Notes}"
                              AcceptsReturn="True"
                              TextWrapping="Wrap"
-                             Watermark="Zadejte poznámky k tomuto disku..."
+                             Watermark="{Binding L[DiskCardDetailView.EnterNotes]}"
                              FontSize="12"
                              Padding="10"/>
 
                     <StackPanel Grid.Row="1" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,10,0,0">
-                        <Button Content="💾 Uložit poznámky"
+                        <Button Content="{Binding L[DiskCardDetailView.SaveNotes]}"
                                 Command="{Binding SaveNotesCommand}"
                                 Background="{DynamicResource ThemeSuccessBrush}" Foreground="White"
                                 FontWeight="Bold" Padding="12,6" Cursor="Hand"/>
@@ -278,7 +278,7 @@
             </TabItem>
 
             <!-- Certificates Tab -->
-            <TabItem Header="🏅 Certifikáty">
+            <TabItem Header="{Binding L[DiskCardDetailView.Certificates]}">
                 <Grid Margin="10">
                     <Grid.RowDefinitions>
                         <RowDefinition Height="Auto"/>
@@ -286,8 +286,8 @@
                     </Grid.RowDefinitions>
 
                     <StackPanel Grid.Row="0" Orientation="Horizontal" Margin="0,0,0,10">
-                        <TextBlock Text="Certifikáty tohoto disku" FontSize="14" FontWeight="Bold" VerticalAlignment="Center"/>
-                        <Button Content="🏅 Všechny certifikáty"
+                        <TextBlock Text="{Binding L[DiskCardDetailView.ThisDiskCerts]}" FontSize="14" FontWeight="Bold" VerticalAlignment="Center"/>
+                        <Button Content="{Binding L[DiskCardDetailView.AllCerts]}"
                                 Command="{Binding BrowseAllCertificatesCommand}"
                                 Background="{DynamicResource ThemePrimaryBrush}" Foreground="White"
                                 FontWeight="Bold" Padding="10,5" Margin="16,0,0,0" Cursor="Hand"/>
@@ -305,20 +305,20 @@
                               HorizontalGridLinesBrush="{DynamicResource ThemeBorderLightBrush}"
                               VerticalGridLinesBrush="{DynamicResource ThemeBorderLightBrush}">
                         <DataGrid.Columns>
-                            <DataGridTextColumn Header="Číslo cert." Binding="{Binding CertificateNumber}" Width="140" FontFamily="Consolas"/>
-                            <DataGridTextColumn Header="Známka" Binding="{Binding Grade}" Width="60"/>
-                            <DataGridTextColumn Header="Skóre" Binding="{Binding Score, StringFormat={}{0:F0}}" Width="60"/>
-                            <DataGridTextColumn Header="Typ testu" Binding="{Binding TestType}" Width="100"/>
-                            <DataGridTextColumn Header="Vygenerováno" Binding="{Binding GeneratedAt, StringFormat={}{0:dd.MM.yyyy HH:mm}}" Width="130"/>
-                            <DataGridTextColumn Header="Doporučeno" Binding="{Binding Recommended, StringFormat={}{0}}" Width="80"/>
-                            <DataGridTextColumn Header="Poznámky" Binding="{Binding Notes}" Width="*"/>
+                            <DataGridTextColumn Header="{Binding L[DiskCardDetailView.CertNumber]}" Binding="{Binding CertificateNumber}" Width="140" FontFamily="Consolas"/>
+                            <DataGridTextColumn Header="{Binding L[DiskCardDetailView.Grade]}" Binding="{Binding Grade}" Width="60"/>
+                            <DataGridTextColumn Header="{Binding L[DiskCardDetailView.Score]}" Binding="{Binding Score, StringFormat={}{0:F0}}" Width="60"/>
+                            <DataGridTextColumn Header="{Binding L[DiskCardDetailView.TestType]}" Binding="{Binding TestType}" Width="100"/>
+                            <DataGridTextColumn Header="{Binding L[DiskCardDetailView.Generated]}" Binding="{Binding GeneratedAt, StringFormat={}{0:dd.MM.yyyy HH:mm}}" Width="130"/>
+                            <DataGridTextColumn Header="{Binding L[DiskCardDetailView.Recommended]}" Binding="{Binding Recommended, StringFormat={}{0}}" Width="80"/>
+                            <DataGridTextColumn Header="{Binding L[DiskCardDetailView.Notes]}" Binding="{Binding Notes}" Width="*"/>
                         </DataGrid.Columns>
                     </DataGrid>
                 </Grid>
             </TabItem>
 
             <!-- Disk Info Tab -->
-            <TabItem Header="📄 Informace">
+            <TabItem Header="{Binding L[DiskCardDetailView.Info]}">
                 <Grid Margin="10">
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="*"/>
@@ -327,28 +327,28 @@
 
                     <!-- Left: Device Info -->
                     <StackPanel Grid.Column="0" Margin="0,0,10,0">
-                        <TextBlock Text="Zařízení" FontSize="14" FontWeight="Bold" Margin="0,0,0,10"/>
+                        <TextBlock Text="{Binding L[DiskCardDetailView.Device]}" FontSize="14" FontWeight="Bold" Margin="0,0,0,10"/>
                         
                         <Border Background="{DynamicResource ThemeSecondaryBackgroundBrush}" Padding="10" CornerRadius="4" Margin="0,0,0,10">
                             <StackPanel>
                                 <Grid Margin="0,2">
-                                    <TextBlock Grid.Column="0" Text="Cesta:" FontSize="11" Foreground="{DynamicResource ThemeTextMutedBrush}" Width="120"/>
+                                    <TextBlock Grid.Column="0" Text="{Binding L[DiskCardDetailView.Path]}" FontSize="11" Foreground="{DynamicResource ThemeTextMutedBrush}" Width="120"/>
                                     <TextBlock Text="{Binding Card.DevicePath}" FontSize="11" FontFamily="Consolas"/>
                                 </Grid>
                                 <Grid Margin="0,2">
-                                    <TextBlock Text="Firmware:" FontSize="11" Foreground="{DynamicResource ThemeTextMutedBrush}" Width="120"/>
+                                    <TextBlock Text="{Binding L[DiskCardDetailView.Firmware]}" FontSize="11" Foreground="{DynamicResource ThemeTextMutedBrush}" Width="120"/>
                                     <TextBlock Text="{Binding Card.FirmwareVersion}" FontSize="11"/>
                                 </Grid>
                                 <Grid Margin="0,2">
-                                    <TextBlock Text="Vyrobce:" FontSize="11" Foreground="{DynamicResource ThemeTextMutedBrush}" Width="120"/>
+                                    <TextBlock Text="{Binding L[DiskCardDetailView.Manufacturer]}" FontSize="11" Foreground="{DynamicResource ThemeTextMutedBrush}" Width="120"/>
                                     <TextBlock Text="{Binding Card.Manufacturer}" FontSize="11"/>
                                 </Grid>
                                 <Grid Margin="0,2">
-                                    <TextBlock Text="Vytvořeno:" FontSize="11" Foreground="{DynamicResource ThemeTextMutedBrush}" Width="120"/>
+                                    <TextBlock Text="{Binding L[DiskCardDetailView.Created]}" FontSize="11" Foreground="{DynamicResource ThemeTextMutedBrush}" Width="120"/>
                                     <TextBlock Text="{Binding Card.CreatedAt, StringFormat={}{0:dd.MM.yyyy HH:mm}}" FontSize="11"/>
                                 </Grid>
                                 <Grid Margin="0,2">
-                                    <TextBlock Text="Aktualizováno:" FontSize="11" Foreground="{DynamicResource ThemeTextMutedBrush}" Width="120"/>
+                                    <TextBlock Text="{Binding L[DiskCardDetailView.Updated]}" FontSize="11" Foreground="{DynamicResource ThemeTextMutedBrush}" Width="120"/>
                                     <TextBlock Text="{Binding Card.UpdatedAt, StringFormat={}{0:dd.MM.yyyy HH:mm}}" FontSize="11"/>
                                 </Grid>
                             </StackPanel>
@@ -357,36 +357,36 @@
 
                     <!-- Right: Statistics -->
                     <StackPanel Grid.Column="1" Margin="10,0,0,0">
-                        <TextBlock Text="Statistiky" FontSize="14" FontWeight="Bold" Margin="0,0,0,10"/>
+                        <TextBlock Text="{Binding L[DiskCardDetailView.Statistics]}" FontSize="14" FontWeight="Bold" Margin="0,0,0,10"/>
                         
                         <Border Background="{DynamicResource ThemeSecondaryBackgroundBrush}" Padding="10" CornerRadius="4">
                             <StackPanel>
                                 <Grid Margin="0,3">
-                                    <TextBlock Text="Celkem testů:" FontSize="11" Foreground="{DynamicResource ThemeTextMutedBrush}" Width="140"/>
+                                    <TextBlock Text="{Binding L[DiskCardDetailView.TotalTests]}" FontSize="11" Foreground="{DynamicResource ThemeTextMutedBrush}" Width="140"/>
                                     <TextBlock Text="{Binding Card.TestCount}" FontSize="11" FontWeight="Bold"/>
                                 </Grid>
                                 <Grid Margin="0,3">
-                                    <TextBlock Text="Průměrné skóre:" FontSize="11" Foreground="{DynamicResource ThemeTextMutedBrush}" Width="140"/>
+                                    <TextBlock Text="{Binding L[DiskCardDetailView.AvgScore]}" FontSize="11" Foreground="{DynamicResource ThemeTextMutedBrush}" Width="140"/>
                                     <TextBlock Text="{Binding AverageScore, StringFormat={}{0:F1}}" FontSize="11"/>
                                 </Grid>
                                 <Grid Margin="0,3">
-                                    <TextBlock Text="Poslední známka:" FontSize="11" Foreground="{DynamicResource ThemeTextMutedBrush}" Width="140"/>
+                                    <TextBlock Text="{Binding L[DiskCardDetailView.LastGrade]}" FontSize="11" Foreground="{DynamicResource ThemeTextMutedBrush}" Width="140"/>
                                     <TextBlock Text="{Binding Card.OverallGrade}" FontSize="11" FontWeight="Bold"/>
                                 </Grid>
                                 <Grid Margin="0,3">
-                                    <TextBlock Text="Nejlepší známka:" FontSize="11" Foreground="{DynamicResource ThemeTextMutedBrush}" Width="140"/>
+                                    <TextBlock Text="{Binding L[DiskCardDetailView.BestGrade]}" FontSize="11" Foreground="{DynamicResource ThemeTextMutedBrush}" Width="140"/>
                                     <TextBlock Text="{Binding BestGrade}" FontSize="11" FontWeight="Bold" Foreground="{DynamicResource ThemeSuccessBrush}"/>
                                 </Grid>
                                 <Grid Margin="0,3">
-                                    <TextBlock Text="Nejhorší známka:" FontSize="11" Foreground="{DynamicResource ThemeTextMutedBrush}" Width="140"/>
+                                    <TextBlock Text="{Binding L[DiskCardDetailView.WorstGrade]}" FontSize="11" Foreground="{DynamicResource ThemeTextMutedBrush}" Width="140"/>
                                     <TextBlock Text="{Binding WorstGrade}" FontSize="11" FontWeight="Bold" Foreground="{DynamicResource ThemeDangerBrush}"/>
                                 </Grid>
                                 <Grid Margin="0,3">
-                                    <TextBlock Text="Celkem test. sektorů:" FontSize="11" Foreground="{DynamicResource ThemeTextMutedBrush}" Width="140"/>
+                                    <TextBlock Text="{Binding L[DiskCardDetailView.TotalSectors]}" FontSize="11" Foreground="{DynamicResource ThemeTextMutedBrush}" Width="140"/>
                                     <TextBlock Text="{Binding TotalSectorsTested}" FontSize="11"/>
                                 </Grid>
                                 <Grid Margin="0,3">
-                                    <TextBlock Text="Celkem chyb:" FontSize="11" Foreground="{DynamicResource ThemeTextMutedBrush}" Width="140"/>
+                                    <TextBlock Text="{Binding L[DiskCardDetailView.TotalErrors]}" FontSize="11" Foreground="{DynamicResource ThemeTextMutedBrush}" Width="140"/>
                                     <TextBlock Text="{Binding TotalErrors}" FontSize="11"/>
                                 </Grid>
                             </StackPanel>
@@ -408,7 +408,7 @@
 
                 <StackPanel Grid.Column="1" Orientation="Horizontal">
                     <Panel IsVisible="{Binding IsLoading}">
-                        <TextBlock Text="⏳ Načítám..." FontSize="10" Foreground="{DynamicResource ThemeWarningBrush}"/>
+                        <TextBlock Text="{Binding L[DiskCardDetailView.Loading]}" FontSize="10" Foreground="{DynamicResource ThemeWarningBrush}"/>
                     </Panel>
                 </StackPanel>
             </Grid>

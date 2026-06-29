@@ -19,13 +19,13 @@
                 </Grid.ColumnDefinitions>
 
                 <StackPanel Grid.Column="0">
-                    <TextBlock Text="📊 Reporty" Classes="PageTitle"/>
-                    <TextBlock Text="Historie všech testů" Classes="PageSubtitle"/>
+                    <TextBlock Text="{Binding L[ReportView.Reports]}" Classes="PageTitle"/>
+                    <TextBlock Text="{Binding L[ReportView.AllTestsHistory]}" Classes="PageSubtitle"/>
                     <TextBlock Text="{Binding StatusMessage}" Classes="PageMetaText" Margin="0,2,0,0"/>
                 </StackPanel>
 
                 <Button Grid.Column="1"
-                        Content="🏠 Zpět"
+                        Content="{Binding L[Common.Back]}"
                         Command="{Binding NavigateBackCommand}"
                         Background="{DynamicResource ThemeSecondaryBackgroundBrush}" Foreground="{DynamicResource ThemeTextPrimaryBrush}"
                         BorderBrush="{DynamicResource ThemeBorderBrush}"
@@ -49,12 +49,12 @@
                         <RowDefinition Height="*"/>
                     </Grid.RowDefinitions>
 
-                    <TextBlock Grid.Row="0" Text="📋 Seznam testů" FontSize="15" FontWeight="Bold" Foreground="{DynamicResource ThemeTextPrimaryBrush}" Margin="0,0,0,8"/>
+                    <TextBlock Grid.Row="0" Text="{Binding L[ReportView.TestList]}" FontSize="15" FontWeight="Bold" Foreground="{DynamicResource ThemeTextPrimaryBrush}" Margin="0,0,0,8"/>
 
                     <!-- Vyhledávací pole -->
                     <TextBox Grid.Row="1" 
                              Text="{Binding SearchText}" 
-                             Watermark="🔍 Vyhledat podle názvu, sériového čísla, modelu, grade nebo data..."
+                             Watermark="{Binding L[ReportView.SearchWatermark]}"
                              Margin="0,0,0,8"
                              Background="{DynamicResource ThemeSecondaryBackgroundBrush}"
                              Foreground="{DynamicResource ThemeTextPrimaryBrush}"
@@ -72,31 +72,31 @@
                               RowBackground="{DynamicResource ThemePanelBackgroundBrush}"
                               FontSize="11">
                         <DataGrid.Columns>
-                            <DataGridTextColumn Header="Datum" 
+                            <DataGridTextColumn Header="{Binding L[ReportView.Date]}" 
                                                Binding="{Binding TestDate, StringFormat='{}{0:dd.MM.yyyy HH:mm}'}" 
                                                Width="120"/>
                             
-                            <DataGridTextColumn Header="Sériové číslo" 
+                            <DataGridTextColumn Header="{Binding L[ReportView.SerialNumber]}" 
                                                Binding="{Binding SerialNumber}" 
                                                Width="140"/>
                             
-                            <DataGridTextColumn Header="Model" 
+                            <DataGridTextColumn Header="{Binding L[ReportView.Model]}" 
                                                Binding="{Binding DeviceName}" 
                                                Width="130"/>
                             
-                            <DataGridTextColumn Header="Typ" 
+                            <DataGridTextColumn Header="{Binding L[ReportView.Type]}" 
                                                Binding="{Binding Title}" 
                                                Width="*"/>
                             
-                            <DataGridTextColumn Header="Skóre" 
+                            <DataGridTextColumn Header="{Binding L[ReportView.Score]}" 
                                                Binding="{Binding Score, StringFormat='{}{0:F0}'}" 
                                                Width="55"/>
                             
-                            <DataGridTextColumn Header="Grade" 
+                            <DataGridTextColumn Header="{Binding L[ReportView.Grade]}" 
                                                Binding="{Binding Grade}" 
                                                Width="50"/>
                             
-                            <DataGridTextColumn Header="Chyby" 
+                            <DataGridTextColumn Header="{Binding L[ReportView.Errors]}" 
                                                Binding="{Binding ErrorCount}" 
                                                Width="55"/>
                         </DataGrid.Columns>
@@ -140,10 +140,10 @@
                                 <ColumnDefinition Width="*"/>
                             </Grid.ColumnDefinitions>
                             
-                            <TextBlock Grid.Column="0" Text="Disk:" FontWeight="Bold" Margin="0,0,5,0"/>
+                            <TextBlock Grid.Column="0" Text="{Binding L[ReportView.Disk]}" FontWeight="Bold" Margin="0,0,5,0"/>
                             <TextBlock Grid.Column="1" Text="{Binding SelectedReport.SerialNumber}" Margin="0,0,20,0" TextTrimming="CharacterEllipsis"/>
                             
-                            <TextBlock Grid.Column="2" Text="Model:" FontWeight="Bold" Margin="0,0,5,0"/>
+                            <TextBlock Grid.Column="2" Text="{Binding L[ReportView.ModelLabel]}" FontWeight="Bold" Margin="0,0,5,0"/>
                             <TextBlock Grid.Column="3" Text="{Binding SelectedReport.DeviceName}" TextTrimming="CharacterEllipsis"/>
                         </Grid>
                     </StackPanel>
@@ -156,12 +156,12 @@
                             <RowDefinition Height="*"/>
                         </Grid.RowDefinitions>
 
-                        <TextBlock Grid.Row="0" Text="📈 Metriky" FontSize="15" FontWeight="Bold" Foreground="{DynamicResource ThemeTextPrimaryBrush}" Margin="0,0,0,10"/>
+                        <TextBlock Grid.Row="0" Text="{Binding L[ReportView.Metrics]}" FontSize="15" FontWeight="Bold" Foreground="{DynamicResource ThemeTextPrimaryBrush}" Margin="0,0,0,10"/>
 
                         <UniformGrid Grid.Row="1" Columns="2" Rows="3">
                             <Border Background="{DynamicResource ThemeSecondaryBackgroundBrush}" Margin="2" Padding="10">
                                 <StackPanel>
-                                    <TextBlock Text="Průměr zápisu" FontSize="12" Foreground="{DynamicResource ThemeTextMutedBrush}"/>
+                                    <TextBlock Text="{Binding L[ReportView.AvgWrite]}" FontSize="12" Foreground="{DynamicResource ThemeTextMutedBrush}"/>
                                     <TextBlock Text="{Binding SelectedReport.AvgWriteSpeed, StringFormat='{}{0:F2} MB/s'}" 
                                                FontSize="16" FontWeight="Bold" Foreground="{DynamicResource ThemeTextPrimaryBrush}"/>
                                 </StackPanel>
@@ -169,7 +169,7 @@
                             
                             <Border Background="{DynamicResource ThemeSecondaryBackgroundBrush}" Margin="2" Padding="10">
                                 <StackPanel>
-                                    <TextBlock Text="Průměr čtení" FontSize="12" Foreground="{DynamicResource ThemeTextMutedBrush}"/>
+                                    <TextBlock Text="{Binding L[ReportView.AvgRead]}" FontSize="12" Foreground="{DynamicResource ThemeTextMutedBrush}"/>
                                     <TextBlock Text="{Binding SelectedReport.AvgReadSpeed, StringFormat='{}{0:F2} MB/s'}" 
                                                FontSize="16" FontWeight="Bold" Foreground="{DynamicResource ThemeTextPrimaryBrush}"/>
                                 </StackPanel>
@@ -177,7 +177,7 @@
                             
                             <Border Background="{DynamicResource ThemeSecondaryBackgroundBrush}" Margin="2" Padding="10">
                                 <StackPanel>
-                                    <TextBlock Text="Počet chyb" FontSize="12" Foreground="{DynamicResource ThemeTextMutedBrush}"/>
+                                    <TextBlock Text="{Binding L[ReportView.ErrorCount]}" FontSize="12" Foreground="{DynamicResource ThemeTextMutedBrush}"/>
                                     <TextBlock Text="{Binding SelectedReport.ErrorCount}" 
                                                FontSize="16" FontWeight="Bold" Foreground="{DynamicResource ThemeTextPrimaryBrush}"/>
                                 </StackPanel>
@@ -185,7 +185,7 @@
                             
                             <Border Background="{DynamicResource ThemeSecondaryBackgroundBrush}" Margin="2" Padding="10">
                                 <StackPanel>
-                                    <TextBlock Text="Sériové číslo" FontSize="12" Foreground="{DynamicResource ThemeTextMutedBrush}"/>
+                                    <TextBlock Text="{Binding L[ReportView.SerialNumberLabel]}" FontSize="12" Foreground="{DynamicResource ThemeTextMutedBrush}"/>
                                     <TextBlock Text="{Binding SelectedReport.SerialNumber}" 
                                                FontSize="12" FontWeight="Bold" Foreground="{DynamicResource ThemeTextPrimaryBrush}" TextTrimming="CharacterEllipsis"/>
                                 </StackPanel>
@@ -195,25 +195,25 @@
                 </Border>
 
                 <StackPanel Grid.Row="2" Orientation="Horizontal">
-                    <Button Content="📖 Zobrazit v aplikaci" 
+                    <Button Content="{Binding L[ReportView.ViewInApp]}" 
                             Command="{Binding ViewGeneratedReportCommand}"
                             Background="{DynamicResource ThemeSecondaryBackgroundBrush}" Foreground="{DynamicResource ThemeTextPrimaryBrush}"
                             BorderBrush="{DynamicResource ThemeBorderBrush}"
                             Padding="14,8" Margin="0,0,8,0"/>
 
-                    <Button Content="📑 Plný report" 
+                    <Button Content="{Binding L[ReportView.FullReport]}" 
                             Command="{Binding OpenFullReportCommand}"
                             IsEnabled="{Binding SelectedReport, Converter={StaticResource NotNullConverter}}"
                             Background="{DynamicResource ThemeInfoBrush}" Foreground="White" 
                             Padding="14,8" Margin="0,0,8,0"/>
 
-                    <Button Content="💾 Exportovat" 
+                    <Button Content="{Binding L[ReportView.Export]}" 
                             Command="{Binding ExportReportCommand}"
                             IsEnabled="{Binding SelectedReport, Converter={StaticResource NotNullConverter}}"
                             Background="{DynamicResource ThemePrimaryBrush}" Foreground="White" 
                             Padding="14,8" Margin="0,0,8,0"/>
                     
-                    <Button Content="🗑️ Smazat" 
+                    <Button Content="{Binding L[ReportView.Delete]}" 
                             Command="{Binding DeleteReportCommand}"
                             IsEnabled="{Binding SelectedReport, Converter={StaticResource NotNullConverter}}"
                             Background="{DynamicResource ThemeDangerBrush}" Foreground="White" 
@@ -243,7 +243,7 @@
                         CornerRadius="8" 
                         Padding="40,30">
                     <StackPanel Spacing="15">
-                        <TextBlock Text="⏳ Zpracovávám..." 
+                        <TextBlock Text="{Binding L[ReportView.Processing]}" 
                                    FontSize="18" 
                                    FontWeight="Bold" 
                                    HorizontalAlignment="Center"

@@ -24,27 +24,27 @@
                 </Grid.ColumnDefinitions>
 
                 <StackPanel Grid.Column="0">
-                    <TextBlock Text="💾 Karty Disků" Classes="PageTitle"/>
-                    <TextBlock Text="Historie testů, oddíly a přípojné body" Classes="PageSubtitle"/>
+                    <TextBlock Text="{Binding L[DiskCardsView.DiskCards]}" Classes="PageTitle"/>
+                    <TextBlock Text="{Binding L[DiskCardsView.Subtitle]}" Classes="PageSubtitle"/>
                 </StackPanel>
 
                 <StackPanel Grid.Column="1" Orientation="Horizontal">
-                    <Button Content="📊 Reporty"
+                    <Button Content="{Binding L[DiskCardsView.Reports]}"
                             Command="{Binding NavigateToReportsCommand}"
                             Background="{DynamicResource ThemePrimaryBrush}" Foreground="White"
                             FontWeight="Bold" Padding="12,6" Margin="0,0,8,0"
                             Cursor="Hand"/>
-                    <Button Content="🏅 Certifikáty"
+                    <Button Content="{Binding L[DiskCardsView.Certificates]}"
                             Command="{Binding NavigateToCertificateBrowserCommand}"
                             Background="{DynamicResource ThemeSuccessBrush}" Foreground="White"
                             FontWeight="Bold" Padding="12,6" Margin="0,0,8,0"
                             Cursor="Hand"/>
-                    <Button Content="🔄 Obnovit"
+                    <Button Content="{Binding L[DiskCardsView.Refresh]}"
                             Command="{Binding RefreshCommand}"
                             Background="{DynamicResource ThemeInfoBrush}" Foreground="White"
                             FontWeight="Bold" Padding="12,6" Margin="0,0,8,0"
                             Cursor="Hand"/>
-                    <Button Content="🏠 Zpět"
+                    <Button Content="{Binding L[Common.Back]}"
                             Command="{Binding NavigateBackCommand}"
                             Background="{DynamicResource ThemeSecondaryBackgroundBrush}" Foreground="{DynamicResource ThemeTextPrimaryBrush}"
                             BorderBrush="{DynamicResource ThemeBorderBrush}"
@@ -64,18 +64,18 @@
                     <ColumnDefinition Width="Auto"/>
                 </Grid.ColumnDefinitions>
 
-                <TextBox Grid.Column="0" Watermark="🔍 Hledat podle modelu, sériového čísla..."
+                <TextBox Grid.Column="0" Watermark="{Binding L[DiskCardsView.SearchWatermark]}"
                          Text="{Binding SearchText}" Width="300" HorizontalAlignment="Left"/>
 
                 <ComboBox Grid.Column="1" ItemsSource="{Binding GradeFilters}"
                           SelectedItem="{Binding SelectedGradeFilter}"
                           Width="100" Margin="10,0,0,0"/>
 
-                <CheckBox Grid.Column="2" Content="Pouze zamčené"
+                <CheckBox Grid.Column="2" Content="{Binding L[DiskCardsView.LockedOnly]}"
                           IsChecked="{Binding ShowLockedOnly}"
                           Margin="10,0,0,0"/>
 
-                <CheckBox Grid.Column="3" Content="Pouze archivované"
+                <CheckBox Grid.Column="3" Content="{Binding L[DiskCardsView.ArchivedOnly]}"
                           IsChecked="{Binding ShowArchivedOnly}"
                           Margin="10,0,0,0"/>
             </Grid>
@@ -99,14 +99,14 @@
                           VerticalGridLinesBrush="{DynamicResource ThemeBorderLightBrush}"
                           DoubleTapped="CardsDataGrid_DoubleTapped">
                     <DataGrid.Columns>
-                        <DataGridTextColumn Header="Model" Binding="{Binding ModelName}" Width="170"/>
-                        <DataGridTextColumn Header="Sériové č." Binding="{Binding SerialNumber}" Width="150"/>
-                        <DataGridTextColumn Header="Kapacita" Binding="{Binding Capacity, StringFormat='{}{0:#,0} B'}" Width="110"/>
-                        <DataGridTextColumn Header="Známka" Binding="{Binding OverallGrade}" Width="60"/>
-                        <DataGridTextColumn Header="Skóre" Binding="{Binding OverallScore, StringFormat={}{0:F0}}" Width="60"/>
-                        <DataGridTextColumn Header="Hodin" Binding="{Binding PowerOnHours, StringFormat='{}{0:#,0}'}" Width="75"/>
-                        <DataGridTextColumn Header="Startů" Binding="{Binding PowerCycleCount, StringFormat='{}{0:#,0}'}" Width="75"/>
-                        <DataGridTemplateColumn Header="Oddíly / přípojné body" Width="*">
+                        <DataGridTextColumn Header="{Binding L[DiskCardsView.Model]}" Binding="{Binding ModelName}" Width="170"/>
+                        <DataGridTextColumn Header="{Binding L[DiskCardsView.SerialNumber]}" Binding="{Binding SerialNumber}" Width="150"/>
+                        <DataGridTextColumn Header="{Binding L[DiskCardsView.Capacity]}" Binding="{Binding Capacity, StringFormat='{}{0:#,0} B'}" Width="110"/>
+                        <DataGridTextColumn Header="{Binding L[DiskCardsView.Grade]}" Binding="{Binding OverallGrade}" Width="60"/>
+                        <DataGridTextColumn Header="{Binding L[DiskCardsView.Score]}" Binding="{Binding OverallScore, StringFormat={}{0:F0}}" Width="60"/>
+                        <DataGridTextColumn Header="{Binding L[DiskCardsView.Hours]}" Binding="{Binding PowerOnHours, StringFormat='{}{0:#,0}'}" Width="75"/>
+                        <DataGridTextColumn Header="{Binding L[DiskCardsView.Starts]}" Binding="{Binding PowerCycleCount, StringFormat='{}{0:#,0}'}" Width="75"/>
+                        <DataGridTemplateColumn Header="{Binding L[DiskCardsView.Volumes]}" Width="*">
                             <DataGridTemplateColumn.CellTemplate>
                                 <DataTemplate>
                                     <ScrollViewer HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Disabled">
@@ -140,24 +140,24 @@
                                 </DataTemplate>
                             </DataGridTemplateColumn.CellTemplate>
                         </DataGridTemplateColumn>
-                        <DataGridTextColumn Header="Testů" Binding="{Binding TestCount}" Width="60"/>
-                        <DataGridTextColumn Header="Poslední test" Binding="{Binding LastTestedAt, StringFormat={}{0:dd.MM.yyyy HH:mm}}" Width="130"/>
-                        <DataGridTemplateColumn Header="Akce" Width="210">
+                        <DataGridTextColumn Header="{Binding L[DiskCardsView.Tests]}" Binding="{Binding TestCount}" Width="60"/>
+                        <DataGridTextColumn Header="{Binding L[DiskCardsView.LastTest]}" Binding="{Binding LastTestedAt, StringFormat={}{0:dd.MM.yyyy HH:mm}}" Width="130"/>
+                        <DataGridTemplateColumn Header="{Binding L[DiskCardsView.Actions]}" Width="210">
                             <DataGridTemplateColumn.CellTemplate>
                                 <DataTemplate>
                                     <StackPanel Orientation="Horizontal" Spacing="4">
-                                        <Button Content="📋 Detail"
+                                        <Button Content="{Binding L[DiskCardsView.Detail]}"
                                                 Command="{Binding $parent[DataGrid].DataContext.ViewCardDetailsCommand}"
                                                 CommandParameter="{Binding}"
                                                 Background="{DynamicResource ThemeInfoBrush}" Foreground="White"
                                                 FontSize="10" Padding="8,4" Cursor="Hand"/>
-                                        <Button Content="📄 Cert."
+                                        <Button Content="{Binding L[DiskCardsView.Cert]}"
                                                 Command="{Binding $parent[DataGrid].DataContext.GenerateCertificateCommand}"
                                                 CommandParameter="{Binding}"
                                                 IsEnabled="{Binding TestCount, Converter={StaticResource IntToBoolConverter}}"
                                                 Background="{DynamicResource ThemeSuccessBrush}" Foreground="White"
                                                 FontSize="10" Padding="8,4" Cursor="Hand"/>
-                                        <Button Content="📁 Archiv"
+                                        <Button Content="{Binding L[DiskCardsView.Archive]}"
                                                 Command="{Binding $parent[DataGrid].DataContext.ArchiveCardCommand}"
                                                 CommandParameter="{Binding}"
                                                 Background="{DynamicResource ThemeWarningBrush}" Foreground="White"
@@ -172,7 +172,7 @@
                 <!-- Loading overlay -->
                 <Panel IsVisible="{Binding IsLoading}" Background="{DynamicResource ThemeOverlayBrush}">
                     <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center">
-                        <TextBlock Text="⏳ Načítám data..." FontSize="16" FontWeight="Bold" HorizontalAlignment="Center" Foreground="{DynamicResource ThemeTextInverseBrush}"/>
+                        <TextBlock Text="{Binding L[DiskCardsView.Loading]}" FontSize="16" FontWeight="Bold" HorizontalAlignment="Center" Foreground="{DynamicResource ThemeTextInverseBrush}"/>
                         <ProgressBar IsIndeterminate="True" Width="200" Margin="0,10,0,0"/>
                     </StackPanel>
                 </Panel>
@@ -181,9 +181,9 @@
                 <Panel IsVisible="{Binding FilteredCount, Converter={StaticResource IntToBoolConverter}, ConverterParameter=Invert}">
                     <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center">
                         <TextBlock Text="📂" FontSize="48" HorizontalAlignment="Center"/>
-                        <TextBlock Text="Žádné karty disků" FontSize="18" FontWeight="Bold"
+                        <TextBlock Text="{Binding L[DiskCardsView.NoCards]}" FontSize="18" FontWeight="Bold"
                                    HorizontalAlignment="Center" Margin="0,10,0,5"/>
-                        <TextBlock Text="Spusťte test disku pro vytvoření nové karty"
+                        <TextBlock Text="{Binding L[DiskCardsView.RunTestHint]}"
                                    FontSize="12" Foreground="{DynamicResource ThemeTextSecondaryBrush}" HorizontalAlignment="Center"/>
                     </StackPanel>
                 </Panel>
@@ -201,8 +201,14 @@
                 <TextBlock Grid.Column="0" Text="{Binding StatusMessage}" Classes="StatusText"/>
 
                 <StackPanel Grid.Column="1" Orientation="Horizontal">
-                    <TextBlock Text="{Binding CardCount, StringFormat='Celkem karet: {0}'}" FontSize="10" Margin="0,0,16,0" Foreground="{DynamicResource ThemeTextMutedBrush}"/>
-                    <TextBlock Text="{Binding FilteredCount, StringFormat='Zobrazeno: {0}'}" FontSize="10" Foreground="{DynamicResource ThemeTextMutedBrush}"/>
+                    <TextBlock FontSize="10" Margin="0,0,16,0" Foreground="{DynamicResource ThemeTextMutedBrush}">
+                        <Run Text="{Binding L[DiskCardsView.TotalCards]}"/>
+                        <Run Text="{Binding CardCount}"/>
+                    </TextBlock>
+                    <TextBlock FontSize="10" Foreground="{DynamicResource ThemeTextMutedBrush}">
+                        <Run Text="{Binding L[DiskCardsView.Shown]}"/>
+                        <Run Text="{Binding FilteredCount}"/>
+                    </TextBlock>
                 </StackPanel>
             </Grid>
         </Border>

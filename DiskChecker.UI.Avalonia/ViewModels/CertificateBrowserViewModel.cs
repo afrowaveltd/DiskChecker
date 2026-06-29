@@ -29,9 +29,9 @@ public partial class CertificateBrowserViewModel : ViewModelBase, INavigableView
     private DiskCertificate? _selectedCertificate;
     private TestSession? _selectedSession;
     private bool _isLoading;
-    private string _statusMessage = "Načítám certifikáty...";
+    private string _statusMessage = "Loading certificates...";
     private string _searchText = string.Empty;
-    private string _selectedGradeFilter = "Všechny";
+    private string _selectedGradeFilter = "All";
     private int _totalCertificateCount;
 
     // Graph properties
@@ -55,7 +55,7 @@ public partial class CertificateBrowserViewModel : ViewModelBase, INavigableView
         _navigationService = navigationService;
         _dialogService = dialogService;
 
-        GradeFilters = new ObservableCollection<string> { "Všechny", "A", "B", "C", "D", "E", "F" };
+        GradeFilters = new ObservableCollection<string> { L.Get("CertificateBrowser.Status.All"), "A", "B", "C", "D", "E", "F" };
     }
 
     #region Properties
@@ -261,13 +261,13 @@ public partial class CertificateBrowserViewModel : ViewModelBase, INavigableView
     public string Notes => SelectedCertificate?.Notes ?? "—";
 
     // Diagnostic
-    public string DiagnosticBadgeText => HasCriticalSignals ? "KRITICKÉ SIGNÁLY" : HasWarningSignals ? "VAROVNÉ SIGNÁLY" : "STABILNÍ PRŮBĚH";
+    public string DiagnosticBadgeText => HasCriticalSignals ? L.Get("CertificateView.Badge.Critical") : HasWarningSignals ? L.Get("CertificateView.Badge.Warning") : L.Get("CertificateView.Badge.Stable");
     public string DiagnosticBadgeBackground => HasCriticalSignals ? "#FDECEC" : HasWarningSignals ? "#FFF4DB" : "#EAF7EE";
     public string DiagnosticBadgeForeground => HasCriticalSignals ? "#B42318" : HasWarningSignals ? "#B54708" : "#027A48";
     public bool HasDiagnosticHighlights => !string.IsNullOrWhiteSpace(DiagnosticHighlightsText);
     public string DiagnosticHighlightsText => BuildDiagnosticHighlights(SelectedCertificate?.Notes);
     public bool HasScoringReasons => !string.IsNullOrWhiteSpace(SelectedCertificate?.Notes);
-    public string ScoringReasonsText => SelectedCertificate?.Notes ?? "Bez významných varování.";
+    public string ScoringReasonsText => SelectedCertificate?.Notes ?? L.Get("CertificateView.NoWarnings");
 
     private bool HasCriticalSignals =>
         !string.IsNullOrWhiteSpace(SelectedCertificate?.Notes) &&
@@ -388,15 +388,15 @@ public partial class CertificateBrowserViewModel : ViewModelBase, INavigableView
     {
         if (SelectedCertificate == null)
         {
-            StatusMessage = "Nejprve vyberte certifikát.";
+            StatusMessage = L.Get("CertificateBrowser.Status.SelectFirst");
             return;
         }
 
-        StatusMessage = $"PDF exportováno: {SelectedCertificate.PdfPath ?? "cesta není k dispozici"}";
+        StatusMessage = string.Format(L.Get("CertificateBrowser.Status.PdfExported"), SelectedCertificate.PdfPath ?? L.Get("Common.Warning"));
         await _dialogService.ShowInfoAsync("PDF Export",
-            $"Certifikát {SelectedCertificate.CertificateNumber}\n\n" +
-            $"PDF cesta: {SelectedCertificate.PdfPath ?? "Není k dispozici – certifikát byl rekonstruován z dat."}\n\n" +
-            "Pro tisk použijte externí PDF prohlížeč.");
+            $"{L.Get("CertificateBrowser.Status.PdfExported")} {SelectedCertificate.CertificateNumber}\n\n" +
+            $"PDF: {SelectedCertificate.PdfPath ?? L.Get("Common.Warning")}\n\n" +
+            L.Get("CertificateBrowser.Status.UseExternalViewer"));
     }
 
     [RelayCommand]
@@ -410,7 +410,7 @@ public partial class CertificateBrowserViewModel : ViewModelBase, INavigableView
                 // Navigate to disk card detail - we'd need ISelectedDiskService for this
                 // For now, navigate back to disk cards
                 _navigationService.NavigateTo<DiskCardsViewModel>();
-                StatusMessage = $"Přesměrováno na karty disků – hledejte {SelectedCertificate.DiskModel}";
+                StatusMessage = string.Format(L.Get("CertificateBrowser.Status.RedirectedToCards"), SelectedCertificate.DiskModel);
             }
         }
     }
@@ -424,7 +424,7 @@ public partial class CertificateBrowserViewModel : ViewModelBase, INavigableView
         try
         {
             IsLoading = true;
-            StatusMessage = "Načítám všechny certifikáty...";
+            StatusMessage = L.Get("CertificateBrowser.Status.LoadingAll");
 
             var allCards = await _diskCardRepository.GetAllAsync();
             var allCertificates = new List<CertificateListItem>();
@@ -461,12 +461,12 @@ public partial class CertificateBrowserViewModel : ViewModelBase, INavigableView
             TotalCertificateCount = AllCertificates.Count;
             ApplyFilters();
 
-            StatusMessage = $"Načteno {TotalCertificateCount} certifikátů z {allCards.Count} disků.";
+            StatusMessage = string.Format(L.Get("CertificateBrowser.Status.Loaded"), TotalCertificateCount, allCards.Count);
         }
         catch (Exception ex)
         {
-            StatusMessage = $"Chyba: {ex.Message}";
-            await _dialogService.ShowErrorAsync("Chyba", $"Nepodařilo se načíst certifikáty: {ex.Message}");
+            StatusMessage = $"{L.Get("Common.Error")}: {ex.Message}";
+            await _dialogService.ShowErrorAsync(L.Get("Common.Error"), string.Format(L.Get("CertificateBrowser.Error.Load"), ex.Message));
         }
         finally
         {
@@ -479,12 +479,12 @@ public partial class CertificateBrowserViewModel : ViewModelBase, INavigableView
         try
         {
             IsLoading = true;
-            StatusMessage = "Načítám detail certifikátu...";
+            StatusMessage = L.Get("CertificateBrowser.Status.LoadingDetail");
 
             var cert = await _diskCardRepository.GetCertificateAsync(certificateId);
             if (cert == null)
             {
-                StatusMessage = "Certifikát nenalezen.";
+                StatusMessage = L.Get("CertificateBrowser.Status.CertNotFound");
                 return;
             }
 
@@ -497,11 +497,11 @@ public partial class CertificateBrowserViewModel : ViewModelBase, INavigableView
             SelectedCertificate = cert;
             await ReconstructGraphAsync(cert);
 
-            StatusMessage = $"Certifikát načten: {cert.CertificateNumber} – {cert.DiskModel}";
+            StatusMessage = string.Format(L.Get("CertificateBrowser.Status.CertLoaded"), cert.CertificateNumber, cert.DiskModel);
         }
         catch (Exception ex)
         {
-            StatusMessage = $"Chyba: {ex.Message}";
+            StatusMessage = string.Format(L.Get("Common.Error"), ex.Message);
         }
         finally
         {
@@ -871,7 +871,7 @@ public partial class CertificateBrowserViewModel : ViewModelBase, INavigableView
                 }
             }
 
-            if (SelectedGradeFilter != "Všechny" && cert.Grade != SelectedGradeFilter)
+            if (SelectedGradeFilter != L.Get("CertificateBrowser.Status.All") && cert.Grade != SelectedGradeFilter)
             {
                 continue;
             }
@@ -881,8 +881,8 @@ public partial class CertificateBrowserViewModel : ViewModelBase, INavigableView
 
         OnPropertyChanged(nameof(FilteredCount));
         StatusMessage = FilteredCertificates.Count < AllCertificates.Count
-            ? $"Zobrazeno {FilteredCertificates.Count} z {AllCertificates.Count} certifikátů"
-            : $"Celkem {AllCertificates.Count} certifikátů";
+            ? string.Format(L.Get("CertificateBrowser.Status.ShowingCount"), FilteredCertificates.Count, AllCertificates.Count)
+            : string.Format(L.Get("CertificateBrowser.Status.TotalCount"), AllCertificates.Count);
     }
 
     #endregion

@@ -25,12 +25,12 @@
                 </Grid.ColumnDefinitions>
 
                 <StackPanel Grid.Column="0">
-                    <TextBlock Text="⚖️ Porovnání Disků" Classes="PageTitle"/>
-                    <TextBlock Text="Srovnání parametrů a stavu vybraných disků" Classes="PageSubtitle"/>
+                    <TextBlock Text="{Binding L[DiskComparison.Title]}" Classes="PageTitle"/>
+                    <TextBlock Text="{Binding L[Comparison.Description]}" Classes="PageSubtitle"/>
                 </StackPanel>
 
                 <StackPanel Grid.Column="1" Orientation="Horizontal">
-                    <Button Content="🔄 Porovnat vybrané"
+                    <Button Content="{Binding L[DiskComparison.CompareSelected]}"
                             Command="{Binding CompareCommand}"
                             IsEnabled="{Binding CanCompare}"
                             Background="{DynamicResource ThemeSuccessBrush}" Foreground="White"
@@ -42,7 +42,7 @@
                             Background="{DynamicResource ThemeInfoBrush}" Foreground="White"
                             FontWeight="Bold" Padding="12,6" Margin="0,0,8,0"
                             Cursor="Hand"/>
-                    <Button Content="🏠 Zpět"
+                    <Button Content="{Binding L[DiskComparison.Back]}"
                             Command="{Binding NavigateBackCommand}"
                             Background="{DynamicResource ThemeSecondaryBackgroundBrush}" Foreground="{DynamicResource ThemeTextPrimaryBrush}"
                             BorderBrush="{DynamicResource ThemeBorderBrush}"
@@ -140,19 +140,19 @@
                             <!-- Header Row -->
                             <Border Grid.Row="0" Grid.ColumnSpan="4" Background="{DynamicResource ThemePanelBackgroundBrush}" Padding="10,5"
                                     BorderBrush="{DynamicResource ThemeBorderBrush}" BorderThickness="0,0,0,1">
-                                <TextBlock Text="📊 Základní informace" FontWeight="Bold" FontSize="14"/>
+                                <TextBlock Text="{Binding L[DiskComparison.BasicInfo]}" FontWeight="Bold" FontSize="14"/>
                             </Border>
 
                             <!-- Labels Column -->
                             <StackPanel Grid.Row="1" Grid.RowSpan="8" Grid.Column="0" Margin="10,5">
                                 <Grid Margin="0,3">
-                                    <TextBlock Text="Model:" FontSize="11"/>
+                                    <TextBlock Text="{Binding L[DiskComparison.Model]}" FontSize="11"/>
                                 </Grid>
                                 <Grid Margin="0,3">
-                                    <TextBlock Text="Sériové číslo:" FontSize="11"/>
+                                    <TextBlock Text="{Binding L[DiskComparison.SerialNumber]}" FontSize="11"/>
                                 </Grid>
                                 <Grid Margin="0,3">
-                                    <TextBlock Text="Kapacita:" FontSize="11"/>
+                                    <TextBlock Text="{Binding L[DiskComparison.Capacity]}" FontSize="11"/>
                                 </Grid>
                                 <Grid Margin="0,3">
                                     <TextBlock Text="Typ disku:" FontSize="11"/>
@@ -161,13 +161,13 @@
                                     <TextBlock Text="Firmware:" FontSize="11"/>
                                 </Grid>
                                 <Grid Margin="0,3">
-                                    <TextBlock Text="Celkové hodnocení:" FontSize="11" FontWeight="Bold"/>
+                                    <TextBlock Text="{Binding L[DiskComparison.OverallRating]}" FontSize="11" FontWeight="Bold"/>
                                 </Grid>
                                 <Grid Margin="0,3">
-                                    <TextBlock Text="Skóre:" FontSize="11"/>
+                                    <TextBlock Text="{Binding L[DiskComparison.Score]}" FontSize="11"/>
                                 </Grid>
                                 <Grid Margin="0,3">
-                                    <TextBlock Text="Poslední test:" FontSize="11"/>
+                                    <TextBlock Text="{Binding L[DiskComparison.LastTest]}" FontSize="11"/>
                                 </Grid>
                             </StackPanel>
 
@@ -243,10 +243,10 @@
                             <!-- SMART Labels -->
                             <StackPanel Grid.Row="10" Grid.RowSpan="6" Grid.Column="0" Margin="10,5">
                                 <Grid Margin="0,3">
-                                    <TextBlock Text="Teplota:" FontSize="11"/>
+                                    <TextBlock Text="{Binding L[DiskComparison.Temperature]}" FontSize="11"/>
                                 </Grid>
                                 <Grid Margin="0,3">
-                                    <TextBlock Text="Provozní hodiny:" FontSize="11"/>
+                                    <TextBlock Text="{Binding L[DiskComparison.PowerOnHours]}" FontSize="11"/>
                                 </Grid>
                                 <Grid Margin="0,3">
                                     <TextBlock Text="Reallocated sektory:" FontSize="11"/>
@@ -255,10 +255,10 @@
                                     <TextBlock Text="Pending sektory:" FontSize="11"/>
                                 </Grid>
                                 <Grid Margin="0,3">
-                                    <TextBlock Text="Chyby čtení:" FontSize="11"/>
+                                    <TextBlock Text="{Binding L[DiskComparison.ReadErrors]}" FontSize="11"/>
                                 </Grid>
                                 <Grid Margin="0,3">
-                                    <TextBlock Text="Počet startů:" FontSize="11"/>
+                                    <TextBlock Text="{Binding L[DiskComparison.StartCount]}" FontSize="11"/>
                                 </Grid>
                             </StackPanel>
 
@@ -313,7 +313,7 @@
                 <Panel IsVisible="{Binding HasComparison}" Margin="0,16,0,0">
                     <Border Background="{DynamicResource ThemePrimaryLightBrush}" BorderBrush="{DynamicResource ThemeSuccessBrush}" BorderThickness="1" CornerRadius="8" Padding="12">
                         <StackPanel>
-                            <TextBlock Text="🏆 Doporučení:" FontWeight="Bold" FontSize="13" Margin="0,0,0,5"/>
+                            <TextBlock Text="{Binding L[DiskComparison.Recommendation]}" FontWeight="Bold" FontSize="13" Margin="0,0,0,5"/>
                             <TextBlock Text="{Binding Recommendation}" TextWrapping="Wrap" FontSize="11"/>
                         </StackPanel>
                     </Border>
@@ -324,9 +324,9 @@
                     <Border Background="{DynamicResource ThemeSecondaryBackgroundBrush}" BorderBrush="{DynamicResource ThemeBorderBrush}" BorderThickness="1" CornerRadius="8" Padding="36">
                         <StackPanel HorizontalAlignment="Center">
                             <TextBlock Text="⚖️" FontSize="42" HorizontalAlignment="Center"/>
-                            <TextBlock Text="Vyberte dva disky k porovnání" FontSize="17" FontWeight="Bold"
+                            <TextBlock Text="{Binding L[DiskComparison.SelectTwoDisks]}" FontSize="17" FontWeight="Bold"
                                        HorizontalAlignment="Center" Margin="0,10,0,5"/>
-                            <TextBlock Text="Zvolte disky z rozbalovacích seznamů nahoře"
+                            <TextBlock Text="{Binding L[DiskComparison.SelectHint]}"
                                        FontSize="12" Foreground="{DynamicResource ThemeTextSecondaryBrush}" HorizontalAlignment="Center"/>
                         </StackPanel>
                     </Border>
@@ -346,7 +346,7 @@
 
                 <StackPanel Grid.Column="1" Orientation="Horizontal">
                     <Panel IsVisible="{Binding IsComparing}">
-                        <TextBlock Text="⏳ Porovnávám..." FontSize="10" Foreground="{DynamicResource ThemeWarningBrush}"/>
+                        <TextBlock Text="{Binding L[DiskComparison.Comparing]}" FontSize="10" Foreground="{DynamicResource ThemeWarningBrush}"/>
                     </Panel>
                 </StackPanel>
             </Grid>

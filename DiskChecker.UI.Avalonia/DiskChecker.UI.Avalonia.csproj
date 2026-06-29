@@ -18,6 +18,7 @@
     <AvaloniaResource Include="Assets\disk-checker-icon.svg" />
     <Content Include="Assets\icon.ico" CopyToOutputDirectory="PreserveNewest" />
     <Content Include="appsettings.json" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="Locales\**" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
   <!-- Make .axaml.cs files appear as dependents of their .axaml files in the IDE -->
