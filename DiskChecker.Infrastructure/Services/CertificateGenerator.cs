@@ -271,7 +271,9 @@ public class CertificateGenerator : ICertificateGenerator
             var gradeText = cert.Grade;
             float gradeTextWidth = gradeFont.MeasureText(gradeText);
             float gradeX = sealX + (sealSize - gradeTextWidth) / 2f;
-            float gradeY = sealY + sealSize / 2f + gradeFont.Size / 3f;
+            // Center vertically: DrawText adds font.Size, so we subtract it here
+            // to place baseline correctly for visual centering
+            float gradeY = sealY + (sealSize - gradeFont.Size) / 2f;
             DrawText(canvas, gradeText, gradeX, gradeY, gradeFont, gradePaint);
 
             var scoreText = $"Skóre: {cert.Score:F0}/100";
@@ -831,7 +833,8 @@ public class CertificateGenerator : ICertificateGenerator
             var gradeText = certificate.Grade;
             float gradeTextWidth = gradeFont.MeasureText(gradeText);
             float gradeX = sealX + (sealSize - gradeTextWidth) / 2f;
-            float gradeY = sealY + sealSize / 2f + gradeFont.Size / 3f;
+            // Center vertically: DrawText adds font.Size, so we subtract it here
+            float gradeY = sealY + (sealSize - gradeFont.Size) / 2f;
             DrawText(canvas, gradeText, gradeX, gradeY, gradeFont, gradePaint);
 
             // Footer
