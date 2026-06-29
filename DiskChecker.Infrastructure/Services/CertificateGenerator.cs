@@ -266,7 +266,6 @@ public class CertificateGenerator : ICertificateGenerator
             const float sealSize = 150f;
             float sealX = 943f;
             float sealY = y + 78f;
-            canvas.DrawOval(sealX, sealY, sealSize, sealSize, gradeStrokePaint);
 
             var gradeText = cert.Grade;
             float gradeTextWidth = gradeFont.MeasureText(gradeText);
@@ -828,7 +827,6 @@ public class CertificateGenerator : ICertificateGenerator
             float sealX = labelWidth - 160;
             float sealY = 40;
             float sealSize = 100f;
-            canvas.DrawOval(sealX, sealY, sealSize, sealSize, gradeStrokePaint);
 
             var gradeText = certificate.Grade;
             float gradeTextWidth = gradeFont.MeasureText(gradeText);
