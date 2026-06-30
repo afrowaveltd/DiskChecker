@@ -23,6 +23,12 @@ namespace DiskChecker.Core.Models
         public string? TestId { get; set; }
         
         // SMART status
+        /// <summary>
+        /// True only when smartctl explicitly reported an overall SMART health value.
+        /// If false, missing SMART data / adapter passthrough failure must be treated as unknown,
+        /// not as disk failure.
+        /// </summary>
+        public bool SmartStatusKnown { get; set; }
         public bool IsHealthy { get; set; }
         public bool IsEnabled { get; set; }
         public bool TestPassed { get; set; }

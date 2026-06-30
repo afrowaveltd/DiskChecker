@@ -327,7 +327,7 @@
                                         </Grid>
 
                                         <!-- Click Overlay -->
-                                        <Button Grid.Row="0" Grid.RowSpan="5"
+                                        <Button Grid.Row="0" Grid.RowSpan="4"
                                                 ZIndex="1"
                                                 Command="{Binding $parent[ItemsControl].DataContext.SelectDiskCommand}"
                                                 CommandParameter="{Binding}"

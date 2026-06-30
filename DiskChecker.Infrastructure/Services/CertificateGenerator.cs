@@ -320,8 +320,8 @@ public class CertificateGenerator : ICertificateGenerator
             DrawText(canvas, string.Format(_locale?.GetString("CertificatePdf.TestDuration", "Doba: {{0}}") ?? "Doba: {{0}}", cert.TestDuration.ToString(@"hh\:mm\:ss")), 64, y + 46, valueFont, textPaint);
             DrawText(canvas, string.Format(_locale?.GetString("CertificatePdf.ErrorCount", "Chyby: {{0}}") ?? "Chyby: {{0}}", cert.ErrorCount), 64, y + 76, valueFont, textPaint);
             DrawText(canvas, string.Format(_locale?.GetString("CertificatePdf.TemperatureRange", "Teplota: {{0}}") ?? "Teplota: {{0}}", cert.TemperatureRange), 64, y + 106, valueFont, textPaint);
-            DrawText(canvas, string.Format(_locale?.GetString("CertificatePdf.AvgWriteSpeed", "Průměrný zápis: {{0}} MB/s") ?? "Průměrný zápis: {{0}} MB/s", cert.AvgWriteSpeed), 520, y + 16, valueFont, textPaint);
-            DrawText(canvas, string.Format(_locale?.GetString("CertificatePdf.AvgReadSpeed", "Průměrné čtení: {{0}} MB/s") ?? "Průměrné čtení: {{0}} MB/s", cert.AvgReadSpeed), 520, y + 46, valueFont, textPaint);
+            DrawText(canvas, string.Format(_locale?.GetString("CertificatePdf.AvgWriteSpeed", "Průměrný zápis: {0} MB/s") ?? "Průměrný zápis: {0} MB/s", FormatSpeedForPdf(cert.AvgWriteSpeed, notAvailableText)), 520, y + 16, valueFont, textPaint);
+            DrawText(canvas, string.Format(_locale?.GetString("CertificatePdf.AvgReadSpeed", "Průměrné čtení: {0} MB/s") ?? "Průměrné čtení: {0} MB/s", FormatSpeedForPdf(cert.AvgReadSpeed, notAvailableText)), 520, y + 46, valueFont, textPaint);
             DrawText(canvas, string.Format(_locale?.GetString("CertificatePdf.HealthStatus", "Stav: {{0}}") ?? "Stav: {{0}}", cert.HealthStatus), 520, y + 76, valueFont, textPaint);
 
             if (isSanitizationTest)
@@ -586,6 +586,13 @@ public class CertificateGenerator : ICertificateGenerator
         var write = cert.WriteProfilePoints?.ToList() ?? new List<double>();
         var read = cert.ReadProfilePoints?.ToList() ?? new List<double>();
         return (write, read);
+    }
+
+    private static string FormatSpeedForPdf(double value, string notAvailableText)
+    {
+        return value > 0
+            ? value.ToString("F1", CultureInfo.InvariantCulture)
+            : notAvailableText;
     }
 
     private static void DrawProfilePolyline(

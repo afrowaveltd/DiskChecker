@@ -22,6 +22,7 @@ public partial class CertificateBrowserViewModel : ViewModelBase, INavigableView
     private readonly IDiskCardRepository _diskCardRepository;
     private readonly INavigationService _navigationService;
     private readonly IDialogService _dialogService;
+    private readonly ICertificateGenerator _certificateGenerator;
 
     private ObservableCollection<CertificateListItem> _allCertificates = new();
     private ObservableCollection<CertificateListItem> _filteredCertificates = new();
@@ -49,11 +50,13 @@ public partial class CertificateBrowserViewModel : ViewModelBase, INavigableView
     public CertificateBrowserViewModel(
         IDiskCardRepository diskCardRepository,
         INavigationService navigationService,
-        IDialogService dialogService)
+        IDialogService dialogService,
+        ICertificateGenerator certificateGenerator)
     {
         _diskCardRepository = diskCardRepository;
         _navigationService = navigationService;
         _dialogService = dialogService;
+        _certificateGenerator = certificateGenerator;
 
         GradeFilters = new ObservableCollection<string> { L.Get("CertificateBrowser.Status.All"), "A", "B", "C", "D", "E", "F" };
     }
@@ -392,11 +395,29 @@ public partial class CertificateBrowserViewModel : ViewModelBase, INavigableView
             return;
         }
 
-        StatusMessage = string.Format(L.Get("CertificateBrowser.Status.PdfExported"), SelectedCertificate.PdfPath ?? L.Get("Common.Warning"));
-        await _dialogService.ShowInfoAsync("PDF Export",
-            $"{L.Get("CertificateBrowser.Status.PdfExported")} {SelectedCertificate.CertificateNumber}\n\n" +
-            $"PDF: {SelectedCertificate.PdfPath ?? L.Get("Common.Warning")}\n\n" +
-            L.Get("CertificateBrowser.Status.UseExternalViewer"));
+        try
+        {
+            IsLoading = true;
+            await HydrateCertificateForPdfAsync(SelectedCertificate);
+            var pdfPath = await _certificateGenerator.GeneratePdfAsync(SelectedCertificate);
+            SelectedCertificate.PdfPath = pdfPath;
+            SelectedCertificate.PdfGenerated = true;
+            await _diskCardRepository.UpdateCertificateAsync(SelectedCertificate);
+
+            StatusMessage = string.Format(L.Get("CertificateBrowser.Status.PdfExported"), pdfPath);
+            await _dialogService.ShowInfoAsync("PDF Export",
+                string.Format(L.Get("CertificateBrowser.Status.PdfExported"), pdfPath) + "\n\n" +
+                L.Get("CertificateBrowser.Status.UseExternalViewer"));
+        }
+        catch (Exception ex)
+        {
+            StatusMessage = $"{L.Get("Common.Error")}: {ex.Message}";
+            await _dialogService.ShowErrorAsync(L.Get("Common.Error"), ex.Message);
+        }
+        finally
+        {
+            IsLoading = false;
+        }
     }
 
     [RelayCommand]
@@ -612,6 +633,64 @@ public partial class CertificateBrowserViewModel : ViewModelBase, INavigableView
         ChartXAxisStartLabel = defaults.ChartXAxisStartLabel;
         ChartXAxisMidLabel = defaults.ChartXAxisMidLabel;
         ChartXAxisEndLabel = defaults.ChartXAxisEndLabel;
+    }
+
+    private async Task HydrateCertificateForPdfAsync(DiskCertificate certificate)
+    {
+        if (certificate.TestSessionId <= 0)
+        {
+            return;
+        }
+
+        var session = await _diskCardRepository.GetTestSessionWithoutSamplesAsync(certificate.TestSessionId);
+        if (session != null)
+        {
+            _selectedSession = session;
+            certificate.ChartImagePath = session.ChartImagePath;
+            if (certificate.ErrorCount == 0)
+            {
+                certificate.ErrorCount = Math.Max(0, session.WriteErrors) + Math.Max(0, session.ReadErrors) + Math.Max(0, session.VerificationErrors);
+            }
+
+            if (string.IsNullOrWhiteSpace(certificate.TemperatureRange) || certificate.TemperatureRange == "N/A")
+            {
+                certificate.TemperatureRange = session.StartTemperature.HasValue && session.MaxTemperature.HasValue
+                    ? $"{session.StartTemperature.Value}°C - {session.MaxTemperature.Value}°C"
+                    : certificate.TemperatureRange;
+            }
+        }
+
+        var (writeSamples, readSamples) = await _diskCardRepository.GetSpeedSampleSeriesAsync(certificate.TestSessionId);
+        var writeValues = writeSamples.Select(s => s.SpeedMBps).Where(v => v > 0).ToList();
+        var readValues = readSamples.Select(s => s.SpeedMBps).Where(v => v > 0).ToList();
+
+        if (certificate.AvgWriteSpeed <= 0 && writeValues.Count > 0) certificate.AvgWriteSpeed = writeValues.Average();
+        if (certificate.MaxWriteSpeed <= 0 && writeValues.Count > 0) certificate.MaxWriteSpeed = writeValues.Max();
+        if (certificate.AvgReadSpeed <= 0 && readValues.Count > 0) certificate.AvgReadSpeed = readValues.Average();
+        if (certificate.MaxReadSpeed <= 0 && readValues.Count > 0) certificate.MaxReadSpeed = readValues.Max();
+
+        certificate.WriteProfilePoints = DownsampleSpeedValues(writeValues, GraphTargetPoints);
+        certificate.ReadProfilePoints = DownsampleSpeedValues(readValues, GraphTargetPoints);
+    }
+
+    private static List<double> DownsampleSpeedValues(List<double> values, int targetPoints)
+    {
+        values = values.Where(v => v > 0).ToList();
+        if (values.Count <= targetPoints)
+        {
+            return values;
+        }
+
+        var result = new List<double>(targetPoints);
+        var bucketSize = values.Count / (double)targetPoints;
+        for (var i = 0; i < targetPoints; i++)
+        {
+            var start = (int)Math.Floor(i * bucketSize);
+            var end = (int)Math.Floor((i + 1) * bucketSize);
+            end = Math.Clamp(end, start + 1, values.Count);
+            result.Add(values.Skip(start).Take(end - start).Average());
+        }
+        return result;
     }
 
     private static CertificateGraphData BuildGraphDataFromValues(

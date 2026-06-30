@@ -1830,6 +1830,34 @@ public partial class SurfaceTestViewModel : ViewModelBase, INavigableViewModel, 
    private void GoBack() => _navigationService.NavigateTo<DiskSelectionViewModel>();
 
    [RelayCommand]
+   private async Task ToggleLockDiskAsync()
+   {
+      if(SelectedDrive == null)
+      {
+         return;
+      }
+
+      if(SelectedDrive.IsSystemDisk)
+      {
+         StatusMessage = "Systémový disk nelze odemknout - je chráněn automaticky";
+         return;
+      }
+
+      if(IsLocked)
+      {
+         await _settingsService.UnlockDiskAsync(SelectedDrive.Path);
+         StatusMessage = $"Disk {SelectedDrive.Name ?? SelectedDrive.Path} odemčen";
+      }
+      else
+      {
+         await _settingsService.LockDiskAsync(SelectedDrive.Path);
+         StatusMessage = $"Disk {SelectedDrive.Name ?? SelectedDrive.Path} zamčen";
+      }
+
+      await UpdateLockStatusAsync(SelectedDrive);
+   }
+
+   [RelayCommand]
    private void SelectProfile(TestProfileItem? p)
    {
       if(p == null) return;

@@ -46,6 +46,7 @@ public static class SmartctlJsonParser
                 smartStatus.ValueKind == JsonValueKind.Object &&
                 smartStatus.TryGetProperty("passed", out var passed))
             {
+                result.SmartStatusKnown = true;
                 result.IsHealthy = passed.GetBoolean();
                 result.TestPassed = result.IsHealthy;
             }
@@ -53,6 +54,7 @@ public static class SmartctlJsonParser
             else if (root.TryGetProperty("smart_status", out var smartStatusDirect) &&
                      (smartStatusDirect.ValueKind == JsonValueKind.True || smartStatusDirect.ValueKind == JsonValueKind.False))
             {
+                result.SmartStatusKnown = true;
                 result.IsHealthy = smartStatusDirect.GetBoolean();
                 result.TestPassed = result.IsHealthy;
             }
@@ -893,7 +895,8 @@ public static class SmartctlJsonParser
     {
         // Detect failing attributes
         var failingAttrs = new List<string>();
-        bool isFailing = !result.IsHealthy;
+        var smartOverallFailed = result.SmartStatusKnown && !result.IsHealthy;
+        bool isFailing = smartOverallFailed;
         string failurePrediction = string.Empty;
 
         if (result.Attributes != null)
@@ -927,7 +930,7 @@ public static class SmartctlJsonParser
             {
                 failurePrediction = $"⚠️ Disk měl kritické atributy v minulosti — {failingAttrs.Count} atributů pod thresholdem. Zvažte výměnu.";
             }
-            else if (!result.IsHealthy)
+            else if (smartOverallFailed)
             {
                 failurePrediction = "⚠️ SMART overall-health: FAILED! Disk je v kritickém stavu. Zálohujte data a vyměňte disk.";
             }
@@ -939,7 +942,7 @@ public static class SmartctlJsonParser
             SerialNumber = result.SerialNumber ?? "",
             FirmwareVersion = result.FirmwareVersion ?? "",
             DeviceType = result.DeviceType ?? "Unknown",
-            IsHealthy = result.IsHealthy,
+            IsHealthy = result.SmartStatusKnown ? result.IsHealthy : true,
             IsFailing = isFailing,
             FailurePrediction = failurePrediction,
             FailingAttributes = failingAttrs,
