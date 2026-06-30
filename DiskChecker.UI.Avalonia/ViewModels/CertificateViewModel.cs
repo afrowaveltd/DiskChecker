@@ -127,6 +127,31 @@ public partial class CertificateViewModel : ViewModelBase, INavigableViewModel
             OnPropertyChanged(nameof(SmartPowerCyclesText));
             OnPropertyChanged(nameof(SmartReallocatedSectorsText));
             OnPropertyChanged(nameof(SmartPendingSectorsText));
+            OnPropertyChanged(nameof(SanitizationPerformed));
+            OnPropertyChanged(nameof(SanitizationMethodText));
+            OnPropertyChanged(nameof(DataVerifiedText));
+            OnPropertyChanged(nameof(PartitionSchemeText));
+            OnPropertyChanged(nameof(FileSystemText));
+            OnPropertyChanged(nameof(VolumeLabelText));
+            OnPropertyChanged(nameof(TestTypeLine));
+            OnPropertyChanged(nameof(TestDurationLine));
+            OnPropertyChanged(nameof(ErrorsLine));
+            OnPropertyChanged(nameof(TemperatureRangeLine));
+            OnPropertyChanged(nameof(AvgWriteSpeedLine));
+            OnPropertyChanged(nameof(AvgReadSpeedLine));
+            OnPropertyChanged(nameof(HealthStatusLine));
+            OnPropertyChanged(nameof(RecommendedLine));
+            OnPropertyChanged(nameof(SmartPowerOnHoursLine));
+            OnPropertyChanged(nameof(SmartPowerCyclesLine));
+            OnPropertyChanged(nameof(SmartReallocatedSectorsLine));
+            OnPropertyChanged(nameof(SmartPendingSectorsLine));
+            OnPropertyChanged(nameof(SeekSummaryLine));
+            OnPropertyChanged(nameof(Sanitize1WriteLine));
+            OnPropertyChanged(nameof(Sanitize2WriteLine));
+            OnPropertyChanged(nameof(Sanitize1ReadLine));
+            OnPropertyChanged(nameof(Sanitize2ReadLine));
+            OnPropertyChanged(nameof(WriteSpeedChangeLine));
+            OnPropertyChanged(nameof(ReadSpeedChangeLine));
          }
       }
    }
@@ -320,6 +345,50 @@ public partial class CertificateViewModel : ViewModelBase, INavigableViewModel
    public string SmartPendingSectorsText => (Certificate?.PendingSectors ?? 0).ToString(CultureInfo.InvariantCulture);
    public bool Recommended => Certificate?.Recommended ?? false;
    public string RecommendationText => Certificate?.RecommendationNotes ?? "Není k dispozici";
+
+   public string TestTypeLine => string.Format(L.Get("CertificateView.TestTypeFormat"), TestType);
+   public string TestDurationLine => string.Format(L.Get("CertificateView.TestDurationFormat"), TestDuration);
+   public string ErrorsLine => string.Format(L.Get("CertificateView.ErrorsFormat"), Errors);
+   public string TemperatureRangeLine => string.Format(L.Get("CertificateView.TemperatureFormat"), TemperatureRange);
+   public string AvgWriteSpeedLine => string.Format(L.Get("CertificateView.AvgWriteSpeedFormat"), AvgWriteSpeed);
+   public string AvgReadSpeedLine => string.Format(L.Get("CertificateView.AvgReadSpeedFormat"), AvgReadSpeed);
+   public string HealthStatusLine => string.Format(L.Get("CertificateView.HealthStatusFormat"), HealthStatus);
+   public string RecommendedLine => string.Format(L.Get("CertificateView.RecommendedFormat"), Recommended);
+   public string SmartPowerOnHoursLine => string.Format(L.Get("CertificateView.PowerOnHoursFormat"), SmartPowerOnHoursText);
+   public string SmartPowerCyclesLine => string.Format(L.Get("CertificateView.PowerCyclesFormat"), SmartPowerCyclesText);
+   public string SmartReallocatedSectorsLine => string.Format(L.Get("CertificateView.ReallocatedSectorsFormat"), SmartReallocatedSectorsText);
+   public string SmartPendingSectorsLine => string.Format(L.Get("CertificateView.PendingSectorsFormat"), SmartPendingSectorsText);
+   public string SeekSummaryLine => string.Format(L.Get("CertificateView.SeekSummaryFormat"), SeekTestSummaryText);
+   public string Sanitize1WriteLine => string.Format(L.Get("CertificateView.SanitizePass1Format"), Sanitize1WriteText);
+   public string Sanitize2WriteLine => string.Format(L.Get("CertificateView.SanitizePass2Format"), Sanitize2WriteText);
+   public string Sanitize1ReadLine => string.Format(L.Get("CertificateView.SanitizePass1Format"), Sanitize1ReadText);
+   public string Sanitize2ReadLine => string.Format(L.Get("CertificateView.SanitizePass2Format"), Sanitize2ReadText);
+   public string WriteSpeedChangeLine => string.Format(L.Get("CertificateView.ChangeFormat"), WriteSpeedChangeText);
+   public string ReadSpeedChangeLine => string.Format(L.Get("CertificateView.ChangeFormat"), ReadSpeedChangeText);
+
+   // ── Sanitization details ──
+
+   public bool SanitizationPerformed => Certificate?.SanitizationPerformed == true;
+
+   public string SanitizationMethodText => string.IsNullOrWhiteSpace(Certificate?.SanitizationMethod)
+       ? "—"
+       : Certificate.SanitizationMethod;
+
+   public string DataVerifiedText => Certificate?.DataVerified == true
+       ? L.Get("CertificateView.Yes")
+       : L.Get("CertificateView.No");
+
+   public string PartitionSchemeText => string.IsNullOrWhiteSpace(Certificate?.PartitionScheme)
+       ? "—"
+       : Certificate.PartitionScheme;
+
+   public string FileSystemText => string.IsNullOrWhiteSpace(Certificate?.FileSystem)
+       ? "—"
+       : Certificate.FileSystem;
+
+   public string VolumeLabelText => string.IsNullOrWhiteSpace(Certificate?.VolumeLabel)
+       ? "—"
+       : Certificate.VolumeLabel;
 
    // ── Seek test metrics (Absolute Destructive Test) ──
 
@@ -530,6 +599,21 @@ public partial class CertificateViewModel : ViewModelBase, INavigableViewModel
          StatusMessage = string.Format(L.Get("Common.Error"), ex.Message);
          await _dialogService.ShowErrorAsync(L.Get("Common.Error"), string.Format(L.Get("CertificateView.Error.ExportPdf"), ex.Message));
       }
+      catch(ArgumentException ex)
+      {
+         StatusMessage = string.Format(L.Get("Common.Error"), ex.Message);
+         await _dialogService.ShowErrorAsync(L.Get("Common.Error"), string.Format(L.Get("CertificateView.Error.ExportPdf"), ex.Message));
+      }
+      catch(FileNotFoundException ex)
+      {
+         StatusMessage = string.Format(L.Get("Common.Error"), ex.Message);
+         await _dialogService.ShowErrorAsync(L.Get("Common.Error"), string.Format(L.Get("CertificateView.Error.ExportPdf"), ex.Message));
+      }
+      catch(IOException ex)
+      {
+         StatusMessage = string.Format(L.Get("Common.Error"), ex.Message);
+         await _dialogService.ShowErrorAsync(L.Get("Common.Error"), string.Format(L.Get("CertificateView.Error.ExportPdf"), ex.Message));
+      }
       finally
       {
          IsLoading = false;
@@ -576,6 +660,18 @@ public partial class CertificateViewModel : ViewModelBase, INavigableViewModel
          StatusMessage = $"Chyba tisku: {ex.Message}";
          PrintProgressMessage = string.Empty;
          await _dialogService.ShowErrorAsync(L.Get("Common.Error"), string.Format(L.Get("CertificateView.Error.PrintPrepare"), ex.Message));
+      }
+      catch(ArgumentException ex)
+      {
+         StatusMessage = $"Chyba tisku: {ex.Message}";
+         PrintProgressMessage = string.Empty;
+         await _dialogService.ShowErrorAsync(L.Get("Common.Error"), string.Format(L.Get("CertificateView.Error.PrintPrepare"), ex.Message));
+      }
+      catch(FileNotFoundException ex)
+      {
+         StatusMessage = $"Chyba tisku: {ex.Message}";
+         PrintProgressMessage = string.Empty;
+         await _dialogService.ShowErrorAsync(L.Get("Common.Error"), string.Format(L.Get("CertificateView.Error.OpenPdf"), ex.Message));
       }
       catch(IOException ex)
       {
@@ -625,6 +721,16 @@ public partial class CertificateViewModel : ViewModelBase, INavigableViewModel
       {
          StatusMessage = $"Chyba tisku štítku: {ex.Message}";
          await _dialogService.ShowErrorAsync(L.Get("Common.Error"), string.Format(L.Get("CertificateView.Error.PrintLabelPrepare"), ex.Message));
+      }
+      catch(ArgumentException ex)
+      {
+         StatusMessage = $"Chyba tisku štítku: {ex.Message}";
+         await _dialogService.ShowErrorAsync(L.Get("Common.Error"), string.Format(L.Get("CertificateView.Error.PrintLabelPrepare"), ex.Message));
+      }
+      catch(FileNotFoundException ex)
+      {
+         StatusMessage = $"Chyba tisku štítku: {ex.Message}";
+         await _dialogService.ShowErrorAsync(L.Get("Common.Error"), string.Format(L.Get("CertificateView.Error.OpenLabel"), ex.Message));
       }
       catch(IOException ex)
       {
@@ -917,6 +1023,7 @@ public partial class CertificateViewModel : ViewModelBase, INavigableViewModel
       ArgumentNullException.ThrowIfNull(certificate);
 
       await EnsureCertificateGraphDataAsync(certificate);
+      RefreshCertificateResultProperties();
 
       if(updateView)
       {
@@ -973,9 +1080,76 @@ public partial class CertificateViewModel : ViewModelBase, INavigableViewModel
       {
          certificate.ReadProfilePoints = DownsampleSpeedSamples(_readGraphSamples.Select(s => s.SpeedMBps), 32);
       }
-    }
 
-    private async Task<(List<SpeedSample> WriteSamples, List<SpeedSample> ReadSamples)> LoadCertificateGraphSamplesProgressiveAsync(int sessionId)
+      BackfillCertificatePerformanceFromSamples(certificate, _writeGraphSamples, _readGraphSamples);
+   }
+
+   private static void BackfillCertificatePerformanceFromSamples(
+      DiskCertificate certificate,
+      IReadOnlyList<SpeedSample> writeSamples,
+      IReadOnlyList<SpeedSample> readSamples)
+   {
+      var writeValues = writeSamples.Where(s => s.SpeedMBps > 0).Select(s => s.SpeedMBps).ToList();
+      var readValues = readSamples.Where(s => s.SpeedMBps > 0).Select(s => s.SpeedMBps).ToList();
+
+      if(certificate.AvgWriteSpeed <= 0 && writeValues.Count > 0)
+      {
+         certificate.AvgWriteSpeed = writeValues.Average();
+      }
+
+      if(certificate.MaxWriteSpeed <= 0 && writeValues.Count > 0)
+      {
+         certificate.MaxWriteSpeed = writeValues.Max();
+      }
+
+      if(certificate.AvgReadSpeed <= 0 && readValues.Count > 0)
+      {
+         certificate.AvgReadSpeed = readValues.Average();
+      }
+
+      if(certificate.MaxReadSpeed <= 0 && readValues.Count > 0)
+      {
+         certificate.MaxReadSpeed = readValues.Max();
+      }
+   }
+
+   private void RefreshCertificateResultProperties()
+   {
+      OnPropertyChanged(nameof(TestDuration));
+      OnPropertyChanged(nameof(Errors));
+      OnPropertyChanged(nameof(TemperatureRange));
+      OnPropertyChanged(nameof(AvgWriteSpeed));
+      OnPropertyChanged(nameof(AvgReadSpeed));
+      OnPropertyChanged(nameof(HealthStatus));
+      OnPropertyChanged(nameof(Recommended));
+      OnPropertyChanged(nameof(SanitizationPerformed));
+      OnPropertyChanged(nameof(SanitizationMethodText));
+      OnPropertyChanged(nameof(DataVerifiedText));
+      OnPropertyChanged(nameof(PartitionSchemeText));
+      OnPropertyChanged(nameof(FileSystemText));
+      OnPropertyChanged(nameof(VolumeLabelText));
+      OnPropertyChanged(nameof(TestTypeLine));
+      OnPropertyChanged(nameof(TestDurationLine));
+      OnPropertyChanged(nameof(ErrorsLine));
+      OnPropertyChanged(nameof(TemperatureRangeLine));
+      OnPropertyChanged(nameof(AvgWriteSpeedLine));
+      OnPropertyChanged(nameof(AvgReadSpeedLine));
+      OnPropertyChanged(nameof(HealthStatusLine));
+      OnPropertyChanged(nameof(RecommendedLine));
+      OnPropertyChanged(nameof(SmartPowerOnHoursLine));
+      OnPropertyChanged(nameof(SmartPowerCyclesLine));
+      OnPropertyChanged(nameof(SmartReallocatedSectorsLine));
+      OnPropertyChanged(nameof(SmartPendingSectorsLine));
+      OnPropertyChanged(nameof(SeekSummaryLine));
+      OnPropertyChanged(nameof(Sanitize1WriteLine));
+      OnPropertyChanged(nameof(Sanitize2WriteLine));
+      OnPropertyChanged(nameof(Sanitize1ReadLine));
+      OnPropertyChanged(nameof(Sanitize2ReadLine));
+      OnPropertyChanged(nameof(WriteSpeedChangeLine));
+      OnPropertyChanged(nameof(ReadSpeedChangeLine));
+   }
+
+   private async Task<(List<SpeedSample> WriteSamples, List<SpeedSample> ReadSamples)> LoadCertificateGraphSamplesProgressiveAsync(int sessionId)
     {
        var writeSamples = new List<SpeedSample>();
        var readSamples = new List<SpeedSample>();

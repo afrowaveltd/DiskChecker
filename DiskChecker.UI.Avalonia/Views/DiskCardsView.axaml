@@ -146,18 +146,18 @@
                             <DataGridTemplateColumn.CellTemplate>
                                 <DataTemplate>
                                     <StackPanel Orientation="Horizontal" Spacing="4">
-                                        <Button Content="{Binding L[DiskCardsView.Detail]}"
+                                        <Button Content="{Binding $parent[DataGrid].DataContext.L[DiskCardsView.Detail]}"
                                                 Command="{Binding $parent[DataGrid].DataContext.ViewCardDetailsCommand}"
                                                 CommandParameter="{Binding}"
                                                 Background="{DynamicResource ThemeInfoBrush}" Foreground="White"
                                                 FontSize="10" Padding="8,4" Cursor="Hand"/>
-                                        <Button Content="{Binding L[DiskCardsView.Cert]}"
+                                        <Button Content="{Binding $parent[DataGrid].DataContext.L[DiskCardsView.Cert]}"
                                                 Command="{Binding $parent[DataGrid].DataContext.GenerateCertificateCommand}"
                                                 CommandParameter="{Binding}"
                                                 IsEnabled="{Binding TestCount, Converter={StaticResource IntToBoolConverter}}"
                                                 Background="{DynamicResource ThemeSuccessBrush}" Foreground="White"
                                                 FontSize="10" Padding="8,4" Cursor="Hand"/>
-                                        <Button Content="{Binding L[DiskCardsView.Archive]}"
+                                        <Button Content="{Binding $parent[DataGrid].DataContext.L[DiskCardsView.Archive]}"
                                                 Command="{Binding $parent[DataGrid].DataContext.ArchiveCardCommand}"
                                                 CommandParameter="{Binding}"
                                                 Background="{DynamicResource ThemeWarningBrush}" Foreground="White"

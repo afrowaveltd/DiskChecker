@@ -41,5 +41,6 @@
         <converters:EnumInConverter x:Key="EnumInConverter"/>
         <converters:EnumDisplayConverter x:Key="EnumDisplayConverter"/>
         <converters:BytesToHumanReadableConverter x:Key="BytesToHRConverter"/>
+            <converters:PointsStringConverter x:Key="PointsStringConverter"/>
     </Application.Resources>
 </Application>

@@ -4,6 +4,7 @@ using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
 using System.Linq;
+using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using DiskChecker.Core.Interfaces;
@@ -88,6 +89,26 @@ public class CertificateGenerator : ICertificateGenerator
             var powerOnHours = session.SmartBefore?.PowerOnHours ?? diskCard.PowerOnHours ?? 0;
             var powerCycles = session.SmartBefore?.PowerCycleCount ?? diskCard.PowerCycleCount ?? 0;
 
+            var writeSamples = session.WriteSamples.Where(s => s.SpeedMBps > 0).ToList();
+            var readSamples = session.ReadSamples.Where(s => s.SpeedMBps > 0).ToList();
+
+            var avgWriteSpeed = session.AverageWriteSpeedMBps > 0
+                ? session.AverageWriteSpeedMBps
+                : (writeSamples.Count > 0 ? writeSamples.Average(s => s.SpeedMBps) : 0);
+            var maxWriteSpeed = session.MaxWriteSpeedMBps > 0
+                ? session.MaxWriteSpeedMBps
+                : (writeSamples.Count > 0 ? writeSamples.Max(s => s.SpeedMBps) : 0);
+            var avgReadSpeed = session.AverageReadSpeedMBps > 0
+                ? session.AverageReadSpeedMBps
+                : (readSamples.Count > 0 ? readSamples.Average(s => s.SpeedMBps) : 0);
+            var maxReadSpeed = session.MaxReadSpeedMBps > 0
+                ? session.MaxReadSpeedMBps
+                : (readSamples.Count > 0 ? readSamples.Max(s => s.SpeedMBps) : 0);
+
+            var errorCount = session.Errors.Count;
+            if (errorCount == 0)
+                errorCount = Math.Max(0, session.WriteErrors) + Math.Max(0, session.ReadErrors) + Math.Max(0, session.VerificationErrors);
+
             var certificate = new DiskCertificate
             {
                 DiskCardId = diskCard.Id,
@@ -102,11 +123,11 @@ public class CertificateGenerator : ICertificateGenerator
                 Interface = diskCard.InterfaceType,
                 TestType = session.TestType.ToString(),
                 TestDuration = session.Duration,
-                ErrorCount = session.Errors.Count,
-                AvgWriteSpeed = session.AverageWriteSpeedMBps,
-                MaxWriteSpeed = session.MaxWriteSpeedMBps,
-                AvgReadSpeed = session.AverageReadSpeedMBps,
-                MaxReadSpeed = session.MaxReadSpeedMBps,
+                ErrorCount = errorCount,
+                AvgWriteSpeed = avgWriteSpeed,
+                MaxWriteSpeed = maxWriteSpeed,
+                AvgReadSpeed = avgReadSpeed,
+                MaxReadSpeed = maxReadSpeed,
                 TemperatureRange = session.StartTemperature.HasValue && session.MaxTemperature.HasValue
                     ? $"{session.StartTemperature.Value}°C - {session.MaxTemperature.Value}°C"
                     : "N/A",
@@ -141,6 +162,8 @@ public class CertificateGenerator : ICertificateGenerator
             certificate.Grade = grade;
             certificate.Score = score;
             certificate.HealthStatus = session.HealthAssessment.ToString();
+
+            PopulateAdvancedTestMetrics(certificate, session);
 
             if (session.SmartBefore?.Attributes != null)
             {
@@ -285,18 +308,37 @@ public class CertificateGenerator : ICertificateGenerator
             y += 330;
             DrawText(canvas, _locale?.GetString("CertificatePdf.TestResults", "Výsledky testu") ?? "Výsledky testu", 48, y, sectionFont, accentPaint);
             y += 34;
-            canvas.DrawRect(48, y, CertWidth - 96, 170, panelPaint);
-            canvas.DrawRect(48, y, CertWidth - 96, 170, borderPaint);
+
+            var isSanitizationTest = cert.SanitizationPerformed
+                || string.Equals(cert.TestType, TestType.Sanitization.ToString(), StringComparison.OrdinalIgnoreCase);
+            var testResultsHeight = isSanitizationTest ? 250 : 170;
+            var notAvailableText = _locale?.GetString("CertificatePdf.NA", "N/A") ?? "N/A";
+
+            canvas.DrawRect(48, y, CertWidth - 96, testResultsHeight, panelPaint);
+            canvas.DrawRect(48, y, CertWidth - 96, testResultsHeight, borderPaint);
             DrawText(canvas, string.Format(_locale?.GetString("CertificatePdf.TestType", "Typ: {{0}}") ?? "Typ: {{0}}", cert.TestType), 64, y + 16, valueFont, textPaint);
-            DrawText(canvas, $"Doba: {cert.TestDuration:hh\\:mm\\:ss}", 64, y + 46, valueFont, textPaint);
+            DrawText(canvas, string.Format(_locale?.GetString("CertificatePdf.TestDuration", "Doba: {{0}}") ?? "Doba: {{0}}", cert.TestDuration.ToString(@"hh\:mm\:ss")), 64, y + 46, valueFont, textPaint);
             DrawText(canvas, string.Format(_locale?.GetString("CertificatePdf.ErrorCount", "Chyby: {{0}}") ?? "Chyby: {{0}}", cert.ErrorCount), 64, y + 76, valueFont, textPaint);
             DrawText(canvas, string.Format(_locale?.GetString("CertificatePdf.TemperatureRange", "Teplota: {{0}}") ?? "Teplota: {{0}}", cert.TemperatureRange), 64, y + 106, valueFont, textPaint);
             DrawText(canvas, string.Format(_locale?.GetString("CertificatePdf.AvgWriteSpeed", "Průměrný zápis: {{0}} MB/s") ?? "Průměrný zápis: {{0}} MB/s", cert.AvgWriteSpeed), 520, y + 16, valueFont, textPaint);
             DrawText(canvas, string.Format(_locale?.GetString("CertificatePdf.AvgReadSpeed", "Průměrné čtení: {{0}} MB/s") ?? "Průměrné čtení: {{0}} MB/s", cert.AvgReadSpeed), 520, y + 46, valueFont, textPaint);
             DrawText(canvas, string.Format(_locale?.GetString("CertificatePdf.HealthStatus", "Stav: {{0}}") ?? "Stav: {{0}}", cert.HealthStatus), 520, y + 76, valueFont, textPaint);
 
+            if (isSanitizationTest)
+            {
+                var verificationText = cert.DataVerified
+                    ? _locale?.GetString("CertificatePdf.Yes", "Ano") ?? "Ano"
+                    : _locale?.GetString("CertificatePdf.No", "Ne") ?? "Ne";
+
+                DrawText(canvas, string.Format(_locale?.GetString("CertificatePdf.SanitizationMethod", "Metoda sanitizace: {{0}}") ?? "Metoda sanitizace: {{0}}", string.IsNullOrWhiteSpace(cert.SanitizationMethod) ? notAvailableText : cert.SanitizationMethod), 64, y + 136, valueFont, textPaint);
+                DrawText(canvas, string.Format(_locale?.GetString("CertificatePdf.DataVerified", "Verifikace dat: {{0}}") ?? "Verifikace dat: {{0}}", verificationText), 64, y + 166, valueFont, textPaint);
+                DrawText(canvas, string.Format(_locale?.GetString("CertificatePdf.PartitionScheme", "Schéma oddílů: {{0}}") ?? "Schéma oddílů: {{0}}", string.IsNullOrWhiteSpace(cert.PartitionScheme) ? notAvailableText : cert.PartitionScheme), 64, y + 196, valueFont, textPaint);
+                DrawText(canvas, string.Format(_locale?.GetString("CertificatePdf.FileSystem", "Souborový systém: {{0}}") ?? "Souborový systém: {{0}}", string.IsNullOrWhiteSpace(cert.FileSystem) ? notAvailableText : cert.FileSystem), 520, y + 136, valueFont, textPaint);
+                DrawText(canvas, string.Format(_locale?.GetString("CertificatePdf.VolumeLabel", "Název svazku: {{0}}") ?? "Název svazku: {{0}}", string.IsNullOrWhiteSpace(cert.VolumeLabel) ? notAvailableText : cert.VolumeLabel), 520, y + 166, valueFont, textPaint);
+            }
+
             // SMART summary
-            y += 190;
+            y += testResultsHeight + 20;
             DrawText(canvas, _locale?.GetString("CertificatePdf.SmartSummary", "SMART souhrn") ?? "SMART souhrn", 48, y, sectionFont, accentPaint);
             y += 34;
             canvas.DrawRect(48, y, CertWidth - 96, 190, panelPaint);
@@ -652,6 +694,167 @@ public class CertificateGenerator : ICertificateGenerator
         if (!string.IsNullOrWhiteSpace(smartSerial)) return smartSerial;
         if (!string.IsNullOrWhiteSpace(storedSerial)) return storedSerial;
         return "-";
+    }
+
+    private static void PopulateAdvancedTestMetrics(DiskCertificate certificate, TestSession session)
+    {
+        TryPopulateSeekMetrics(certificate, session);
+        TryPopulateSanitizationComparisonMetrics(certificate, session);
+    }
+
+    private static void TryPopulateSeekMetrics(DiskCertificate certificate, TestSession session)
+    {
+        if (string.IsNullOrWhiteSpace(session.SeekResultsJson))
+            return;
+
+        List<SeekTestResult> seekResults;
+        try
+        {
+            var singleResult = JsonSerializer.Deserialize<SeekTestResult>(session.SeekResultsJson);
+            if (singleResult?.IsCompleted == true || singleResult?.SeekCount > 0 || singleResult?.AverageLatencyMs > 0)
+            {
+                seekResults = new List<SeekTestResult> { singleResult };
+            }
+            else
+            {
+                var envelope = JsonSerializer.Deserialize<SeekResultsEnvelope>(session.SeekResultsJson);
+                seekResults = new List<SeekTestResult>();
+                if (envelope?.FullStroke != null) seekResults.Add(envelope.FullStroke);
+                if (envelope?.Random != null) seekResults.Add(envelope.Random);
+                if (envelope?.Skip != null) seekResults.Add(envelope.Skip);
+            }
+        }
+        catch (JsonException)
+        {
+            return;
+        }
+
+        if (seekResults.Count == 0)
+            return;
+
+        var latencies = seekResults
+            .SelectMany(r => r.Samples.Select(s => s.LatencyMs))
+            .Where(v => v > 0)
+            .OrderBy(v => v)
+            .ToList();
+
+        if (latencies.Count > 0)
+        {
+            var avg = latencies.Average();
+            certificate.SeekAvgLatencyMs ??= avg;
+            certificate.SeekMinLatencyMs ??= latencies[0];
+            certificate.SeekMaxLatencyMs ??= latencies[^1];
+            certificate.SeekStdDevLatencyMs ??= Math.Sqrt(latencies.Average(v => Math.Pow(v - avg, 2)));
+            certificate.SeekP95LatencyMs ??= latencies[(int)Math.Clamp(Math.Ceiling(latencies.Count * 0.95) - 1, 0, latencies.Count - 1)];
+        }
+        else
+        {
+            var averageLatencies = seekResults.Select(r => r.AverageLatencyMs).Where(v => v > 0).ToList();
+            if (averageLatencies.Count > 0)
+            {
+                certificate.SeekAvgLatencyMs ??= averageLatencies.Average();
+                certificate.SeekMinLatencyMs ??= seekResults.Where(r => r.MinLatencyMs > 0).Select(r => r.MinLatencyMs).DefaultIfEmpty(0).Min();
+                certificate.SeekMaxLatencyMs ??= seekResults.Where(r => r.MaxLatencyMs > 0).Select(r => r.MaxLatencyMs).DefaultIfEmpty(0).Max();
+                certificate.SeekStdDevLatencyMs ??= Math.Sqrt(averageLatencies.Average(v => Math.Pow(v - certificate.SeekAvgLatencyMs.Value, 2)));
+                certificate.SeekP95LatencyMs ??= seekResults.Where(r => r.P95LatencyMs > 0).Select(r => r.P95LatencyMs).DefaultIfEmpty(certificate.SeekAvgLatencyMs.Value).Max();
+            }
+        }
+
+        if (string.IsNullOrWhiteSpace(certificate.SeekTestSummary))
+        {
+            var summaryParts = seekResults
+                .Where(r => r.AverageLatencyMs > 0)
+                .Select(r => $"{r.TestType}: {r.SeekCount} seeků, avg {r.AverageLatencyMs:F2} ms")
+                .ToList();
+            if (summaryParts.Count > 0)
+                certificate.SeekTestSummary = string.Join(" | ", summaryParts);
+        }
+
+        if (certificate.ErrorCount <= 0)
+        {
+            certificate.ErrorCount = seekResults.Sum(r => Math.Max(0, r.ErrorCount));
+        }
+    }
+
+    private static void TryPopulateSanitizationComparisonMetrics(DiskCertificate certificate, TestSession session)
+    {
+        if (string.IsNullOrWhiteSpace(session.Sanitize1ResultJson) && string.IsNullOrWhiteSpace(session.Sanitize2ResultJson))
+            return;
+
+        SanitizationResult? sanitize1 = null;
+        SanitizationResult? sanitize2 = null;
+
+        try
+        {
+            if (!string.IsNullOrWhiteSpace(session.Sanitize1ResultJson))
+                sanitize1 = JsonSerializer.Deserialize<SanitizationResult>(session.Sanitize1ResultJson);
+            if (!string.IsNullOrWhiteSpace(session.Sanitize2ResultJson))
+                sanitize2 = JsonSerializer.Deserialize<SanitizationResult>(session.Sanitize2ResultJson);
+        }
+        catch (JsonException)
+        {
+            return;
+        }
+
+        if (sanitize1 == null && sanitize2 == null)
+            return;
+
+        certificate.SanitizationPerformed = true;
+        certificate.SanitizationMethod ??= "Zero-fill + verify (2×)";
+
+        if (sanitize1 != null)
+        {
+            certificate.Sanitize1AvgWriteMBps ??= sanitize1.WriteSpeedMBps;
+            certificate.Sanitize1AvgReadMBps ??= sanitize1.ReadSpeedMBps;
+            certificate.Sanitize1Errors ??= sanitize1.ErrorsDetected;
+        }
+
+        if (sanitize2 != null)
+        {
+            certificate.Sanitize2AvgWriteMBps ??= sanitize2.WriteSpeedMBps;
+            certificate.Sanitize2AvgReadMBps ??= sanitize2.ReadSpeedMBps;
+            certificate.Sanitize2Errors ??= sanitize2.ErrorsDetected;
+            certificate.DataVerified = sanitize2.Success;
+            certificate.FileSystem ??= sanitize2.FileSystem;
+            certificate.VolumeLabel ??= sanitize2.VolumeLabel;
+        }
+
+        if (certificate.Sanitize1AvgWriteMBps > 0 && certificate.Sanitize2AvgWriteMBps > 0)
+        {
+            certificate.WriteSpeedChangePercent ??= (certificate.Sanitize2AvgWriteMBps.Value - certificate.Sanitize1AvgWriteMBps.Value)
+                / certificate.Sanitize1AvgWriteMBps.Value * 100;
+        }
+
+        if (certificate.Sanitize1AvgReadMBps > 0 && certificate.Sanitize2AvgReadMBps > 0)
+        {
+            certificate.ReadSpeedChangePercent ??= (certificate.Sanitize2AvgReadMBps.Value - certificate.Sanitize1AvgReadMBps.Value)
+                / certificate.Sanitize1AvgReadMBps.Value * 100;
+        }
+
+        var finalSanitize = sanitize2 ?? sanitize1;
+        if (finalSanitize != null)
+        {
+            if (certificate.AvgWriteSpeed <= 0)
+                certificate.AvgWriteSpeed = finalSanitize.WriteSpeedMBps;
+            if (certificate.MaxWriteSpeed <= 0)
+                certificate.MaxWriteSpeed = finalSanitize.WriteSpeedMBps;
+            if (certificate.AvgReadSpeed <= 0)
+                certificate.AvgReadSpeed = finalSanitize.ReadSpeedMBps;
+            if (certificate.MaxReadSpeed <= 0)
+                certificate.MaxReadSpeed = finalSanitize.ReadSpeedMBps;
+        }
+
+        if (certificate.ErrorCount <= 0)
+        {
+            certificate.ErrorCount = Math.Max(0, certificate.Sanitize1Errors ?? 0) + Math.Max(0, certificate.Sanitize2Errors ?? 0);
+        }
+    }
+
+    private sealed class SeekResultsEnvelope
+    {
+        public SeekTestResult? FullStroke { get; set; }
+        public SeekTestResult? Random { get; set; }
+        public SeekTestResult? Skip { get; set; }
     }
 
     private static bool IsCriticalAttribute(int attributeId)

@@ -104,31 +104,50 @@
                             <Border Grid.Column="0" Background="{Binding PanelBackground}" Padding="12" CornerRadius="8">
                                 <StackPanel Spacing="4">
                                     <TextBlock Text="{Binding L[CertificateView.TestResults]}" FontWeight="Bold" FontSize="13"/>
-                                    <TextBlock Text="{Binding TestType, StringFormat='Typ: {0}'}"/>
-                                    <TextBlock Text="{Binding TestDuration, StringFormat='Doba: {0}'}"/>
-                                    <TextBlock Text="{Binding Errors, StringFormat='Chyby: {0}'}"/>
-                                    <TextBlock Text="{Binding TemperatureRange, StringFormat='Teplota: {0}'}"/>
+                                    <TextBlock Text="{Binding TestTypeLine}"/>
+                                    <TextBlock Text="{Binding TestDurationLine}"/>
+                                    <TextBlock Text="{Binding ErrorsLine}"/>
+                                    <TextBlock Text="{Binding TemperatureRangeLine}"/>
                                 </StackPanel>
                             </Border>
 
                             <Border Grid.Column="1" Background="{Binding PanelBackground}" Padding="12" CornerRadius="8">
                                 <StackPanel Spacing="4">
                                     <TextBlock Text="{Binding L[CertificateView.Performance]}" FontWeight="Bold" FontSize="13"/>
-                                    <TextBlock Text="{Binding AvgWriteSpeed, StringFormat='Průměrný zápis: {0}'}"/>
-                                    <TextBlock Text="{Binding AvgReadSpeed, StringFormat='Průměrné čtení: {0}'}"/>
-                                    <TextBlock Text="{Binding HealthStatus, StringFormat='Stav: {0}'}"/>
-                                    <TextBlock Text="{Binding Recommended, StringFormat='Doporučeno: {0}'}"/>
+                                    <TextBlock Text="{Binding AvgWriteSpeedLine}"/>
+                                    <TextBlock Text="{Binding AvgReadSpeedLine}"/>
+                                    <TextBlock Text="{Binding HealthStatusLine}"/>
+                                    <TextBlock Text="{Binding RecommendedLine}"/>
                                 </StackPanel>
                             </Border>
                         </Grid>
 
+                        <Border Background="{Binding PanelBackground}" Padding="12" CornerRadius="8"
+                                IsVisible="{Binding SanitizationPerformed}">
+                            <StackPanel Spacing="6">
+                                <TextBlock Text="{Binding L[CertificateView.SanitizationDetails]}" FontWeight="Bold" FontSize="13"/>
+                                <Grid ColumnDefinitions="Auto,*" RowDefinitions="Auto,Auto,Auto,Auto,Auto" RowSpacing="2" ColumnSpacing="8">
+                                    <TextBlock Grid.Row="0" Grid.Column="0" Text="{Binding L[CertificateView.SanitizationMethodLabel]}" FontSize="11"/>
+                                    <TextBlock Grid.Row="0" Grid.Column="1" Text="{Binding SanitizationMethodText}" FontSize="11"/>
+                                    <TextBlock Grid.Row="1" Grid.Column="0" Text="{Binding L[CertificateView.DataVerifiedLabel]}" FontSize="11"/>
+                                    <TextBlock Grid.Row="1" Grid.Column="1" Text="{Binding DataVerifiedText}" FontSize="11"/>
+                                    <TextBlock Grid.Row="2" Grid.Column="0" Text="{Binding L[CertificateView.PartitionSchemeLabel]}" FontSize="11"/>
+                                    <TextBlock Grid.Row="2" Grid.Column="1" Text="{Binding PartitionSchemeText}" FontSize="11"/>
+                                    <TextBlock Grid.Row="3" Grid.Column="0" Text="{Binding L[CertificateView.FileSystemLabel]}" FontSize="11"/>
+                                    <TextBlock Grid.Row="3" Grid.Column="1" Text="{Binding FileSystemText}" FontSize="11"/>
+                                    <TextBlock Grid.Row="4" Grid.Column="0" Text="{Binding L[CertificateView.VolumeLabelLabel]}" FontSize="11"/>
+                                    <TextBlock Grid.Row="4" Grid.Column="1" Text="{Binding VolumeLabelText}" FontSize="11"/>
+                                </Grid>
+                            </StackPanel>
+                        </Border>
+
                         <Border Background="{Binding PanelBackground}" Padding="12" CornerRadius="8">
                             <StackPanel Spacing="6">
                                 <TextBlock Text="{Binding L[Certificate.SmartSummary]}" FontWeight="Bold" FontSize="13"/>
-                                <TextBlock Text="{Binding SmartPowerOnHoursText, StringFormat='Provozní hodiny: {0}'}"/>
-                                <TextBlock Text="{Binding SmartPowerCyclesText, StringFormat='Počet startů: {0}'}"/>
-                                <TextBlock Text="{Binding SmartReallocatedSectorsText, StringFormat='Realokované sektory: {0}'}"/>
-                                <TextBlock Text="{Binding SmartPendingSectorsText, StringFormat='Čekající sektory: {0}'}"/>
+                                <TextBlock Text="{Binding SmartPowerOnHoursLine}"/>
+                                <TextBlock Text="{Binding SmartPowerCyclesLine}"/>
+                                <TextBlock Text="{Binding SmartReallocatedSectorsLine}"/>
+                                <TextBlock Text="{Binding SmartPendingSectorsLine}"/>
                                 <Separator Margin="0,4,0,2"/>
                                 <TextBlock Text="{Binding L[Grade.Legend]}" FontWeight="Bold" FontSize="12"/>
                                 <TextBlock Text="{Binding L[CertificateView.GradeAB]}" FontSize="11"/>
@@ -141,17 +160,17 @@
                         <Border Background="{Binding PanelBackground}" Padding="12" CornerRadius="8"
                                 IsVisible="{Binding HasSeekMetrics}">
                             <StackPanel Spacing="6">
-                                <TextBlock Text="🎯 Seek test (latence)" FontWeight="Bold" FontSize="13"/>
-                                <TextBlock Text="{Binding SeekTestSummaryText, StringFormat='Souhrn: {0}'}"
+                                <TextBlock Text="{Binding L[CertificateView.SeekMetrics]}" FontWeight="Bold" FontSize="13"/>
+                                <TextBlock Text="{Binding SeekSummaryLine}"
                                            FontSize="11" TextWrapping="Wrap"/>
                                 <Grid ColumnDefinitions="Auto,*" RowDefinitions="Auto,Auto,Auto,Auto" RowSpacing="2" ColumnSpacing="8">
                                     <TextBlock Grid.Row="0" Grid.Column="0" Text="{Binding L[CertificateView.Average]}" FontSize="11"/>
                                     <TextBlock Grid.Row="0" Grid.Column="1" Text="{Binding SeekAvgLatencyMsText}" FontSize="11" FontWeight="SemiBold"/>
-                                    <TextBlock Grid.Row="1" Grid.Column="0" Text="Minimum:" FontSize="11"/>
+                                    <TextBlock Grid.Row="1" Grid.Column="0" Text="{Binding L[CertificateView.SeekMinLabel]}" FontSize="11"/>
                                     <TextBlock Grid.Row="1" Grid.Column="1" Text="{Binding SeekMinLatencyMsText}" FontSize="11"/>
-                                    <TextBlock Grid.Row="2" Grid.Column="0" Text="Maximum:" FontSize="11"/>
+                                    <TextBlock Grid.Row="2" Grid.Column="0" Text="{Binding L[CertificateView.SeekMaxLabel]}" FontSize="11"/>
                                     <TextBlock Grid.Row="2" Grid.Column="1" Text="{Binding SeekMaxLatencyMsText}" FontSize="11"/>
-                                    <TextBlock Grid.Row="3" Grid.Column="0" Text="P95:" FontSize="11"/>
+                                    <TextBlock Grid.Row="3" Grid.Column="0" Text="{Binding L[CertificateView.SeekP95Label]}" FontSize="11"/>
                                     <TextBlock Grid.Row="3" Grid.Column="1" Text="{Binding SeekP95LatencyMsText}" FontSize="11" FontWeight="SemiBold"/>
                                 </Grid>
                             </StackPanel>
@@ -164,20 +183,20 @@
                                 <TextBlock Text="{Binding L[CertificateView.SanitizeComparison]}" FontWeight="Bold" FontSize="13"/>
                                 <TextBlock Text="{Binding L[CertificateView.WriteSpeed]}" FontSize="11" FontWeight="SemiBold"/>
                                 <Grid ColumnDefinitions="Auto,Auto,Auto" RowDefinitions="Auto" ColumnSpacing="8">
-                                    <TextBlock Grid.Column="0" Text="{Binding Sanitize1WriteText, StringFormat='1. sanitizace: {0}'}" FontSize="11"/>
+                                    <TextBlock Grid.Column="0" Text="{Binding Sanitize1WriteLine}" FontSize="11"/>
                                     <TextBlock Grid.Column="1" Text="→" FontSize="11" Foreground="{DynamicResource ThemeTextMutedBrush}"/>
-                                    <TextBlock Grid.Column="2" Text="{Binding Sanitize2WriteText, StringFormat='2. sanitizace: {0}'}" FontSize="11"/>
+                                    <TextBlock Grid.Column="2" Text="{Binding Sanitize2WriteLine}" FontSize="11"/>
                                 </Grid>
-                                <TextBlock Text="{Binding WriteSpeedChangeText, StringFormat='Změna: {0}'}" FontSize="11"
+                                <TextBlock Text="{Binding WriteSpeedChangeLine}" FontSize="11"
                                            Foreground="{DynamicResource ThemeTextSecondaryBrush}"/>
                                 <Separator Margin="0,2"/>
                                 <TextBlock Text="{Binding L[CertificateView.ReadSpeed]}" FontSize="11" FontWeight="SemiBold"/>
                                 <Grid ColumnDefinitions="Auto,Auto,Auto" RowDefinitions="Auto" ColumnSpacing="8">
-                                    <TextBlock Grid.Column="0" Text="{Binding Sanitize1ReadText, StringFormat='1. sanitizace: {0}'}" FontSize="11"/>
+                                    <TextBlock Grid.Column="0" Text="{Binding Sanitize1ReadLine}" FontSize="11"/>
                                     <TextBlock Grid.Column="1" Text="→" FontSize="11" Foreground="{DynamicResource ThemeTextMutedBrush}"/>
-                                    <TextBlock Grid.Column="2" Text="{Binding Sanitize2ReadText, StringFormat='2. sanitizace: {0}'}" FontSize="11"/>
+                                    <TextBlock Grid.Column="2" Text="{Binding Sanitize2ReadLine}" FontSize="11"/>
                                 </Grid>
-                                <TextBlock Text="{Binding ReadSpeedChangeText, StringFormat='Změna: {0}'}" FontSize="11"
+                                <TextBlock Text="{Binding ReadSpeedChangeLine}" FontSize="11"
                                            Foreground="{DynamicResource ThemeTextSecondaryBrush}"/>
                             </StackPanel>
                         </Border>
@@ -192,6 +211,8 @@
                                            Foreground="{DynamicResource ThemeTextSecondaryBrush}"/>
                             </StackPanel>
                         </Border>
+
+                        
 
                         <Border Background="{Binding PanelBackground}" Padding="12" CornerRadius="8">
                             <StackPanel Spacing="8">
@@ -210,11 +231,11 @@
                                             <Line StartPoint="10,60" EndPoint="520,60" Stroke="#FFF1F5F9" StrokeThickness="1"/>
                                             <Line StartPoint="10,110" EndPoint="520,110" Stroke="#FFCBD5E1" StrokeThickness="1"/>
 
-                                            <Polyline Points="{Binding WriteProfilePoints}"
+                                            <Polyline Points="{Binding WriteProfilePoints, Converter={StaticResource PointsStringConverter}}"
                                                       Stroke="{Binding ChartStrokeWrite}" StrokeThickness="2"/>
-                                            <Polyline Points="{Binding ReadProfilePoints}"
+                                            <Polyline Points="{Binding ReadProfilePoints, Converter={StaticResource PointsStringConverter}}"
                                                       Stroke="{Binding ChartStrokeRead}" StrokeThickness="2"/>
-                                            <Polyline Points="{Binding TemperatureProfilePoints}"
+                                            <Polyline Points="{Binding TemperatureProfilePoints, Converter={StaticResource PointsStringConverter}}"
                                                       Stroke="#FF7C3AED" StrokeThickness="2"
                                                       IsVisible="{Binding HasTemperatureProfile}"/>
                                          </Canvas>
@@ -307,6 +328,25 @@
                             </Border>
                         </Grid>
 
+                        <Border Background="{Binding PanelBackground}" Padding="12" CornerRadius="8"
+                                IsVisible="{Binding SanitizationPerformed}">
+                            <StackPanel Spacing="6">
+                                <TextBlock Text="{Binding L[CertificateView.SanitizationDetails]}" FontWeight="Bold" FontSize="13"/>
+                                <Grid ColumnDefinitions="Auto,*" RowDefinitions="Auto,Auto,Auto,Auto,Auto" RowSpacing="2" ColumnSpacing="8">
+                                    <TextBlock Grid.Row="0" Grid.Column="0" Text="{Binding L[CertificateView.SanitizationMethodLabel]}" FontSize="11"/>
+                                    <TextBlock Grid.Row="0" Grid.Column="1" Text="{Binding SanitizationMethodText}" FontSize="11"/>
+                                    <TextBlock Grid.Row="1" Grid.Column="0" Text="{Binding L[CertificateView.DataVerifiedLabel]}" FontSize="11"/>
+                                    <TextBlock Grid.Row="1" Grid.Column="1" Text="{Binding DataVerifiedText}" FontSize="11"/>
+                                    <TextBlock Grid.Row="2" Grid.Column="0" Text="{Binding L[CertificateView.PartitionSchemeLabel]}" FontSize="11"/>
+                                    <TextBlock Grid.Row="2" Grid.Column="1" Text="{Binding PartitionSchemeText}" FontSize="11"/>
+                                    <TextBlock Grid.Row="3" Grid.Column="0" Text="{Binding L[CertificateView.FileSystemLabel]}" FontSize="11"/>
+                                    <TextBlock Grid.Row="3" Grid.Column="1" Text="{Binding FileSystemText}" FontSize="11"/>
+                                    <TextBlock Grid.Row="4" Grid.Column="0" Text="{Binding L[CertificateView.VolumeLabelLabel]}" FontSize="11"/>
+                                    <TextBlock Grid.Row="4" Grid.Column="1" Text="{Binding VolumeLabelText}" FontSize="11"/>
+                                </Grid>
+                            </StackPanel>
+                        </Border>
+
                         <Border Background="{Binding PanelBackground}" Padding="12" CornerRadius="8">
                             <StackPanel Spacing="6">
                                 <TextBlock Text="{Binding L[CertificateView.TemperatureCorrelation]}" FontWeight="Bold" FontSize="13"/>
@@ -362,4 +402,4 @@
             </Border>
         </Panel>
     </Panel>
-</UserControl>
+</UserControl>

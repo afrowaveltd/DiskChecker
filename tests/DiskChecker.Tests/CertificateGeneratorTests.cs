@@ -1,4 +1,5 @@
 using System;
+using System.Text.Json;
 using System.Threading.Tasks;
 using DiskChecker.Core.Interfaces;
 using DiskChecker.Core.Models;
@@ -294,7 +295,7 @@ public class CertificateGeneratorTests
         var settings = Substitute.For<ISettingsService>();
         settings.GetCertificatePathAsync().Returns((string?)null);
         var generator = new CertificateGenerator(logger, settings);
-        
+
         var diagnosticNotes = "kritické propady rychlosti v závěru testu; nestabilní průběh čtení; SMART varování";
         var session = new TestSession
         {
@@ -312,7 +313,7 @@ public class CertificateGeneratorTests
                 IsHealthy = true
             }
         };
-        
+
         var card = new DiskCard
         {
             Id = 6,
@@ -320,10 +321,193 @@ public class CertificateGeneratorTests
             SerialNumber = "PROB001",
             Capacity = 2_000_000_000_000
         };
-        
+
         var certificate = await generator.GenerateCertificateAsync(session, card);
-        
+
         Assert.NotNull(certificate);
         Assert.Equal(diagnosticNotes, certificate.Notes);
+    }
+
+    [Fact]
+    public async Task GenerateCertificateAsync_WithMissingAggregates_UsesSampleFallback()
+    {
+        var logger = Substitute.For<ILogger<CertificateGenerator>>();
+        var settings = Substitute.For<ISettingsService>();
+        settings.GetCertificatePathAsync().Returns((string?)null);
+        var generator = new CertificateGenerator(logger, settings);
+
+        var session = new TestSession
+        {
+            Id = 7,
+            TestType = TestType.Sanitization,
+            Duration = TimeSpan.FromMinutes(45),
+            Result = TestResult.Pass,
+            Grade = "B",
+            Score = 82,
+            WriteErrors = 2,
+            ReadErrors = 1,
+            VerificationErrors = 3,
+            HealthAssessment = HealthAssessment.Good,
+            WriteSamples = new List<SpeedSample>
+            {
+                new() { ProgressPercent = 10, SpeedMBps = 120 },
+                new() { ProgressPercent = 50, SpeedMBps = 140 },
+                new() { ProgressPercent = 90, SpeedMBps = 160 }
+            },
+            ReadSamples = new List<SpeedSample>
+            {
+                new() { ProgressPercent = 10, SpeedMBps = 100 },
+                new() { ProgressPercent = 50, SpeedMBps = 130 },
+                new() { ProgressPercent = 90, SpeedMBps = 150 }
+            }
+        };
+
+        var card = new DiskCard
+        {
+            Id = 7,
+            ModelName = "Fallback Drive",
+            SerialNumber = "FALL007",
+            Capacity = 500_000_000_000
+        };
+
+        var certificate = await generator.GenerateCertificateAsync(session, card);
+
+        Assert.NotNull(certificate);
+        Assert.Equal(140, certificate.AvgWriteSpeed, 1);
+        Assert.Equal(160, certificate.MaxWriteSpeed, 1);
+        Assert.Equal(126.666, certificate.AvgReadSpeed, 0.1);
+        Assert.Equal(150, certificate.MaxReadSpeed, 1);
+        Assert.Equal(6, certificate.ErrorCount);
+    }
+
+    [Fact]
+    public async Task GenerateCertificateAsync_WithSeekResultsJson_PopulatesSeekMetrics()
+    {
+        var logger = Substitute.For<ILogger<CertificateGenerator>>();
+        var settings = Substitute.For<ISettingsService>();
+        settings.GetCertificatePathAsync().Returns((string?)null);
+        var generator = new CertificateGenerator(logger, settings);
+
+        var seekResult = new SeekTestResult
+        {
+            TestType = SeekTestType.Random,
+            SeekCount = 1000,
+            AverageLatencyMs = 9.5,
+            MinLatencyMs = 6.0,
+            MaxLatencyMs = 18.0,
+            LatencyStdDevMs = 2.2,
+            P95LatencyMs = 14.0,
+            ErrorCount = 3,
+            IsCompleted = true,
+            Samples = new List<SeekLatencySample>
+            {
+                new() { LatencyMs = 8.5 },
+                new() { LatencyMs = 9.0 },
+                new() { LatencyMs = 11.0 }
+            }
+        };
+
+        var session = new TestSession
+        {
+            Id = 8,
+            TestType = TestType.Seek,
+            Duration = TimeSpan.FromMinutes(10),
+            Result = TestResult.Pass,
+            Grade = "B",
+            Score = 80,
+            HealthAssessment = HealthAssessment.Good,
+            SeekResultsJson = JsonSerializer.Serialize(seekResult)
+        };
+
+        var card = new DiskCard
+        {
+            Id = 8,
+            ModelName = "Seek Drive",
+            SerialNumber = "SEEK008",
+            Capacity = 500_000_000_000
+        };
+
+        var certificate = await generator.GenerateCertificateAsync(session, card);
+
+        Assert.NotNull(certificate);
+        Assert.True(certificate.SeekAvgLatencyMs.HasValue);
+        Assert.True(certificate.SeekP95LatencyMs.HasValue);
+        Assert.False(string.IsNullOrWhiteSpace(certificate.SeekTestSummary));
+        Assert.Equal(3, certificate.ErrorCount);
+    }
+
+    [Fact]
+    public async Task GenerateCertificateAsync_WithAbsoluteJson_PopulatesComparisonMetrics()
+    {
+        var logger = Substitute.For<ILogger<CertificateGenerator>>();
+        var settings = Substitute.For<ISettingsService>();
+        settings.GetCertificatePathAsync().Returns((string?)null);
+        var generator = new CertificateGenerator(logger, settings);
+
+        var sanitize1 = new SanitizationResult
+        {
+            Success = true,
+            WriteSpeedMBps = 120,
+            ReadSpeedMBps = 110,
+            ErrorsDetected = 2
+        };
+
+        var sanitize2 = new SanitizationResult
+        {
+            Success = true,
+            WriteSpeedMBps = 135,
+            ReadSpeedMBps = 125,
+            ErrorsDetected = 1,
+            FileSystem = "NTFS",
+            VolumeLabel = "DiskChecker"
+        };
+
+        var seekEnvelope = new
+        {
+            FullStroke = new SeekTestResult { TestType = SeekTestType.FullStroke, SeekCount = 200, AverageLatencyMs = 12, IsCompleted = true },
+            Random = new SeekTestResult { TestType = SeekTestType.Random, SeekCount = 400, AverageLatencyMs = 10, IsCompleted = true },
+            Skip = new SeekTestResult { TestType = SeekTestType.Skip, SeekCount = 300, AverageLatencyMs = 11, IsCompleted = true }
+        };
+
+        var session = new TestSession
+        {
+            Id = 9,
+            TestType = TestType.AbsoluteDestructive,
+            Duration = TimeSpan.FromHours(2),
+            Result = TestResult.Pass,
+            Grade = "B",
+            Score = 84,
+            HealthAssessment = HealthAssessment.Good,
+            SeekResultsJson = JsonSerializer.Serialize(seekEnvelope),
+            Sanitize1ResultJson = JsonSerializer.Serialize(sanitize1),
+            Sanitize2ResultJson = JsonSerializer.Serialize(sanitize2)
+        };
+
+        var card = new DiskCard
+        {
+            Id = 9,
+            ModelName = "Absolute Drive",
+            SerialNumber = "ABS009",
+            Capacity = 1_000_000_000_000
+        };
+
+        var certificate = await generator.GenerateCertificateAsync(session, card);
+
+        Assert.NotNull(certificate);
+        Assert.True(certificate.SanitizationPerformed);
+        Assert.NotNull(certificate.Sanitize1AvgWriteMBps);
+        Assert.NotNull(certificate.Sanitize2AvgWriteMBps);
+        Assert.NotNull(certificate.Sanitize1AvgReadMBps);
+        Assert.NotNull(certificate.Sanitize2AvgReadMBps);
+        Assert.InRange(certificate.Sanitize1AvgWriteMBps.Value, 119.9, 120.1);
+        Assert.InRange(certificate.Sanitize2AvgWriteMBps.Value, 134.9, 135.1);
+        Assert.InRange(certificate.Sanitize1AvgReadMBps.Value, 109.9, 110.1);
+        Assert.InRange(certificate.Sanitize2AvgReadMBps.Value, 124.9, 125.1);
+        Assert.True(certificate.WriteSpeedChangePercent.HasValue);
+        Assert.True(certificate.ReadSpeedChangePercent.HasValue);
+        Assert.Equal(3, certificate.ErrorCount);
+        Assert.Equal("NTFS", certificate.FileSystem);
+        Assert.Equal("DiskChecker", certificate.VolumeLabel);
+        Assert.True(certificate.SeekAvgLatencyMs.HasValue);
     }
 }
