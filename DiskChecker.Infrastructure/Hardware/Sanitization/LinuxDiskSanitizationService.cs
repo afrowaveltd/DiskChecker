@@ -92,6 +92,8 @@ public class LinuxDiskSanitizationService : IDiskSanitizationService
             result.WriteSpeedMBps = writeResult.SpeedMBps;
             result.ErrorsDetected += writeResult.Errors;
 
+            await FlushDeviceAndDropCachesAsync(normalizedPath, cancellationToken);
+
             // Phase 3: Read and verify
             progress?.Report(new SanitizationProgress
             {
@@ -397,8 +399,7 @@ public class LinuxDiskSanitizationService : IDiskSanitizationService
                     });
                 }
 
-                // Note: final flush omitted to match Windows behavior.
-                // FileOptions.WriteThrough already ensures data is written through to the device.
+                await fileStream.FlushAsync(cancellationToken);
             }
 
             result.Success = true;
@@ -455,7 +456,7 @@ public class LinuxDiskSanitizationService : IDiskSanitizationService
                 devicePath,
                 FileMode.Open,
                 FileAccess.Read,
-                FileShare.Read,
+                FileShare.None,
                 FileOptions.SequentialScan,
                 cancellationToken))
             {
@@ -577,6 +578,14 @@ public class LinuxDiskSanitizationService : IDiskSanitizationService
         return result;
     }
 
+    private async Task FlushDeviceAndDropCachesAsync(string devicePath, CancellationToken cancellationToken)
+    {
+        try { await ExecuteCommandAsync("sync", string.Empty, cancellationToken); } catch { }
+        try { await ExecuteCommandAsync("blockdev", $"--flushbufs \"{devicePath}\"", cancellationToken); } catch { }
+        try { await File.WriteAllTextAsync("/proc/sys/vm/drop_caches", "3\n", cancellationToken); } catch { }
+        try { await ExecuteCommandAsync("udevadm", "settle", cancellationToken); } catch { }
+    }
+
     private async Task<FileStream> OpenDeviceStreamWithRetryAsync(
         string devicePath,
         FileMode mode,
@@ -621,11 +630,13 @@ public class LinuxDiskSanitizationService : IDiskSanitizationService
 
         try
         {
-            // First, use sfdisk (most portable). Use --force instead of --no-reread
-            // which is not available on older sfdisk versions.
-            // The script creates a GPT label and one partition starting at 1 MiB (sector 2048)
-            // using all remaining space.
-            var script = "label: gpt\nstart=2048, size=0, type=0FC63DAF-8483-4772-8E79-3D69D8477DE4\n";
+            await FlushDeviceAndDropCachesAsync(devicePath, cancellationToken);
+            await ExecuteCommandAsync("wipefs", $"-a \"{devicePath}\"", cancellationToken);
+
+            // First, use sfdisk (most portable). Omitting size lets sfdisk use all
+            // remaining space; this is more compatible with older util-linux builds
+            // and small legacy disks than passing size=0.
+            var script = "label: gpt\nstart=2048, type=0FC63DAF-8483-4772-8E79-3D69D8477DE4\n";
 
             var sfdiskSuccess = false;
             string? sfdiskError = null;
@@ -653,6 +664,7 @@ public class LinuxDiskSanitizationService : IDiskSanitizationService
                     var errorTask = process.StandardError.ReadToEndAsync(cancellationToken);
                     await process.WaitForExitAsync(cancellationToken);
                     
+                    var output = await outputTask;
                     var error = await errorTask;
                     
                     // sfdisk may return non-zero exit code for warnings that are not fatal
@@ -665,7 +677,7 @@ public class LinuxDiskSanitizationService : IDiskSanitizationService
                     }
                     else
                     {
-                        sfdiskError = $"sfdisk selhal (exit {process.ExitCode}): {error}";
+                        sfdiskError = $"sfdisk selhal (exit {process.ExitCode}): {error} {output}";
                     }
                 }
                 else
@@ -726,6 +738,8 @@ public class LinuxDiskSanitizationService : IDiskSanitizationService
                 }
             }
 
+            await FlushDeviceAndDropCachesAsync(devicePath, cancellationToken);
+
             // Notify kernel of partition changes - try partprobe first, fallback to blockdev
             try
             {
@@ -742,6 +756,8 @@ public class LinuxDiskSanitizationService : IDiskSanitizationService
                     _logger?.LogWarning("Neither partprobe nor blockdev available for partition table reload");
                 }
             }
+
+            await ExecuteCommandAsync("udevadm", "settle", cancellationToken);
 
             // Wait for partition to appear - use polling with timeout
             var partitionPath = GetPartitionPath(devicePath);

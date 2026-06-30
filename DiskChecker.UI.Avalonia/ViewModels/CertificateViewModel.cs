@@ -581,6 +581,7 @@ public partial class CertificateViewModel : ViewModelBase, INavigableViewModel
          StatusMessage = L.Get("CertificateView.Status.ExportingPdf");
 
          await PrepareCertificateGraphAsync(Certificate, updateView: false);
+         await HydrateCertificateForOutputAsync(Certificate);
          var pdfPath = await _certificateGenerator.GeneratePdfAsync(Certificate);
 
          StatusMessage = string.Format(L.Get("CertificateView.Status.PdfSaved"), pdfPath);
@@ -637,6 +638,8 @@ public partial class CertificateViewModel : ViewModelBase, INavigableViewModel
          StatusMessage = L.Get("CertificateView.Status.PreparingPrint");
 
          await PrepareCertificateGraphAsync(Certificate, updateView: false);
+
+         await HydrateCertificateForOutputAsync(Certificate);
 
          PrintProgressMessage = L.Get("CertificateView.Print.GeneratingPdf");
          StatusMessage = L.Get("CertificateView.Status.GeneratingPdf");
@@ -1084,6 +1087,34 @@ public partial class CertificateViewModel : ViewModelBase, INavigableViewModel
       BackfillCertificatePerformanceFromSamples(certificate, _writeGraphSamples, _readGraphSamples);
    }
 
+   private async Task HydrateCertificateForOutputAsync(DiskCertificate certificate)
+   {
+      var sessionId = certificate.TestSessionId > 0 ? certificate.TestSessionId : _selectedSession?.Id ?? 0;
+      if(sessionId <= 0)
+      {
+         return;
+      }
+
+      if(_writeGraphSamples.Count == 0 && _readGraphSamples.Count == 0)
+      {
+         var speedSeries = await LoadCertificateGraphSamplesProgressiveAsync(sessionId);
+         _writeGraphSamples = DownsampleToLimit(speedSeries.WriteSamples, 512);
+         _readGraphSamples = DownsampleToLimit(speedSeries.ReadSamples, 512);
+      }
+
+      if(certificate.WriteProfilePoints.Count == 0 && _writeGraphSamples.Count > 0)
+      {
+         certificate.WriteProfilePoints = DownsampleSpeedSamples(_writeGraphSamples.Select(s => s.SpeedMBps), 32);
+      }
+
+      if(certificate.ReadProfilePoints.Count == 0 && _readGraphSamples.Count > 0)
+      {
+         certificate.ReadProfilePoints = DownsampleSpeedSamples(_readGraphSamples.Select(s => s.SpeedMBps), 32);
+      }
+
+      BackfillCertificatePerformanceFromSamples(certificate, _writeGraphSamples, _readGraphSamples);
+      RefreshCertificateResultProperties();
+   }
    private static void BackfillCertificatePerformanceFromSamples(
       DiskCertificate certificate,
       IReadOnlyList<SpeedSample> writeSamples,
