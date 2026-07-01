@@ -1,0 +1,10 @@
+﻿
+            OnPropertyChanged(nameof(TestDuration));
+            OnPropertyChanged(nameof(TestDurationLine));
+   public string TestDuration => Certificate != null ? Certificate.TestDuration.ToString(@"hh\:mm\:ss") : "-";
+   public string TestDurationLine => string.Format(L.Get("CertificateView.TestDurationFormat"), TestDuration);
+      OnPropertyChanged(nameof(TestDuration));
+      OnPropertyChanged(nameof(TestDurationLine));
+           $"Chyby: {totalErrors} | Doba: {session.Duration:hh\\:mm\\:ss}";
+
+

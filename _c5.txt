@@ -1,0 +1,200 @@
+﻿        catch (JsonException)
+        {
+            return;
+        }
+
+        if (sanitize1 == null && sanitize2 == null)
+            return;
+
+        certificate.SanitizationPerformed = true;
+        certificate.SanitizationMethod ??= "Zero-fill + verify (2Ă—)";
+
+        if (sanitize1 != null)
+        {
+            certificate.Sanitize1AvgWriteMBps ??= sanitize1.WriteSpeedMBps;
+            certificate.Sanitize1AvgReadMBps ??= sanitize1.ReadSpeedMBps;
+            certificate.Sanitize1Errors ??= sanitize1.ErrorsDetected;
+        }
+
+        if (sanitize2 != null)
+        {
+            certificate.Sanitize2AvgWriteMBps ??= sanitize2.WriteSpeedMBps;
+            certificate.Sanitize2AvgReadMBps ??= sanitize2.ReadSpeedMBps;
+            certificate.Sanitize2Errors ??= sanitize2.ErrorsDetected;
+            certificate.DataVerified = sanitize2.Success;
+            certificate.FileSystem ??= sanitize2.FileSystem;
+            certificate.VolumeLabel ??= sanitize2.VolumeLabel;
+        }
+
+        if (certificate.Sanitize1AvgWriteMBps > 0 && certificate.Sanitize2AvgWriteMBps > 0)
+        {
+            certificate.WriteSpeedChangePercent ??= (certificate.Sanitize2AvgWriteMBps.Value - certificate.Sanitize1AvgWriteMBps.Value)
+                / certificate.Sanitize1AvgWriteMBps.Value * 100;
+        }
+
+        if (certificate.Sanitize1AvgReadMBps > 0 && certificate.Sanitize2AvgReadMBps > 0)
+        {
+            certificate.ReadSpeedChangePercent ??= (certificate.Sanitize2AvgReadMBps.Value - certificate.Sanitize1AvgReadMBps.Value)
+                / certificate.Sanitize1AvgReadMBps.Value * 100;
+        }
+
+        var finalSanitize = sanitize2 ?? sanitize1;
+        if (finalSanitize != null)
+        {
+            if (certificate.AvgWriteSpeed <= 0)
+                certificate.AvgWriteSpeed = finalSanitize.WriteSpeedMBps;
+            if (certificate.MaxWriteSpeed <= 0)
+                certificate.MaxWriteSpeed = finalSanitize.WriteSpeedMBps;
+            if (certificate.AvgReadSpeed <= 0)
+                certificate.AvgReadSpeed = finalSanitize.ReadSpeedMBps;
+            if (certificate.MaxReadSpeed <= 0)
+                certificate.MaxReadSpeed = finalSanitize.ReadSpeedMBps;
+        }
+
+        if (certificate.ErrorCount <= 0)
+        {
+            certificate.ErrorCount = Math.Max(0, certificate.Sanitize1Errors ?? 0) + Math.Max(0, certificate.Sanitize2Errors ?? 0);
+        }
+    }
+
+    private sealed class SeekResultsEnvelope
+    {
+        public SeekTestResult? FullStroke { get; set; }
+        public SeekTestResult? Random { get; set; }
+        public SeekTestResult? Skip { get; set; }
+    }
+
+    private static bool IsCriticalAttribute(int attributeId)
+    {
+        return attributeId is 5 or 196 or 197 or 198 or 10 or 187 or 188 or 1 or 7 or 9 or 194;
+    }
+
+    private static SKColor GetGradeColor(string grade)
+    {
+        return grade?.ToUpperInvariant() switch
+        {
+            "A" => new SKColor(5, 150, 105),
+            "B" => new SKColor(59, 130, 246),
+            "C" => new SKColor(245, 158, 11),
+            "D" => new SKColor(249, 115, 22),
+            "E" => new SKColor(220, 38, 38),
+            "F" => new SKColor(185, 28, 28),
+            _ => new SKColor(100, 100, 100)
+        };
+    }
+
+    private static string TrimValue(string? value, int maxLength)
+    {
+        if (string.IsNullOrWhiteSpace(value)) return "-";
+        return value.Length <= maxLength ? value : value[..maxLength] + "â€¦";
+    }
+
+    private static int? GetSmartAttributeValue(TestSession session, int attributeId)
+    {
+        var raw = session.SmartBefore?.Attributes?.FirstOrDefault(a => a.Id == attributeId)?.RawValue;
+        return raw.HasValue ? (int?)raw.Value : null;
+    }
+
+    public Task<string?> GenerateAndStoreChartImageAsync(TestSession session, CancellationToken cancellationToken = default)
+    {
+        if (session.WriteSamples.Count == 0 && session.ReadSamples.Count == 0)
+            return Task.FromResult<string?>(null);
+
+        return Task.Run(() =>
+        {
+            try
+            {
+                var fileName = $"chart_{session.SessionId:N}.png";
+                var filePath = Path.Combine(_chartCacheDirectory, fileName);
+
+                RenderChartImage(session, filePath);
+                return filePath;
+            }
+            catch (Exception ex)
+            {
+                _logger?.LogWarning(ex, "Failed to generate chart image for session {SessionId}", session.SessionId);
+                return null;
+            }
+        }, cancellationToken);
+    }
+
+    private static void RenderChartImage(TestSession session, string filePath)
+    {
+        const int width = 800;
+        const int height = 400;
+
+        using var surface = SKSurface.Create(new SKImageInfo(width, height));
+        var canvas = surface.Canvas;
+        canvas.Clear(SKColors.White);
+
+        using var bgPaint = new SKPaint { Color = new SKColor(248, 250, 252), Style = SKPaintStyle.Fill };
+        canvas.DrawRect(0, 0, width, height, bgPaint);
+
+        using var axisPaint = new SKPaint { Color = new SKColor(203, 213, 225), IsAntialias = true, Style = SKPaintStyle.Stroke, StrokeWidth = 1f };
+        using var writePaint = new SKPaint { Color = new SKColor(220, 38, 38), IsAntialias = true, Style = SKPaintStyle.Stroke, StrokeWidth = 2f, StrokeCap = SKStrokeCap.Round };
+        using var readPaint = new SKPaint { Color = new SKColor(5, 150, 105), IsAntialias = true, Style = SKPaintStyle.Stroke, StrokeWidth = 2f, StrokeCap = SKStrokeCap.Round };
+        using var font = ResolveFont(10, bold: false);
+        using var textPaint = new SKPaint { Color = new SKColor(100, 100, 100), IsAntialias = true };
+
+        float margin = 40;
+        float chartW = width - 2 * margin;
+        float chartH = height - 2 * margin;
+
+        // Axes
+        canvas.DrawLine(margin, margin, margin, height - margin, axisPaint);
+        canvas.DrawLine(margin, height - margin, width - margin, height - margin, axisPaint);
+
+        var writeSamples = session.WriteSamples.Where(s => s.SpeedMBps > 0).ToList();
+        var readSamples = session.ReadSamples.Where(s => s.SpeedMBps > 0).ToList();
+        var maxSpeed = Math.Max(
+            writeSamples.Count > 0 ? writeSamples.Max(s => s.SpeedMBps) : 0,
+            readSamples.Count > 0 ? readSamples.Max(s => s.SpeedMBps) : 0);
+        if (maxSpeed <= 0) maxSpeed = 1;
+
+        void DrawLine(List<SpeedSample> samples, SKPaint paint)
+        {
+            if (samples.Count < 2) return;
+            using var path = new SKPath();
+            for (int i = 0; i < samples.Count; i++)
+            {
+                float x = margin + (float)i / (samples.Count - 1) * chartW;
+                float y = height - margin - (float)(samples[i].SpeedMBps / maxSpeed * chartH);
+                if (i == 0) path.MoveTo(x, y);
+                else path.LineTo(x, y);
+            }
+            canvas.DrawPath(path, paint);
+        }
+
+        DrawLine(writeSamples, writePaint);
+        DrawLine(readSamples, readPaint);
+
+        // Labels
+        DrawText(canvas, $"{maxSpeed:F0} MB/s", margin - 30, margin, font, textPaint);
+        DrawText(canvas, "0", margin - 10, height - margin, font, textPaint);
+
+        using var image = surface.Snapshot();
+        using var data = image.Encode(SKEncodedImageFormat.Png, 90);
+        using var fs = File.OpenWrite(filePath);
+        data.SaveTo(fs);
+    }
+
+    public Task<string?> EnsureChartImageAsync(TestSession session, CancellationToken cancellationToken = default)
+    {
+        // Check if chart image already exists
+        if (!string.IsNullOrWhiteSpace(session.ChartImagePath) && File.Exists(session.ChartImagePath))
+            return Task.FromResult<string?>(session.ChartImagePath);
+
+        // Generate new chart image
+        return GenerateAndStoreChartImageAsync(session, cancellationToken);
+    }
+
+    public Task<string> GenerateLabelAsync(DiskCertificate certificate)
+    {
+        ArgumentNullException.ThrowIfNull(certificate);
+
+        return Task.Run(() =>
+        {
+            if (string.IsNullOrWhiteSpace(certificate.CertificateNumber))
+                certificate.CertificateNumber = $"TMP-{DateTime.UtcNow:yyyyMMddHHmmss}";
+
+            var safeSerial = SanitizeFileName(certificate.SerialNumber ?? "NOSN");

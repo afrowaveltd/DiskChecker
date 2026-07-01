@@ -1,0 +1,200 @@
+﻿         DiskCertificate? selectedCert = null;
+         _selectedSession = null;
+
+         if(_selectedDiskService.SelectedCertificateId.HasValue)
+         {
+            selectedCert = await _diskCardRepository.GetCertificateAsync(_selectedDiskService.SelectedCertificateId.Value);
+
+            if(selectedCert?.TestSessionId > 0)
+            {
+               _selectedSession = await _diskCardRepository.GetTestSessionWithoutSamplesAsync(selectedCert.TestSessionId);
+               if(_selectedSession != null)
+               {
+                  card = await _diskCardRepository.GetByIdAsync(_selectedSession.DiskCardId);
+               }
+            }
+
+            if(card == null && selectedCert?.DiskCardId > 0)
+            {
+               card = await _diskCardRepository.GetByIdAsync(selectedCert.DiskCardId);
+            }
+         }
+
+         if(_selectedSession == null && _selectedDiskService.SelectedTestSessionId.HasValue)
+         {
+            StatusMessage = L.Get("CertificateView.Status.LoadingTestDetail");
+            _selectedSession = await _diskCardRepository.GetTestSessionWithoutSamplesAsync(_selectedDiskService.SelectedTestSessionId.Value);
+            if(_selectedSession != null)
+            {
+               card = await _diskCardRepository.GetByIdAsync(_selectedSession.DiskCardId) ?? card;
+            }
+         }
+
+         if(card == null && _selectedDiskService.SelectedDisk != null)
+         {
+            card = await _diskCardRepository.GetByDevicePathAsync(_selectedDiskService.SelectedDisk.Path);
+         }
+
+         if(card == null)
+         {
+            var allCards = await _diskCardRepository.GetAllAsync();
+            card = allCards.OrderByDescending(c => c.LastTestedAt).FirstOrDefault();
+         }
+
+         if(card == null)
+         {
+            StatusMessage = L.Get("CertificateView.Status.CardNotFound");
+            return;
+         }
+
+         if(selectedCert == null && _selectedSession != null)
+         {
+            selectedCert = await _certificateGenerator.GenerateCertificateAsync(_selectedSession, card);
+         }
+
+         var latestCert = selectedCert ?? await _diskCardRepository.GetLatestCertificateAsync(card.Id);
+
+         if(latestCert == null)
+         {
+            var sessions = await _diskCardRepository.GetTestSessionsAsync(card.Id);
+            var latestSessionId = sessions.OrderByDescending(s => s.StartedAt).Select(s => (int?)s.Id).FirstOrDefault();
+            if(latestSessionId.HasValue)
+            {
+               StatusMessage = L.Get("CertificateView.Status.LoadingLastTest");
+               _selectedSession = await _diskCardRepository.GetTestSessionWithoutSamplesAsync(latestSessionId.Value);
+               if(_selectedSession != null)
+               {
+                  var sessionCard = await _diskCardRepository.GetByIdAsync(_selectedSession.DiskCardId);
+                  if(sessionCard != null)
+                  {
+                     card = sessionCard;
+                     latestCert = await _certificateGenerator.GenerateCertificateAsync(_selectedSession, sessionCard);
+                  }
+               }
+            }
+         }
+
+         if(latestCert != null)
+         {
+            if(_selectedSession == null && latestCert.TestSessionId > 0)
+            {
+               _selectedSession = await _diskCardRepository.GetTestSessionWithoutSamplesAsync(latestCert.TestSessionId);
+            }
+
+            if(_selectedSession != null)
+            {
+               var sessionCard = await _diskCardRepository.GetByIdAsync(_selectedSession.DiskCardId);
+               if(sessionCard != null)
+               {
+                  card = sessionCard;
+                  latestCert = await _certificateGenerator.GenerateCertificateAsync(_selectedSession, sessionCard);
+               }
+            }
+            else if(latestCert.DiskCardId > 0)
+            {
+               card = await _diskCardRepository.GetByIdAsync(latestCert.DiskCardId) ?? card;
+            }
+
+            _selectedDiskService.SelectedDisk = new CoreDriveInfo
+            {
+               Path = card.DevicePath,
+               Name = card.ModelName,
+               TotalSize = card.Capacity,
+               SerialNumber = card.SerialNumber,
+               FirmwareVersion = card.FirmwareVersion
+            };
+            _selectedDiskService.SelectedDiskDisplayName = card.ModelName;
+            _selectedDiskService.IsSelectedDiskLocked = card.IsLocked;
+
+            AvailableSessions.Clear();
+            var sessionList = await _diskCardRepository.GetTestSessionsAsync(card.Id);
+            foreach(var session in sessionList.OrderByDescending(s => s.StartedAt))
+            {
+               AvailableSessions.Add(session);
+            }
+
+            if(_selectedSession == null)
+            {
+               int? initialSessionId = _selectedDiskService.SelectedTestSessionId
+                   ?? (latestCert.TestSessionId > 0 ? latestCert.TestSessionId : (int?)null)
+                   ?? AvailableSessions.FirstOrDefault()?.Id;
+
+               if(initialSessionId.HasValue)
+               {
+                  _selectedSession = await _diskCardRepository.GetTestSessionWithoutSamplesAsync(initialSessionId.Value);
+               }
+            }
+
+            await ApplySmartSummaryAsync(latestCert, card);
+            Certificate = latestCert;
+            await PrepareCertificateGraphAsync(latestCert, updateView: true);
+            if(_selectedSession != null)
+            {
+               UpdateDetailedSummaries(_selectedSession);
+               SelectedSessionItem = AvailableSessions.FirstOrDefault(s => s.Id == _selectedSession.Id);
+            }
+            StatusMessage = string.Format(L.Get("CertificateView.Status.Loaded"), latestCert.CertificateNumber);
+          }
+          else
+          {
+             ResetGraphToDefaults();
+             StatusMessage = L.Get("CertificateView.Status.NoCertificate");
+          }
+       }
+       catch(DbException ex)
+       {
+          StatusMessage = $"Chyba pĹ™i naÄŤĂ­tĂˇnĂ­ certifikĂˇtu: {ex.Message}";
+          await _dialogService.ShowErrorAsync(L.Get("Common.Error"), string.Format(L.Get("CertificateView.Error.Load"), ex.Message));
+       }
+       catch(InvalidOperationException ex)
+       {
+          StatusMessage = $"Chyba pĹ™i naÄŤĂ­tĂˇnĂ­ certifikĂˇtu: {ex.Message}";
+          await _dialogService.ShowErrorAsync(L.Get("Common.Error"), string.Format(L.Get("CertificateView.Error.Load"), ex.Message));
+       }
+       catch(IOException ex)
+       {
+          StatusMessage = $"Chyba pĹ™i naÄŤĂ­tĂˇnĂ­ certifikĂˇtu: {ex.Message}";
+          await _dialogService.ShowErrorAsync(L.Get("Common.Error"), string.Format(L.Get("CertificateView.Error.Load"), ex.Message));
+       }
+       catch(ExternalException ex)
+       {
+          StatusMessage = $"Chyba pĹ™i naÄŤĂ­tĂˇnĂ­ certifikĂˇtu: {ex.Message}";
+          await _dialogService.ShowErrorAsync(L.Get("Common.Error"), string.Format(L.Get("CertificateView.Error.Render"), ex.Message));
+       }
+       finally
+       {
+          IsLoading = false;
+       }
+   }
+
+   private async Task ApplySmartSummaryAsync(DiskCertificate certificate, DiskCard card)
+   {
+      ArgumentNullException.ThrowIfNull(certificate);
+      ArgumentNullException.ThrowIfNull(card);
+
+      if(certificate.PowerOnHours <= 0 && card.PowerOnHours.HasValue)
+      {
+         certificate.PowerOnHours = card.PowerOnHours.Value;
+      }
+
+      if(certificate.PowerCycles <= 0 && card.PowerCycleCount.HasValue)
+      {
+         certificate.PowerCycles = card.PowerCycleCount.Value;
+      }
+
+      if(certificate.ReallocatedSectors > 0 || certificate.PendingSectors > 0)
+      {
+         return;
+      }
+
+      var sessions = await _diskCardRepository.GetTestSessionsAsync(card.Id);
+      var latestSmartSessionId = sessions
+          .Where(s => s.TestType == DiskChecker.Core.Models.TestType.SmartShort || s.TestType == DiskChecker.Core.Models.TestType.SmartExtended || s.TestType == DiskChecker.Core.Models.TestType.SmartConveyance)
+          .OrderByDescending(s => s.StartedAt)
+          .Select(s => (int?)s.Id)
+          .FirstOrDefault();
+
+      if(!latestSmartSessionId.HasValue)
+      {
+         return;
+      }

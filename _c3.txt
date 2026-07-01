@@ -1,0 +1,200 @@
+﻿                using var legendWritePaint = new SKPaint { Color = new SKColor(220, 38, 38), IsAntialias = true };
+                using var legendReadPaint = new SKPaint { Color = new SKColor(5, 150, 105), IsAntialias = true };
+                DrawText(canvas, _locale?.GetString("CertificatePdf.Write", "ZĂˇpis") ?? "ZĂˇpis", chartX + chartW - 150, chartY + 8, smallFont, legendWritePaint);
+                DrawText(canvas, _locale?.GetString("CertificatePdf.Read", "ÄŚtenĂ­") ?? "ÄŚtenĂ­", chartX + chartW - 90, chartY + 8, smallFont, legendReadPaint);
+            }
+
+            // Recommendation
+            y += 290;
+            DrawText(canvas, _locale?.GetString("CertificatePdf.Recommendations", "DoporuÄŤenĂ­") ?? "DoporuÄŤenĂ­", 48, y, sectionFont, accentPaint);
+            y += 34;
+            canvas.DrawRect(48, y, CertWidth - 96, 140, panelPaint);
+            canvas.DrawRect(48, y, CertWidth - 96, 140, borderPaint);
+            DrawTextWrapped(canvas, cert.RecommendationNotes ?? _locale?.GetString("CertificatePdf.NotAvailable", "NenĂ­ k dispozici") ?? "NenĂ­ k dispozici", 64, y + 16, CertWidth - 130, 100, valueFont, textPaint);
+
+            // Diagnostic notes
+            if (!string.IsNullOrWhiteSpace(cert.Notes))
+            {
+                y += 160;
+                DrawText(canvas, _locale?.GetString("CertificatePdf.Reasons", "DĹŻvody hodnocenĂ­") ?? "DĹŻvody hodnocenĂ­", 48, y, sectionFont, accentPaint);
+                y += 34;
+                float notesHeight = Math.Max(60, valueFont.MeasureText(cert.Notes) / (CertWidth - 130) * valueFont.Size * 1.5f + 20);
+                canvas.DrawRect(48, y, CertWidth - 96, notesHeight, panelPaint);
+                canvas.DrawRect(48, y, CertWidth - 96, notesHeight, borderPaint);
+                DrawTextWrapped(canvas, cert.Notes, 64, y + 16, CertWidth - 130, notesHeight - 20, valueFont, textPaint);
+            }
+
+            // Encode as JPEG
+            using var image = surface.Snapshot();
+            using var data = image.Encode(SKEncodedImageFormat.Jpeg, 92);
+            return data.ToArray();
+        });
+    }
+
+    /// <summary>
+    /// Resolves a font with cross-platform fallback chain.
+    /// Tries DejaVu Sans â†’ Noto Sans â†’ Arial â†’ system default.
+    /// </summary>
+    private static SKFont ResolveFont(float size, bool bold)
+    {
+        var weight = bold ? SKFontStyleWeight.Bold : SKFontStyleWeight.Normal;
+
+        // Try common Linux fonts first, then Windows/macOS
+        string[] families = { FontSansSerif, FontSansSerifFallback, FontSansSerifSystem, "Helvetica", "sans-serif" };
+
+        foreach (var family in families)
+        {
+            var typeface = SKTypeface.FromFamilyName(family, weight, SKFontStyleWidth.Normal, SKFontStyleSlant.Upright);
+            if (typeface != null && typeface.FamilyName.Equals(family, StringComparison.OrdinalIgnoreCase))
+            {
+                return new SKFont(typeface, size);
+            }
+            typeface?.Dispose();
+        }
+
+        // Ultimate fallback: system default
+        return new SKFont(SKTypeface.Default, size);
+    }
+
+    private static void DrawText(SKCanvas canvas, string text, float x, float y, SKFont font, SKPaint paint)
+    {
+        canvas.DrawText(text, x, y + font.Size, font, paint);
+    }
+
+    private static void DrawTextWrapped(SKCanvas canvas, string text, float x, float y, float maxWidth, float maxHeight, SKFont font, SKPaint paint)
+    {
+        // Simple word-wrap using SkiaSharp text measurement
+        var words = text.Split(' ');
+        var lines = new List<string>();
+        var currentLine = "";
+        float lineHeight = font.Size * 1.4f;
+
+        foreach (var word in words)
+        {
+            var testLine = string.IsNullOrEmpty(currentLine) ? word : currentLine + " " + word;
+            if (font.MeasureText(testLine) > maxWidth && !string.IsNullOrEmpty(currentLine))
+            {
+                lines.Add(currentLine);
+                currentLine = word;
+            }
+            else
+            {
+                currentLine = testLine;
+            }
+        }
+        if (!string.IsNullOrEmpty(currentLine))
+            lines.Add(currentLine);
+
+        float cy = y;
+        foreach (var line in lines)
+        {
+            if (cy + lineHeight > y + maxHeight) break;
+            DrawText(canvas, line, x, cy, font, paint);
+            cy += lineHeight;
+        }
+    }
+
+    // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    //  PDF document builder (lightweight, no deps)
+    // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+
+    private static byte[] BuildImagePdfDocument(byte[] jpegBytes, int imageWidth, int imageHeight)
+    {
+        using var ms = new MemoryStream();
+        using var writer = new StreamWriter(ms, System.Text.Encoding.ASCII, leaveOpen: true);
+        var offsets = new List<long> { 0 };
+
+        void WriteObject(int objectNumber, string body)
+        {
+            writer.Flush();
+            offsets.Add(ms.Position);
+            writer.Write($"{objectNumber} 0 obj\n");
+            writer.Write(body);
+            writer.Write("\nendobj\n");
+        }
+
+        writer.Write("%PDF-1.4\n");
+
+        WriteObject(1, "<< /Type /Catalog /Pages 2 0 R >>");
+        WriteObject(2, "<< /Type /Pages /Kids [3 0 R] /Count 1 >>");
+        WriteObject(3, $"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << /XObject << /Im1 5 0 R >> >> /Contents 4 0 R >>");
+
+        var content = "q\n595 0 0 842 0 0 cm\n/Im1 Do\nQ\n";
+        var contentBytes = System.Text.Encoding.ASCII.GetBytes(content);
+        writer.Flush();
+        offsets.Add(ms.Position);
+        writer.Write("4 0 obj\n");
+        writer.Write($"<< /Length {contentBytes.Length} >>\nstream\n");
+        writer.Flush();
+        ms.Write(contentBytes, 0, contentBytes.Length);
+        writer.Write("endstream\nendobj\n");
+
+        writer.Flush();
+        offsets.Add(ms.Position);
+        writer.Write("5 0 obj\n");
+        writer.Write($"<< /Type /XObject /Subtype /Image /Width {imageWidth} /Height {imageHeight} /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /DCTDecode /Length {jpegBytes.Length} >>\nstream\n");
+        writer.Flush();
+        ms.Write(jpegBytes, 0, jpegBytes.Length);
+        writer.Write("\nendstream\nendobj\n");
+
+        writer.Flush();
+        var xrefStart = ms.Position;
+        writer.Write($"xref\n0 {offsets.Count}\n");
+        writer.Write("0000000000 65535 f \n");
+        for (var i = 1; i < offsets.Count; i++)
+            writer.Write($"{offsets[i]:D10} 00000 n \n");
+
+        writer.Write("trailer\n");
+        writer.Write($"<< /Size {offsets.Count} /Root 1 0 R >>\n");
+        writer.Write("startxref\n");
+        writer.Write($"{xrefStart}\n");
+        writer.Write("%%EOF");
+        writer.Flush();
+
+        return ms.ToArray();
+    }
+
+    // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    //  Chart helpers
+    // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+
+    private static List<double> DownsampleSpeeds(IEnumerable<double> speeds, int targetPoints)
+    {
+        var values = speeds.Where(v => v > 0).ToList();
+        if (values.Count == 0) return new List<double>();
+        if (values.Count <= targetPoints) return values;
+
+        var result = new List<double>(targetPoints);
+        var bucketSize = values.Count / (double)targetPoints;
+
+        for (var i = 0; i < targetPoints; i++)
+        {
+            var start = (int)Math.Floor(i * bucketSize);
+            var end = (int)Math.Floor((i + 1) * bucketSize);
+            end = Math.Clamp(end, start + 1, values.Count);
+
+            var sum = 0d;
+            var count = 0;
+            for (var j = start; j < end; j++) { sum += values[j]; count++; }
+            result.Add(count > 0 ? sum / count : values[Math.Min(start, values.Count - 1)]);
+        }
+        return result;
+    }
+
+    private static (List<double> Write, List<double> Read) GetProfilePointsForChart(DiskCertificate cert)
+    {
+        var write = cert.WriteProfilePoints?.ToList() ?? new List<double>();
+        var read = cert.ReadProfilePoints?.ToList() ?? new List<double>();
+        return (write, read);
+    }
+
+    private static string FormatSpeedForPdf(double value, string notAvailableText)
+    {
+        return value > 0
+            ? value.ToString("F1", CultureInfo.InvariantCulture)
+            : notAvailableText;
+    }
+
+    private static void DrawProfilePolyline(
+        SKCanvas canvas, SKPaint pen, List<double> values, double maxValue,
+        float chartX, float chartY, float chartW, float chartH)

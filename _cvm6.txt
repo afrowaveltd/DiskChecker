@@ -1,0 +1,200 @@
+﻿
+      var smartSession = await _diskCardRepository.GetTestSessionWithoutSamplesAsync(latestSmartSessionId.Value);
+      if(smartSession == null)
+      {
+         return;
+      }
+
+      var reallocated = smartSession.SmartBefore?.ReallocatedSectorCount ?? 0;
+      var pending = smartSession.SmartBefore?.PendingSectorCount ?? 0;
+
+      if(certificate.ReallocatedSectors <= 0 && reallocated > 0)
+      {
+         certificate.ReallocatedSectors = reallocated;
+      }
+
+      if(certificate.PendingSectors <= 0 && pending > 0)
+      {
+         certificate.PendingSectors = pending;
+      }
+
+      certificate.SmartPassed = certificate.ReallocatedSectors == 0 && certificate.PendingSectors == 0;
+   }
+
+   private async Task PrepareCertificateGraphAsync(DiskCertificate certificate, bool updateView)
+   {
+      ArgumentNullException.ThrowIfNull(certificate);
+
+      await EnsureCertificateGraphDataAsync(certificate);
+      RefreshCertificateResultProperties();
+
+      if(updateView)
+      {
+         await RebuildPerformanceGraphAsync(certificate).ConfigureAwait(true);
+      }
+   }
+
+   private async Task EnsureCertificateGraphDataAsync(DiskCertificate certificate)
+   {
+      ArgumentNullException.ThrowIfNull(certificate);
+
+      var hasWriteProfile = certificate.WriteProfilePoints is { Count: > 0 };
+      var hasReadProfile = certificate.ReadProfilePoints is { Count: > 0 };
+
+      if(_selectedSession != null)
+      {
+         certificate.ChartImagePath = _selectedSession.ChartImagePath;
+      }
+
+      var sessionId = certificate.TestSessionId;
+      if(sessionId <= 0 && _selectedDiskService.SelectedTestSessionId.HasValue)
+      {
+         sessionId = _selectedDiskService.SelectedTestSessionId.Value;
+      }
+
+      if(_selectedSession == null && sessionId > 0)
+      {
+         _selectedSession = await _diskCardRepository.GetTestSessionWithoutSamplesAsync(sessionId);
+         if(_selectedSession != null)
+         {
+            certificate.ChartImagePath = _selectedSession.ChartImagePath;
+         }
+      }
+
+      if((_writeGraphSamples.Count == 0 && _readGraphSamples.Count == 0) && sessionId > 0)
+      {
+         StatusMessage = L.Get("CertificateView.Status.LoadingGraphData");
+         var speedSeries = await LoadCertificateGraphSamplesProgressiveAsync(sessionId);
+         _writeGraphSamples = DownsampleToLimit(speedSeries.WriteSamples, 512);
+         _readGraphSamples = DownsampleToLimit(speedSeries.ReadSamples, 512);
+      }
+
+      if(_writeGraphSamples.Count == 0 && _readGraphSamples.Count == 0)
+      {
+         return;
+      }
+
+      if(!hasWriteProfile)
+      {
+         certificate.WriteProfilePoints = DownsampleSpeedSamples(_writeGraphSamples.Select(s => s.SpeedMBps), 32);
+      }
+
+      if(!hasReadProfile)
+      {
+         certificate.ReadProfilePoints = DownsampleSpeedSamples(_readGraphSamples.Select(s => s.SpeedMBps), 32);
+      }
+
+      BackfillCertificatePerformanceFromSamples(certificate, _writeGraphSamples, _readGraphSamples);
+   }
+
+   private async Task HydrateCertificateForOutputAsync(DiskCertificate certificate)
+   {
+      var sessionId = certificate.TestSessionId > 0 ? certificate.TestSessionId : _selectedSession?.Id ?? 0;
+      if(sessionId <= 0)
+      {
+         return;
+      }
+
+      if(_writeGraphSamples.Count == 0 && _readGraphSamples.Count == 0)
+      {
+         var speedSeries = await LoadCertificateGraphSamplesProgressiveAsync(sessionId);
+         _writeGraphSamples = DownsampleToLimit(speedSeries.WriteSamples, 512);
+         _readGraphSamples = DownsampleToLimit(speedSeries.ReadSamples, 512);
+      }
+
+      if(certificate.WriteProfilePoints.Count == 0 && _writeGraphSamples.Count > 0)
+      {
+         certificate.WriteProfilePoints = DownsampleSpeedSamples(_writeGraphSamples.Select(s => s.SpeedMBps), 32);
+      }
+
+      if(certificate.ReadProfilePoints.Count == 0 && _readGraphSamples.Count > 0)
+      {
+         certificate.ReadProfilePoints = DownsampleSpeedSamples(_readGraphSamples.Select(s => s.SpeedMBps), 32);
+      }
+
+      BackfillCertificatePerformanceFromSamples(certificate, _writeGraphSamples, _readGraphSamples);
+      RefreshCertificateResultProperties();
+   }
+   private static void BackfillCertificatePerformanceFromSamples(
+      DiskCertificate certificate,
+      IReadOnlyList<SpeedSample> writeSamples,
+      IReadOnlyList<SpeedSample> readSamples)
+   {
+      var writeValues = writeSamples.Where(s => s.SpeedMBps > 0).Select(s => s.SpeedMBps).ToList();
+      var readValues = readSamples.Where(s => s.SpeedMBps > 0).Select(s => s.SpeedMBps).ToList();
+
+      if(certificate.AvgWriteSpeed <= 0 && writeValues.Count > 0)
+      {
+         certificate.AvgWriteSpeed = writeValues.Average();
+      }
+
+      if(certificate.MaxWriteSpeed <= 0 && writeValues.Count > 0)
+      {
+         certificate.MaxWriteSpeed = writeValues.Max();
+      }
+
+      if(certificate.AvgReadSpeed <= 0 && readValues.Count > 0)
+      {
+         certificate.AvgReadSpeed = readValues.Average();
+      }
+
+      if(certificate.MaxReadSpeed <= 0 && readValues.Count > 0)
+      {
+         certificate.MaxReadSpeed = readValues.Max();
+      }
+   }
+
+   private void RefreshCertificateResultProperties()
+   {
+      OnPropertyChanged(nameof(TestDuration));
+      OnPropertyChanged(nameof(Errors));
+      OnPropertyChanged(nameof(TemperatureRange));
+      OnPropertyChanged(nameof(AvgWriteSpeed));
+      OnPropertyChanged(nameof(AvgReadSpeed));
+      OnPropertyChanged(nameof(HealthStatus));
+      OnPropertyChanged(nameof(Recommended));
+      OnPropertyChanged(nameof(SanitizationPerformed));
+      OnPropertyChanged(nameof(SanitizationMethodText));
+      OnPropertyChanged(nameof(DataVerifiedText));
+      OnPropertyChanged(nameof(PartitionSchemeText));
+      OnPropertyChanged(nameof(FileSystemText));
+      OnPropertyChanged(nameof(VolumeLabelText));
+      OnPropertyChanged(nameof(TestTypeLine));
+      OnPropertyChanged(nameof(TestDurationLine));
+      OnPropertyChanged(nameof(ErrorsLine));
+      OnPropertyChanged(nameof(TemperatureRangeLine));
+      OnPropertyChanged(nameof(AvgWriteSpeedLine));
+      OnPropertyChanged(nameof(AvgReadSpeedLine));
+      OnPropertyChanged(nameof(HealthStatusLine));
+      OnPropertyChanged(nameof(RecommendedLine));
+      OnPropertyChanged(nameof(SmartPowerOnHoursLine));
+      OnPropertyChanged(nameof(SmartPowerCyclesLine));
+      OnPropertyChanged(nameof(SmartReallocatedSectorsLine));
+      OnPropertyChanged(nameof(SmartPendingSectorsLine));
+      OnPropertyChanged(nameof(SeekSummaryLine));
+      OnPropertyChanged(nameof(Sanitize1WriteLine));
+      OnPropertyChanged(nameof(Sanitize2WriteLine));
+      OnPropertyChanged(nameof(Sanitize1ReadLine));
+      OnPropertyChanged(nameof(Sanitize2ReadLine));
+      OnPropertyChanged(nameof(WriteSpeedChangeLine));
+      OnPropertyChanged(nameof(ReadSpeedChangeLine));
+   }
+
+   private async Task<(List<SpeedSample> WriteSamples, List<SpeedSample> ReadSamples)> LoadCertificateGraphSamplesProgressiveAsync(int sessionId)
+    {
+       var writeSamples = new List<SpeedSample>();
+       var readSamples = new List<SpeedSample>();
+
+       for(var remainder = 0; remainder < CertificateGraphRemainders; remainder++)
+       {
+          try
+          {
+             var chunk = await _diskCardRepository.GetSpeedSampleSeriesChunkAsync(sessionId, CertificateGraphModulo, remainder);
+             writeSamples.AddRange(chunk.WriteSamples);
+             readSamples.AddRange(chunk.ReadSamples);
+          }
+          catch(DbException)
+          {
+             break;
+          }
+          catch(IOException)

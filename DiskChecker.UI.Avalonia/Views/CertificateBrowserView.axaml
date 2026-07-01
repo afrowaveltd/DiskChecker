@@ -343,11 +343,11 @@
                                             <Line StartPoint="10,60" EndPoint="520,60" Stroke="#FFF1F5F9" StrokeThickness="1"/>
                                             <Line StartPoint="10,110" EndPoint="520,110" Stroke="#FFCBD5E1" StrokeThickness="1"/>
 
-                                            <Polyline Points="{Binding WriteProfilePoints}"
+                                            <Polyline Points="{Binding WriteProfilePoints, Converter={StaticResource PointsStringConverter}}"
                                                       Stroke="{Binding ChartStrokeWrite}" StrokeThickness="2"/>
-                                            <Polyline Points="{Binding ReadProfilePoints}"
+                                            <Polyline Points="{Binding ReadProfilePoints, Converter={StaticResource PointsStringConverter}}"
                                                       Stroke="{Binding ChartStrokeRead}" StrokeThickness="2"/>
-                                            <Polyline Points="{Binding TemperatureProfilePoints}"
+                                            <Polyline Points="{Binding TemperatureProfilePoints, Converter={StaticResource PointsStringConverter}}"
                                                       Stroke="#FF7C3AED" StrokeThickness="2"
                                                       IsVisible="{Binding HasTemperatureProfile}"/>
                                         </Canvas>

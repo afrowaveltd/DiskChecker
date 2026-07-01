@@ -1,0 +1,200 @@
+﻿
+   public string StatusMessage
+   {
+      get => _statusMessage;
+      set => SetProperty(ref _statusMessage, value);
+   }
+
+   public bool HasCertificate => Certificate != null;
+
+   public DateTime CurrentDateTime => DateTime.Now;
+
+   public string WriteProfilePoints
+   {
+      get => _writeProfilePoints;
+      private set => SetProperty(ref _writeProfilePoints, value);
+   }
+
+   public string ReadProfilePoints
+   {
+      get => _readProfilePoints;
+      private set => SetProperty(ref _readProfilePoints, value);
+   }
+
+   public string ChartMaxSpeedLabel
+   {
+      get => _chartMaxSpeedLabel;
+      private set => SetProperty(ref _chartMaxSpeedLabel, value);
+   }
+
+   public string ChartMidSpeedLabel
+   {
+      get => _chartMidSpeedLabel;
+      private set => SetProperty(ref _chartMidSpeedLabel, value);
+   }
+
+   public string ChartMinSpeedLabel
+   {
+      get => _chartMinSpeedLabel;
+      private set => SetProperty(ref _chartMinSpeedLabel, value);
+   }
+
+   public string ChartXAxisStartLabel
+   {
+      get => _chartXAxisStartLabel;
+      private set => SetProperty(ref _chartXAxisStartLabel, value);
+   }
+
+   public string ChartXAxisMidLabel
+   {
+      get => _chartXAxisMidLabel;
+      private set => SetProperty(ref _chartXAxisMidLabel, value);
+   }
+
+   public string ChartXAxisEndLabel
+   {
+      get => _chartXAxisEndLabel;
+      private set => SetProperty(ref _chartXAxisEndLabel, value);
+   }
+
+   /// <summary>
+   /// Gets temperature profile polyline points for the certificate chart.
+   /// </summary>
+   public string TemperatureProfilePoints
+   {
+      get => _temperatureProfilePoints;
+      private set => SetProperty(ref _temperatureProfilePoints, value);
+   }
+
+   /// <summary>
+   /// Gets whether temperature profile is available for the selected session.
+   /// </summary>
+   public bool HasTemperatureProfile
+   {
+      get => _hasTemperatureProfile;
+      private set => SetProperty(ref _hasTemperatureProfile, value);
+   }
+
+   /// <summary>
+   /// Gets available test sessions for in-app certificate analysis.
+   /// </summary>
+   public ObservableCollection<TestSession> AvailableSessions { get; }
+
+   /// <summary>
+   /// Gets or sets currently selected session for detailed in-app certificate analysis.
+   /// </summary>
+   public TestSession? SelectedSessionItem
+   {
+      get => _selectedSessionItem;
+      set
+      {
+         if(SetProperty(ref _selectedSessionItem, value))
+         {
+            _ = SelectSessionAsync(value);
+         }
+      }
+   }
+
+   /// <summary>
+   /// Gets selected session metrics summary.
+   /// </summary>
+   public string SelectedSessionSummary
+   {
+      get => _selectedSessionSummary;
+      private set => SetProperty(ref _selectedSessionSummary, value);
+   }
+
+   /// <summary>
+   /// Gets selected session thermal behavior summary.
+   /// </summary>
+   public string SelectedSessionThermalSummary
+   {
+      get => _selectedSessionThermalSummary;
+      private set => SetProperty(ref _selectedSessionThermalSummary, value);
+   }
+
+   /// <summary>
+   /// Gets selected session SMART summary.
+   /// </summary>
+   public string SelectedSessionSmartSummary
+   {
+      get => _selectedSessionSmartSummary;
+      private set => SetProperty(ref _selectedSessionSmartSummary, value);
+   }
+
+   // Certificate display properties
+   public string CertificateNumber => Certificate?.CertificateNumber ?? "-";
+
+   public string DiskModel => Certificate?.DiskModel ?? L.Get("CertificateView.Unknown");
+   public string SerialNumber => Certificate?.SerialNumber ?? "-";
+   public string Capacity => Certificate?.Capacity ?? "-";
+   public string DiskType => Certificate?.DiskType ?? "-";
+   public string Grade => Certificate?.Grade ?? "?";
+   public string Score => Certificate != null ? $"{Certificate.Score:F0}/100" : "-";
+   public string HealthStatus => Certificate?.HealthStatus ?? "-";
+   public string TestType => Certificate?.TestType ?? "-";
+   public string TestDuration => Certificate != null ? Certificate.TestDuration.ToString(@"hh\:mm\:ss") : "-";
+   public string AvgWriteSpeed => Certificate != null ? $"{Certificate.AvgWriteSpeed:F1} MB/s" : "-";
+   public string AvgReadSpeed => Certificate != null ? $"{Certificate.AvgReadSpeed:F1} MB/s" : "-";
+   public string TemperatureRange => Certificate?.TemperatureRange ?? "-";
+   public string Errors => Certificate?.ErrorCount.ToString() ?? "0";
+   public bool SmartPassed => Certificate?.SmartPassed ?? false;
+   public string SmartPowerOnHoursText => Certificate?.PowerOnHours > 0 ? $"{Certificate.PowerOnHours:#,0}" : "N/A";
+   public string SmartPowerCyclesText => Certificate?.PowerCycles > 0 ? $"{Certificate.PowerCycles:#,0}" : "N/A";
+   public string SmartReallocatedSectorsText => (Certificate?.ReallocatedSectors ?? 0).ToString(CultureInfo.InvariantCulture);
+   public string SmartPendingSectorsText => (Certificate?.PendingSectors ?? 0).ToString(CultureInfo.InvariantCulture);
+   public bool Recommended => Certificate?.Recommended ?? false;
+   public string RecommendationText => Certificate?.RecommendationNotes ?? "NenĂ­ k dispozici";
+
+   public string TestTypeLine => string.Format(L.Get("CertificateView.TestTypeFormat"), TestType);
+   public string TestDurationLine => string.Format(L.Get("CertificateView.TestDurationFormat"), TestDuration);
+   public string ErrorsLine => string.Format(L.Get("CertificateView.ErrorsFormat"), Errors);
+   public string TemperatureRangeLine => string.Format(L.Get("CertificateView.TemperatureFormat"), TemperatureRange);
+   public string AvgWriteSpeedLine => string.Format(L.Get("CertificateView.AvgWriteSpeedFormat"), AvgWriteSpeed);
+   public string AvgReadSpeedLine => string.Format(L.Get("CertificateView.AvgReadSpeedFormat"), AvgReadSpeed);
+   public string HealthStatusLine => string.Format(L.Get("CertificateView.HealthStatusFormat"), HealthStatus);
+   public string RecommendedLine => string.Format(L.Get("CertificateView.RecommendedFormat"), Recommended);
+   public string SmartPowerOnHoursLine => string.Format(L.Get("CertificateView.PowerOnHoursFormat"), SmartPowerOnHoursText);
+   public string SmartPowerCyclesLine => string.Format(L.Get("CertificateView.PowerCyclesFormat"), SmartPowerCyclesText);
+   public string SmartReallocatedSectorsLine => string.Format(L.Get("CertificateView.ReallocatedSectorsFormat"), SmartReallocatedSectorsText);
+   public string SmartPendingSectorsLine => string.Format(L.Get("CertificateView.PendingSectorsFormat"), SmartPendingSectorsText);
+   public string SeekSummaryLine => string.Format(L.Get("CertificateView.SeekSummaryFormat"), SeekTestSummaryText);
+   public string Sanitize1WriteLine => string.Format(L.Get("CertificateView.SanitizePass1Format"), Sanitize1WriteText);
+   public string Sanitize2WriteLine => string.Format(L.Get("CertificateView.SanitizePass2Format"), Sanitize2WriteText);
+   public string Sanitize1ReadLine => string.Format(L.Get("CertificateView.SanitizePass1Format"), Sanitize1ReadText);
+   public string Sanitize2ReadLine => string.Format(L.Get("CertificateView.SanitizePass2Format"), Sanitize2ReadText);
+   public string WriteSpeedChangeLine => string.Format(L.Get("CertificateView.ChangeFormat"), WriteSpeedChangeText);
+   public string ReadSpeedChangeLine => string.Format(L.Get("CertificateView.ChangeFormat"), ReadSpeedChangeText);
+
+   // â”€â”€ Sanitization details â”€â”€
+
+   public bool SanitizationPerformed => Certificate?.SanitizationPerformed == true;
+
+   public string SanitizationMethodText => string.IsNullOrWhiteSpace(Certificate?.SanitizationMethod)
+       ? "â€”"
+       : Certificate.SanitizationMethod;
+
+   public string DataVerifiedText => Certificate?.DataVerified == true
+       ? L.Get("CertificateView.Yes")
+       : L.Get("CertificateView.No");
+
+   public string PartitionSchemeText => string.IsNullOrWhiteSpace(Certificate?.PartitionScheme)
+       ? "â€”"
+       : Certificate.PartitionScheme;
+
+   public string FileSystemText => string.IsNullOrWhiteSpace(Certificate?.FileSystem)
+       ? "â€”"
+       : Certificate.FileSystem;
+
+   public string VolumeLabelText => string.IsNullOrWhiteSpace(Certificate?.VolumeLabel)
+       ? "â€”"
+       : Certificate.VolumeLabel;
+
+   // â”€â”€ Seek test metrics (Absolute Destructive Test) â”€â”€
+
+   public bool HasSeekMetrics => Certificate?.SeekAvgLatencyMs.HasValue == true;
+
+   public string SeekAvgLatencyMsText => Certificate?.SeekAvgLatencyMs.HasValue == true
+       ? $"{Certificate.SeekAvgLatencyMs.Value:F2} ms" : "â€”";
+
+   public string SeekMinLatencyMsText => Certificate?.SeekMinLatencyMs.HasValue == true

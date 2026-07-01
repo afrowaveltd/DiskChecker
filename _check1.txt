@@ -1,0 +1,16 @@
+﻿
+                        <Separator Background="{DynamicResource ThemeBorderBrush}"/>
+
+                        <!-- Disk Info + Grade -->
+                        <Grid ColumnDefinitions="2*,*" ColumnSpacing="14">
+                            <Border Grid.Column="0" Background="{Binding PanelBackground}" Padding="12" CornerRadius="8">
+                                <Grid ColumnDefinitions="Auto,*" RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto" RowSpacing="3" ColumnSpacing="10">
+                                    <TextBlock Grid.Row="0" Grid.Column="0" Text="Model:" FontWeight="Bold" FontSize="11"/>
+                                    <TextBlock Grid.Row="0" Grid.Column="1" Text="{Binding DiskModel}" FontSize="11"/>
+
+                                    <TextBlock Grid.Row="1" Grid.Column="0" Text="{Binding L[CertificateBrowser.SerialNumberLabel]}" FontWeight="Bold" FontSize="11"/>
+                                    <TextBlock Grid.Row="1" Grid.Column="1" Text="{Binding SerialNumber}" FontFamily="Consolas" FontSize="11"/>
+
+                                    <TextBlock Grid.Row="2" Grid.Column="0" Text="Kapacita:" FontWeight="Bold" FontSize="11"/>
+                                    <TextBlock Grid.Row="2" Grid.Column="1" Text="{Binding Capacity}" FontSize="11"/>
+

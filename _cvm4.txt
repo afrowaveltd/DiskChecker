@@ -1,0 +1,200 @@
+﻿         await _dialogService.ShowErrorAsync(L.Get("Common.Error"), string.Format(L.Get("CertificateView.Error.ExportPdf"), ex.Message));
+      }
+      catch(ArgumentException ex)
+      {
+         StatusMessage = string.Format(L.Get("Common.Error"), ex.Message);
+         await _dialogService.ShowErrorAsync(L.Get("Common.Error"), string.Format(L.Get("CertificateView.Error.ExportPdf"), ex.Message));
+      }
+      catch(FileNotFoundException ex)
+      {
+         StatusMessage = string.Format(L.Get("Common.Error"), ex.Message);
+         await _dialogService.ShowErrorAsync(L.Get("Common.Error"), string.Format(L.Get("CertificateView.Error.ExportPdf"), ex.Message));
+      }
+      catch(IOException ex)
+      {
+         StatusMessage = string.Format(L.Get("Common.Error"), ex.Message);
+         await _dialogService.ShowErrorAsync(L.Get("Common.Error"), string.Format(L.Get("CertificateView.Error.ExportPdf"), ex.Message));
+      }
+      finally
+      {
+         IsLoading = false;
+      }
+   }
+
+   [RelayCommand]
+   private async Task PrintAsync()
+   {
+      if(Certificate == null)
+      {
+         StatusMessage = L.Get("CertificateView.Status.GenerateFirst");
+         return;
+      }
+
+      try
+      {
+         IsLoading = true;
+         IsPrinting = true;
+         PrintProgressMessage = L.Get("CertificateView.Print.PreparingGraph");
+         StatusMessage = L.Get("CertificateView.Status.PreparingPrint");
+
+         await PrepareCertificateGraphAsync(Certificate, updateView: false);
+
+         await HydrateCertificateForOutputAsync(Certificate);
+
+         PrintProgressMessage = L.Get("CertificateView.Print.GeneratingPdf");
+         StatusMessage = L.Get("CertificateView.Status.GeneratingPdf");
+
+         var pdfPath = await _certificateGenerator.GeneratePdfAsync(Certificate);
+
+         PrintProgressMessage = L.Get("CertificateView.Print.OpeningPdf");
+         StatusMessage = L.Get("CertificateView.Status.OpeningPdf");
+
+         await Task.Run(() => DocumentLauncher.OpenFile(pdfPath));
+
+         StatusMessage = L.Get("CertificateView.Status.PdfOpened");
+         PrintProgressMessage = string.Empty;
+
+         await _dialogService.ShowInfoAsync(
+             L.Get("CertificateView.Dialog.PrintCertificate"),
+             string.Format(L.Get("CertificateView.Dialog.PrintMessage"), pdfPath));
+      }
+      catch(InvalidOperationException ex)
+      {
+         StatusMessage = $"Chyba tisku: {ex.Message}";
+         PrintProgressMessage = string.Empty;
+         await _dialogService.ShowErrorAsync(L.Get("Common.Error"), string.Format(L.Get("CertificateView.Error.PrintPrepare"), ex.Message));
+      }
+      catch(ArgumentException ex)
+      {
+         StatusMessage = $"Chyba tisku: {ex.Message}";
+         PrintProgressMessage = string.Empty;
+         await _dialogService.ShowErrorAsync(L.Get("Common.Error"), string.Format(L.Get("CertificateView.Error.PrintPrepare"), ex.Message));
+      }
+      catch(FileNotFoundException ex)
+      {
+         StatusMessage = $"Chyba tisku: {ex.Message}";
+         PrintProgressMessage = string.Empty;
+         await _dialogService.ShowErrorAsync(L.Get("Common.Error"), string.Format(L.Get("CertificateView.Error.OpenPdf"), ex.Message));
+      }
+      catch(IOException ex)
+      {
+         StatusMessage = $"Chyba tisku: {ex.Message}";
+         PrintProgressMessage = string.Empty;
+         await _dialogService.ShowErrorAsync(L.Get("Common.Error"), string.Format(L.Get("CertificateView.Error.PrintPrepare"), ex.Message));
+      }
+      catch(Win32Exception ex)
+      {
+         StatusMessage = $"Chyba tisku: {ex.Message}";
+         PrintProgressMessage = string.Empty;
+         await _dialogService.ShowErrorAsync(L.Get("Common.Error"), string.Format(L.Get("CertificateView.Error.OpenPdf"), ex.Message));
+      }
+      finally
+      {
+         IsLoading = false;
+         IsPrinting = false;
+         PrintProgressMessage = string.Empty;
+      }
+   }
+
+   [RelayCommand]
+   private async Task PrintLabelAsync()
+   {
+      if(Certificate == null)
+      {
+         StatusMessage = L.Get("CertificateView.Status.GenerateFirst");
+         return;
+      }
+
+      try
+      {
+         IsLoading = true;
+         StatusMessage = L.Get("CertificateView.Status.GeneratingLabel");
+
+         await PrepareCertificateGraphAsync(Certificate, updateView: false);
+         var labelPath = await _certificateGenerator.GenerateLabelAsync(Certificate);
+
+         await Task.Run(() => DocumentLauncher.OpenFile(labelPath));
+
+         StatusMessage = L.Get("CertificateView.Status.LabelOpened");
+         await _dialogService.ShowInfoAsync(
+             L.Get("CertificateView.Dialog.PrintLabel"),
+             string.Format(L.Get("CertificateView.Dialog.LabelMessage"), labelPath));
+      }
+      catch(InvalidOperationException ex)
+      {
+         StatusMessage = $"Chyba tisku ĹˇtĂ­tku: {ex.Message}";
+         await _dialogService.ShowErrorAsync(L.Get("Common.Error"), string.Format(L.Get("CertificateView.Error.PrintLabelPrepare"), ex.Message));
+      }
+      catch(ArgumentException ex)
+      {
+         StatusMessage = $"Chyba tisku ĹˇtĂ­tku: {ex.Message}";
+         await _dialogService.ShowErrorAsync(L.Get("Common.Error"), string.Format(L.Get("CertificateView.Error.PrintLabelPrepare"), ex.Message));
+      }
+      catch(FileNotFoundException ex)
+      {
+         StatusMessage = $"Chyba tisku ĹˇtĂ­tku: {ex.Message}";
+         await _dialogService.ShowErrorAsync(L.Get("Common.Error"), string.Format(L.Get("CertificateView.Error.OpenLabel"), ex.Message));
+      }
+      catch(IOException ex)
+      {
+         StatusMessage = $"Chyba tisku ĹˇtĂ­tku: {ex.Message}";
+         await _dialogService.ShowErrorAsync(L.Get("Common.Error"), string.Format(L.Get("CertificateView.Error.PrintLabelPrepare"), ex.Message));
+      }
+      catch(Win32Exception ex)
+      {
+         StatusMessage = $"Chyba tisku ĹˇtĂ­tku: {ex.Message}";
+         await _dialogService.ShowErrorAsync(L.Get("Common.Error"), string.Format(L.Get("CertificateView.Error.OpenLabel"), ex.Message));
+      }
+      finally
+      {
+         IsLoading = false;
+      }
+   }
+
+   /// <summary>
+   /// Updates in-app certificate preview to selected test session.
+   /// </summary>
+   private async Task SelectSessionAsync(TestSession? session)
+   {
+      if(session == null)
+      {
+         return;
+      }
+
+      _selectedSession = await _diskCardRepository.GetTestSessionWithoutSamplesAsync(session.Id) ?? session;
+      if(Certificate == null)
+      {
+         return;
+      }
+
+      var card = await _diskCardRepository.GetByIdAsync(_selectedSession.DiskCardId);
+      if(card == null)
+      {
+         return;
+      }
+
+      Certificate = await _certificateGenerator.GenerateCertificateAsync(_selectedSession, card);
+      await PrepareCertificateGraphAsync(Certificate, updateView: true);
+      UpdateDetailedSummaries(_selectedSession);
+   }
+
+   [RelayCommand]
+   private void GoBack()
+   {
+      _navigationService.NavigateTo<DiskCardDetailViewModel>();
+   }
+
+   #endregion Commands
+
+   #region Private Methods
+
+   private async Task LoadCertificateAsync()
+   {
+      try
+      {
+         IsLoading = true;
+         StatusMessage = L.Get("CertificateView.Status.Loading");
+         _writeGraphSamples = [];
+         _readGraphSamples = [];
+
+         DiskCard? card = null;

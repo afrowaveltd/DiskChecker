@@ -1,0 +1,200 @@
+﻿using System;
+using System.Collections.Generic;
+using System.Collections.ObjectModel;
+using System.ComponentModel;
+using System.Diagnostics;
+using System.Globalization;
+using System.IO;
+using System.Linq;
+using System.Runtime.InteropServices;
+using System.Threading.Tasks;
+using CommunityToolkit.Mvvm.ComponentModel;
+using CommunityToolkit.Mvvm.Input;
+using DiskChecker.Core.Interfaces;
+using DiskChecker.Core.Models;
+using DiskChecker.UI.Avalonia.Services;
+using DiskChecker.UI.Avalonia.Services.Interfaces;
+using Microsoft.EntityFrameworkCore;
+using System.Data.Common;
+
+namespace DiskChecker.UI.Avalonia.ViewModels;
+
+/// <summary>
+/// View model for displaying and generating disk certificates.
+/// </summary>
+public partial class CertificateViewModel : ViewModelBase, INavigableViewModel
+{
+   private const int CertificateGraphModulo = 96;
+   private const int CertificateGraphRemainders = 4;
+
+   private readonly ICertificateGenerator _certificateGenerator;
+   private readonly IDiskCardRepository _diskCardRepository;
+   private readonly INavigationService _navigationService;
+   private readonly IDialogService _dialogService;
+   private readonly ISelectedDiskService _selectedDiskService;
+
+   private DiskCertificate? _certificate;
+   private bool _isLoading;
+   private bool _isPrinting;
+   private string _statusMessage = "CertifikĂˇt disku";
+   private string _printProgressMessage = string.Empty;
+   private bool _isBlackAndWhiteMode;
+   private TestSession? _selectedSession;
+   private List<SpeedSample> _writeGraphSamples = [];
+   private List<SpeedSample> _readGraphSamples = [];
+   private string _writeProfilePoints = "10,62 70,58 130,56 190,54 250,50 310,48 370,45 430,42 490,40";
+   private string _readProfilePoints = "10,66 70,61 130,58 190,55 250,53 310,50 370,47 430,45 490,43";
+   private string _chartMaxSpeedLabel = "0 MB/s";
+   private string _chartMidSpeedLabel = "0 MB/s";
+   private string _chartMinSpeedLabel = "0 MB/s";
+   private string _chartXAxisStartLabel = "0 %";
+   private string _chartXAxisMidLabel = "50 %";
+   private string _chartXAxisEndLabel = "100 %";
+   private string _temperatureProfilePoints = "10,110 490,110";
+   private bool _hasTemperatureProfile;
+   private string _selectedSessionSummary = "Vyberte test pro detailnĂ­ analĂ˝zu.";
+   private string _selectedSessionThermalSummary = "AnalĂ˝za teploty bude dostupnĂˇ po vĂ˝bÄ›ru testu.";
+   private string _selectedSessionSmartSummary = "SMART souhrn bude dostupnĂ˝ po vĂ˝bÄ›ru testu.";
+   private TestSession? _selectedSessionItem;
+
+   public CertificateViewModel(
+       ICertificateGenerator certificateGenerator,
+       IDiskCardRepository diskCardRepository,
+       INavigationService navigationService,
+       IDialogService dialogService,
+       ISelectedDiskService selectedDiskService)
+   {
+      _certificateGenerator = certificateGenerator;
+      _diskCardRepository = diskCardRepository;
+      _navigationService = navigationService;
+      _dialogService = dialogService;
+      _selectedDiskService = selectedDiskService;
+      AvailableSessions = new ObservableCollection<TestSession>();
+   }
+
+   #region Properties
+
+   public DiskCertificate? Certificate
+   {
+      get => _certificate;
+      private set
+      {
+         if(SetProperty(ref _certificate, value))
+         {
+            OnPropertyChanged(nameof(HasCertificate));
+            OnPropertyChanged(nameof(CurrentDateTime));
+            OnPropertyChanged(nameof(CertificateNumber));
+            OnPropertyChanged(nameof(DiskModel));
+            OnPropertyChanged(nameof(SerialNumber));
+            OnPropertyChanged(nameof(Capacity));
+            OnPropertyChanged(nameof(DiskType));
+            OnPropertyChanged(nameof(Grade));
+            OnPropertyChanged(nameof(Score));
+            OnPropertyChanged(nameof(HealthStatus));
+            OnPropertyChanged(nameof(TestType));
+            OnPropertyChanged(nameof(TestDuration));
+            OnPropertyChanged(nameof(AvgWriteSpeed));
+            OnPropertyChanged(nameof(AvgReadSpeed));
+            OnPropertyChanged(nameof(TemperatureRange));
+            OnPropertyChanged(nameof(HasSeekMetrics));
+            OnPropertyChanged(nameof(SeekAvgLatencyMsText));
+            OnPropertyChanged(nameof(SeekMinLatencyMsText));
+            OnPropertyChanged(nameof(SeekMaxLatencyMsText));
+            OnPropertyChanged(nameof(SeekP95LatencyMsText));
+            OnPropertyChanged(nameof(SeekTestSummaryText));
+            OnPropertyChanged(nameof(HasBeforeAfterComparison));
+            OnPropertyChanged(nameof(Sanitize1WriteText));
+            OnPropertyChanged(nameof(Sanitize2WriteText));
+            OnPropertyChanged(nameof(WriteSpeedChangeText));
+            OnPropertyChanged(nameof(Sanitize1ReadText));
+            OnPropertyChanged(nameof(Sanitize2ReadText));
+            OnPropertyChanged(nameof(ReadSpeedChangeText));
+            OnPropertyChanged(nameof(SmartDeltaSummaryText));
+            OnPropertyChanged(nameof(Errors));
+            OnPropertyChanged(nameof(SmartPassed));
+            OnPropertyChanged(nameof(Recommended));
+            OnPropertyChanged(nameof(RecommendationText));
+            OnPropertyChanged(nameof(ScoringReasonsText));
+            OnPropertyChanged(nameof(DiagnosticHighlightsText));
+            OnPropertyChanged(nameof(HasDiagnosticHighlights));
+            OnPropertyChanged(nameof(HasScoringReasons));
+            OnPropertyChanged(nameof(DiagnosticHasCriticalSignals));
+            OnPropertyChanged(nameof(DiagnosticHasWarningSignals));
+            OnPropertyChanged(nameof(DiagnosticBadgeText));
+            OnPropertyChanged(nameof(DiagnosticBadgeBackground));
+            OnPropertyChanged(nameof(DiagnosticBadgeForeground));
+            OnPropertyChanged(nameof(SmartPowerOnHoursText));
+            OnPropertyChanged(nameof(SmartPowerCyclesText));
+            OnPropertyChanged(nameof(SmartReallocatedSectorsText));
+            OnPropertyChanged(nameof(SmartPendingSectorsText));
+            OnPropertyChanged(nameof(SanitizationPerformed));
+            OnPropertyChanged(nameof(SanitizationMethodText));
+            OnPropertyChanged(nameof(DataVerifiedText));
+            OnPropertyChanged(nameof(PartitionSchemeText));
+            OnPropertyChanged(nameof(FileSystemText));
+            OnPropertyChanged(nameof(VolumeLabelText));
+            OnPropertyChanged(nameof(TestTypeLine));
+            OnPropertyChanged(nameof(TestDurationLine));
+            OnPropertyChanged(nameof(ErrorsLine));
+            OnPropertyChanged(nameof(TemperatureRangeLine));
+            OnPropertyChanged(nameof(AvgWriteSpeedLine));
+            OnPropertyChanged(nameof(AvgReadSpeedLine));
+            OnPropertyChanged(nameof(HealthStatusLine));
+            OnPropertyChanged(nameof(RecommendedLine));
+            OnPropertyChanged(nameof(SmartPowerOnHoursLine));
+            OnPropertyChanged(nameof(SmartPowerCyclesLine));
+            OnPropertyChanged(nameof(SmartReallocatedSectorsLine));
+            OnPropertyChanged(nameof(SmartPendingSectorsLine));
+            OnPropertyChanged(nameof(SeekSummaryLine));
+            OnPropertyChanged(nameof(Sanitize1WriteLine));
+            OnPropertyChanged(nameof(Sanitize2WriteLine));
+            OnPropertyChanged(nameof(Sanitize1ReadLine));
+            OnPropertyChanged(nameof(Sanitize2ReadLine));
+            OnPropertyChanged(nameof(WriteSpeedChangeLine));
+            OnPropertyChanged(nameof(ReadSpeedChangeLine));
+         }
+      }
+   }
+
+   public bool IsLoading
+   {
+      get => _isLoading;
+      set => SetProperty(ref _isLoading, value);
+   }
+
+   /// <summary>
+   /// Gets whether a print operation is currently in progress.
+   /// </summary>
+   public bool IsPrinting
+   {
+      get => _isPrinting;
+      private set => SetProperty(ref _isPrinting, value);
+   }
+
+   /// <summary>
+   /// Gets the current step description during a print or export operation.
+   /// </summary>
+   public string PrintProgressMessage
+   {
+      get => _printProgressMessage;
+      private set => SetProperty(ref _printProgressMessage, value);
+   }
+
+   /// <summary>
+   /// Gets or sets whether certificate preview uses black-and-white print-safe mode.
+   /// </summary>
+   public bool IsBlackAndWhiteMode
+   {
+      get => _isBlackAndWhiteMode;
+      set
+      {
+         if(SetProperty(ref _isBlackAndWhiteMode, value))
+         {
+            OnPropertyChanged(nameof(SealBackground));
+            OnPropertyChanged(nameof(PanelBackground));
+            OnPropertyChanged(nameof(GradeColor));
+            OnPropertyChanged(nameof(ChartStrokeWrite));
+            OnPropertyChanged(nameof(ChartStrokeRead));
+         }
+      }
+   }

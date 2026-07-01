@@ -1,0 +1,200 @@
+﻿       ? $"{Certificate.SeekMinLatencyMs.Value:F2} ms" : "â€”";
+
+   public string SeekMaxLatencyMsText => Certificate?.SeekMaxLatencyMs.HasValue == true
+       ? $"{Certificate.SeekMaxLatencyMs.Value:F2} ms" : "â€”";
+
+   public string SeekP95LatencyMsText => Certificate?.SeekP95LatencyMs.HasValue == true
+       ? $"{Certificate.SeekP95LatencyMs.Value:F2} ms" : "â€”";
+
+   public string SeekTestSummaryText => Certificate?.SeekTestSummary ?? "â€”";
+
+   // â”€â”€ Before/After sanitization comparison â”€â”€
+
+   public bool HasBeforeAfterComparison => Certificate?.Sanitize1AvgWriteMBps.HasValue == true;
+
+   public string Sanitize1WriteText => Certificate?.Sanitize1AvgWriteMBps.HasValue == true
+       ? $"{Certificate.Sanitize1AvgWriteMBps.Value:F1} MB/s" : "â€”";
+
+   public string Sanitize2WriteText => Certificate?.Sanitize2AvgWriteMBps.HasValue == true
+       ? $"{Certificate.Sanitize2AvgWriteMBps.Value:F1} MB/s" : "â€”";
+
+   public string WriteSpeedChangeText => Certificate?.WriteSpeedChangePercent.HasValue == true
+       ? $"{Certificate.WriteSpeedChangePercent.Value:+0.0;-0.0}%" : "â€”";
+
+   public string Sanitize1ReadText => Certificate?.Sanitize1AvgReadMBps.HasValue == true
+       ? $"{Certificate.Sanitize1AvgReadMBps.Value:F1} MB/s" : "â€”";
+
+   public string Sanitize2ReadText => Certificate?.Sanitize2AvgReadMBps.HasValue == true
+       ? $"{Certificate.Sanitize2AvgReadMBps.Value:F1} MB/s" : "â€”";
+
+   public string ReadSpeedChangeText => Certificate?.ReadSpeedChangePercent.HasValue == true
+       ? $"{Certificate.ReadSpeedChangePercent.Value:+0.0;-0.0}%" : "â€”";
+
+   public string SmartDeltaSummaryText => Certificate?.SmartDeltaSummary ?? "â€”";
+
+   public string ScoringReasonsText => string.IsNullOrWhiteSpace(Certificate?.Notes)
+       ? L.Get("CertificateView.NoWarnings")
+       : Certificate.Notes;
+
+   /// <summary>
+   /// Gets formatted diagnostic highlights derived from certificate notes.
+   /// </summary>
+   public string DiagnosticHighlightsText => BuildDiagnosticHighlightsText(Certificate?.Notes);
+
+   public bool DiagnosticHasCriticalSignals => ContainsDiagnosticMarker(Certificate?.Notes, "kritickĂ©") || ContainsDiagnosticMarker(Certificate?.Notes, "kritickĂ˝");
+   public bool DiagnosticHasWarningSignals =>
+       ContainsDiagnosticMarker(Certificate?.Notes, "propad") ||
+       ContainsDiagnosticMarker(Certificate?.Notes, "nestabil") ||
+       ContainsDiagnosticMarker(Certificate?.Notes, "histor");
+
+   public string DiagnosticBadgeText => DiagnosticHasCriticalSignals
+       ? L.Get("CertificateView.Badge.Critical")
+       : DiagnosticHasWarningSignals
+           ? L.Get("CertificateView.Badge.Warning")
+           : L.Get("CertificateView.Badge.Stable");
+
+   public string DiagnosticBadgeBackground => DiagnosticHasCriticalSignals
+       ? "#FDECEC"
+       : DiagnosticHasWarningSignals
+           ? "#FFF4DB"
+           : "#EAF7EE";
+
+   public string DiagnosticBadgeForeground => DiagnosticHasCriticalSignals
+       ? "#B42318"
+       : DiagnosticHasWarningSignals
+           ? "#B54708"
+           : "#027A48";
+
+   /// <summary>
+   /// Gets whether diagnostic highlights are available.
+   /// </summary>
+   public bool HasDiagnosticHighlights => !string.IsNullOrWhiteSpace(DiagnosticHighlightsText);
+
+   public bool HasScoringReasons => !string.IsNullOrWhiteSpace(Certificate?.Notes);
+
+   // Grade color
+   public string GradeColor => (Certificate?.Grade ?? "?") switch
+   {
+      "A" => IsBlackAndWhiteMode ? "#111111" : "#27AE60",
+      "B" => IsBlackAndWhiteMode ? "#222222" : "#2ECC71",
+      "C" => IsBlackAndWhiteMode ? "#333333" : "#F1C40F",
+      "D" => IsBlackAndWhiteMode ? "#444444" : "#E67E22",
+      "E" => IsBlackAndWhiteMode ? "#555555" : "#E74C3C",
+      "F" => IsBlackAndWhiteMode ? "#666666" : "#C0392B",
+      _ => "#95A5A6"
+   };
+
+   public string SealBackground => IsBlackAndWhiteMode ? "#F5F5F5" : "#F8FAFC";
+   public string PanelBackground => IsBlackAndWhiteMode ? "#FAFAFA" : "#F6F8FB";
+   public string ChartStrokeWrite => IsBlackAndWhiteMode ? "#1F2937" : "#DC2626";
+   public string ChartStrokeRead => IsBlackAndWhiteMode ? "#4B5563" : "#059669";
+
+   #endregion Properties
+
+   #region Navigation
+
+   public void OnNavigatedTo()
+   {
+      _ = LoadCertificateAsync();
+   }
+
+   #endregion Navigation
+
+   #region Commands
+
+   [RelayCommand]
+   private async Task GenerateNewCertificateAsync()
+   {
+      if(_selectedDiskService.SelectedDisk == null)
+      {
+         StatusMessage = L.Get("CertificateView.Status.NoDisk");
+         return;
+      }
+
+      try
+      {
+         IsLoading = true;
+         StatusMessage = L.Get("CertificateView.Status.Generating");
+
+         var card = await _diskCardRepository.GetByDevicePathAsync(_selectedDiskService.SelectedDisk.Path);
+
+         if(card == null)
+         {
+            StatusMessage = L.Get("CertificateView.Status.CardNotFound");
+            await _dialogService.ShowErrorAsync(L.Get("Common.Error"), L.Get("CertificateView.Error.CardNotFound"));
+            return;
+         }
+
+         var sessions = await _diskCardRepository.GetTestSessionsAsync(card.Id);
+         var latestSession = sessions.FirstOrDefault();
+
+         if(latestSession == null)
+         {
+            StatusMessage = L.Get("CertificateView.Status.NoTest");
+            await _dialogService.ShowErrorAsync(L.Get("Common.Error"), L.Get("CertificateView.Error.NoTest"));
+            return;
+         }
+
+         _selectedSession = await _diskCardRepository.GetTestSessionAsync(latestSession.Id);
+         if(_selectedSession == null)
+         {
+            StatusMessage = L.Get("CertificateView.Status.TestDetailError");
+            await _dialogService.ShowErrorAsync(L.Get("Common.Error"), L.Get("CertificateView.Error.TestDetail"));
+            return;
+         }
+
+         Certificate = await _certificateGenerator.GenerateCertificateAsync(_selectedSession, card);
+         await PrepareCertificateGraphAsync(Certificate, updateView: true);
+         await _diskCardRepository.CreateCertificateAsync(Certificate);
+
+         StatusMessage = string.Format(L.Get("CertificateView.Status.Generated"), Certificate.CertificateNumber);
+      }
+      catch(InvalidOperationException ex)
+      {
+         StatusMessage = string.Format(L.Get("Common.Error"), ex.Message);
+         await _dialogService.ShowErrorAsync(L.Get("Common.Error"), string.Format(L.Get("CertificateView.Error.GenerateFailed"), ex.Message));
+      }
+      catch(DbUpdateException ex)
+      {
+         var message = ex.InnerException?.Message ?? ex.Message;
+         StatusMessage = $"Chyba: {message}";
+         await _dialogService.ShowErrorAsync(L.Get("Common.Error"), string.Format(L.Get("CertificateView.Error.SaveFailed"), message));
+      }
+      finally
+      {
+         IsLoading = false;
+      }
+   }
+
+   [RelayCommand]
+   private async Task ExportPdfAsync()
+   {
+      if(Certificate == null)
+      {
+         StatusMessage = L.Get("CertificateView.Status.GenerateFirst");
+         return;
+      }
+
+      try
+      {
+         IsLoading = true;
+         StatusMessage = L.Get("CertificateView.Status.ExportingPdf");
+
+         await PrepareCertificateGraphAsync(Certificate, updateView: false);
+         await HydrateCertificateForOutputAsync(Certificate);
+         var pdfPath = await _certificateGenerator.GeneratePdfAsync(Certificate);
+
+         StatusMessage = string.Format(L.Get("CertificateView.Status.PdfSaved"), pdfPath);
+
+         var openPdf = await _dialogService.ShowConfirmationAsync(
+             L.Get("CertificateView.Dialog.PdfExport"),
+             string.Format(L.Get("CertificateView.Dialog.PdfSavedMessage"), pdfPath));
+
+         if(openPdf)
+         {
+            DocumentLauncher.OpenFile(pdfPath);
+         }
+      }
+      catch(InvalidOperationException ex)
+      {
+         StatusMessage = string.Format(L.Get("Common.Error"), ex.Message);

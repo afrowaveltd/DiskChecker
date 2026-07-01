@@ -1,0 +1,200 @@
+﻿    {
+        if (values.Count < 2) return;
+
+        try
+        {
+            using var path = new SKPath();
+            float stepX = chartW / (values.Count - 1);
+
+            for (int i = 0; i < values.Count; i++)
+            {
+                float x = chartX + i * stepX;
+                float y = chartY + chartH - (float)(values[i] / maxValue * chartH);
+                if (i == 0) path.MoveTo(x, y);
+                else path.LineTo(x, y);
+            }
+
+            canvas.DrawPath(path, pen);
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"DrawProfilePolyline error: {ex.GetType().Name}: {ex.Message}");
+        }
+    }
+
+    // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    //  Preview, label, and chart image generation
+    // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+
+    public Task<byte[]> GeneratePreviewAsync(DiskCertificate certificate)
+    {
+        return RenderCertificateJpegAsync(certificate);
+    }
+
+    public (string grade, double score) CalculateGrade(TestSession session)
+    {
+        double score = 100;
+
+        if (session.SmartBefore != null)
+        {
+            if (session.SmartBefore.ReallocatedSectorCount > 0)
+                score -= (double)(session.SmartBefore.ReallocatedSectorCount.Value * 3);
+            if (session.SmartBefore.PendingSectorCount > 0)
+                score -= (double)(session.SmartBefore.PendingSectorCount.Value * 5);
+            if (session.SmartBefore.UncorrectableErrorCount > 0)
+                score -= (double)(session.SmartBefore.UncorrectableErrorCount.Value * 10);
+        }
+
+        score -= session.Errors.Count * 2;
+
+        if (session.AverageWriteSpeedMBps > 0 && session.MaxWriteSpeedMBps > 0)
+        {
+            var consistency = session.AverageWriteSpeedMBps / session.MaxWriteSpeedMBps;
+            if (consistency < 0.7) score -= (0.7 - consistency) * 50;
+        }
+
+        score = Math.Clamp(score, 0, 100);
+
+        var grade = score switch
+        {
+            >= 90 => "A",
+            >= 80 => "B",
+            >= 70 => "C",
+            >= 55 => "D",
+            >= 40 => "E",
+            _ => "F"
+        };
+
+        return (grade, score);
+    }
+
+    // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    //  Utility methods
+    // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+
+    private static string FormatCapacity(long bytes)
+    {
+        if (bytes >= 1_000_000_000_000L) return $"{bytes / 1_000_000_000_000.0:F2} TB";
+        if (bytes >= 1_000_000_000L) return $"{bytes / 1_000_000_000.0:F2} GB";
+        if (bytes >= 1_000_000L) return $"{bytes / 1_000_000.0:F2} MB";
+        return $"{bytes} B";
+    }
+
+    private string GenerateRecommendation(TestSession session)
+    {
+        if (session.Result == TestResult.Pass
+            && !string.Equals(session.Grade, "E", StringComparison.OrdinalIgnoreCase)
+            && !string.Equals(session.Grade, "F", StringComparison.OrdinalIgnoreCase))
+            return _locale?.GetString("CertificatePdf.Recommendation.Good", "Disk je v dobrĂ©m stavu a lze jej bezpeÄŤnÄ› pouĹľĂ­vat.") ?? "Disk je v dobrĂ©m stavu a lze jej bezpeÄŤnÄ› pouĹľĂ­vat.";
+
+        if (session.SmartBefore?.ReallocatedSectorCount > 0 || session.SmartBefore?.PendingSectorCount > 0)
+            return _locale?.GetString("CertificatePdf.Recommendation.Worn", "Disk vykazuje znĂˇmky opotĹ™ebenĂ­. DoporuÄŤujeme pravidelnou kontrolu SMART a zĂˇlohovĂˇnĂ­ dĹŻleĹľitĂ˝ch dat.") ?? "Disk vykazuje znĂˇmky opotĹ™ebenĂ­. DoporuÄŤujeme pravidelnou kontrolu SMART a zĂˇlohovĂˇnĂ­ dĹŻleĹľitĂ˝ch dat.";
+
+        if (session.Errors.Count > 0)
+            return _locale?.GetString("CertificatePdf.Recommendation.Errors", "BÄ›hem testu byly detekovĂˇny chyby. ZvaĹľte vĂ˝mÄ›nu disku, zejmĂ©na pokud se chyby opakujĂ­.") ?? "BÄ›hem testu byly detekovĂˇny chyby. ZvaĹľte vĂ˝mÄ›nu disku, zejmĂ©na pokud se chyby opakujĂ­.";
+
+        return _locale?.GetString("CertificatePdf.Recommendation.Attention", "Disk vyĹľaduje pozornost. DoporuÄŤujeme dalĹˇĂ­ diagnostiku nebo vĂ˝mÄ›nu.") ?? "Disk vyĹľaduje pozornost. DoporuÄŤujeme dalĹˇĂ­ diagnostiku nebo vĂ˝mÄ›nu.";
+    }
+
+    private static string ResolveDisplaySerial(string? smartSerial, string? storedSerial)
+    {
+        if (!string.IsNullOrWhiteSpace(smartSerial)) return smartSerial;
+        if (!string.IsNullOrWhiteSpace(storedSerial)) return storedSerial;
+        return "-";
+    }
+
+    private static void PopulateAdvancedTestMetrics(DiskCertificate certificate, TestSession session)
+    {
+        TryPopulateSeekMetrics(certificate, session);
+        TryPopulateSanitizationComparisonMetrics(certificate, session);
+    }
+
+    private static void TryPopulateSeekMetrics(DiskCertificate certificate, TestSession session)
+    {
+        if (string.IsNullOrWhiteSpace(session.SeekResultsJson))
+            return;
+
+        List<SeekTestResult> seekResults;
+        try
+        {
+            var singleResult = JsonSerializer.Deserialize<SeekTestResult>(session.SeekResultsJson);
+            if (singleResult?.IsCompleted == true || singleResult?.SeekCount > 0 || singleResult?.AverageLatencyMs > 0)
+            {
+                seekResults = new List<SeekTestResult> { singleResult };
+            }
+            else
+            {
+                var envelope = JsonSerializer.Deserialize<SeekResultsEnvelope>(session.SeekResultsJson);
+                seekResults = new List<SeekTestResult>();
+                if (envelope?.FullStroke != null) seekResults.Add(envelope.FullStroke);
+                if (envelope?.Random != null) seekResults.Add(envelope.Random);
+                if (envelope?.Skip != null) seekResults.Add(envelope.Skip);
+            }
+        }
+        catch (JsonException)
+        {
+            return;
+        }
+
+        if (seekResults.Count == 0)
+            return;
+
+        var latencies = seekResults
+            .SelectMany(r => r.Samples.Select(s => s.LatencyMs))
+            .Where(v => v > 0)
+            .OrderBy(v => v)
+            .ToList();
+
+        if (latencies.Count > 0)
+        {
+            var avg = latencies.Average();
+            certificate.SeekAvgLatencyMs ??= avg;
+            certificate.SeekMinLatencyMs ??= latencies[0];
+            certificate.SeekMaxLatencyMs ??= latencies[^1];
+            certificate.SeekStdDevLatencyMs ??= Math.Sqrt(latencies.Average(v => Math.Pow(v - avg, 2)));
+            certificate.SeekP95LatencyMs ??= latencies[(int)Math.Clamp(Math.Ceiling(latencies.Count * 0.95) - 1, 0, latencies.Count - 1)];
+        }
+        else
+        {
+            var averageLatencies = seekResults.Select(r => r.AverageLatencyMs).Where(v => v > 0).ToList();
+            if (averageLatencies.Count > 0)
+            {
+                certificate.SeekAvgLatencyMs ??= averageLatencies.Average();
+                certificate.SeekMinLatencyMs ??= seekResults.Where(r => r.MinLatencyMs > 0).Select(r => r.MinLatencyMs).DefaultIfEmpty(0).Min();
+                certificate.SeekMaxLatencyMs ??= seekResults.Where(r => r.MaxLatencyMs > 0).Select(r => r.MaxLatencyMs).DefaultIfEmpty(0).Max();
+                certificate.SeekStdDevLatencyMs ??= Math.Sqrt(averageLatencies.Average(v => Math.Pow(v - certificate.SeekAvgLatencyMs.Value, 2)));
+                certificate.SeekP95LatencyMs ??= seekResults.Where(r => r.P95LatencyMs > 0).Select(r => r.P95LatencyMs).DefaultIfEmpty(certificate.SeekAvgLatencyMs.Value).Max();
+            }
+        }
+
+        if (string.IsNullOrWhiteSpace(certificate.SeekTestSummary))
+        {
+            var summaryParts = seekResults
+                .Where(r => r.AverageLatencyMs > 0)
+                .Select(r => $"{r.TestType}: {r.SeekCount} seekĹŻ, avg {r.AverageLatencyMs:F2} ms")
+                .ToList();
+            if (summaryParts.Count > 0)
+                certificate.SeekTestSummary = string.Join(" | ", summaryParts);
+        }
+
+        if (certificate.ErrorCount <= 0)
+        {
+            certificate.ErrorCount = seekResults.Sum(r => Math.Max(0, r.ErrorCount));
+        }
+    }
+
+    private static void TryPopulateSanitizationComparisonMetrics(DiskCertificate certificate, TestSession session)
+    {
+        if (string.IsNullOrWhiteSpace(session.Sanitize1ResultJson) && string.IsNullOrWhiteSpace(session.Sanitize2ResultJson))
+            return;
+
+        SanitizationResult? sanitize1 = null;
+        SanitizationResult? sanitize2 = null;
+
+        try
+        {
+            if (!string.IsNullOrWhiteSpace(session.Sanitize1ResultJson))
+                sanitize1 = JsonSerializer.Deserialize<SanitizationResult>(session.Sanitize1ResultJson);
+            if (!string.IsNullOrWhiteSpace(session.Sanitize2ResultJson))
+                sanitize2 = JsonSerializer.Deserialize<SanitizationResult>(session.Sanitize2ResultJson);
+        }
