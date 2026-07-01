@@ -6,11 +6,24 @@ using System.Text.Json;
 using System.Text.RegularExpressions;
 using DiskChecker.Core.Interfaces;
 using DiskChecker.Core.Models;
+using Microsoft.Extensions.Logging;
 
 namespace DiskChecker.Application.Services;
 
 public class LinuxDiskDetectionService : IDiskDetectionService
 {
+    private readonly ISmartaProvider? _smartaProvider;
+
+    /// <summary>
+    /// Creates a new LinuxDiskDetectionService.
+    /// When smartaProvider is provided, SMART support is probed during
+    /// initial disk detection and stored in CoreDriveInfo.SupportsSmart.
+    /// </summary>
+    public LinuxDiskDetectionService(ISmartaProvider? smartaProvider = null)
+    {
+        _smartaProvider = smartaProvider;
+    }
+
     public async Task<IReadOnlyList<CoreDriveInfo>> GetDrivesAsync(CancellationToken cancellationToken = default)
     {
         var drives = new List<CoreDriveInfo>();
@@ -47,6 +60,28 @@ public class LinuxDiskDetectionService : IDiskDetectionService
         }
         
         await MarkSystemDiskAsync(drives, cancellationToken);
+
+        // Probe SMART support for each drive (best-effort, non-blocking for the caller).
+        // This populates the ISmartaProvider cache so that subsequent SMART queries
+        // know immediately whether the device supports SMART without re-running smartctl.
+        if (_smartaProvider != null)
+        {
+            foreach (var drive in drives)
+            {
+                try
+                {
+                    using var perDiskCts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+                    using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, perDiskCts.Token);
+                    var supportsSmart = await _smartaProvider.IsSmartSupportedAsync(drive.Path, linkedCts.Token);
+                    drive.SupportsSmart = supportsSmart;
+                }
+                catch
+                {
+                    // Timeout or error — assume no SMART to be safe
+                    drive.SupportsSmart = false;
+                }
+            }
+        }
         
         return drives.AsReadOnly();
     }

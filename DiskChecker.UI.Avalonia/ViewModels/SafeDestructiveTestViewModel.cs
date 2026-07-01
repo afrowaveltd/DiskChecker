@@ -305,12 +305,19 @@ public partial class SafeDestructiveTestViewModel : ViewModelBase, INavigableVie
         // Find a suitable backup target (largest available non-source drive)
         await FindBackupTargetAsync();
 
-        // Capture pre-test SMART
-        try
+        // Capture pre-test SMART (only if drive supports SMART)
+        if (disk.SupportsSmart)
         {
-            _smartBefore = await _smartaProvider.GetSmartaDataAsync(disk.Path);
+            try
+            {
+                _smartBefore = await _smartaProvider.GetSmartaDataAsync(disk.Path);
+            }
+            catch
+            {
+                _smartBefore = null;
+            }
         }
-        catch
+        else
         {
             _smartBefore = null;
         }
@@ -870,12 +877,19 @@ public partial class SafeDestructiveTestViewModel : ViewModelBase, INavigableVie
         await RunSanitizePhaseAsync(6, "read", SanitizePass2ReadPoints, phaseWeight, phaseWeight * 6, ct);
         if (ct.IsCancellationRequested) return;
 
-        // Capture post-test SMART
-        try
+        // Capture post-test SMART (only if drive supports SMART)
+        if (SelectedDrive.SupportsSmart)
         {
-            _smartAfter = await _smartaProvider.GetSmartaDataAsync(SelectedDrive.Path, ct);
+            try
+            {
+                _smartAfter = await _smartaProvider.GetSmartaDataAsync(SelectedDrive.Path, ct);
+            }
+            catch
+            {
+                _smartAfter = null;
+            }
         }
-        catch
+        else
         {
             _smartAfter = null;
         }

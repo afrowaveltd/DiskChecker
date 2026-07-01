@@ -280,19 +280,23 @@ public partial class DiskSelectionViewModel : ViewModelBase, INavigableViewModel
     {
         // Get SMART data for the drive with a per-disk timeout to prevent
         // the entire disk enumeration from hanging on a single unresponsive disk.
+        // Skip entirely if the drive was already detected as not supporting SMART.
         SmartaData? smartData = null;
-        try
+        if (drive.SupportsSmart)
         {
-            using var perDiskCts = new CancellationTokenSource(TimeSpan.FromSeconds(20));
-            smartData = await _smartaProvider.GetSmartaDataAsync(drive.Path, perDiskCts.Token);
-        }
-        catch (OperationCanceledException)
-        {
-            // Timed out – proceed without SMART data for this disk
-        }
-        catch (Exception)
-        {
-            // Other errors – proceed without SMART data
+            try
+            {
+                using var perDiskCts = new CancellationTokenSource(TimeSpan.FromSeconds(20));
+                smartData = await _smartaProvider.GetSmartaDataAsync(drive.Path, perDiskCts.Token);
+            }
+            catch (OperationCanceledException)
+            {
+                // Timed out – proceed without SMART data for this disk
+            }
+            catch (Exception)
+            {
+                // Other errors – proceed without SMART data
+            }
         }
 
         if (DriveIdentityResolver.IsReliableSerialNumber(smartData?.SerialNumber))

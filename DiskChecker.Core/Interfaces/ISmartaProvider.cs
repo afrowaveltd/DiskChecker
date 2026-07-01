@@ -16,5 +16,13 @@ namespace DiskChecker.Core.Interfaces
         /// (e.g., not running as root on Linux). Resets on each new operation.
         /// </summary>
         bool LastOperationWasPermissionDenied { get; }
+
+        /// <summary>
+        /// Checks whether the given device supports SMART monitoring.
+        /// Returns false for devices that don't support SMART (e.g., USB flash drives,
+        /// memory cards, NVMe drives behind certain bridges, etc.).
+        /// The result is cached so subsequent calls are instant.
+        /// </summary>
+        Task<bool> IsSmartSupportedAsync(string devicePath, CancellationToken cancellationToken = default);
     }
 }

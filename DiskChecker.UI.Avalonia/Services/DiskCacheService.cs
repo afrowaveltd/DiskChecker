@@ -11,7 +11,7 @@ public class DiskCacheService : IDiskCacheService
     private readonly object _lock = new();
     private IReadOnlyList<CoreDriveInfo>? _cachedDrives;
     private DateTime _cacheTimestamp;
-    private readonly TimeSpan _cacheDuration = TimeSpan.FromMinutes(5);
+    private readonly TimeSpan _cacheDuration = TimeSpan.FromSeconds(30); // Short cache to detect disk swaps quickly
     private bool _isRefreshing;
 
     public event EventHandler? CacheInvalidated;

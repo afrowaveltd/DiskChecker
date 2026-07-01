@@ -552,20 +552,29 @@ public string SelectedTestType
                 {
                     SmartaData? smartData = null;
                     string? error = null;
-                    try
+                    
+                    // Skip SMART query if the drive doesn't support SMART
+                    if (drive.SupportsSmart)
                     {
-                        using var cts = new CancellationTokenSource(timeoutPerDrive);
-                        smartData = await _smartaProvider.GetSmartaDataAsync(drive.Path, cts.Token);
+                        try
+                        {
+                            using var cts = new CancellationTokenSource(timeoutPerDrive);
+                            smartData = await _smartaProvider.GetSmartaDataAsync(drive.Path, cts.Token);
+                        }
+                        catch (OperationCanceledException)
+                        {
+                            error = "Timeout při načítání SMART";
+                            System.Diagnostics.Debug.WriteLine($"SMART read timed out for {drive.Path}");
+                        }
+                        catch (Exception ex)
+                        {
+                            error = ex.Message;
+                            System.Diagnostics.Debug.WriteLine($"Error reading SMART for {drive.Path}: {ex.Message}");
+                        }
                     }
-                    catch (OperationCanceledException)
+                    else
                     {
-                        error = "Timeout při načítání SMART";
-                        System.Diagnostics.Debug.WriteLine($"SMART read timed out for {drive.Path}");
-                    }
-                    catch (Exception ex)
-                    {
-                        error = ex.Message;
-                        System.Diagnostics.Debug.WriteLine($"Error reading SMART for {drive.Path}: {ex.Message}");
+                        error = "Disk nepodporuje SMART";
                     }
 
                     QualityRating? quality = null;
@@ -662,6 +671,22 @@ public string SelectedTestType
             IsChecking = true;
             StatusMessage = $"Načítám SMART data: {SelectedDisk.DisplayName}";
             
+            // Skip SMART query if the drive doesn't support SMART
+            if (!SelectedDisk.Drive.SupportsSmart)
+            {
+                StatusMessage = "SMART data nedostupná – disk nepodporuje SMART (např. USB adaptér)";
+                CurrentSmartData = null;
+                CurrentQuality = null;
+                await Dispatcher.UIThread.InvokeAsync(() =>
+                {
+                    SmartAttributes.Clear();
+                    CriticalAttributes.Clear();
+                    SelfTestLog.Clear();
+                });
+                UpdateComputedProperties();
+                return;
+            }
+
             var smartData = await _smartaProvider.GetSmartaDataAsync(SelectedDisk.Drive.Path, cancellationToken);
             
             if (smartData == null)

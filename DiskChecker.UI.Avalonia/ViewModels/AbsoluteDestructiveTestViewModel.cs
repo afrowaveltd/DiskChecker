@@ -470,22 +470,33 @@ public partial class AbsoluteDestructiveTestViewModel : ViewModelBase, INavigabl
         {
             StatusMessage = "Zjišťuji SMART dostupnost...";
 
-            var smarta = await _smartaProvider.GetSmartaDataAsync(
-                SelectedDrive!.Path, CancellationToken.None);
-
-            if (smarta != null)
+            // Use pre-detected SMART support flag to avoid device contention
+            if (SelectedDrive!.SupportsSmart)
             {
-                IsSmartAvailable = true;
-                ShowManualProfileSelector = false;
-                _smartBaseline = smarta;
-                SmartBaselineSummary = FormatSmartSummary(smarta, "Výchozí");
-                StatusMessage = $"SMART dostupný — {smarta.DeviceModel}";
+                var smarta = await _smartaProvider.GetSmartaDataAsync(
+                    SelectedDrive.Path, CancellationToken.None);
+
+                if (smarta != null)
+                {
+                    IsSmartAvailable = true;
+                    ShowManualProfileSelector = false;
+                    _smartBaseline = smarta;
+                    SmartBaselineSummary = FormatSmartSummary(smarta, "Výchozí");
+                    StatusMessage = $"SMART dostupný — {smarta.DeviceModel}";
+                }
+                else
+                {
+                    IsSmartAvailable = false;
+                    ShowManualProfileSelector = true;
+                    SmartBaselineSummary = "SMART nedostupný — vyberte manuální profil";
+                    StatusMessage = "SMART nedostupný. Vyberte manuální testovací profil.";
+                }
             }
             else
             {
                 IsSmartAvailable = false;
                 ShowManualProfileSelector = true;
-                SmartBaselineSummary = "SMART nedostupný — vyberte manuální profil";
+                SmartBaselineSummary = "SMART nedostupný (disk nepodporuje SMART)";
                 StatusMessage = "SMART nedostupný. Vyberte manuální testovací profil.";
             }
         }
@@ -818,12 +829,12 @@ public partial class AbsoluteDestructiveTestViewModel : ViewModelBase, INavigabl
             ct.ThrowIfCancellationRequested();
             SetPhase(0, TestPhaseStatus.Running, "Čtení SMART a teploty...");
 
-            // Capture baseline SMART if not already done
-            if (_smartBaseline == null)
+            // Capture baseline SMART if not already done (only if drive supports SMART)
+            if (_smartBaseline == null && SelectedDrive!.SupportsSmart)
             {
                 try
                 {
-                    _smartBaseline = await _smartaProvider.GetSmartaDataAsync(SelectedDrive!.Path, ct);
+                    _smartBaseline = await _smartaProvider.GetSmartaDataAsync(SelectedDrive.Path, ct);
                 }
                 catch { /* SMART unavailable — already handled */ }
             }
@@ -1224,9 +1235,13 @@ public partial class AbsoluteDestructiveTestViewModel : ViewModelBase, INavigabl
 
     private async Task<SmartaData?> CaptureSmartAsync(CancellationToken ct)
     {
+        // Skip SMART query if the drive doesn't support SMART
+        if (SelectedDrive == null || !SelectedDrive.SupportsSmart)
+            return null;
+
         try
         {
-            return await _smartaProvider.GetSmartaDataAsync(SelectedDrive!.Path, ct);
+            return await _smartaProvider.GetSmartaDataAsync(SelectedDrive.Path, ct);
         }
         catch
         {
@@ -1236,9 +1251,13 @@ public partial class AbsoluteDestructiveTestViewModel : ViewModelBase, INavigabl
 
     private async Task<int> ReadTemperatureAsync(CancellationToken ct)
     {
+        // Skip SMART query if the drive doesn't support SMART
+        if (SelectedDrive == null || !SelectedDrive.SupportsSmart)
+            return 30;
+
         try
         {
-            var smarta = await _smartaProvider.GetSmartaDataAsync(SelectedDrive!.Path, ct);
+            var smarta = await _smartaProvider.GetSmartaDataAsync(SelectedDrive.Path, ct);
             return smarta?.Temperature ?? 30;
         }
         catch
@@ -1864,12 +1883,15 @@ public partial class AbsoluteDestructiveTestViewModel : ViewModelBase, INavigabl
                     // Try to re-initialize
                     try
                     {
-                        // Re-read SMART
-                        var smarta = await _smartaProvider.GetSmartaDataAsync(SelectedDrive!.Path, ct);
-                        if (smarta != null)
+                        // Re-read SMART (only if drive supports SMART)
+                        if (SelectedDrive!.SupportsSmart)
                         {
-                            _smartBaseline = smarta;
-                            SmartBaselineSummary = FormatSmartSummary(smarta, "Po recovery");
+                            var smarta = await _smartaProvider.GetSmartaDataAsync(SelectedDrive.Path, ct);
+                            if (smarta != null)
+                            {
+                                _smartBaseline = smarta;
+                                SmartBaselineSummary = FormatSmartSummary(smarta, "Po recovery");
+                            }
                         }
 
                         DiskRecoveryStatus = "✅ Disk obnoven – pokračuji v testu";

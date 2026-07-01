@@ -14,7 +14,7 @@ public class LinuxSmartaProvider : ISmartaProvider, IAdvancedSmartaProvider
 {
     private readonly ILogger<LinuxSmartaProvider>? _logger;
     private readonly ConcurrentDictionary<string, (SmartaData Data, DateTime Timestamp)> _smartCache = new();
-    private TimeSpan _cacheTtl = TimeSpan.FromMinutes(10);
+    private TimeSpan _cacheTtl = TimeSpan.FromMinutes(2); // Short TTL to detect disk swaps quickly
     private long _cacheHits;
     private long _cacheMisses;
 
@@ -94,9 +94,10 @@ public class LinuxSmartaProvider : ISmartaProvider, IAdvancedSmartaProvider
         else
         {
             // Cache the "no SMART" result so we don't retry on every call.
-            // Use a longer TTL for negative caching (30 min) to avoid repeated
-            // smartctl invocations that hang on unresponsive devices.
-            _smartCache[cacheKey] = (NoSmartSentinel, DateTime.UtcNow.AddMinutes(20));
+            // Use a moderate TTL for negative caching to avoid repeated
+            // smartctl invocations that hang on unresponsive devices,
+            // but short enough to detect disk swaps on the same /dev/sdX path.
+            _smartCache[cacheKey] = (NoSmartSentinel, DateTime.UtcNow.AddMinutes(2));
         }
 
         return result;
@@ -265,6 +266,152 @@ public class LinuxSmartaProvider : ISmartaProvider, IAdvancedSmartaProvider
     public Task<bool> ExecuteMaintenanceActionAsync(string devicePath, SmartaMaintenanceAction action, CancellationToken cancellationToken = default)
     {
         return Task.FromResult(false);
+    }
+
+    /// <inheritdoc />
+    public async Task<bool> IsSmartSupportedAsync(string devicePath, CancellationToken cancellationToken = default)
+    {
+        var cacheKey = NormalizeDeviceKey(devicePath);
+
+        // Check if we already have a cached "no SMART" sentinel
+        if (_smartCache.TryGetValue(cacheKey, out var cached))
+        {
+            // If it's the NoSmartSentinel, SMART is NOT supported
+            if (ReferenceEquals(cached.Data, NoSmartSentinel))
+                return false;
+            // If we have real SMART data, it IS supported
+            return true;
+        }
+
+        // Not in cache — use a lightweight probe first to avoid the 15s timeout
+        // that can happen with GetSmartaDataAsync on non-SMART devices.
+        // smartctl -i returns device info only (no full SMART scan), which is much faster.
+        var supportsSmart = await ProbeSmartSupportLightweightAsync(devicePath, cancellationToken);
+        
+        if (supportsSmart == false)
+        {
+            // Cache the "no SMART" result so we don't retry.
+            _smartCache[cacheKey] = (NoSmartSentinel, DateTime.UtcNow.AddMinutes(20));
+            return false;
+        }
+        
+        if (supportsSmart == null)
+        {
+            // Lightweight probe timed out or was uncertain.
+            // Do NOT cache the result — the device might have been swapped (e.g., USB
+            // flash replaced with SSD on the same /dev/sdX path). Instead, try the full
+            // scan with a short timeout. If that also fails, we'll cache NoSmartSentinel
+            // via GetSmartaDataAsync's own error handling.
+            var data = await GetSmartaDataAsync(devicePath, cancellationToken);
+            return data != null;
+        }
+        
+        // Lightweight probe says SMART is supported — do full check to populate cache
+        var data2 = await GetSmartaDataAsync(devicePath, cancellationToken);
+        return data2 != null;
+    }
+
+    /// <summary>
+    /// Lightweight probe to check if a device supports SMART without doing a full scan.
+    /// Uses smartctl -i (info only) which is much faster than smartctl -j -a.
+    /// Returns true if SMART appears supported, false if definitely not, null if uncertain.
+    /// </summary>
+    private async Task<bool?> ProbeSmartSupportLightweightAsync(string devicePath, CancellationToken cancellationToken)
+    {
+        try
+        {
+            var smartctlPath = await FindSmartctlPathAsync();
+            if (string.IsNullOrEmpty(smartctlPath))
+                return null;
+
+            // Try smartctl -i (info only) with a short timeout
+            using var timeoutCts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+            using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, timeoutCts.Token);
+
+            var result = await ExecuteProcessAsync(smartctlPath, $"-j -i {devicePath}", linkedCts.Token);
+            if (result == null)
+                return null;
+
+            // Exit code 0 or 1 with valid JSON containing model_name = SMART is supported
+            if (result.Value.ExitCode == 0 || result.Value.ExitCode == 1)
+            {
+                try
+                {
+                    using var doc = JsonDocument.Parse(result.Value.Output);
+                    var root = doc.RootElement;
+
+                    // Check for model_name (ATA/SATA) or scsi_model_name (SCSI) or nvme info
+                    if (root.TryGetProperty("model_name", out var model) && model.ValueKind == JsonValueKind.String)
+                    {
+                        var modelStr = model.GetString();
+                        if (!string.IsNullOrWhiteSpace(modelStr))
+                            return true;
+                    }
+                    if (root.TryGetProperty("scsi_model_name", out var scsiModel) && scsiModel.ValueKind == JsonValueKind.String)
+                    {
+                        var modelStr = scsiModel.GetString();
+                        if (!string.IsNullOrWhiteSpace(modelStr))
+                            return true;
+                    }
+                    // NVMe drives report model_name in "device" sub-object
+                    if (root.TryGetProperty("device", out var device) && device.ValueKind == JsonValueKind.Object)
+                    {
+                        if (device.TryGetProperty("model_name", out var devModel) && devModel.ValueKind == JsonValueKind.String)
+                        {
+                            var modelStr = devModel.GetString();
+                            if (!string.IsNullOrWhiteSpace(modelStr))
+                                return true;
+                        }
+                        // Check if device type is nvme
+                        if (device.TryGetProperty("type", out var devType) && devType.ValueKind == JsonValueKind.String)
+                        {
+                            var typeStr = devType.GetString();
+                            if (typeStr?.Equals("nvme", StringComparison.OrdinalIgnoreCase) == true)
+                                return true;
+                        }
+                    }
+                }
+                catch
+                {
+                    // JSON parse failed — uncertain
+                }
+            }
+
+            // Exit code >= 2 with no model info = device doesn't support SMART
+            if (result.Value.ExitCode >= 2)
+            {
+                try
+                {
+                    using var doc = JsonDocument.Parse(result.Value.Output);
+                    var root = doc.RootElement;
+                    
+                    // Check if there's any model info despite the error
+                    bool hasModel = false;
+                    if (root.TryGetProperty("model_name", out var m) && m.ValueKind == JsonValueKind.String && !string.IsNullOrWhiteSpace(m.GetString()))
+                        hasModel = true;
+                    if (root.TryGetProperty("device", out var d) && d.ValueKind == JsonValueKind.Object &&
+                        d.TryGetProperty("model_name", out var dm) && dm.ValueKind == JsonValueKind.String && !string.IsNullOrWhiteSpace(dm.GetString()))
+                        hasModel = true;
+
+                    if (!hasModel)
+                        return false;
+                }
+                catch
+                {
+                    return false;
+                }
+            }
+
+            return null; // Uncertain — caller should do full check
+        }
+        catch (OperationCanceledException)
+        {
+            return null; // Timeout — uncertain
+        }
+        catch
+        {
+            return null; // Error — uncertain
+        }
     }
 
     public Task ClearSmartCacheAsync(CancellationToken cancellationToken = default)
@@ -436,6 +583,18 @@ public class LinuxSmartaProvider : ISmartaProvider, IAdvancedSmartaProvider
             }
             
             Console.WriteLine($"[LinuxSmartaProvider] Parsed OK: Model={result.DeviceModel}, SelfTests={result.SelfTests?.Count ?? 0}");
+            
+            // CRITICAL FIX: If smartctl exited with error (exit code >= 2) and the parsed
+            // model name is empty, the device does NOT support SMART. Return null so that
+            // the NoSmartSentinel gets cached and we never try to query this device again.
+            // This prevents device contention on non-SMART disks (e.g., USB flash drives)
+            // where smartctl hangs or returns garbage, then the sanitization service fails
+            // with "device is being used by another process".
+            if (execution.Value.ExitCode >= 2 && string.IsNullOrWhiteSpace(result.DeviceModel))
+            {
+                Console.WriteLine($"[LinuxSmartaProvider] Exit code {execution.Value.ExitCode} with empty model — device does not support SMART, returning null");
+                return null;
+            }
             
             return SmartctlJsonParser.ToSmartaData(result);
         }

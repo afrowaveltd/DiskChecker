@@ -39,4 +39,9 @@ public class TestDiskProvider : ISmartaProvider
     {
         throw new NotImplementedException();
     }
+
+    public Task<bool> IsSmartSupportedAsync(string devicePath, CancellationToken cancellationToken = default)
+    {
+        throw new NotImplementedException();
+    }
 }

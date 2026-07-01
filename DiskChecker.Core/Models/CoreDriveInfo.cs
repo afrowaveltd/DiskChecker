@@ -131,6 +131,15 @@ public class CoreDriveInfo
         set => FirmwareVersion = value; 
     }
     
+    /// <summary>
+    /// Whether this drive supports SMART monitoring.
+    /// When false, all SMART queries should be skipped to avoid
+    /// device contention (e.g., "device is busy" errors on Linux).
+    /// Set during initial disk detection; persists for the lifetime
+    /// of the drive info instance.
+    /// </summary>
+    public bool SupportsSmart { get; set; } = true;
+    
     // Legacy compatibility properties
     public string? VolumeInfo { get; set; }
     public bool IsSystemDisk { get; set; }

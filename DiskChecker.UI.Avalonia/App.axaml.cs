@@ -215,13 +215,21 @@ public partial class App : global::Avalonia.Application
         // Platform-specific SMART provider and disk detection
         if (RuntimeInformation.IsOSPlatform(OSPlatform.Linux))
         {
-            services.AddSingleton<IDiskDetectionService, LinuxDiskDetectionService>();
+            services.AddSingleton<IDiskDetectionService>(sp =>
+            {
+                var smartaProvider = sp.GetRequiredService<ISmartaProvider>();
+                return new LinuxDiskDetectionService(smartaProvider);
+            });
             services.AddTransient<ISmartaProvider, LinuxSmartaProvider>();
             services.AddSingleton<IDiskSanitizationService, LinuxDiskSanitizationService>();
         }
         else
         {
-            services.AddSingleton<IDiskDetectionService, DiskDetectionService>();
+            services.AddSingleton<IDiskDetectionService>(sp =>
+            {
+                var smartaProvider = sp.GetRequiredService<ISmartaProvider>();
+                return new DiskDetectionService(smartaProvider);
+            });
             services.AddTransient<ISmartaProvider, WindowsSmartaProvider>();
             services.AddSingleton<IDiskSanitizationService, WindowsDiskSanitizationService>();
         }
