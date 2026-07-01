@@ -1,6 +1,0 @@
-﻿
-                TestDuration = session.Duration,
-            DrawText(canvas, string.Format(_locale?.GetString("CertificatePdf.TestDuration", "Doba: {{0}}") ?? "Doba: {
-{0}}", cert.TestDuration.ToString(@"hh\:mm\:ss")), 64, y + 46, valueFont, textPaint);
-
-
