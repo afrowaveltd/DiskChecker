@@ -53,6 +53,8 @@ public class SeekTestService
 
     /// <summary>
     /// Gets a SMART-informed recommendation for seek test parameters.
+    /// Skips SMART query when the drive does not support SMART (SupportsSmart == false)
+    /// to avoid device contention (e.g., "device is busy" on Linux).
     /// </summary>
     public async Task<SeekTestRecommendation> GetRecommendationAsync(
         CoreDriveInfo drive,
@@ -61,13 +63,20 @@ public class SeekTestService
         ArgumentNullException.ThrowIfNull(drive);
 
         SmartaData? smartaData = null;
-        try
+        if (drive.SupportsSmart)
         {
-            smartaData = await _smartaProvider.GetSmartaDataAsync(drive.Path, cancellationToken);
+            try
+            {
+                smartaData = await _smartaProvider.GetSmartaDataAsync(drive.Path, cancellationToken);
+            }
+            catch (Exception ex)
+            {
+                LogSmartUnavailable(_logger, drive.Path, ex);
+            }
         }
-        catch (Exception ex)
+        else
         {
-            LogSmartUnavailable(_logger, drive.Path, ex);
+            LogSmartUnavailable(_logger, drive.Path, null);
         }
 
         var isSolidState = IsSolidStateDrive(smartaData, drive);
@@ -85,15 +94,22 @@ public class SeekTestService
         ArgumentNullException.ThrowIfNull(request);
         ArgumentNullException.ThrowIfNull(request.Drive);
 
-        // Get SMART data for the result metadata
+        // Get SMART data for the result metadata (only if drive supports SMART)
         SmartaData? smartaData = null;
-        try
+        if (request.Drive.SupportsSmart)
         {
-            smartaData = await _smartaProvider.GetSmartaDataAsync(request.Drive.Path, cancellationToken);
+            try
+            {
+                smartaData = await _smartaProvider.GetSmartaDataAsync(request.Drive.Path, cancellationToken);
+            }
+            catch (Exception ex)
+            {
+                LogSmartBeforeUnavailable(_logger, request.Drive.Path, ex);
+            }
         }
-        catch (Exception ex)
+        else
         {
-            LogSmartBeforeUnavailable(_logger, request.Drive.Path, ex);
+            LogSmartBeforeUnavailable(_logger, request.Drive.Path, null);
         }
 
         // Get recommendation for result metadata

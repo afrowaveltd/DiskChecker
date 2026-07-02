@@ -17,7 +17,18 @@ public class DiskDetectionService : IDiskDetectionService
     // Cache for system disk path
     private string? _systemDiskPath;
     private int? _systemDiskNumber;
-    
+    private readonly ISmartaProvider? _smartaProvider;
+
+    /// <summary>
+    /// Creates a new DiskDetectionService.
+    /// When smartaProvider is provided, SMART support is probed during
+    /// initial disk detection and stored in CoreDriveInfo.SupportsSmart.
+    /// </summary>
+    public DiskDetectionService(ISmartaProvider? smartaProvider = null)
+    {
+        _smartaProvider = smartaProvider;
+    }
+
     public async Task<IReadOnlyList<CoreDriveInfo>> GetDrivesAsync(CancellationToken cancellationToken = default)
     {
         var drives = new List<CoreDriveInfo>();
@@ -135,6 +146,27 @@ public class DiskDetectionService : IDiskDetectionService
                 IsSystemDisk = true,
                 IsReady = true
             });
+        }
+
+        // Probe SMART support for each physical drive (best-effort).
+        // This populates the ISmartaProvider cache so that subsequent SMART queries
+        // know immediately whether the device supports SMART without re-running smartctl.
+        if (_smartaProvider != null)
+        {
+            foreach (var drive in drives.Where(d => d.IsPhysical))
+            {
+                try
+                {
+                    using var perDiskCts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+                    using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, perDiskCts.Token);
+                    var supportsSmart = await _smartaProvider.IsSmartSupportedAsync(drive.Path, linkedCts.Token);
+                    drive.SupportsSmart = supportsSmart;
+                }
+                catch
+                {
+                    drive.SupportsSmart = false;
+                }
+            }
         }
 
         // Order: system disk first, then by bus type, then by model/name

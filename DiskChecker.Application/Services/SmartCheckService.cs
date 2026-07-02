@@ -50,6 +50,13 @@ public class SmartCheckService
     {
         ArgumentNullException.ThrowIfNull(drive);
 
+        // Skip SMART query if the drive doesn't support SMART (avoids device contention)
+        if (!drive.SupportsSmart)
+        {
+            LogSmartDataUnavailable(_logger, drive.Path, null);
+            return null;
+        }
+
         var smartaData = await _smartaProvider.GetSmartaDataAsync(drive.Path, cancellationToken);
         if (smartaData == null)
         {
