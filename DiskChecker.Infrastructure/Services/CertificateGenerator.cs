@@ -153,6 +153,7 @@ public class CertificateGenerator : ICertificateGenerator
 
             certificate.WriteProfilePoints = DownsampleSpeeds(session.WriteSamples.Select(s => s.SpeedMBps), CertificateChartPoints);
             certificate.ReadProfilePoints = DownsampleSpeeds(session.ReadSamples.Select(s => s.SpeedMBps), CertificateChartPoints);
+            certificate.TemperatureProfilePoints = DownsampleTemperatures(session.TemperatureSamples, CertificateChartPoints);
 
             var calculated = CalculateGrade(session);
             var grade = session.SmartBefore != null ? calculated.grade
@@ -300,7 +301,7 @@ public class CertificateGenerator : ICertificateGenerator
             float gradeY = sealY + (sealSize - gradeFont.Size) / 2f;
             DrawText(canvas, gradeText, gradeX, gradeY, gradeFont, gradePaint);
 
-            var scoreText = string.Format(_locale?.GetString("CertificatePdf.Score", "Skóre: {{0}}/100") ?? "Skóre: {{0}}/100", cert.Score);
+            var scoreText = string.Format(_locale?.GetString("CertificatePdf.Score", "Skóre: {0}/100") ?? "Skóre: {0}/100", cert.Score);
             float scoreWidth = scoreFont.MeasureText(scoreText);
             DrawText(canvas, scoreText, sealX + (sealSize - scoreWidth) / 2f, sealY + sealSize + 8f, scoreFont, textPaint);
 
@@ -310,19 +311,24 @@ public class CertificateGenerator : ICertificateGenerator
             y += 34;
 
             var isSanitizationTest = cert.SanitizationPerformed
-                || string.Equals(cert.TestType, TestType.Sanitization.ToString(), StringComparison.OrdinalIgnoreCase);
-            var testResultsHeight = isSanitizationTest ? 250 : 170;
+                || string.Equals(cert.TestType, TestType.Sanitization.ToString(), StringComparison.OrdinalIgnoreCase)
+                || string.Equals(cert.TestType, TestType.AbsoluteDestructive.ToString(), StringComparison.OrdinalIgnoreCase);
+            var isSeekTest = cert.SeekAvgLatencyMs.HasValue
+                || !string.IsNullOrWhiteSpace(cert.SeekTestSummary)
+                || string.Equals(cert.TestType, TestType.Seek.ToString(), StringComparison.OrdinalIgnoreCase)
+                || string.Equals(cert.TestType, TestType.AbsoluteDestructive.ToString(), StringComparison.OrdinalIgnoreCase);
+            var testResultsHeight = isSanitizationTest || isSeekTest ? 250 : 170;
             var notAvailableText = _locale?.GetString("CertificatePdf.NA", "N/A") ?? "N/A";
 
             canvas.DrawRect(48, y, CertWidth - 96, testResultsHeight, panelPaint);
             canvas.DrawRect(48, y, CertWidth - 96, testResultsHeight, borderPaint);
-            DrawText(canvas, string.Format(_locale?.GetString("CertificatePdf.TestType", "Typ: {{0}}") ?? "Typ: {{0}}", cert.TestType), 64, y + 16, valueFont, textPaint);
-            DrawText(canvas, string.Format(_locale?.GetString("CertificatePdf.TestDuration", "Doba: {{0}}") ?? "Doba: {{0}}", cert.TestDuration.ToString(@"hh\:mm\:ss")), 64, y + 46, valueFont, textPaint);
-            DrawText(canvas, string.Format(_locale?.GetString("CertificatePdf.ErrorCount", "Chyby: {{0}}") ?? "Chyby: {{0}}", cert.ErrorCount), 64, y + 76, valueFont, textPaint);
-            DrawText(canvas, string.Format(_locale?.GetString("CertificatePdf.TemperatureRange", "Teplota: {{0}}") ?? "Teplota: {{0}}", cert.TemperatureRange), 64, y + 106, valueFont, textPaint);
+            DrawText(canvas, string.Format(_locale?.GetString("CertificatePdf.TestType", "Typ: {0}") ?? "Typ: {0}", cert.TestType), 64, y + 16, valueFont, textPaint);
+            DrawText(canvas, string.Format(_locale?.GetString("CertificatePdf.TestDuration", "Doba: {0}") ?? "Doba: {0}", cert.TestDuration.ToString(@"hh\:mm\:ss")), 64, y + 46, valueFont, textPaint);
+            DrawText(canvas, string.Format(_locale?.GetString("CertificatePdf.ErrorCount", "Chyby: {0}") ?? "Chyby: {0}", cert.ErrorCount), 64, y + 76, valueFont, textPaint);
+            DrawText(canvas, string.Format(_locale?.GetString("CertificatePdf.TemperatureRange", "Teplota: {0}") ?? "Teplota: {0}", cert.TemperatureRange), 64, y + 106, valueFont, textPaint);
             DrawText(canvas, string.Format(_locale?.GetString("CertificatePdf.AvgWriteSpeed", "Průměrný zápis: {0} MB/s") ?? "Průměrný zápis: {0} MB/s", FormatSpeedForPdf(cert.AvgWriteSpeed, notAvailableText)), 520, y + 16, valueFont, textPaint);
             DrawText(canvas, string.Format(_locale?.GetString("CertificatePdf.AvgReadSpeed", "Průměrné čtení: {0} MB/s") ?? "Průměrné čtení: {0} MB/s", FormatSpeedForPdf(cert.AvgReadSpeed, notAvailableText)), 520, y + 46, valueFont, textPaint);
-            DrawText(canvas, string.Format(_locale?.GetString("CertificatePdf.HealthStatus", "Stav: {{0}}") ?? "Stav: {{0}}", cert.HealthStatus), 520, y + 76, valueFont, textPaint);
+            DrawText(canvas, string.Format(_locale?.GetString("CertificatePdf.HealthStatus", "Stav: {0}") ?? "Stav: {0}", cert.HealthStatus), 520, y + 76, valueFont, textPaint);
 
             if (isSanitizationTest)
             {
@@ -330,11 +336,20 @@ public class CertificateGenerator : ICertificateGenerator
                     ? _locale?.GetString("CertificatePdf.Yes", "Ano") ?? "Ano"
                     : _locale?.GetString("CertificatePdf.No", "Ne") ?? "Ne";
 
-                DrawText(canvas, string.Format(_locale?.GetString("CertificatePdf.SanitizationMethod", "Metoda sanitizace: {{0}}") ?? "Metoda sanitizace: {{0}}", string.IsNullOrWhiteSpace(cert.SanitizationMethod) ? notAvailableText : cert.SanitizationMethod), 64, y + 136, valueFont, textPaint);
-                DrawText(canvas, string.Format(_locale?.GetString("CertificatePdf.DataVerified", "Verifikace dat: {{0}}") ?? "Verifikace dat: {{0}}", verificationText), 64, y + 166, valueFont, textPaint);
-                DrawText(canvas, string.Format(_locale?.GetString("CertificatePdf.PartitionScheme", "Schéma oddílů: {{0}}") ?? "Schéma oddílů: {{0}}", string.IsNullOrWhiteSpace(cert.PartitionScheme) ? notAvailableText : cert.PartitionScheme), 64, y + 196, valueFont, textPaint);
-                DrawText(canvas, string.Format(_locale?.GetString("CertificatePdf.FileSystem", "Souborový systém: {{0}}") ?? "Souborový systém: {{0}}", string.IsNullOrWhiteSpace(cert.FileSystem) ? notAvailableText : cert.FileSystem), 520, y + 136, valueFont, textPaint);
-                DrawText(canvas, string.Format(_locale?.GetString("CertificatePdf.VolumeLabel", "Název svazku: {{0}}") ?? "Název svazku: {{0}}", string.IsNullOrWhiteSpace(cert.VolumeLabel) ? notAvailableText : cert.VolumeLabel), 520, y + 166, valueFont, textPaint);
+                DrawText(canvas, string.Format(_locale?.GetString("CertificatePdf.SanitizationMethod", "Metoda sanitizace: {0}") ?? "Metoda sanitizace: {0}", string.IsNullOrWhiteSpace(cert.SanitizationMethod) ? notAvailableText : cert.SanitizationMethod), 64, y + 136, valueFont, textPaint);
+                DrawText(canvas, string.Format(_locale?.GetString("CertificatePdf.DataVerified", "Verifikace dat: {0}") ?? "Verifikace dat: {0}", verificationText), 64, y + 166, valueFont, textPaint);
+                DrawText(canvas, string.Format(_locale?.GetString("CertificatePdf.PartitionScheme", "Schéma oddílů: {0}") ?? "Schéma oddílů: {0}", string.IsNullOrWhiteSpace(cert.PartitionScheme) ? notAvailableText : cert.PartitionScheme), 64, y + 196, valueFont, textPaint);
+                DrawText(canvas, string.Format(_locale?.GetString("CertificatePdf.FileSystem", "Souborový systém: {0}") ?? "Souborový systém: {0}", string.IsNullOrWhiteSpace(cert.FileSystem) ? notAvailableText : cert.FileSystem), 520, y + 136, valueFont, textPaint);
+                DrawText(canvas, string.Format(_locale?.GetString("CertificatePdf.VolumeLabel", "Název svazku: {0}") ?? "Název svazku: {0}", string.IsNullOrWhiteSpace(cert.VolumeLabel) ? notAvailableText : cert.VolumeLabel), 520, y + 166, valueFont, textPaint);
+            }
+
+            if (isSeekTest)
+            {
+                var seekY = isSanitizationTest ? y + 196 : y + 136;
+                DrawText(canvas, string.Format(_locale?.GetString("CertificatePdf.SeekAvgLatency", "Průměrná seek latence: {0} ms") ?? "Průměrná seek latence: {0} ms", cert.SeekAvgLatencyMs.HasValue ? cert.SeekAvgLatencyMs.Value.ToString("F2", CultureInfo.InvariantCulture) : notAvailableText), 520, seekY, valueFont, textPaint);
+                DrawText(canvas, string.Format(_locale?.GetString("CertificatePdf.SeekP95Latency", "P95 seek latence: {0} ms") ?? "P95 seek latence: {0} ms", cert.SeekP95LatencyMs.HasValue ? cert.SeekP95LatencyMs.Value.ToString("F2", CultureInfo.InvariantCulture) : notAvailableText), 520, seekY + 30, valueFont, textPaint);
+                if (!isSanitizationTest && !string.IsNullOrWhiteSpace(cert.SeekTestSummary))
+                    DrawTextWrapped(canvas, cert.SeekTestSummary, 64, y + 166, 430, 60, smallFont, textPaint);
             }
 
             // SMART summary
@@ -343,10 +358,10 @@ public class CertificateGenerator : ICertificateGenerator
             y += 34;
             canvas.DrawRect(48, y, CertWidth - 96, 190, panelPaint);
             canvas.DrawRect(48, y, CertWidth - 96, 190, borderPaint);
-            DrawText(canvas, string.Format(_locale?.GetString("CertificatePdf.SmartPowerOnHours", "Provozní hodiny: {{0}}") ?? "Provozní hodiny: {{0}}", cert.PowerOnHours > 0 ? cert.PowerOnHours.ToString("#,0", CultureInfo.InvariantCulture) : _locale?.GetString("CertificatePdf.NA", "N/A") ?? "N/A"), 64, y + 16, valueFont, textPaint);
-            DrawText(canvas, string.Format(_locale?.GetString("CertificatePdf.SmartPowerCycles", "Počet startů: {{0}}") ?? "Počet startů: {{0}}", cert.PowerCycles > 0 ? cert.PowerCycles.ToString("#,0", CultureInfo.InvariantCulture) : _locale?.GetString("CertificatePdf.NA", "N/A") ?? "N/A"), 64, y + 44, valueFont, textPaint);
-            DrawText(canvas, string.Format(_locale?.GetString("CertificatePdf.SmartReallocatedSectors", "Realokované sektory: {{0}}") ?? "Realokované sektory: {{0}}", cert.ReallocatedSectors), 520, y + 16, valueFont, textPaint);
-            DrawText(canvas, string.Format(_locale?.GetString("CertificatePdf.SmartPendingSectors", "Čekající sektory: {{0}}") ?? "Čekající sektory: {{0}}", cert.PendingSectors), 520, y + 44, valueFont, textPaint);
+            DrawText(canvas, string.Format(_locale?.GetString("CertificatePdf.SmartPowerOnHours", "Provozní hodiny: {0}") ?? "Provozní hodiny: {0}", cert.PowerOnHours > 0 ? cert.PowerOnHours.ToString("#,0", CultureInfo.InvariantCulture) : _locale?.GetString("CertificatePdf.NA", "N/A") ?? "N/A"), 64, y + 16, valueFont, textPaint);
+            DrawText(canvas, string.Format(_locale?.GetString("CertificatePdf.SmartPowerCycles", "Počet startů: {0}") ?? "Počet startů: {0}", cert.PowerCycles > 0 ? cert.PowerCycles.ToString("#,0", CultureInfo.InvariantCulture) : _locale?.GetString("CertificatePdf.NA", "N/A") ?? "N/A"), 64, y + 44, valueFont, textPaint);
+            DrawText(canvas, string.Format(_locale?.GetString("CertificatePdf.SmartReallocatedSectors", "Realokované sektory: {0}") ?? "Realokované sektory: {0}", cert.ReallocatedSectors), 520, y + 16, valueFont, textPaint);
+            DrawText(canvas, string.Format(_locale?.GetString("CertificatePdf.SmartPendingSectors", "Čekající sektory: {0}") ?? "Čekající sektory: {0}", cert.PendingSectors), 520, y + 44, valueFont, textPaint);
             DrawText(canvas, _locale?.GetString("CertificatePdf.GradeLegend", "Legenda známek:") ?? "Legenda známek:", 64, y + 82, valueFont, accentPaint);
             DrawText(canvas, _locale?.GetString("CertificatePdf.GradeAB", "A = výborný stav | B = velmi dobrý stav") ?? "A = výborný stav | B = velmi dobrý stav", 64, y + 110, smallFont, textPaint);
             DrawText(canvas, _locale?.GetString("CertificatePdf.GradeCD", "C = dobrý stav | D = opotřebený disk") ?? "C = dobrý stav | D = opotřebený disk", 64, y + 132, smallFont, textPaint);
@@ -736,14 +751,18 @@ public class CertificateGenerator : ICertificateGenerator
             return;
         }
 
+        seekResults = seekResults
+            .Where(r => r != null && (r.SeekCount > 0 || r.AverageLatencyMs > 0 || r.Samples.Count > 0))
+            .ToList();
         if (seekResults.Count == 0)
             return;
 
-        var latencies = seekResults
-            .SelectMany(r => r.Samples.Select(s => s.LatencyMs))
-            .Where(v => v > 0)
-            .OrderBy(v => v)
+        var successfulSamples = seekResults
+            .SelectMany(r => r.Samples)
+            .Where(s => !s.HasError && s.LatencyMs > 0)
+            .OrderBy(s => s.Index)
             .ToList();
+        var latencies = successfulSamples.Select(s => s.LatencyMs).OrderBy(v => v).ToList();
 
         if (latencies.Count > 0)
         {
@@ -752,7 +771,10 @@ public class CertificateGenerator : ICertificateGenerator
             certificate.SeekMinLatencyMs ??= latencies[0];
             certificate.SeekMaxLatencyMs ??= latencies[^1];
             certificate.SeekStdDevLatencyMs ??= Math.Sqrt(latencies.Average(v => Math.Pow(v - avg, 2)));
-            certificate.SeekP95LatencyMs ??= latencies[(int)Math.Clamp(Math.Ceiling(latencies.Count * 0.95) - 1, 0, latencies.Count - 1)];
+            certificate.SeekMedianLatencyMs ??= PercentileSorted(latencies, 0.50);
+            certificate.SeekP95LatencyMs ??= PercentileSorted(latencies, 0.95);
+            certificate.SeekP99LatencyMs ??= PercentileSorted(latencies, 0.99);
+            certificate.SeekLatencyPoints = DownsampleSpeeds(successfulSamples.Select(s => s.LatencyMs), MaxChartPoints);
         }
         else
         {
@@ -763,26 +785,25 @@ public class CertificateGenerator : ICertificateGenerator
                 certificate.SeekMinLatencyMs ??= seekResults.Where(r => r.MinLatencyMs > 0).Select(r => r.MinLatencyMs).DefaultIfEmpty(0).Min();
                 certificate.SeekMaxLatencyMs ??= seekResults.Where(r => r.MaxLatencyMs > 0).Select(r => r.MaxLatencyMs).DefaultIfEmpty(0).Max();
                 certificate.SeekStdDevLatencyMs ??= Math.Sqrt(averageLatencies.Average(v => Math.Pow(v - certificate.SeekAvgLatencyMs.Value, 2)));
+                certificate.SeekMedianLatencyMs ??= seekResults.Where(r => r.MedianLatencyMs > 0).Select(r => r.MedianLatencyMs).DefaultIfEmpty(certificate.SeekAvgLatencyMs.Value).Average();
                 certificate.SeekP95LatencyMs ??= seekResults.Where(r => r.P95LatencyMs > 0).Select(r => r.P95LatencyMs).DefaultIfEmpty(certificate.SeekAvgLatencyMs.Value).Max();
+                certificate.SeekP99LatencyMs ??= seekResults.Where(r => r.P99LatencyMs > 0).Select(r => r.P99LatencyMs).DefaultIfEmpty(certificate.SeekP95LatencyMs ?? certificate.SeekAvgLatencyMs.Value).Max();
             }
         }
 
-        if (string.IsNullOrWhiteSpace(certificate.SeekTestSummary))
-        {
-            var summaryParts = seekResults
-                .Where(r => r.AverageLatencyMs > 0)
-                .Select(r => $"{r.TestType}: {r.SeekCount} seeků, avg {r.AverageLatencyMs:F2} ms")
-                .ToList();
-            if (summaryParts.Count > 0)
-                certificate.SeekTestSummary = string.Join(" | ", summaryParts);
-        }
+        certificate.SeekTotalCount ??= seekResults.Sum(r => Math.Max(r.SeekCount, r.Samples.Count));
+        certificate.SeekErrorCount ??= seekResults.Sum(r => Math.Max(0, r.ErrorCount));
+        certificate.SeekTypeSummaries = seekResults
+            .Select(r => BuildSeekTypeSummary(r))
+            .Where(s => !string.IsNullOrWhiteSpace(s))
+            .ToList();
+
+        if (string.IsNullOrWhiteSpace(certificate.SeekTestSummary) && certificate.SeekTypeSummaries.Count > 0)
+            certificate.SeekTestSummary = string.Join(" | ", certificate.SeekTypeSummaries);
 
         if (certificate.ErrorCount <= 0)
-        {
-            certificate.ErrorCount = seekResults.Sum(r => Math.Max(0, r.ErrorCount));
-        }
+            certificate.ErrorCount = certificate.SeekErrorCount ?? 0;
     }
-
     private static void TryPopulateSanitizationComparisonMetrics(DiskCertificate certificate, TestSession session)
     {
         if (string.IsNullOrWhiteSpace(session.Sanitize1ResultJson) && string.IsNullOrWhiteSpace(session.Sanitize2ResultJson))
@@ -864,6 +885,35 @@ public class CertificateGenerator : ICertificateGenerator
         public SeekTestResult? Skip { get; set; }
     }
 
+    private static string BuildSeekTypeSummary(SeekTestResult r)
+    {
+        var samples = r.Samples.Where(s => !s.HasError && s.LatencyMs > 0).Select(s => s.LatencyMs).OrderBy(v => v).ToList();
+        var min = FirstPositive(r.MinLatencyMs, samples.Count > 0 ? samples[0] : 0);
+        var avg = FirstPositive(r.AverageLatencyMs, samples.Count > 0 ? samples.Average() : 0);
+        var max = FirstPositive(r.MaxLatencyMs, samples.Count > 0 ? samples[^1] : 0);
+        var median = FirstPositive(r.MedianLatencyMs, samples.Count > 0 ? PercentileSorted(samples, 0.50) : 0);
+        var p95 = FirstPositive(r.P95LatencyMs, samples.Count > 0 ? PercentileSorted(samples, 0.95) : 0);
+        var p99 = FirstPositive(r.P99LatencyMs, samples.Count > 0 ? PercentileSorted(samples, 0.99) : 0);
+        var std = FirstPositive(r.LatencyStdDevMs, samples.Count > 0 ? Math.Sqrt(samples.Average(v => Math.Pow(v - avg, 2))) : 0);
+        var count = Math.Max(r.SeekCount, samples.Count);
+        return $"{r.TestType}: seeks {count}, min {min:F2} ms, avg {avg:F2} ms, max {max:F2} ms, median {median:F2} ms, P95 {p95:F2} ms, P99 {p99:F2} ms, σ {std:F2} ms, errors {r.ErrorCount}";
+    }
+
+    private static double PercentileSorted(IReadOnlyList<double> sortedValues, double percentile)
+    {
+        if (sortedValues.Count == 0) return 0;
+        var index = (int)Math.Clamp(Math.Ceiling(sortedValues.Count * percentile) - 1, 0, sortedValues.Count - 1);
+        return sortedValues[index];
+    }
+
+    private static double FirstPositive(params double[] values)
+    {
+        foreach (var value in values)
+        {
+            if (value > 0) return value;
+        }
+        return 0;
+    }
     private static bool IsCriticalAttribute(int attributeId)
     {
         return attributeId is 5 or 196 or 197 or 198 or 10 or 187 or 188 or 1 or 7 or 9 or 194;
@@ -1029,11 +1079,11 @@ public class CertificateGenerator : ICertificateGenerator
             DrawText(canvas, _locale?.GetString("CertificatePdf.Label.Title", "CERTIFIKÁT KVALITY DISKU") ?? "CERTIFIKÁT KVALITY DISKU", 20, 20, titleFont, accentPaint);
 
             // Info
-            DrawText(canvas, string.Format(_locale?.GetString("CertificatePdf.Label.Model", "Model: {{0}}") ?? "Model: {{0}}", certificate.DiskModel), 20, 60, valueFont, textPaint);
-            DrawText(canvas, string.Format(_locale?.GetString("CertificatePdf.Label.SerialNumber", "S/N: {{0}}") ?? "S/N: {{0}}", certificate.SerialNumber), 20, 84, valueFont, textPaint);
-            DrawText(canvas, string.Format(_locale?.GetString("CertificatePdf.Label.Capacity", "Kapacita: {{0}}") ?? "Kapacita: {{0}}", certificate.Capacity), 20, 108, valueFont, textPaint);
-            DrawText(canvas, string.Format(_locale?.GetString("CertificatePdf.Label.GradeScore", "Známka: {{0}}  |  Skóre: {{1:F0}}/100") ?? "Známka: {{0}}  |  Skóre: {{1:F0}}/100", certificate.Grade, certificate.Score), 20, 132, valueFont, textPaint);
-            DrawText(canvas, string.Format(_locale?.GetString("CertificatePdf.Label.Date", "Datum: {{0}}") ?? "Datum: {{0}}", certificate.GeneratedAt.ToString("dd.MM.yyyy HH:mm")), 20, 156, valueFont, textPaint);
+            DrawText(canvas, string.Format(_locale?.GetString("CertificatePdf.Label.Model", "Model: {0}") ?? "Model: {0}", certificate.DiskModel), 20, 60, valueFont, textPaint);
+            DrawText(canvas, string.Format(_locale?.GetString("CertificatePdf.Label.SerialNumber", "S/N: {0}") ?? "S/N: {0}", certificate.SerialNumber), 20, 84, valueFont, textPaint);
+            DrawText(canvas, string.Format(_locale?.GetString("CertificatePdf.Label.Capacity", "Kapacita: {0}") ?? "Kapacita: {0}", certificate.Capacity), 20, 108, valueFont, textPaint);
+            DrawText(canvas, string.Format(_locale?.GetString("CertificatePdf.Label.GradeScore", "Známka: {0}  |  Skóre: {1:F0}/100") ?? "Známka: {0}  |  Skóre: {1:F0}/100", certificate.Grade, certificate.Score), 20, 132, valueFont, textPaint);
+            DrawText(canvas, string.Format(_locale?.GetString("CertificatePdf.Label.Date", "Datum: {0}") ?? "Datum: {0}", certificate.GeneratedAt.ToString("dd.MM.yyyy HH:mm")), 20, 156, valueFont, textPaint);
 
             // Grade seal
             float sealX = labelWidth - 160;
@@ -1048,7 +1098,7 @@ public class CertificateGenerator : ICertificateGenerator
             DrawText(canvas, gradeText, gradeX, gradeY, gradeFont, gradePaint);
 
             // Footer
-            DrawText(canvas, string.Format(_locale?.GetString("CertificatePdf.Label.Footer", "DiskChecker v1.0 | {{0}}") ?? "DiskChecker v1.0 | {{0}}", certificate.CertificateNumber), 20, labelHeight - 30, smallFont, textPaint);
+            DrawText(canvas, string.Format(_locale?.GetString("CertificatePdf.Label.Footer", "DiskChecker v1.0 | {0}") ?? "DiskChecker v1.0 | {0}", certificate.CertificateNumber), 20, labelHeight - 30, smallFont, textPaint);
 
             using var image = surface.Snapshot();
             using var data = image.Encode(SKEncodedImageFormat.Png, 90);

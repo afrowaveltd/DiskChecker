@@ -1699,6 +1699,8 @@
   "CertificatePdf.Percent75": "75 %",
   "CertificatePdf.Percent100": "100 %",
   "CertificatePdf.NA": "N/A",
+  "CertificatePdf.SeekAvgLatency": "Průměrná seek latence: {0} ms",
+  "CertificatePdf.SeekP95Latency": "P95 seek latence: {0} ms",
   "CertificatePdf.Recommendation.Good": "Disk je v dobrém stavu a lze jej bezpečně používat.",
   "CertificatePdf.Recommendation.Worn": "Disk vykazuje známky opotřebení. Doporučujeme pravidelnou kontrolu SMART a zálohování důležitých dat.",
   "CertificatePdf.Recommendation.Errors": "Během testu byly detekovány chyby. Zvažte výměnu disku, zejména pokud se chyby opakují.",

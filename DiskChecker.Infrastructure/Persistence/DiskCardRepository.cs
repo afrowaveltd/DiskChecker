@@ -334,7 +334,11 @@ public class DiskCardRepository : IDiskCardRepository
                 ChartImagePath = t.ChartImagePath,
                 Notes = t.Notes,
                 SmartBeforeJson = t.SmartBeforeJson,
-                SmartAfterJson = t.SmartAfterJson
+                SmartAfterJson = t.SmartAfterJson,
+                SeekResultsJson = t.SeekResultsJson,
+                Sanitize1ResultJson = t.Sanitize1ResultJson,
+                Sanitize2ResultJson = t.Sanitize2ResultJson,
+                AnomaliesJson = t.AnomaliesJson
             })
             .FirstOrDefaultAsync();
     }
@@ -473,6 +477,53 @@ public class DiskCardRepository : IDiskCardRepository
             var writeSamples = await LoadSpeedSeriesChunkAsync(connection, "TestSessions_WriteSamples", sessionId, modulo, remainder);
             var readSamples = await LoadSpeedSeriesChunkAsync(connection, "TestSessions_ReadSamples", sessionId, modulo, remainder);
             return (writeSamples, readSamples);
+        }
+        finally
+        {
+            if (shouldClose)
+            {
+                await connection.CloseAsync();
+            }
+        }
+    }
+
+
+    public async Task<List<TemperatureSample>> GetTemperatureSampleSeriesAsync(int sessionId)
+    {
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(sessionId);
+
+        var connection = _context.Database.GetDbConnection();
+        var shouldClose = connection.State != System.Data.ConnectionState.Open;
+        if (shouldClose)
+        {
+            await connection.OpenAsync();
+        }
+
+        try
+        {
+            await ConfigureSqliteReadOptimizationsAsync(connection);
+
+            await using var command = connection.CreateCommand();
+            command.CommandText = "SELECT Timestamp, TemperatureCelsius, Phase, ProgressPercent FROM TestSessions_TemperatureSamples WHERE TestSessionId = @sessionId ORDER BY Timestamp, Id";
+            var parameter = command.CreateParameter();
+            parameter.ParameterName = "@sessionId";
+            parameter.Value = sessionId;
+            command.Parameters.Add(parameter);
+
+            var values = new List<TemperatureSample>();
+            await using var reader = await command.ExecuteReaderAsync();
+            while (await reader.ReadAsync())
+            {
+                values.Add(new TemperatureSample
+                {
+                    Timestamp = reader.IsDBNull(0) ? DateTime.MinValue : reader.GetDateTime(0),
+                    TemperatureCelsius = reader.IsDBNull(1) ? 0 : reader.GetInt32(1),
+                    Phase = reader.IsDBNull(2) ? string.Empty : reader.GetString(2),
+                    ProgressPercent = reader.IsDBNull(3) ? 0 : reader.GetDouble(3)
+                });
+            }
+
+            return values;
         }
         finally
         {

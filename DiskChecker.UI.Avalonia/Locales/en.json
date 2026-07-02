@@ -1699,6 +1699,8 @@
   "CertificatePdf.Percent75": "75 %",
   "CertificatePdf.Percent100": "100 %",
   "CertificatePdf.NA": "N/A",
+  "CertificatePdf.SeekAvgLatency": "Average seek latency: {0} ms",
+  "CertificatePdf.SeekP95Latency": "P95 seek latency: {0} ms",
   "CertificatePdf.Recommendation.Good": "The disk is in good condition and can be used safely.",
   "CertificatePdf.Recommendation.Worn": "The disk shows signs of wear. Regular SMART monitoring and data backup is recommended.",
   "CertificatePdf.Recommendation.Errors": "Errors were detected during testing. Consider replacing the disk, especially if errors recur.",

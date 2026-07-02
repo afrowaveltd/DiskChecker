@@ -275,10 +275,51 @@ public class DiskCertificate
     public double? SeekP95LatencyMs { get; set; }
 
     /// <summary>
+    /// Median seek latency (ms).
+    /// </summary>
+    [NotMapped]
+    public double? SeekMedianLatencyMs { get; set; }
+
+    /// <summary>
+    /// 99th percentile seek latency (ms).
+    /// </summary>
+    [NotMapped]
+    public double? SeekP99LatencyMs { get; set; }
+
+    /// <summary>
+    /// Total number of seek operations represented by the certificate.
+    /// </summary>
+    [NotMapped]
+    public int? SeekTotalCount { get; set; }
+
+    /// <summary>
+    /// Number of seek errors represented by the certificate.
+    /// </summary>
+    [NotMapped]
+    public int? SeekErrorCount { get; set; }
+
+    /// <summary>
+    /// Downsampled seek latency points for certificate chart rendering.
+    /// </summary>
+    [NotMapped]
+    public List<double> SeekLatencyPoints { get; set; } = new();
+
+    /// <summary>
+    /// Per-seek-test-type summaries for full/absolute certificates.
+    /// </summary>
+    [NotMapped]
+    public List<string> SeekTypeSummaries { get; set; } = new();
+
+    /// <summary>
     /// Human-readable summary of seek test results per type.
     /// </summary>
     public string? SeekTestSummary { get; set; }
 
+    /// <summary>
+    /// Downsampled temperature points for certificate chart rendering.
+    /// </summary>
+    [NotMapped]
+    public List<double> TemperatureProfilePoints { get; set; } = new();
     // ========== Before/After Sanitization Comparison ==========
 
     /// <summary>

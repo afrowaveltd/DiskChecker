@@ -58,6 +58,11 @@ public interface IDiskCardRepository
     /// Umožňuje progresivní vykreslení grafu po dávkách bez načtení celé série najednou.
     /// </summary>
     Task<(List<SpeedSample> WriteSamples, List<SpeedSample> ReadSamples)> GetSpeedSampleSeriesChunkAsync(int sessionId, int modulo, int remainder);
+
+    /// <summary>
+    /// Načte uložené teplotní vzorky pro zadanou test session bez načtení celé session.
+    /// </summary>
+    Task<List<TemperatureSample>> GetTemperatureSampleSeriesAsync(int sessionId);
     
     Task<TestSession> CreateTestSessionAsync(TestSession session);
     Task<TestSession> UpdateTestSessionAsync(TestSession session);

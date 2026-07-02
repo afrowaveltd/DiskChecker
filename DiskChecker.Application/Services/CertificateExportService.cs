@@ -83,6 +83,10 @@ namespace DiskChecker.Application.Services
                     await LoadAndDownsampleStandardSamplesAsync(session, sessionId, progress, cancellationToken);
                 }
 
+                session.TemperatureSamples = DownsampleToLimit(
+                    await _diskCardRepository.GetTemperatureSampleSeriesAsync(sessionId),
+                    MaxChartPoints);
+
                 progress?.Report(new CertificateExportProgress(_locale?.GetString("CertificateExport.GeneratingCertificate", "Generuji certifikát...") ?? "Generuji certifikát...", 70));
 
                 // Generate certificate
@@ -133,7 +137,7 @@ namespace DiskChecker.Application.Services
 
                 var progressPercent = 30 + ((70 - 30) * (remainder + 1) / SanitizationMaxRemainders);
                 progress?.Report(new CertificateExportProgress(
-                    string.Format(_locale?.GetString("CertificateExport.LoadingSamplesProgress", "Načítám vzorky ({{0}}/{{1}})...") ?? "Načítám vzorky ({{0}}/{{1}})...", remainder + 1, SanitizationMaxRemainders),
+                    string.Format(_locale?.GetString("CertificateExport.LoadingSamplesProgress", "Načítám vzorky ({0}/{1})...") ?? "Načítám vzorky ({0}/{1})...", remainder + 1, SanitizationMaxRemainders),
                     progressPercent));
 
                 try
@@ -197,6 +201,24 @@ namespace DiskChecker.Application.Services
         /// <summary>
         /// Downsampleuje vzorky na zadaný limit pomocí rovnoměrného výběru.
         /// </summary>
+        private static List<TemperatureSample> DownsampleToLimit(List<TemperatureSample> samples, int maxPoints)
+        {
+            if (samples == null || samples.Count <= maxPoints)
+            {
+                return samples ?? new List<TemperatureSample>();
+            }
+
+            var result = new List<TemperatureSample>(maxPoints);
+            var step = (double)samples.Count / maxPoints;
+            for (int i = 0; i < maxPoints; i++)
+            {
+                var index = (int)(i * step);
+                if (index < samples.Count)
+                    result.Add(samples[index]);
+            }
+            return result;
+        }
+
         private static List<SpeedSample> DownsampleToLimit(List<SpeedSample> samples, int maxPoints)
         {
             if (samples == null || samples.Count <= maxPoints)
