@@ -24,6 +24,11 @@
   </ItemGroup>
 
   <ItemGroup>
+    <EmbeddedResource Include="Resources\DejaVuSans.ttf" />
+    <EmbeddedResource Include="Resources\DejaVuSans-Bold.ttf" />
+  </ItemGroup>
+
+  <ItemGroup>
     <AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleTo">
       <_Parameter1>DiskChecker.Tests</_Parameter1>
     </AssemblyAttribute>

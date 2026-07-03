@@ -235,13 +235,14 @@ public class CertificateGenerator : ICertificateGenerator
             canvas.Clear(SKColors.White);
 
             // Resolve fonts with fallback chain
-            using var titleFont = ResolveFont(34, bold: true);
-            using var sectionFont = ResolveFont(16, bold: true);
-            using var labelFont = ResolveFont(12, bold: true);
-            using var valueFont = ResolveFont(12, bold: false);
+            using var titleFont = ResolveFont(38, bold: true);
+            using var sectionFont = ResolveFont(20, bold: true);
+            using var labelFont = ResolveFont(16, bold: true);
+            using var valueFont = ResolveFont(16, bold: false);
             using var gradeFont = ResolveFont(120, bold: true);
-            using var scoreFont = ResolveFont(22, bold: true);
-            using var smallFont = ResolveFont(10, bold: false);
+            using var scoreFont = ResolveFont(24, bold: true);
+            using var smallFont = ResolveFont(14, bold: false);
+            using var chartLabelFont = ResolveFont(13, bold: false);
 
             using var textPaint = new SKPaint { Color = SKColors.Black, IsAntialias = true };
             using var mutedPaint = new SKPaint { Color = new SKColor(80, 80, 80), IsAntialias = true };
@@ -397,26 +398,40 @@ public class CertificateGenerator : ICertificateGenerator
                 }
 
                 var (writePoints, readPoints) = GetProfilePointsForChart(cert);
-                var maxSpeed = Math.Max(writePoints.Count > 0 ? writePoints.Max() : 0, readPoints.Count > 0 ? readPoints.Max() : 0);
-                if (maxSpeed <= 0) maxSpeed = 1;
+                var hasData = writePoints.Count > 0 || readPoints.Count > 0;
+                var maxSpeed = 1.0;
+                if (hasData)
+                {
+                    maxSpeed = Math.Max(writePoints.Count > 0 ? writePoints.Max() : 0, readPoints.Count > 0 ? readPoints.Max() : 0);
+                    if (maxSpeed <= 0) maxSpeed = 1;
+                    DrawProfilePolyline(canvas, writePen, writePoints, maxSpeed, chartX + 30, chartY + 14, chartW - 50, chartH - 40);
+                    DrawProfilePolyline(canvas, readPen, readPoints, maxSpeed, chartX + 30, chartY + 14, chartW - 50, chartH - 40);
+                }
+                else
+                {
+                    // No data available — show a message instead of an empty chart
+                    var noDataText = _locale?.GetString("CertificatePdf.NoChartData", "Data nejsou k dispozici") ?? "Data nejsou k dispozici";
+                    using var noDataFont = ResolveFont(18, bold: false);
+                    float textWidth = noDataFont.MeasureText(noDataText);
+                    float textX = chartX + (chartW - textWidth) / 2f;
+                    float textY = chartY + chartH / 2f - noDataFont.Size / 2f;
+                    DrawText(canvas, noDataText, textX, textY, noDataFont, mutedPaint);
+                }
 
-                DrawProfilePolyline(canvas, writePen, writePoints, maxSpeed, chartX + 30, chartY + 14, chartW - 50, chartH - 40);
-                DrawProfilePolyline(canvas, readPen, readPoints, maxSpeed, chartX + 30, chartY + 14, chartW - 50, chartH - 40);
-
-                DrawText(canvas, _locale?.GetString("CertificatePdf.Mbps", "MB/s") ?? "MB/s", chartX - 4, chartY + 8, smallFont, mutedPaint);
-                DrawText(canvas, $"{maxSpeed:F0}", chartX - 22, chartY + 14, smallFont, mutedPaint);
-                DrawText(canvas, $"{maxSpeed / 2:F0}", chartX - 22, chartY + (chartH - 40) / 2 + 10, smallFont, mutedPaint);
-                DrawText(canvas, "0", chartX - 12, chartY + chartH - 30, smallFont, mutedPaint);
-                DrawText(canvas, _locale?.GetString("CertificatePdf.Percent0", "0 %") ?? "0 %", chartX + 26, chartY + chartH - 18, smallFont, mutedPaint);
-                DrawText(canvas, _locale?.GetString("CertificatePdf.Percent25", "25 %") ?? "25 %", chartX + (chartW * 0.25f) - 8, chartY + chartH - 18, smallFont, mutedPaint);
-                DrawText(canvas, _locale?.GetString("CertificatePdf.Percent50", "50 %") ?? "50 %", chartX + chartW / 2 - 8, chartY + chartH - 18, smallFont, mutedPaint);
-                DrawText(canvas, _locale?.GetString("CertificatePdf.Percent75", "75 %") ?? "75 %", chartX + (chartW * 0.75f) - 8, chartY + chartH - 18, smallFont, mutedPaint);
-                DrawText(canvas, _locale?.GetString("CertificatePdf.Percent100", "100 %") ?? "100 %", chartX + chartW - 40, chartY + chartH - 18, smallFont, mutedPaint);
+                DrawText(canvas, _locale?.GetString("CertificatePdf.Mbps", "MB/s") ?? "MB/s", chartX - 4, chartY + 8, chartLabelFont, mutedPaint);
+                DrawText(canvas, $"{maxSpeed:F0}", chartX - 22, chartY + 14, chartLabelFont, mutedPaint);
+                DrawText(canvas, $"{maxSpeed / 2:F0}", chartX - 22, chartY + (chartH - 40) / 2 + 10, chartLabelFont, mutedPaint);
+                DrawText(canvas, "0", chartX - 12, chartY + chartH - 30, chartLabelFont, mutedPaint);
+                DrawText(canvas, _locale?.GetString("CertificatePdf.Percent0", "0 %") ?? "0 %", chartX + 26, chartY + chartH - 18, chartLabelFont, mutedPaint);
+                DrawText(canvas, _locale?.GetString("CertificatePdf.Percent25", "25 %") ?? "25 %", chartX + (chartW * 0.25f) - 8, chartY + chartH - 18, chartLabelFont, mutedPaint);
+                DrawText(canvas, _locale?.GetString("CertificatePdf.Percent50", "50 %") ?? "50 %", chartX + chartW / 2 - 8, chartY + chartH - 18, chartLabelFont, mutedPaint);
+                DrawText(canvas, _locale?.GetString("CertificatePdf.Percent75", "75 %") ?? "75 %", chartX + (chartW * 0.75f) - 8, chartY + chartH - 18, chartLabelFont, mutedPaint);
+                DrawText(canvas, _locale?.GetString("CertificatePdf.Percent100", "100 %") ?? "100 %", chartX + chartW - 40, chartY + chartH - 18, chartLabelFont, mutedPaint);
 
                 using var legendWritePaint = new SKPaint { Color = new SKColor(220, 38, 38), IsAntialias = true };
                 using var legendReadPaint = new SKPaint { Color = new SKColor(5, 150, 105), IsAntialias = true };
-                DrawText(canvas, _locale?.GetString("CertificatePdf.Write", "Zápis") ?? "Zápis", chartX + chartW - 150, chartY + 8, smallFont, legendWritePaint);
-                DrawText(canvas, _locale?.GetString("CertificatePdf.Read", "Čtení") ?? "Čtení", chartX + chartW - 90, chartY + 8, smallFont, legendReadPaint);
+                DrawText(canvas, _locale?.GetString("CertificatePdf.Write", "Zápis") ?? "Zápis", chartX + chartW - 150, chartY + 8, chartLabelFont, legendWritePaint);
+                DrawText(canvas, _locale?.GetString("CertificatePdf.Read", "Čtení") ?? "Čtení", chartX + chartW - 90, chartY + 8, chartLabelFont, legendReadPaint);
             }
 
             // Recommendation
@@ -448,13 +463,20 @@ public class CertificateGenerator : ICertificateGenerator
 
     /// <summary>
     /// Resolves a font with cross-platform fallback chain.
-    /// Tries DejaVu Sans → Noto Sans → Arial → system default.
+    /// First tries embedded DejaVu Sans (works everywhere), then system fonts.
     /// </summary>
     private static SKFont ResolveFont(float size, bool bold)
     {
         var weight = bold ? SKFontStyleWeight.Bold : SKFontStyleWeight.Normal;
 
-        // Try common Linux fonts first, then Windows/macOS
+        // 1. Try embedded DejaVu Sans font (works on all platforms)
+        var embeddedTypeface = LoadEmbeddedTypeface(bold);
+        if (embeddedTypeface != null)
+        {
+            return new SKFont(embeddedTypeface, size);
+        }
+
+        // 2. Try system fonts as fallback
         string[] families = { FontSansSerif, FontSansSerifFallback, FontSansSerifSystem, "Helvetica", "sans-serif" };
 
         foreach (var family in families)
@@ -467,8 +489,36 @@ public class CertificateGenerator : ICertificateGenerator
             typeface?.Dispose();
         }
 
-        // Ultimate fallback: system default
+        // 3. Ultimate fallback: system default
         return new SKFont(SKTypeface.Default, size);
+    }
+
+    /// <summary>
+    /// Loads the embedded DejaVu Sans TTF font from assembly resources.
+    /// Returns null if the embedded font is not available.
+    /// </summary>
+    private static SKTypeface? LoadEmbeddedTypeface(bool bold)
+    {
+        try
+        {
+            var resourceName = bold ? "DiskChecker.Infrastructure.Resources.DejaVuSans-Bold.ttf"
+                                     : "DiskChecker.Infrastructure.Resources.DejaVuSans.ttf";
+            var assembly = typeof(CertificateGenerator).Assembly;
+            using var stream = assembly.GetManifestResourceStream(resourceName);
+            if (stream != null)
+            {
+                // Copy to byte array so SkiaSharp can own the data
+                using var ms = new MemoryStream();
+                stream.CopyTo(ms);
+                var fontBytes = ms.ToArray();
+                return SKTypeface.FromStream(new MemoryStream(fontBytes));
+            }
+        }
+        catch
+        {
+            // Ignore — fall back to system fonts
+        }
+        return null;
     }
 
     private static void DrawText(SKCanvas canvas, string text, float x, float y, SKFont font, SKPaint paint)
@@ -1062,7 +1112,8 @@ public class CertificateGenerator : ICertificateGenerator
             using var titleFont = ResolveFont(22, bold: true);
             using var valueFont = ResolveFont(14, bold: false);
             using var gradeFont = ResolveFont(64, bold: true);
-            using var smallFont = ResolveFont(10, bold: false);
+            using var smallFont = ResolveFont(14, bold: false);
+            using var chartLabelFont = ResolveFont(13, bold: false);
 
             using var textPaint = new SKPaint { Color = SKColors.Black, IsAntialias = true };
             using var accentPaint = new SKPaint { Color = new SKColor(15, 76, 129), IsAntialias = true };
