@@ -27,6 +27,8 @@ public class DiskCheckerDbContext : DbContext
     public DbSet<TestSession> TestSessions { get; set; } = null!;
     public DbSet<DiskCertificate> DiskCertificates { get; set; } = null!;
     public DbSet<DiskArchive> DiskArchives { get; set; } = null!;
+    public DbSet<SeekSampleRecord> SeekSamples { get; set; } = null!;
+    public DbSet<TestTelemetrySample> TestTelemetrySamples { get; set; } = null!;
 
     // Legacy aliases for backward compatibility
     public DbSet<DriveRecord> Drives => DriveRecords;
@@ -205,6 +207,44 @@ public class DiskCheckerDbContext : DbContext
                 attrs.Property(a => a.Value).HasMaxLength(64);
                 attrs.Property(a => a.Status).HasMaxLength(32);
             });
+        });
+
+
+
+        // Research/analysis throughput telemetry. This supersedes owned WriteSamples/ReadSamples
+        // for future detailed analysis while keeping the old collections functional for current UI.
+        modelBuilder.Entity<TestTelemetrySample>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.RetentionReason).HasMaxLength(64);
+            entity.HasIndex(e => e.TestSessionId);
+            entity.HasIndex(e => new { e.TestSessionId, e.Phase, e.SequenceIndex }).IsUnique();
+            entity.HasIndex(e => new { e.TestSessionId, e.Phase, e.TimestampUtc });
+            entity.HasIndex(e => new { e.TestSessionId, e.Phase, e.ProgressPercent });
+            entity.HasIndex(e => new { e.TestSessionId, e.IsStalled });
+            entity.HasIndex(e => new { e.TestSessionId, e.IsAnomaly });
+
+            entity.HasOne(e => e.TestSession)
+                .WithMany()
+                .HasForeignKey(e => e.TestSessionId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        // Complete seek-test sample persistence. Unlike throughput samples these are
+        // intentionally not reduced because seek tests are bounded (usually <= 3000).
+        modelBuilder.Entity<SeekSampleRecord>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.ErrorMessage).HasMaxLength(1024);
+            entity.HasIndex(e => e.TestSessionId);
+            entity.HasIndex(e => new { e.TestSessionId, e.TestType, e.Index }).IsUnique();
+            entity.HasIndex(e => new { e.TestSessionId, e.TimestampUtc });
+            entity.HasIndex(e => new { e.TestSessionId, e.SeekDistance });
+
+            entity.HasOne(e => e.TestSession)
+                .WithMany()
+                .HasForeignKey(e => e.TestSessionId)
+                .OnDelete(DeleteBehavior.Cascade);
         });
 
         // DiskArchive - archived disks

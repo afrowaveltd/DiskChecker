@@ -1,12 +1,14 @@
 using System;
 using System.Buffers;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
+using System.Runtime.InteropServices;
 using DiskChecker.Core.Interfaces;
 using DiskChecker.Core.Models;
 using DiskChecker.Core.Services;
@@ -55,6 +57,10 @@ public class CertificateGenerator : ICertificateGenerator
         Directory.CreateDirectory(_certificatesDirectory);
         Directory.CreateDirectory(_labelsDirectory);
         Directory.CreateDirectory(_chartCacheDirectory);
+
+        TryAssignOwnershipToSudoUser(_certificatesDirectory);
+        TryAssignOwnershipToSudoUser(_labelsDirectory);
+        TryAssignOwnershipToSudoUser(_chartCacheDirectory);
     }
 
     private string GetCertificateBasePath()
@@ -66,9 +72,102 @@ public class CertificateGenerator : ICertificateGenerator
                 return customPath;
         }
 
+        return GetDefaultCertificateBasePath();
+    }
+
+    private static string GetDefaultCertificateBasePath()
+    {
+        // When the GUI is started via sudo, .NET resolves ApplicationData to
+        // /root/.config.  That makes generated PDFs invisible/inaccessible for
+        // the desktop user and xdg-open then tries to open a file from /root.
+        // Certificates are user-facing documents, so store them under the
+        // original sudo user's home instead.
+        if (!RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+        {
+            var sudoUser = Environment.GetEnvironmentVariable("SUDO_USER");
+            if (!string.IsNullOrWhiteSpace(sudoUser) && !string.Equals(sudoUser, "root", StringComparison.OrdinalIgnoreCase))
+            {
+                var home = GetOriginalUserHome(sudoUser);
+                if (!string.IsNullOrWhiteSpace(home))
+                {
+                    var documents = Path.Combine(home, "Documents");
+                    if (!Directory.Exists(documents))
+                    {
+                        var localizedDocuments = Path.Combine(home, "Dokumenty");
+                        documents = Directory.Exists(localizedDocuments) ? localizedDocuments : home;
+                    }
+
+                    return Path.Combine(documents, "DiskChecker");
+                }
+            }
+        }
+
         return Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
             "DiskChecker");
+    }
+
+    private static string? GetOriginalUserHome(string sudoUser)
+    {
+        try
+        {
+            var startInfo = new ProcessStartInfo
+            {
+                FileName = "getent",
+                UseShellExecute = false,
+                RedirectStandardOutput = true,
+                CreateNoWindow = true
+            };
+            startInfo.ArgumentList.Add("passwd");
+            startInfo.ArgumentList.Add(sudoUser);
+            using var process = Process.Start(startInfo);
+
+            if (process != null)
+            {
+                var output = process.StandardOutput.ReadToEnd().Trim();
+                process.WaitForExit(1000);
+                var parts = output.Split(':');
+                if (parts.Length >= 6 && Directory.Exists(parts[5]))
+                    return parts[5];
+            }
+        }
+        catch
+        {
+            // Fall back below.
+        }
+
+        var fallback = Path.Combine("/home", sudoUser);
+        return Directory.Exists(fallback) ? fallback : null;
+    }
+
+    private static void TryAssignOwnershipToSudoUser(string path)
+    {
+        if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows) || string.IsNullOrWhiteSpace(path) || !File.Exists(path) && !Directory.Exists(path))
+            return;
+
+        var uid = Environment.GetEnvironmentVariable("SUDO_UID");
+        var gid = Environment.GetEnvironmentVariable("SUDO_GID");
+        if (string.IsNullOrWhiteSpace(uid) || string.IsNullOrWhiteSpace(gid))
+            return;
+
+        try
+        {
+            var startInfo = new ProcessStartInfo
+            {
+                FileName = "chown",
+                UseShellExecute = false,
+                CreateNoWindow = true
+            };
+            startInfo.ArgumentList.Add($"{uid}:{gid}");
+            startInfo.ArgumentList.Add(path);
+            using var process = Process.Start(startInfo);
+            process?.WaitForExit(1000);
+        }
+        catch
+        {
+            // Best effort only. If chown is unavailable, root can still write the
+            // file and the app will report the full path to the user.
+        }
     }
 
     // ──────────────────────────────────────────────
@@ -154,6 +253,7 @@ public class CertificateGenerator : ICertificateGenerator
             certificate.WriteProfilePoints = DownsampleSpeeds(session.WriteSamples.Select(s => s.SpeedMBps), CertificateChartPoints);
             certificate.ReadProfilePoints = DownsampleSpeeds(session.ReadSamples.Select(s => s.SpeedMBps), CertificateChartPoints);
             certificate.TemperatureProfilePoints = DownsampleTemperatures(session.TemperatureSamples, CertificateChartPoints);
+            certificate.StallProfilePoints = DownsampleStalls(session.WriteSamples, session.ReadSamples, CertificateChartPoints);
 
             var calculated = CalculateGrade(session);
             var grade = session.SmartBefore != null ? calculated.grade
@@ -215,6 +315,7 @@ public class CertificateGenerator : ICertificateGenerator
         var jpegBytes = await RenderCertificateJpegAsync(certificate);
         var pdfBytes = BuildImagePdfDocument(jpegBytes, CertWidth, CertHeight);
         await File.WriteAllBytesAsync(filePath, pdfBytes);
+        TryAssignOwnershipToSudoUser(filePath);
 
         if (_logger?.IsEnabled(LogLevel.Information) == true)
             _logger.LogInformation("Certificate PDF saved: {Path}", filePath);
@@ -237,7 +338,7 @@ public class CertificateGenerator : ICertificateGenerator
             // Resolve fonts with fallback chain
             using var titleFont = ResolveFont(38, bold: true);
             using var sectionFont = ResolveFont(20, bold: true);
-            using var labelFont = ResolveFont(16, bold: true);
+            using var labelFont = ResolveFont(20, bold: true);
             using var valueFont = ResolveFont(16, bold: false);
             using var gradeFont = ResolveFont(120, bold: true);
             using var scoreFont = ResolveFont(24, bold: true);
@@ -406,6 +507,30 @@ public class CertificateGenerator : ICertificateGenerator
                     if (maxSpeed <= 0) maxSpeed = 1;
                     DrawProfilePolyline(canvas, writePen, writePoints, maxSpeed, chartX + 30, chartY + 14, chartW - 50, chartH - 40);
                     DrawProfilePolyline(canvas, readPen, readPoints, maxSpeed, chartX + 30, chartY + 14, chartW - 50, chartH - 40);
+
+                    // Draw stall markers (red dots) where device was unresponsive
+                    if (cert.StallProfilePoints.Count > 0)
+                    {
+                        using var stallPaint = new SKPaint
+                        {
+                            Color = SKColors.Red,
+                            Style = SKPaintStyle.Fill,
+                            IsAntialias = true
+                        };
+                        var stallCount = cert.StallProfilePoints.Count;
+                        for (var si = 0; si < stallCount; si++)
+                        {
+                            if (cert.StallProfilePoints[si])
+                            {
+                                float sx = chartX + 30 + (chartW - 50) * si / (float)Math.Max(1, stallCount - 1);
+                                float sy = chartY + chartH - 26; // Bottom of chart
+                                canvas.DrawCircle(sx, sy, 4f, stallPaint);
+                            }
+                        }
+                        // Add legend entry for stalls
+                        using var legendStallPaint = new SKPaint { Color = SKColors.Red, IsAntialias = true };
+                        DrawText(canvas, _locale?.GetString("CertificatePdf.Stall", "Zamrznutí") ?? "Zamrznutí", chartX + chartW - 150, chartY + 24, chartLabelFont, legendStallPaint);
+                    }
                 }
                 else
                 {
@@ -521,14 +646,48 @@ public class CertificateGenerator : ICertificateGenerator
         return null;
     }
 
+    private static string SanitizePdfText(string? text)
+    {
+        if (string.IsNullOrEmpty(text))
+            return string.Empty;
+
+        var sanitized = text
+            .Replace("✅", "[OK]")
+            .Replace("❌", "[X]")
+            .Replace("⚠️", "[!]")
+            .Replace("⚠", "[!]")
+            .Replace("🌡", "Teplota")
+            .Replace("⏱", "Cas")
+            .Replace("🔋", "Wear")
+            .Replace("🔧", "")
+            .Replace("→", "->")
+            .Replace("⇒", "=>")
+            .Replace("–", "-")
+            .Replace("—", "-")
+            .Replace("−", "-")
+            .Replace("•", "-")
+            .Replace("Δ", "delta")
+            .Replace("：", ":")
+            .Replace("️", string.Empty);
+
+        // Drop unsupported non-BMP symbols (mostly emoji). Keep Czech/Latin text.
+        return string.Concat(sanitized.EnumerateRunes()
+            .Where(r => r.Value <= 0xFFFF)
+            .Select(r => r.ToString()));
+    }
+
     private static void DrawText(SKCanvas canvas, string text, float x, float y, SKFont font, SKPaint paint)
     {
-        canvas.DrawText(text, x, y + font.Size, font, paint);
+        canvas.DrawText(SanitizePdfText(text), x, y + font.Size, font, paint);
     }
 
     private static void DrawTextWrapped(SKCanvas canvas, string text, float x, float y, float maxWidth, float maxHeight, SKFont font, SKPaint paint)
     {
-        // Simple word-wrap using SkiaSharp text measurement
+        // Simple word-wrap using SkiaSharp text measurement.  Emoji and several
+        // symbol glyphs are intentionally normalized first because our embedded
+        // DejaVu font does not contain them; Skia would render empty squares in
+        // certificate notes/reasons.
+        text = SanitizePdfText(text);
         var words = text.Split(' ');
         var lines = new List<string>();
         var currentLine = "";
@@ -646,11 +805,94 @@ public class CertificateGenerator : ICertificateGenerator
         return result;
     }
 
+    private static List<bool> DownsampleStalls(List<SpeedSample> writeSamples, List<SpeedSample> readSamples, int targetPoints)
+    {
+        // Combine write and read samples, preserving order
+        var allSamples = writeSamples.Concat(readSamples).ToList();
+        if (allSamples.Count == 0) return new List<bool>();
+
+        // If any sample in a bucket is stalled, mark the bucket as stalled
+        var bucketSize = Math.Max(1, allSamples.Count / targetPoints);
+        var result = new List<bool>(targetPoints);
+        for (var i = 0; i < targetPoints && i * bucketSize < allSamples.Count; i++)
+        {
+            var start = i * bucketSize;
+            var end = Math.Min(start + bucketSize, allSamples.Count);
+            var stalled = false;
+            for (var j = start; j < end; j++)
+            {
+                if (allSamples[j].IsStalled)
+                {
+                    stalled = true;
+                    break;
+                }
+            }
+            result.Add(stalled);
+        }
+        return result;
+    }
+
     private static (List<double> Write, List<double> Read) GetProfilePointsForChart(DiskCertificate cert)
     {
-        var write = cert.WriteProfilePoints?.ToList() ?? new List<double>();
-        var read = cert.ReadProfilePoints?.ToList() ?? new List<double>();
+        var write = cert.WriteProfilePoints?.Where(v => v > 0).ToList() ?? new List<double>();
+        var read = cert.ReadProfilePoints?.Where(v => v > 0).ToList() ?? new List<double>();
+
+        // Older certificates and some absolute-destructive-test certificates were
+        // persisted before chart profile points were stored. In those cases the DB
+        // still contains aggregate speeds (Avg/Max, and often sanitize pass 1/2
+        // averages), so render an approximate profile instead of showing
+        // "Data nejsou k dispozici". This avoids forcing the user to repeat a very
+        // long destructive surface write just to regenerate graph points.
+        if (write.Count == 0)
+        {
+            write = BuildFallbackProfile(
+                cert.Sanitize1AvgWriteMBps,
+                cert.Sanitize2AvgWriteMBps,
+                cert.AvgWriteSpeed,
+                cert.MaxWriteSpeed);
+        }
+
+        if (read.Count == 0)
+        {
+            read = BuildFallbackProfile(
+                cert.Sanitize1AvgReadMBps,
+                cert.Sanitize2AvgReadMBps,
+                cert.AvgReadSpeed,
+                cert.MaxReadSpeed);
+        }
+
         return (write, read);
+    }
+
+    private static List<double> BuildFallbackProfile(double? firstPass, double? secondPass, double average, double maximum)
+    {
+        var values = new List<double>();
+
+        if (firstPass.GetValueOrDefault() > 0)
+            values.Add(firstPass!.Value);
+        if (secondPass.GetValueOrDefault() > 0)
+            values.Add(secondPass!.Value);
+
+        if (values.Count == 0 && average > 0)
+        {
+            if (maximum > average)
+            {
+                // Build a small, conservative synthetic curve from aggregates.
+                values.Add(average);
+                values.Add(maximum);
+                values.Add(average);
+            }
+            else
+            {
+                values.Add(average);
+                values.Add(average);
+            }
+        }
+
+        if (values.Count == 1)
+            values.Add(values[0]);
+
+        return values;
     }
 
     private static string FormatSpeedForPdf(double value, string notAvailableText)
@@ -1033,7 +1275,7 @@ public class CertificateGenerator : ICertificateGenerator
         using var axisPaint = new SKPaint { Color = new SKColor(203, 213, 225), IsAntialias = true, Style = SKPaintStyle.Stroke, StrokeWidth = 1f };
         using var writePaint = new SKPaint { Color = new SKColor(220, 38, 38), IsAntialias = true, Style = SKPaintStyle.Stroke, StrokeWidth = 2f, StrokeCap = SKStrokeCap.Round };
         using var readPaint = new SKPaint { Color = new SKColor(5, 150, 105), IsAntialias = true, Style = SKPaintStyle.Stroke, StrokeWidth = 2f, StrokeCap = SKStrokeCap.Round };
-        using var font = ResolveFont(10, bold: false);
+        using var font = ResolveFont(14, bold: false);
         using var textPaint = new SKPaint { Color = new SKColor(100, 100, 100), IsAntialias = true };
 
         float margin = 40;
@@ -1076,6 +1318,7 @@ public class CertificateGenerator : ICertificateGenerator
         using var data = image.Encode(SKEncodedImageFormat.Png, 90);
         using var fs = File.OpenWrite(filePath);
         data.SaveTo(fs);
+        TryAssignOwnershipToSudoUser(filePath);
     }
 
     public Task<string?> EnsureChartImageAsync(TestSession session, CancellationToken cancellationToken = default)
@@ -1109,7 +1352,7 @@ public class CertificateGenerator : ICertificateGenerator
             var canvas = surface.Canvas;
             canvas.Clear(SKColors.White);
 
-            using var titleFont = ResolveFont(22, bold: true);
+            using var titleFont = ResolveFont(24, bold: true);
             using var valueFont = ResolveFont(14, bold: false);
             using var gradeFont = ResolveFont(64, bold: true);
             using var smallFont = ResolveFont(14, bold: false);
@@ -1155,6 +1398,7 @@ public class CertificateGenerator : ICertificateGenerator
             using var data = image.Encode(SKEncodedImageFormat.Png, 90);
             using var fs = File.OpenWrite(filePath);
             data.SaveTo(fs);
+            TryAssignOwnershipToSudoUser(filePath);
 
             if (_logger?.IsEnabled(LogLevel.Information) == true)
                 _logger.LogInformation("Certificate label saved: {Path}", filePath);

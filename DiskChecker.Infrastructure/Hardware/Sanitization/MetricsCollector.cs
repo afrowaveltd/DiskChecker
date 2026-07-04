@@ -140,25 +140,29 @@ public class MetricsCollector : IMetricsCollector
                 session.CompletedAt = DateTime.UtcNow;
                 session.Duration = _stopwatch.Elapsed;
 
-                // Calculate write metrics
-                if (_writeSamples.Count > 0)
+                // Calculate write metrics from live samples only. The first sanitization
+                // callback is often a synthetic 0 MB/s value before any data is really
+                // written; keeping it makes every MIN result meaningless.
+                var activeWriteSamples = GetActiveSpeedSamples(_writeSamples);
+                if (activeWriteSamples.Count > 0)
                 {
-                    session.WriteSamples = new List<SpeedSample>(_writeSamples);
-                    session.AverageWriteSpeedMBps = CalculateAverage(_writeSamples);
-                    session.MaxWriteSpeedMBps = CalculateMax(_writeSamples);
-                    session.MinWriteSpeedMBps = CalculateMin(_writeSamples);
-                    session.WriteSpeedStdDev = CalculateStdDev(_writeSamples, session.AverageWriteSpeedMBps);
+                    session.WriteSamples = activeWriteSamples;
+                    session.AverageWriteSpeedMBps = CalculateAverage(activeWriteSamples);
+                    session.MaxWriteSpeedMBps = CalculateMax(activeWriteSamples);
+                    session.MinWriteSpeedMBps = CalculateMin(activeWriteSamples);
+                    session.WriteSpeedStdDev = CalculateStdDev(activeWriteSamples, session.AverageWriteSpeedMBps);
                     session.WriteErrors = _errors.Count(e => e.Phase.Equals("Write", StringComparison.OrdinalIgnoreCase));
                 }
 
-                // Calculate read metrics
-                if (_readSamples.Count > 0)
+                // Calculate read metrics from live samples only.
+                var activeReadSamples = GetActiveSpeedSamples(_readSamples);
+                if (activeReadSamples.Count > 0)
                 {
-                    session.ReadSamples = new List<SpeedSample>(_readSamples);
-                    session.AverageReadSpeedMBps = CalculateAverage(_readSamples);
-                    session.MaxReadSpeedMBps = CalculateMax(_readSamples);
-                    session.MinReadSpeedMBps = CalculateMin(_readSamples);
-                    session.ReadSpeedStdDev = CalculateStdDev(_readSamples, session.AverageReadSpeedMBps);
+                    session.ReadSamples = activeReadSamples;
+                    session.AverageReadSpeedMBps = CalculateAverage(activeReadSamples);
+                    session.MaxReadSpeedMBps = CalculateMax(activeReadSamples);
+                    session.MinReadSpeedMBps = CalculateMin(activeReadSamples);
+                    session.ReadSpeedStdDev = CalculateStdDev(activeReadSamples, session.AverageReadSpeedMBps);
                     session.ReadErrors = _errors.Count(e => e.Phase.Equals("Read", StringComparison.OrdinalIgnoreCase));
                 }
 
@@ -219,29 +223,40 @@ public class MetricsCollector : IMetricsCollector
         _currentPhase = phase;
     }
 
+    private static List<SpeedSample> GetActiveSpeedSamples(List<SpeedSample> samples)
+    {
+        return samples
+            .Where(s => s.SpeedMBps > 0 || s.IsStalled)
+            .ToList();
+    }
+
     private static double CalculateAverage(List<SpeedSample> samples)
     {
-        if (samples.Count == 0) return 0;
-        return samples.Average(s => s.SpeedMBps);
+        var speeds = samples.Where(s => s.SpeedMBps > 0).Select(s => s.SpeedMBps).ToList();
+        if (speeds.Count == 0) return 0;
+        return speeds.Average();
     }
 
     private static double CalculateMax(List<SpeedSample> samples)
     {
-        if (samples.Count == 0) return 0;
-        return samples.Max(s => s.SpeedMBps);
+        var speeds = samples.Where(s => s.SpeedMBps > 0).Select(s => s.SpeedMBps).ToList();
+        if (speeds.Count == 0) return 0;
+        return speeds.Max();
     }
 
     private static double CalculateMin(List<SpeedSample> samples)
     {
-        if (samples.Count == 0) return 0;
-        return samples.Min(s => s.SpeedMBps);
+        var speeds = samples.Where(s => s.SpeedMBps > 0).Select(s => s.SpeedMBps).ToList();
+        if (speeds.Count == 0) return 0;
+        return speeds.Min();
     }
 
     private static double CalculateStdDev(List<SpeedSample> samples, double average)
     {
-        if (samples.Count < 2) return 0;
-        var sumSquaredDiffs = samples.Sum(s => Math.Pow(s.SpeedMBps - average, 2));
-        return Math.Sqrt(sumSquaredDiffs / samples.Count);
+        var speeds = samples.Where(s => s.SpeedMBps > 0).Select(s => s.SpeedMBps).ToList();
+        if (speeds.Count < 2) return 0;
+        var sumSquaredDiffs = speeds.Sum(speed => Math.Pow(speed - average, 2));
+        return Math.Sqrt(sumSquaredDiffs / speeds.Count);
     }
 
     private static (string grade, double score) CalculateGradeAndScore(TestSession session)

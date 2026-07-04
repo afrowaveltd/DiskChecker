@@ -204,6 +204,43 @@
                         </Grid>
                         
                         <Grid ColumnDefinitions="200,*">
+                            <TextBlock Grid.Column="0" Text="DB backend"
+                                      FontSize="11" VerticalAlignment="Center"
+                                      Foreground="{DynamicResource ThemeTextSecondaryBrush}"/>
+                            <ComboBox Grid.Column="1"
+                                      ItemsSource="{Binding AvailableDatabaseProviders}"
+                                      SelectedItem="{Binding DatabaseProvider}"
+                                      HorizontalAlignment="Stretch"
+                                      Background="{DynamicResource ThemeCardBackgroundBrush}"
+                                      BorderBrush="{DynamicResource ThemeBorderBrush}"/>
+                        </Grid>
+
+                        <Grid ColumnDefinitions="200,*">
+                            <TextBlock Grid.Column="0" Text="Connection string"
+                                      FontSize="11" VerticalAlignment="Center"
+                                      Foreground="{DynamicResource ThemeTextSecondaryBrush}"/>
+                            <TextBox Grid.Column="1"
+                                    Text="{Binding DatabaseConnectionString}"
+                                    Watermark="Data Source=DiskChecker.db"
+                                    Background="{DynamicResource ThemeCardBackgroundBrush}"
+                                    BorderBrush="{DynamicResource ThemeBorderBrush}"
+                                    Padding="8,4"/>
+                        </Grid>
+
+                        <TextBlock Text="Změna backendu se bezpečně projeví po restartu aplikace. V této vývojové fázi se stará data nemigrují automaticky."
+                                   TextWrapping="Wrap"
+                                   FontSize="10"
+                                   Foreground="{DynamicResource ThemeTextMutedBrush}"/>
+
+                        <Button Content="Test spojení"
+                                Command="{Binding TestDatabaseConnectionCommand}"
+                                HorizontalAlignment="Left"
+                                Background="{DynamicResource ThemeSecondaryBackgroundBrush}"
+                                Foreground="{DynamicResource ThemeTextPrimaryBrush}"
+                                BorderBrush="{DynamicResource ThemeBorderBrush}"
+                                Padding="12,6"/>
+
+                        <Grid ColumnDefinitions="200,*">
                             <TextBlock Grid.Column="0" Text="{Binding L[Settings.DatabaseSize]}" 
                                       FontSize="11" VerticalAlignment="Center"
                                       Foreground="{DynamicResource ThemeTextSecondaryBrush}"/>

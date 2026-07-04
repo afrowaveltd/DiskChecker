@@ -476,24 +476,8 @@ public class DiskCardTestService
       ArgumentNullException.ThrowIfNull(card);
       ArgumentNullException.ThrowIfNull(result);
 
-      var persistedWriteSamples = (writeSamples ?? Enumerable.Empty<SpeedSample>())
-          .Where(s => s.SpeedMBps > 0)
-          .OrderBy(s => s.ProgressPercent)
-          .Select(s => new SpeedSample
-          {
-             ProgressPercent = s.ProgressPercent,
-             SpeedMBps = s.SpeedMBps
-          })
-          .ToList();
-      var persistedReadSamples = (readSamples ?? Enumerable.Empty<SpeedSample>())
-          .Where(s => s.SpeedMBps > 0)
-          .OrderBy(s => s.ProgressPercent)
-          .Select(s => new SpeedSample
-          {
-             ProgressPercent = s.ProgressPercent,
-             SpeedMBps = s.SpeedMBps
-          })
-          .ToList();
+      var persistedWriteSamples = PrepareSpeedSamplesForPersistence(writeSamples);
+      var persistedReadSamples = PrepareSpeedSamplesForPersistence(readSamples);
       var historicalSessions = await LoadRecentPerformanceHistoryAsync(card.Id, cancellationToken);
       var breakdown = BuildSanitizationScoreBreakdown(result, persistedWriteSamples, persistedReadSamples, smartaData, result.SmartAfter, historicalSessions);
       var avgWriteSpeed = persistedWriteSamples.Count > 0
@@ -954,6 +938,24 @@ public class DiskCardTestService
 
       var stdDev = CalculateStandardDeviation(values);
       return stdDev / average;
+   }
+
+   private static List<SpeedSample> PrepareSpeedSamplesForPersistence(IEnumerable<SpeedSample>? samples)
+   {
+      return (samples ?? Enumerable.Empty<SpeedSample>())
+          // Drop the initial synthetic 0 MB/s sample, but keep explicit stall markers.
+          .Where(s => s.SpeedMBps > 0 || s.IsStalled)
+          .OrderBy(s => s.Timestamp == default ? DateTime.MaxValue : s.Timestamp)
+          .ThenBy(s => s.ProgressPercent)
+          .Select(s => new SpeedSample
+          {
+             Timestamp = s.Timestamp == default ? DateTime.UtcNow : s.Timestamp,
+             ProgressPercent = s.ProgressPercent,
+             SpeedMBps = s.SpeedMBps,
+             BytesProcessed = s.BytesProcessed,
+             IsStalled = s.IsStalled
+          })
+          .ToList();
    }
 
    private static double CalculateStandardDeviation(IReadOnlyCollection<double> values)

@@ -1,3 +1,5 @@
+using DiskChecker.Core.Models;
+
 namespace DiskChecker.Core.Interfaces;
 
 /// <summary>
@@ -120,4 +122,8 @@ public interface ISettingsService
     /// Sets a custom certificate storage path. Pass null or empty to use default.
     /// </summary>
     Task SetCertificatePathAsync(string? path);
+
+    // Database storage settings
+    Task<DatabaseStorageSettings> GetDatabaseStorageSettingsAsync();
+    Task SetDatabaseStorageSettingsAsync(DatabaseStorageSettings settings);
 }

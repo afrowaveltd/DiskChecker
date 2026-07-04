@@ -543,29 +543,23 @@ public class DiskCardRepository : IDiskCardRepository
 
     private static async Task<List<SpeedSample>> LoadSpeedSeriesAsync(DbConnection connection, string tableName, int sessionId)
     {
+        var hasIsStalledColumn = await ColumnExistsAsync(connection, tableName, "IsStalled");
+        var hasTimestampColumn = await ColumnExistsAsync(connection, tableName, "Timestamp");
+        var hasBytesProcessedColumn = await ColumnExistsAsync(connection, tableName, "BytesProcessed");
+        var timestampSelect = hasTimestampColumn ? "Timestamp" : "NULL AS Timestamp";
+        var bytesSelect = hasBytesProcessedColumn ? "BytesProcessed" : "0 AS BytesProcessed";
+
         await using var command = connection.CreateCommand();
-        command.CommandText = $"SELECT ProgressPercent, SpeedMBps FROM {tableName} WHERE TestSessionId = @sessionId AND SpeedMBps > 0 ORDER BY ProgressPercent, Id";
+        command.CommandText = hasIsStalledColumn
+            ? $"SELECT ProgressPercent, SpeedMBps, {timestampSelect}, {bytesSelect}, IsStalled FROM {tableName} WHERE TestSessionId = @sessionId AND (SpeedMBps > 0 OR IsStalled <> 0) ORDER BY {(hasTimestampColumn ? "Timestamp," : string.Empty)} ProgressPercent, Id"
+            : $"SELECT ProgressPercent, SpeedMBps, {timestampSelect}, {bytesSelect}, 0 AS IsStalled FROM {tableName} WHERE TestSessionId = @sessionId AND SpeedMBps > 0 ORDER BY {(hasTimestampColumn ? "Timestamp," : string.Empty)} ProgressPercent, Id";
 
         var parameter = command.CreateParameter();
         parameter.ParameterName = "@sessionId";
         parameter.Value = sessionId;
         command.Parameters.Add(parameter);
 
-        var values = new List<SpeedSample>();
-        await using var reader = await command.ExecuteReaderAsync();
-        while (await reader.ReadAsync())
-        {
-            if (!reader.IsDBNull(0) && !reader.IsDBNull(1))
-            {
-                values.Add(new SpeedSample
-                {
-                    ProgressPercent = reader.GetDouble(0),
-                    SpeedMBps = reader.GetDouble(1)
-                });
-            }
-        }
-
-        return values;
+        return await ReadSpeedSamplesAsync(command);
     }
 
     private static async Task<List<SpeedSample>> LoadSpeedSeriesChunkAsync(
@@ -575,8 +569,16 @@ public class DiskCardRepository : IDiskCardRepository
         int modulo,
         int remainder)
     {
+        var hasIsStalledColumn = await ColumnExistsAsync(connection, tableName, "IsStalled");
+        var hasTimestampColumn = await ColumnExistsAsync(connection, tableName, "Timestamp");
+        var hasBytesProcessedColumn = await ColumnExistsAsync(connection, tableName, "BytesProcessed");
+        var timestampSelect = hasTimestampColumn ? "Timestamp" : "NULL AS Timestamp";
+        var bytesSelect = hasBytesProcessedColumn ? "BytesProcessed" : "0 AS BytesProcessed";
+
         await using var command = connection.CreateCommand();
-        command.CommandText = $"SELECT ProgressPercent, SpeedMBps FROM {tableName} WHERE TestSessionId = @sessionId AND SpeedMBps > 0 AND (Id % @modulo) = @remainder ORDER BY Id";
+        command.CommandText = hasIsStalledColumn
+            ? $"SELECT ProgressPercent, SpeedMBps, {timestampSelect}, {bytesSelect}, IsStalled FROM {tableName} WHERE TestSessionId = @sessionId AND (SpeedMBps > 0 OR IsStalled <> 0) AND (Id % @modulo) = @remainder ORDER BY Id"
+            : $"SELECT ProgressPercent, SpeedMBps, {timestampSelect}, {bytesSelect}, 0 AS IsStalled FROM {tableName} WHERE TestSessionId = @sessionId AND SpeedMBps > 0 AND (Id % @modulo) = @remainder ORDER BY Id";
 
         var sessionParameter = command.CreateParameter();
         sessionParameter.ParameterName = "@sessionId";
@@ -593,6 +595,11 @@ public class DiskCardRepository : IDiskCardRepository
         remainderParameter.Value = remainder;
         command.Parameters.Add(remainderParameter);
 
+        return await ReadSpeedSamplesAsync(command);
+    }
+
+    private static async Task<List<SpeedSample>> ReadSpeedSamplesAsync(DbCommand command)
+    {
         var values = new List<SpeedSample>();
         await using var reader = await command.ExecuteReaderAsync();
         while (await reader.ReadAsync())
@@ -602,12 +609,167 @@ public class DiskCardRepository : IDiskCardRepository
                 values.Add(new SpeedSample
                 {
                     ProgressPercent = reader.GetDouble(0),
-                    SpeedMBps = reader.GetDouble(1)
+                    SpeedMBps = reader.GetDouble(1),
+                    Timestamp = reader.IsDBNull(2) ? DateTime.MinValue : reader.GetDateTime(2),
+                    BytesProcessed = reader.IsDBNull(3) ? 0 : reader.GetInt64(3),
+                    IsStalled = !reader.IsDBNull(4) && reader.GetBoolean(4)
                 });
             }
         }
 
         return values;
+    }
+
+    private static async Task<bool> ColumnExistsAsync(DbConnection connection, string tableName, string columnName)
+    {
+        await using var command = connection.CreateCommand();
+        command.CommandText = $"PRAGMA table_info({tableName});";
+        await using var reader = await command.ExecuteReaderAsync();
+
+        while (await reader.ReadAsync())
+        {
+            if (!reader.IsDBNull(1) && string.Equals(reader.GetString(1), columnName, StringComparison.OrdinalIgnoreCase))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+
+
+    public async Task CreateTelemetrySamplesAsync(int sessionId, TelemetrySamplePhase phase, IReadOnlyCollection<SpeedSample> samples, bool replacePhase = true)
+    {
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(sessionId);
+        ArgumentNullException.ThrowIfNull(samples);
+
+        if (replacePhase)
+        {
+            var existing = await _context.TestTelemetrySamples
+                .Where(s => s.TestSessionId == sessionId && s.Phase == phase)
+                .ToListAsync();
+            if (existing.Count > 0)
+            {
+                _context.TestTelemetrySamples.RemoveRange(existing);
+            }
+        }
+
+        var ordered = samples
+            .Where(s => s.SpeedMBps > 0 || s.IsStalled)
+            .OrderBy(s => s.Timestamp == default ? DateTime.MaxValue : s.Timestamp)
+            .ThenBy(s => s.ProgressPercent)
+            .ToList();
+
+        if (ordered.Count == 0)
+        {
+            if (replacePhase)
+                await _context.SaveChangesAsync();
+            return;
+        }
+
+        var firstTimestamp = ordered.FirstOrDefault(s => s.Timestamp != default)?.Timestamp;
+        var records = ordered.Select((sample, index) => new TestTelemetrySample
+        {
+            TestSessionId = sessionId,
+            Phase = phase,
+            SequenceIndex = index + 1,
+            TimestampUtc = sample.Timestamp == default ? DateTime.UtcNow : sample.Timestamp,
+            ElapsedMs = firstTimestamp.HasValue && sample.Timestamp != default
+                ? (sample.Timestamp - firstTimestamp.Value).TotalMilliseconds
+                : null,
+            ProgressPercent = sample.ProgressPercent,
+            BytesProcessed = sample.BytesProcessed,
+            SpeedMBps = sample.SpeedMBps,
+            IsStalled = sample.IsStalled,
+            IsAnomaly = false,
+            RetentionReason = sample.IsStalled ? "Stall" : "Raw"
+        }).ToList();
+
+        _context.TestTelemetrySamples.AddRange(records);
+        await _context.SaveChangesAsync();
+    }
+
+    public async Task<List<TestTelemetrySample>> GetTelemetrySamplesAsync(int sessionId, TelemetrySamplePhase? phase = null)
+    {
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(sessionId);
+
+        var query = _context.TestTelemetrySamples
+            .AsNoTracking()
+            .Where(s => s.TestSessionId == sessionId);
+
+        if (phase.HasValue)
+            query = query.Where(s => s.Phase == phase.Value);
+
+        return await query
+            .OrderBy(s => s.Phase)
+            .ThenBy(s => s.SequenceIndex)
+            .ToListAsync();
+    }
+
+    public async Task CreateSeekSamplesAsync(int sessionId, SeekTestType testType, IReadOnlyCollection<SeekLatencySample> samples)
+    {
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(sessionId);
+        ArgumentNullException.ThrowIfNull(samples);
+
+        if (samples.Count == 0)
+        {
+            return;
+        }
+
+        var existing = await _context.SeekSamples
+            .Where(s => s.TestSessionId == sessionId && s.TestType == testType)
+            .ToListAsync();
+        if (existing.Count > 0)
+        {
+            _context.SeekSamples.RemoveRange(existing);
+        }
+
+        var records = samples
+            .Where(s => s.Index > 0)
+            .OrderBy(s => s.Index)
+            .Select(s => new SeekSampleRecord
+            {
+                TestSessionId = sessionId,
+                TestType = testType,
+                Index = s.Index,
+                SourceLba = s.SourceLba,
+                DestinationLba = s.DestinationLba,
+                SeekDistance = s.SeekDistance,
+                LatencyMs = s.LatencyMs,
+                TimestampUtc = s.TimestampUtc == default ? DateTime.UtcNow : s.TimestampUtc,
+                HasError = s.HasError,
+                ErrorMessage = s.ErrorMessage
+            })
+            .ToList();
+
+        if (records.Count == 0)
+        {
+            await _context.SaveChangesAsync();
+            return;
+        }
+
+        _context.SeekSamples.AddRange(records);
+        await _context.SaveChangesAsync();
+    }
+
+    public async Task<List<SeekSampleRecord>> GetSeekSamplesAsync(int sessionId, SeekTestType? testType = null)
+    {
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(sessionId);
+
+        var query = _context.SeekSamples
+            .AsNoTracking()
+            .Where(s => s.TestSessionId == sessionId);
+
+        if (testType.HasValue)
+        {
+            query = query.Where(s => s.TestType == testType.Value);
+        }
+
+        return await query
+            .OrderBy(s => s.TestType)
+            .ThenBy(s => s.Index)
+            .ToListAsync();
     }
 
     public async Task<TestSession> CreateTestSessionAsync(TestSession session)
@@ -625,6 +787,20 @@ public class DiskCardRepository : IDiskCardRepository
         }
 
         await _context.SaveChangesAsync();
+
+        // Also persist analysis-oriented telemetry in a dedicated table. The legacy
+        // owned collections remain for current screens/certificates, but this table
+        // is the future source for zoomable historical analysis.
+        if (session.WriteSamples.Count > 0)
+        {
+            await CreateTelemetrySamplesAsync(session.Id, TelemetrySamplePhase.Write, session.WriteSamples);
+        }
+
+        if (session.ReadSamples.Count > 0)
+        {
+            await CreateTelemetrySamplesAsync(session.Id, TelemetrySamplePhase.Read, session.ReadSamples);
+        }
+
         return session;
     }
 
@@ -823,12 +999,15 @@ public class DiskCardRepository : IDiskCardRepository
 
     private static void ApplyCardMetadata(DiskCard existing, DiskCard incoming)
     {
-        if (!string.IsNullOrWhiteSpace(incoming.ModelName) && string.IsNullOrWhiteSpace(existing.ModelName)) existing.ModelName = incoming.ModelName;
+        // Always update device path and serial number (disk may have been swapped on same port)
         if (!string.IsNullOrWhiteSpace(incoming.DevicePath)) existing.DevicePath = incoming.DevicePath;
-        if (!string.IsNullOrWhiteSpace(incoming.DiskType) && string.IsNullOrWhiteSpace(existing.DiskType)) existing.DiskType = incoming.DiskType;
-        if (!string.IsNullOrWhiteSpace(incoming.InterfaceType) && string.IsNullOrWhiteSpace(existing.InterfaceType)) existing.InterfaceType = incoming.InterfaceType;
-        if (!string.IsNullOrWhiteSpace(incoming.FirmwareVersion) && string.IsNullOrWhiteSpace(existing.FirmwareVersion)) existing.FirmwareVersion = incoming.FirmwareVersion;
-        if (incoming.Capacity > 0 && existing.Capacity <= 0) existing.Capacity = incoming.Capacity;
+        if (!string.IsNullOrWhiteSpace(incoming.SerialNumber)) existing.SerialNumber = incoming.SerialNumber;
+        // Update model/type/firmware/capacity — new disk on same path should overwrite old metadata
+        if (!string.IsNullOrWhiteSpace(incoming.ModelName)) existing.ModelName = incoming.ModelName;
+        if (!string.IsNullOrWhiteSpace(incoming.DiskType)) existing.DiskType = incoming.DiskType;
+        if (!string.IsNullOrWhiteSpace(incoming.InterfaceType)) existing.InterfaceType = incoming.InterfaceType;
+        if (!string.IsNullOrWhiteSpace(incoming.FirmwareVersion)) existing.FirmwareVersion = incoming.FirmwareVersion;
+        if (incoming.Capacity > 0) existing.Capacity = incoming.Capacity;
         existing.LastTestedAt = DateTime.UtcNow;
     }
 

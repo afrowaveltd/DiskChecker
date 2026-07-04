@@ -3,6 +3,9 @@ using CommunityToolkit.Mvvm.Input;
 using DiskChecker.UI.Avalonia.Services.Interfaces;
 using DiskChecker.UI.Avalonia.Services;
 using DiskChecker.Core.Interfaces;
+using DiskChecker.Core.Models;
+using DiskChecker.Infrastructure.Persistence;
+using Microsoft.EntityFrameworkCore;
 using System;
 using System.Collections.ObjectModel;
 using System.IO;
@@ -22,6 +25,8 @@ namespace DiskChecker.UI.Avalonia.ViewModels
         private bool _isLoadingBackups;
         private ObservableCollection<IBackupService.BackupInfo> _availableBackups = new();
         private string _reportRecipientEmail = string.Empty;
+        private string _databaseProvider = DatabaseProviderKind.Sqlite.ToString();
+        private string _databaseConnectionString = DatabaseStorageSettings.Default.ConnectionString!;
         
         // Nastavení aplikace
         private bool _autoCheckForUpdates;
@@ -51,6 +56,7 @@ namespace DiskChecker.UI.Avalonia.ViewModels
             RestoreBackupCommand = new AsyncRelayCommand(RestoreBackupAsync, () => !IsSaving && SelectedBackup != null);
             RefreshBackupsCommand = new AsyncRelayCommand(RefreshBackupsAsync);
             SetLanguageCommand = new RelayCommand<string>(SetLanguage);
+            TestDatabaseConnectionCommand = new AsyncRelayCommand(TestDatabaseConnectionAsync, () => !IsSaving);
 
             // Populate available languages
             foreach (var loc in _localizationService.GetAvailableLocales())
@@ -185,13 +191,27 @@ namespace DiskChecker.UI.Avalonia.ViewModels
         public IAsyncRelayCommand RestoreBackupCommand { get; }
         public IAsyncRelayCommand RefreshBackupsCommand { get; }
         public IRelayCommand<string> SetLanguageCommand { get; }
+        public IAsyncRelayCommand TestDatabaseConnectionCommand { get; }
 
         public ObservableCollection<string> AvailableLanguages { get; } = new();
+        public ObservableCollection<string> AvailableDatabaseProviders { get; } = new(Enum.GetNames<DatabaseProviderKind>());
 
         public string ReportRecipientEmail
         {
             get => _reportRecipientEmail;
             set => SetProperty(ref _reportRecipientEmail, value);
+        }
+
+        public string DatabaseProvider
+        {
+            get => _databaseProvider;
+            set => SetProperty(ref _databaseProvider, value);
+        }
+
+        public string DatabaseConnectionString
+        {
+            get => _databaseConnectionString;
+            set => SetProperty(ref _databaseConnectionString, value);
         }
 
         private async void LoadSettings()
@@ -210,6 +230,9 @@ namespace DiskChecker.UI.Avalonia.ViewModels
                 EnableLogging = await _settingsService.GetEnableLoggingAsync();
                 LogLevel = await _settingsService.GetLogLevelAsync();
                 ReportRecipientEmail = await _settingsService.GetReportRecipientEmailAsync();
+                var dbSettings = await _settingsService.GetDatabaseStorageSettingsAsync();
+                DatabaseProvider = dbSettings.Provider.ToString();
+                DatabaseConnectionString = dbSettings.ConnectionString ?? DatabaseStorageSettings.Default.ConnectionString!;
                 // SMART probe persisted settings
                 var ttl = await _settingsService.GetSmartCacheTtlMinutesAsync();
                 var timeout = await _settingsService.GetSmartProbeTimeoutSecondsAsync();
@@ -245,6 +268,14 @@ namespace DiskChecker.UI.Avalonia.ViewModels
                 await _settingsService.SetEnableLoggingAsync(EnableLogging);
                 await _settingsService.SetLogLevelAsync(LogLevel);
                 await _settingsService.SetReportRecipientEmailAsync(ReportRecipientEmail);
+                var providerKind = Enum.TryParse<DatabaseProviderKind>(DatabaseProvider, ignoreCase: true, out var parsedProvider)
+                    ? parsedProvider
+                    : DatabaseProviderKind.Sqlite;
+                await _settingsService.SetDatabaseStorageSettingsAsync(new DatabaseStorageSettings
+                {
+                    Provider = providerKind,
+                    ConnectionString = DatabaseConnectionString
+                });
                 // Persist SMART probe settings
                 await _settingsService.SetSmartCacheTtlMinutesAsyncPersistent(SmartCacheTtlMinutes);
                 await _settingsService.SetSmartProbeTimeoutSecondsAsync(SmartProbeTimeoutSeconds);
@@ -306,6 +337,41 @@ namespace DiskChecker.UI.Avalonia.ViewModels
             {
                 StatusMessage = $"Chyba při výběru složky: {ex.Message}";
                 await _dialogService.ShowErrorAsync("Chyba", $"Nepodařilo se vybrat složku: {ex.Message}");
+            }
+        }
+
+        private async Task TestDatabaseConnectionAsync()
+        {
+            try
+            {
+                IsSaving = true;
+                StatusMessage = "Testuji připojení k databázi...";
+
+                var providerKind = Enum.TryParse<DatabaseProviderKind>(DatabaseProvider, ignoreCase: true, out var parsedProvider)
+                    ? parsedProvider
+                    : DatabaseProviderKind.Sqlite;
+
+                var optionsBuilder = new DbContextOptionsBuilder<DiskCheckerDbContext>();
+                DatabaseProviderConfiguration.Configure(optionsBuilder, new DatabaseStorageSettings
+                {
+                    Provider = providerKind,
+                    ConnectionString = DatabaseConnectionString
+                });
+
+                await using var context = new DiskCheckerDbContext(optionsBuilder.Options);
+                var canConnect = await context.Database.CanConnectAsync();
+                StatusMessage = canConnect
+                    ? "Připojení k databázi je v pořádku. Změna backendu se plně projeví po restartu aplikace."
+                    : "Připojení k databázi selhalo.";
+            }
+            catch(Exception ex)
+            {
+                StatusMessage = $"Test DB selhal: {ex.Message}";
+                await _dialogService.ShowErrorAsync("Databáze", StatusMessage);
+            }
+            finally
+            {
+                IsSaving = false;
             }
         }
 

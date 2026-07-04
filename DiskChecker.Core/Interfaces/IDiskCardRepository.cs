@@ -63,6 +63,18 @@ public interface IDiskCardRepository
     /// Načte uložené teplotní vzorky pro zadanou test session bez načtení celé session.
     /// </summary>
     Task<List<TemperatureSample>> GetTemperatureSampleSeriesAsync(int sessionId);
+
+    /// <summary>Persistuje throughput telemetrii pro pozdější detailní analýzu a zoom grafů.</summary>
+    Task CreateTelemetrySamplesAsync(int sessionId, TelemetrySamplePhase phase, IReadOnlyCollection<SpeedSample> samples, bool replacePhase = true);
+
+    /// <summary>Načte throughput telemetrii pro test session.</summary>
+    Task<List<TestTelemetrySample>> GetTelemetrySamplesAsync(int sessionId, TelemetrySamplePhase? phase = null);
+
+    /// <summary>Persistuje kompletní seek vzorky pro detailní pozdější analýzu.</summary>
+    Task CreateSeekSamplesAsync(int sessionId, SeekTestType testType, IReadOnlyCollection<SeekLatencySample> samples);
+
+    /// <summary>Načte kompletní seek vzorky pro test session.</summary>
+    Task<List<SeekSampleRecord>> GetSeekSamplesAsync(int sessionId, SeekTestType? testType = null);
     
     Task<TestSession> CreateTestSessionAsync(TestSession session);
     Task<TestSession> UpdateTestSessionAsync(TestSession session);

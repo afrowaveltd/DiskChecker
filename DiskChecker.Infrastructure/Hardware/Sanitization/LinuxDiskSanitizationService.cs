@@ -358,11 +358,27 @@ public class LinuxDiskSanitizationService : IDiskSanitizationService
                     cancellationToken.ThrowIfCancellationRequested();
 
                     var bytesToWrite = (int)Math.Min(BUFFER_SIZE, diskSize - bytesWritten);
-                    var chunkStopwatch = Stopwatch.StartNew();
+                    var chunk = await IoStallMonitor.ExecuteAsync(
+                        async ct =>
+                        {
+                            await fileStream.WriteAsync(buffer.AsMemory(0, bytesToWrite), ct);
+                            return bytesToWrite;
+                        },
+                        (operationElapsed, stallDuration) => CreateStalledProgress(
+                            SanitizationProgressPhase.Write,
+                            "Zápis nul",
+                            bytesWritten,
+                            diskSize,
+                            result.Errors,
+                            stopwatch.Elapsed,
+                            operationElapsed,
+                            stallDuration),
+                        progress,
+                        _logger,
+                        "Write",
+                        bytesWritten,
+                        cancellationToken);
 
-                    await fileStream.WriteAsync(buffer.AsMemory(0, bytesToWrite), cancellationToken);
-
-                    chunkStopwatch.Stop();
                     bytesWritten += bytesToWrite;
                     // The stream uses FileOptions.WriteThrough for write-through semantics.
                     // Flush after each chunk can block indefinitely on some devices (USB, etc.)
@@ -375,11 +391,11 @@ public class LinuxDiskSanitizationService : IDiskSanitizationService
                         return result;
                     }
 
-                    var chunkSeconds = chunkStopwatch.Elapsed.TotalSeconds;
-                    var instantSpeed = chunkSeconds > 0
+                    var chunkSeconds = chunk.OperationElapsed.TotalSeconds;
+                    var rawSpeed = chunkSeconds > 0
                         ? bytesToWrite / (1024.0 * 1024.0) / chunkSeconds
                         : 0;
-                    smoothedSpeed = smoothedSpeed <= 0 ? instantSpeed : (smoothedSpeed * 0.7) + (instantSpeed * 0.3);
+                    smoothedSpeed = smoothedSpeed <= 0 ? rawSpeed : (smoothedSpeed * 0.7) + (rawSpeed * 0.3);
 
                     var elapsed = stopwatch.Elapsed.TotalSeconds;
                     var averageSpeed = elapsed > 0 ? bytesWritten / (1024.0 * 1024.0) / elapsed : 0;
@@ -395,7 +411,14 @@ public class LinuxDiskSanitizationService : IDiskSanitizationService
                         TotalBytes = diskSize,
                         CurrentSpeedMBps = smoothedSpeed,
                         Errors = result.Errors,
-                        EstimatedTimeRemaining = eta
+                        EstimatedTimeRemaining = eta,
+                        RawOperationSpeedMBps = rawSpeed,
+                        EffectiveSpeedMBps = averageSpeed,
+                        CurrentOperationElapsed = chunk.OperationElapsed,
+                        StallDuration = chunk.WasStalled ? chunk.StallDuration : null,
+                        IsStalled = false,
+                        IsWaitingForDevice = false,
+                        StatusDetail = chunk.WasStalled ? $"Device responded after stall ({chunk.StallDuration:g})." : null
                     });
                 }
 
@@ -410,12 +433,13 @@ public class LinuxDiskSanitizationService : IDiskSanitizationService
         }
         catch (Exception ex)
         {
-            result.ErrorMessage = ex.Message;
+            var deviceDisappeared = IsDeviceDisappearedError(ex);
+            result.ErrorMessage = deviceDisappeared ? "Device disappeared during write" : ex.Message;
             result.ErrorDetails.Add(new SanitizationErrorDetail
             {
                 Phase = "Write",
-                ErrorCode = ex.HResult.ToString("X", System.Globalization.CultureInfo.InvariantCulture),
-                Message = ex.Message,
+                ErrorCode = deviceDisappeared ? "DEVICE_DISAPPEARED" : ex.HResult.ToString("X", System.Globalization.CultureInfo.InvariantCulture),
+                Message = result.ErrorMessage,
                 Details = ex.GetType().Name,
                 OffsetBytes = bytesWritten
             });
@@ -465,9 +489,23 @@ public class LinuxDiskSanitizationService : IDiskSanitizationService
                     cancellationToken.ThrowIfCancellationRequested();
 
                     var bytesToRead = (int)Math.Min(BUFFER_SIZE, diskSize - bytesRead);
-                    var chunkStopwatch = Stopwatch.StartNew();
-                    var bytesReadThisChunk = await fileStream.ReadAsync(buffer.AsMemory(0, bytesToRead), cancellationToken);
-                    chunkStopwatch.Stop();
+                    var chunk = await IoStallMonitor.ExecuteAsync(
+                        ct => fileStream.ReadAsync(buffer.AsMemory(0, bytesToRead), ct).AsTask(),
+                        (operationElapsed, stallDuration) => CreateStalledProgress(
+                            SanitizationProgressPhase.ReadVerify,
+                            "Čtení a ověření",
+                            bytesRead,
+                            diskSize,
+                            result.Errors,
+                            stopwatch.Elapsed,
+                            operationElapsed,
+                            stallDuration),
+                        progress,
+                        _logger,
+                        "Read",
+                        bytesRead,
+                        cancellationToken);
+                    var bytesReadThisChunk = chunk.Value;
 
                     if (bytesReadThisChunk != bytesToRead)
                     {
@@ -530,11 +568,11 @@ public class LinuxDiskSanitizationService : IDiskSanitizationService
 
                     bytesRead += bytesReadThisChunk;
 
-                    var chunkSeconds = chunkStopwatch.Elapsed.TotalSeconds;
-                    var instantSpeed = chunkSeconds > 0
+                    var chunkSeconds = chunk.OperationElapsed.TotalSeconds;
+                    var rawSpeed = chunkSeconds > 0
                         ? bytesReadThisChunk / (1024.0 * 1024.0) / chunkSeconds
                         : 0;
-                    smoothedSpeed = smoothedSpeed <= 0 ? instantSpeed : (smoothedSpeed * 0.7) + (instantSpeed * 0.3);
+                    smoothedSpeed = smoothedSpeed <= 0 ? rawSpeed : (smoothedSpeed * 0.7) + (rawSpeed * 0.3);
 
                     var elapsed = stopwatch.Elapsed.TotalSeconds;
                     var averageSpeed = elapsed > 0 ? bytesRead / (1024.0 * 1024.0) / elapsed : 0;
@@ -550,7 +588,14 @@ public class LinuxDiskSanitizationService : IDiskSanitizationService
                         TotalBytes = diskSize,
                         CurrentSpeedMBps = smoothedSpeed,
                         Errors = result.Errors,
-                        EstimatedTimeRemaining = eta
+                        EstimatedTimeRemaining = eta,
+                        RawOperationSpeedMBps = rawSpeed,
+                        EffectiveSpeedMBps = averageSpeed,
+                        CurrentOperationElapsed = chunk.OperationElapsed,
+                        StallDuration = chunk.WasStalled ? chunk.StallDuration : null,
+                        IsStalled = false,
+                        IsWaitingForDevice = false,
+                        StatusDetail = chunk.WasStalled ? $"Device responded after stall ({chunk.StallDuration:g})." : null
                     });
                 }
             }
@@ -563,12 +608,13 @@ public class LinuxDiskSanitizationService : IDiskSanitizationService
         }
         catch (Exception ex)
         {
-            result.ErrorMessage = ex.Message;
+            var deviceDisappeared = IsDeviceDisappearedError(ex);
+            result.ErrorMessage = deviceDisappeared ? "Device disappeared during read" : ex.Message;
             result.ErrorDetails.Add(new SanitizationErrorDetail
             {
                 Phase = "Read",
-                ErrorCode = ex.HResult.ToString("X", System.Globalization.CultureInfo.InvariantCulture),
-                Message = ex.Message,
+                ErrorCode = deviceDisappeared ? "DEVICE_DISAPPEARED" : ex.HResult.ToString("X", System.Globalization.CultureInfo.InvariantCulture),
+                Message = result.ErrorMessage,
                 Details = ex.GetType().Name,
                 OffsetBytes = bytesRead
             });
@@ -578,12 +624,53 @@ public class LinuxDiskSanitizationService : IDiskSanitizationService
         return result;
     }
 
+    private static SanitizationProgress CreateStalledProgress(
+        SanitizationProgressPhase phaseKind,
+        string phase,
+        long bytesProcessed,
+        long totalBytes,
+        int errors,
+        TimeSpan phaseElapsed,
+        TimeSpan operationElapsed,
+        TimeSpan stallDuration)
+    {
+        var effectiveSpeed = phaseElapsed.TotalSeconds > 0
+            ? bytesProcessed / (1024.0 * 1024.0) / phaseElapsed.TotalSeconds
+            : 0;
+
+        return new SanitizationProgress
+        {
+            PhaseKind = phaseKind,
+            Phase = phase,
+            ProgressPercent = totalBytes > 0 ? (double)bytesProcessed / totalBytes * 100 : 0,
+            BytesProcessed = bytesProcessed,
+            TotalBytes = totalBytes,
+            CurrentSpeedMBps = 0,
+            Errors = errors,
+            IsStalled = true,
+            IsWaitingForDevice = true,
+            CurrentOperationElapsed = operationElapsed,
+            StallDuration = stallDuration,
+            RawOperationSpeedMBps = 0,
+            EffectiveSpeedMBps = effectiveSpeed,
+            StatusDetail = $"Waiting for device response... stalled for {stallDuration:g}."
+        };
+    }
+
     private async Task FlushDeviceAndDropCachesAsync(string devicePath, CancellationToken cancellationToken)
     {
         try { await ExecuteCommandAsync("sync", string.Empty, cancellationToken); } catch { }
         try { await ExecuteCommandAsync("blockdev", $"--flushbufs \"{devicePath}\"", cancellationToken); } catch { }
         try { await File.WriteAllTextAsync("/proc/sys/vm/drop_caches", "3\n", cancellationToken); } catch { }
         try { await ExecuteCommandAsync("udevadm", "settle", cancellationToken); } catch { }
+    }
+
+    private static bool IsDeviceDisappearedError(Exception ex)
+    {
+        return ex is FileNotFoundException or DirectoryNotFoundException ||
+               ex.Message.Contains("No such device", StringComparison.OrdinalIgnoreCase) ||
+               ex.Message.Contains("No such file", StringComparison.OrdinalIgnoreCase) ||
+               ex.Message.Contains("device not", StringComparison.OrdinalIgnoreCase);
     }
 
     private async Task<FileStream> OpenDeviceStreamWithRetryAsync(

@@ -838,7 +838,8 @@ public partial class SeekTestViewModel : ViewModelBase, INavigableViewModel, IDi
                 SeekResultsJson = JsonSerializer.Serialize(result)
             };
 
-            await _diskCardRepository.CreateTestSessionAsync(session);
+            session = await _diskCardRepository.CreateTestSessionAsync(session);
+            await _diskCardRepository.CreateSeekSamplesAsync(session.Id, result.TestType, result.Samples);
 
             var cert = await _certificateGenerator.GenerateCertificateAsync(session, card);
             cert.CertificateNumber = $"SEEK-{DateTime.UtcNow:yyyyMMdd}-{Guid.NewGuid():N}"[..24];

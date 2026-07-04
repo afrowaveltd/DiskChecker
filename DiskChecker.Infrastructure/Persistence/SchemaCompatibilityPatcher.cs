@@ -48,6 +48,22 @@ public static class SchemaCompatibilityPatcher
             EnsureColumn(dbContext, "TestSessions", "Sanitize2ResultJson");
             EnsureColumn(dbContext, "TestSessions", "AnomaliesJson");
         }
+
+        // SpeedSample.IsStalled was added after the owned sample tables already existed
+        // in user databases. Certificate rendering can touch WriteSamples/ReadSamples on
+        // multiple paths (direct EF session load, certificate export raw sample loading,
+        // and recently completed in-memory sessions). Existing SQLite databases therefore
+        // need the column on both owned tables before any TestSession with samples is read
+        // or saved by EF.
+        if (TableExists(dbContext, "TestSessions_WriteSamples"))
+        {
+            EnsureColumn(dbContext, "TestSessions_WriteSamples", "IsStalled");
+        }
+
+        if (TableExists(dbContext, "TestSessions_ReadSamples"))
+        {
+            EnsureColumn(dbContext, "TestSessions_ReadSamples", "IsStalled");
+        }
         if (TableExists(dbContext, "DiskCards"))
         {
             EnsureColumn(dbContext, "DiskCards", "PowerOnHours");
@@ -59,6 +75,9 @@ public static class SchemaCompatibilityPatcher
         {
             EnsureColumn(dbContext, "EmailSettings", "IncludeCertificateAttachment");
         }
+
+        EnsureTelemetrySamplesTable(dbContext);
+        EnsureSeekSamplesTable(dbContext);
 
         if (TableExists(dbContext, "DiskCertificates"))
         {
@@ -221,6 +240,18 @@ public static class SchemaCompatibilityPatcher
             return;
         }
 
+        if (tableName == "TestSessions_WriteSamples" && columnName == "IsStalled")
+        {
+            dbContext.Database.ExecuteSqlRaw("ALTER TABLE TestSessions_WriteSamples ADD COLUMN IsStalled INTEGER NOT NULL DEFAULT 0;");
+            return;
+        }
+
+        if (tableName == "TestSessions_ReadSamples" && columnName == "IsStalled")
+        {
+            dbContext.Database.ExecuteSqlRaw("ALTER TABLE TestSessions_ReadSamples ADD COLUMN IsStalled INTEGER NOT NULL DEFAULT 0;");
+            return;
+        }
+
         if (tableName == "DiskCards" && columnName == "PowerOnHours")
         {
             dbContext.Database.ExecuteSqlRaw("ALTER TABLE DiskCards ADD COLUMN PowerOnHours INTEGER NULL;");
@@ -371,6 +402,67 @@ public static class SchemaCompatibilityPatcher
             default:
                 return;
         }
+    }
+
+    private static void EnsureTelemetrySamplesTable(DiskCheckerDbContext dbContext)
+    {
+        if (TableExists(dbContext, "TestTelemetrySamples"))
+        {
+            return;
+        }
+
+        dbContext.Database.ExecuteSqlRaw("""
+            CREATE TABLE IF NOT EXISTS TestTelemetrySamples (
+                Id INTEGER NOT NULL CONSTRAINT PK_TestTelemetrySamples PRIMARY KEY AUTOINCREMENT,
+                TestSessionId INTEGER NOT NULL,
+                Phase INTEGER NOT NULL,
+                SequenceIndex INTEGER NOT NULL,
+                TimestampUtc TEXT NOT NULL,
+                ElapsedMs REAL NULL,
+                ProgressPercent REAL NOT NULL,
+                BytesProcessed INTEGER NOT NULL,
+                SpeedMBps REAL NOT NULL,
+                IsStalled INTEGER NOT NULL,
+                IsAnomaly INTEGER NOT NULL,
+                RetentionReason TEXT NULL,
+                CONSTRAINT FK_TestTelemetrySamples_TestSessions_TestSessionId FOREIGN KEY (TestSessionId) REFERENCES TestSessions (Id) ON DELETE CASCADE
+            );
+            """);
+        dbContext.Database.ExecuteSqlRaw("CREATE INDEX IF NOT EXISTS IX_TestTelemetrySamples_TestSessionId ON TestTelemetrySamples (TestSessionId);");
+        dbContext.Database.ExecuteSqlRaw("CREATE UNIQUE INDEX IF NOT EXISTS IX_TestTelemetrySamples_TestSessionId_Phase_SequenceIndex ON TestTelemetrySamples (TestSessionId, Phase, SequenceIndex);");
+        dbContext.Database.ExecuteSqlRaw("CREATE INDEX IF NOT EXISTS IX_TestTelemetrySamples_TestSessionId_Phase_TimestampUtc ON TestTelemetrySamples (TestSessionId, Phase, TimestampUtc);");
+        dbContext.Database.ExecuteSqlRaw("CREATE INDEX IF NOT EXISTS IX_TestTelemetrySamples_TestSessionId_Phase_ProgressPercent ON TestTelemetrySamples (TestSessionId, Phase, ProgressPercent);");
+        dbContext.Database.ExecuteSqlRaw("CREATE INDEX IF NOT EXISTS IX_TestTelemetrySamples_TestSessionId_IsStalled ON TestTelemetrySamples (TestSessionId, IsStalled);");
+        dbContext.Database.ExecuteSqlRaw("CREATE INDEX IF NOT EXISTS IX_TestTelemetrySamples_TestSessionId_IsAnomaly ON TestTelemetrySamples (TestSessionId, IsAnomaly);");
+    }
+
+    private static void EnsureSeekSamplesTable(DiskCheckerDbContext dbContext)
+    {
+        if (TableExists(dbContext, "SeekSamples"))
+        {
+            return;
+        }
+
+        dbContext.Database.ExecuteSqlRaw("""
+            CREATE TABLE IF NOT EXISTS SeekSamples (
+                Id INTEGER NOT NULL CONSTRAINT PK_SeekSamples PRIMARY KEY AUTOINCREMENT,
+                TestSessionId INTEGER NOT NULL,
+                TestType INTEGER NOT NULL,
+                "Index" INTEGER NOT NULL,
+                SourceLba INTEGER NOT NULL,
+                DestinationLba INTEGER NOT NULL,
+                SeekDistance INTEGER NOT NULL,
+                LatencyMs REAL NOT NULL,
+                TimestampUtc TEXT NOT NULL,
+                HasError INTEGER NOT NULL,
+                ErrorMessage TEXT NULL,
+                CONSTRAINT FK_SeekSamples_TestSessions_TestSessionId FOREIGN KEY (TestSessionId) REFERENCES TestSessions (Id) ON DELETE CASCADE
+            );
+            """);
+        dbContext.Database.ExecuteSqlRaw("CREATE INDEX IF NOT EXISTS IX_SeekSamples_TestSessionId ON SeekSamples (TestSessionId);");
+        dbContext.Database.ExecuteSqlRaw("CREATE UNIQUE INDEX IF NOT EXISTS IX_SeekSamples_TestSessionId_TestType_Index ON SeekSamples (TestSessionId, TestType, \"Index\");");
+        dbContext.Database.ExecuteSqlRaw("CREATE INDEX IF NOT EXISTS IX_SeekSamples_TestSessionId_TimestampUtc ON SeekSamples (TestSessionId, TimestampUtc);");
+        dbContext.Database.ExecuteSqlRaw("CREATE INDEX IF NOT EXISTS IX_SeekSamples_TestSessionId_SeekDistance ON SeekSamples (TestSessionId, SeekDistance);");
     }
 
     private static bool TableExists(DiskCheckerDbContext dbContext, string tableName)

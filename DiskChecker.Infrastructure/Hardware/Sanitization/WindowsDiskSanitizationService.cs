@@ -406,6 +406,14 @@ offline disk";
         return win32Error is 5 or 21 or 32 or 87 or 1117;
     }
 
+    private static bool IsDeviceDisappearedError(Exception ex)
+    {
+        var code = ex.HResult & 0xFFFF;
+        return code is 21 or 1167 ||
+               ex.Message.Contains("device is not connected", StringComparison.OrdinalIgnoreCase) ||
+               ex.Message.Contains("no such device", StringComparison.OrdinalIgnoreCase);
+    }
+
     private async Task<SanitizationPhaseResult> WriteZerosAsync(
         string devicePath,
         long diskSize,
@@ -440,16 +448,30 @@ offline disk";
                 cancellationToken.ThrowIfCancellationRequested();
 
                 var bytesToWrite = (int)Math.Min(BUFFER_SIZE, diskSize - bytesWritten);
-                var chunkStopwatch = Stopwatch.StartNew();
-                var bytesWrittenThisChunk = await ExecuteIoWithUsbRecoveryAsync(
-                    () => WriteFileAsync(handle, buffer, bytesToWrite, cancellationToken),
-                    phase: "Write",
-                    driveNumber,
-                    bytesWritten,
+                var chunk = await IoStallMonitor.ExecuteAsync(
+                    _ => ExecuteIoWithUsbRecoveryAsync(
+                        () => WriteFileAsync(handle, buffer, bytesToWrite, cancellationToken),
+                        phase: "Write",
+                        driveNumber,
+                        bytesWritten,
+                        progress,
+                        result,
+                        cancellationToken),
+                    (operationElapsed, stallDuration) => CreateStalledProgress(
+                        SanitizationProgressPhase.Write,
+                        "Zápis nul",
+                        bytesWritten,
+                        diskSize,
+                        result.Errors,
+                        stopwatch.Elapsed,
+                        operationElapsed,
+                        stallDuration),
                     progress,
-                    result,
+                    _logger,
+                    "Write",
+                    bytesWritten,
                     cancellationToken);
-                 chunkStopwatch.Stop();
+                var bytesWrittenThisChunk = chunk.Value;
                 
                 if (bytesWrittenThisChunk != bytesToWrite)
                 {
@@ -480,11 +502,11 @@ offline disk";
                 // The handle uses FILE_FLAG_WRITE_THROUGH. FlushFileBuffers on a raw USB disk can
                 // block indefinitely after the final write and prevent the read phase from starting.
 
-                var chunkSeconds = chunkStopwatch.Elapsed.TotalSeconds;
-                var instantSpeed = chunkSeconds > 0
+                var chunkSeconds = chunk.OperationElapsed.TotalSeconds;
+                var rawSpeed = chunkSeconds > 0
                     ? bytesWrittenThisChunk / (1024.0 * 1024.0) / chunkSeconds
                     : 0;
-                smoothedSpeed = smoothedSpeed <= 0 ? instantSpeed : (smoothedSpeed * 0.7) + (instantSpeed * 0.3);
+                smoothedSpeed = smoothedSpeed <= 0 ? rawSpeed : (smoothedSpeed * 0.7) + (rawSpeed * 0.3);
 
                 var elapsed = stopwatch.Elapsed.TotalSeconds;
                 var averageSpeed = elapsed > 0 ? bytesWritten / (1024.0 * 1024.0) / elapsed : 0;
@@ -500,7 +522,14 @@ offline disk";
                     TotalBytes = diskSize,
                     CurrentSpeedMBps = smoothedSpeed,
                     Errors = result.Errors,
-                    EstimatedTimeRemaining = eta
+                    EstimatedTimeRemaining = eta,
+                    RawOperationSpeedMBps = rawSpeed,
+                    EffectiveSpeedMBps = averageSpeed,
+                    CurrentOperationElapsed = chunk.OperationElapsed,
+                    StallDuration = chunk.WasStalled ? chunk.StallDuration : null,
+                    IsStalled = false,
+                    IsWaitingForDevice = false,
+                    StatusDetail = chunk.WasStalled ? $"Device responded after stall ({chunk.StallDuration:g})." : null
                 });
             }
 
@@ -512,12 +541,13 @@ offline disk";
         }
         catch (Exception ex)
         {
-            result.ErrorMessage = ex.Message;
+            var deviceDisappeared = IsDeviceDisappearedError(ex);
+            result.ErrorMessage = deviceDisappeared ? "Device disappeared during write" : ex.Message;
             result.ErrorDetails.Add(new SanitizationErrorDetail
             {
                 Phase = "Write",
-                ErrorCode = ex.HResult.ToString("X", System.Globalization.CultureInfo.InvariantCulture),
-                Message = ex.Message,
+                ErrorCode = deviceDisappeared ? "DEVICE_DISAPPEARED" : ex.HResult.ToString("X", System.Globalization.CultureInfo.InvariantCulture),
+                Message = result.ErrorMessage,
                 Details = ex.GetType().Name,
                 OffsetBytes = bytesWritten
             });
@@ -564,16 +594,30 @@ offline disk";
                 cancellationToken.ThrowIfCancellationRequested();
 
                 var bytesToRead = (int)Math.Min(BUFFER_SIZE, diskSize - bytesRead);
-                var chunkStopwatch = Stopwatch.StartNew();
-                var bytesReadThisChunk = await ExecuteIoWithUsbRecoveryAsync(
-                    () => ReadFileAsync(handle, buffer, bytesToRead, cancellationToken),
-                    phase: "Read",
-                    driveNumber,
-                    bytesRead,
+                var chunk = await IoStallMonitor.ExecuteAsync(
+                    _ => ExecuteIoWithUsbRecoveryAsync(
+                        () => ReadFileAsync(handle, buffer, bytesToRead, cancellationToken),
+                        phase: "Read",
+                        driveNumber,
+                        bytesRead,
+                        progress,
+                        result,
+                        cancellationToken),
+                    (operationElapsed, stallDuration) => CreateStalledProgress(
+                        SanitizationProgressPhase.ReadVerify,
+                        "Čtení a ověření",
+                        bytesRead,
+                        diskSize,
+                        result.Errors,
+                        stopwatch.Elapsed,
+                        operationElapsed,
+                        stallDuration),
                     progress,
-                    result,
+                    _logger,
+                    "Read",
+                    bytesRead,
                     cancellationToken);
-                 chunkStopwatch.Stop();
+                var bytesReadThisChunk = chunk.Value;
 
                 if (bytesReadThisChunk != bytesToRead)
                 {
@@ -631,11 +675,11 @@ offline disk";
 
                 bytesRead += bytesReadThisChunk;
 
-                var chunkSeconds = chunkStopwatch.Elapsed.TotalSeconds;
-                var instantSpeed = chunkSeconds > 0
+                var chunkSeconds = chunk.OperationElapsed.TotalSeconds;
+                var rawSpeed = chunkSeconds > 0
                     ? bytesReadThisChunk / (1024.0 * 1024.0) / chunkSeconds
                     : 0;
-                smoothedSpeed = smoothedSpeed <= 0 ? instantSpeed : (smoothedSpeed * 0.7) + (instantSpeed * 0.3);
+                smoothedSpeed = smoothedSpeed <= 0 ? rawSpeed : (smoothedSpeed * 0.7) + (rawSpeed * 0.3);
 
                 var elapsed = stopwatch.Elapsed.TotalSeconds;
                 var averageSpeed = elapsed > 0 ? bytesRead / (1024.0 * 1024.0) / elapsed : 0;
@@ -651,7 +695,14 @@ offline disk";
                     TotalBytes = diskSize,
                     CurrentSpeedMBps = smoothedSpeed,
                     Errors = result.Errors,
-                    EstimatedTimeRemaining = eta
+                    EstimatedTimeRemaining = eta,
+                    RawOperationSpeedMBps = rawSpeed,
+                    EffectiveSpeedMBps = averageSpeed,
+                    CurrentOperationElapsed = chunk.OperationElapsed,
+                    StallDuration = chunk.WasStalled ? chunk.StallDuration : null,
+                    IsStalled = false,
+                    IsWaitingForDevice = false,
+                    StatusDetail = chunk.WasStalled ? $"Device responded after stall ({chunk.StallDuration:g})." : null
                 });
             }
 
@@ -663,12 +714,13 @@ offline disk";
         }
         catch (Exception ex)
         {
-            result.ErrorMessage = ex.Message;
+            var deviceDisappeared = IsDeviceDisappearedError(ex);
+            result.ErrorMessage = deviceDisappeared ? "Device disappeared during read" : ex.Message;
             result.ErrorDetails.Add(new SanitizationErrorDetail
             {
                 Phase = "Read",
-                ErrorCode = ex.HResult.ToString("X", System.Globalization.CultureInfo.InvariantCulture),
-                Message = ex.Message,
+                ErrorCode = deviceDisappeared ? "DEVICE_DISAPPEARED" : ex.HResult.ToString("X", System.Globalization.CultureInfo.InvariantCulture),
+                Message = result.ErrorMessage,
                 Details = ex.GetType().Name,
                 OffsetBytes = bytesRead
             });
@@ -680,6 +732,39 @@ offline disk";
         }
 
         return result;
+    }
+
+    private static SanitizationProgress CreateStalledProgress(
+        SanitizationProgressPhase phaseKind,
+        string phase,
+        long bytesProcessed,
+        long totalBytes,
+        int errors,
+        TimeSpan phaseElapsed,
+        TimeSpan operationElapsed,
+        TimeSpan stallDuration)
+    {
+        var effectiveSpeed = phaseElapsed.TotalSeconds > 0
+            ? bytesProcessed / (1024.0 * 1024.0) / phaseElapsed.TotalSeconds
+            : 0;
+
+        return new SanitizationProgress
+        {
+            PhaseKind = phaseKind,
+            Phase = phase,
+            ProgressPercent = totalBytes > 0 ? (double)bytesProcessed / totalBytes * 100 : 0,
+            BytesProcessed = bytesProcessed,
+            TotalBytes = totalBytes,
+            CurrentSpeedMBps = 0,
+            Errors = errors,
+            IsStalled = true,
+            IsWaitingForDevice = true,
+            CurrentOperationElapsed = operationElapsed,
+            StallDuration = stallDuration,
+            RawOperationSpeedMBps = 0,
+            EffectiveSpeedMBps = effectiveSpeed,
+            StatusDetail = $"Waiting for device response... stalled for {stallDuration:g}."
+        };
     }
 
     private async Task<SanitizationPhaseResult> CreateGptPartitionAsync(

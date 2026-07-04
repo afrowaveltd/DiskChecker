@@ -320,6 +320,13 @@ public class DiskCertificate
     /// </summary>
     [NotMapped]
     public List<double> TemperatureProfilePoints { get; set; } = new();
+
+    /// <summary>
+    /// Downsampled stall flags (true = device was unresponsive at this point).
+    /// Same length as WriteProfilePoints/ReadProfilePoints.
+    /// </summary>
+    [NotMapped]
+    public List<bool> StallProfilePoints { get; set; } = new();
     // ========== Before/After Sanitization Comparison ==========
 
     /// <summary>

@@ -192,8 +192,9 @@ public partial class DiskSelectionViewModel : ViewModelBase, INavigableViewModel
     /// <inheritdoc/>
     public void OnNavigatedTo()
     {
-        // Load data when navigated to
-        Task.Run(() => LoadDataAsync());
+        // Always clear cache and force refresh when navigating to disk selection
+        _diskCacheService.ClearCache();
+        Task.Run(() => LoadDataAsync(forceRefresh: true));
     }
 
     private async Task LoadDataAsync(bool forceRefresh = false)

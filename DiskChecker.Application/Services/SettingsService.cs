@@ -1,4 +1,5 @@
 ﻿using DiskChecker.Core.Interfaces;
+using DiskChecker.Core.Models;
 using System.Text.Json;
 using System.Linq;
 
@@ -13,7 +14,7 @@ public class SettingsService : ISettingsService
     private bool _runAtStartup;
     private bool _minimizeToTray = true;
     private int _autoSaveInterval = 5;
-    private string _defaultExportPath = Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments);
+    private string _defaultExportPath = GetDefaultDocumentsFolder();
     private string _language = "cs";
     private bool _enableLogging = true;
     private string _logLevel = "Information";
@@ -28,6 +29,7 @@ public class SettingsService : ISettingsService
     private bool _emailSendOnlyForLongRunningTests = true;
     private bool _emailIncludeCertificateAttachment = true;
     private string? _certificatePath;
+    private DatabaseStorageSettings _databaseStorageSettings = DatabaseStorageSettings.Default;
     
     private readonly string _settingsFilePath;
     private readonly string _lockedDisksFilePath;
@@ -51,7 +53,7 @@ public class SettingsService : ISettingsService
     public SettingsService(string? settingsDirectoryPath)
     {
         var appFolder = string.IsNullOrWhiteSpace(settingsDirectoryPath)
-            ? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "DiskChecker")
+            ? GetDefaultAppDataFolder()
             : settingsDirectoryPath;
 
         Directory.CreateDirectory(appFolder);
@@ -63,6 +65,118 @@ public class SettingsService : ISettingsService
         LoadSettingsFromFile();
         LoadLockedDisksFromFile();
         LoadDarkThemeFromFile();
+    }
+
+    /// <summary>
+    /// Returns the real user's app data folder even when running under sudo.
+    /// On Linux, checks SUDO_USER/SUDO_UID to find the original user's home.
+    /// Falls back to Environment.SpecialFolder.ApplicationData.
+    /// </summary>
+    private static string GetDefaultAppDataFolder()
+    {
+        try
+        {
+            // Detect original user when running under sudo
+            var sudoUser = Environment.GetEnvironmentVariable("SUDO_USER");
+            if (!string.IsNullOrWhiteSpace(sudoUser) && sudoUser != "root")
+            {
+                // Get the original user's home directory
+                var homeDir = sudoUser == "root" ? "/root" : $"/home/{sudoUser}";
+                // Also try to get it via getent for accuracy
+                try
+                {
+                    var psi = new System.Diagnostics.ProcessStartInfo
+                    {
+                        FileName = "/bin/bash",
+                        Arguments = $"-c \"echo ~{sudoUser}\"",
+                        RedirectStandardOutput = true,
+                        UseShellExecute = false,
+                        CreateNoWindow = true
+                    };
+                    using var proc = System.Diagnostics.Process.Start(psi);
+                    if (proc != null)
+                    {
+                        var output = proc.StandardOutput.ReadToEnd().Trim();
+                        if (!string.IsNullOrWhiteSpace(output) && output != $"~{sudoUser}")
+                        {
+                            homeDir = output;
+                        }
+                    }
+                }
+                catch
+                {
+                    // Fallback to constructed path
+                }
+
+                var configDir = Path.Combine(homeDir, ".config", "DiskChecker");
+                return configDir;
+            }
+        }
+        catch
+        {
+            // Fall through to default
+        }
+
+        return Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "DiskChecker");
+    }
+
+    /// <summary>
+    /// Returns the real user's Documents folder even when running under sudo.
+    /// On Linux, checks SUDO_USER to find the original user's $HOME/Documents.
+    /// Falls back to Environment.SpecialFolder.MyDocuments.
+    /// </summary>
+    private static string GetDefaultDocumentsFolder()
+    {
+        try
+        {
+            var sudoUser = Environment.GetEnvironmentVariable("SUDO_USER");
+            if (!string.IsNullOrWhiteSpace(sudoUser) && sudoUser != "root")
+            {
+                var homeDir = $"/home/{sudoUser}";
+                try
+                {
+                    var psi = new System.Diagnostics.ProcessStartInfo
+                    {
+                        FileName = "/bin/bash",
+                        Arguments = $"-c \"echo ~{sudoUser}\"",
+                        RedirectStandardOutput = true,
+                        UseShellExecute = false,
+                        CreateNoWindow = true
+                    };
+                    using var proc = System.Diagnostics.Process.Start(psi);
+                    if (proc != null)
+                    {
+                        var output = proc.StandardOutput.ReadToEnd().Trim();
+                        if (!string.IsNullOrWhiteSpace(output) && output != $"~{sudoUser}")
+                        {
+                            homeDir = output;
+                        }
+                    }
+                }
+                catch
+                {
+                    // Fallback
+                }
+
+                var documentsDir = Path.Combine(homeDir, "Dokumenty");
+                if (Directory.Exists(documentsDir))
+                    return documentsDir;
+
+                documentsDir = Path.Combine(homeDir, "Documents");
+                if (Directory.Exists(documentsDir))
+                    return documentsDir;
+
+                // Fallback to home directory itself
+                return homeDir;
+            }
+        }
+        catch
+        {
+            // Fall through
+        }
+
+        return Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments);
     }
 
     public Task<bool> GetAutoCheckForUpdatesAsync() => Task.FromResult(_autoCheckForUpdates);
@@ -124,6 +238,23 @@ public class SettingsService : ISettingsService
         SaveSettingsToFile();
         return Task.CompletedTask;
     }
+
+    public Task<DatabaseStorageSettings> GetDatabaseStorageSettingsAsync() => Task.FromResult(new DatabaseStorageSettings
+    {
+        Provider = _databaseStorageSettings.Provider,
+        ConnectionString = _databaseStorageSettings.ConnectionString
+    });
+
+    public Task SetDatabaseStorageSettingsAsync(DatabaseStorageSettings settings)
+    {
+        _databaseStorageSettings = settings ?? DatabaseStorageSettings.Default;
+        if (_databaseStorageSettings.Provider == DatabaseProviderKind.Sqlite && string.IsNullOrWhiteSpace(_databaseStorageSettings.ConnectionString))
+        {
+            _databaseStorageSettings.ConnectionString = DatabaseStorageSettings.Default.ConnectionString;
+        }
+        SaveSettingsToFile();
+        return Task.CompletedTask;
+    }
  
      public Task SetReportRecipientEmailAsync(string email)
     {
@@ -138,7 +269,7 @@ public class SettingsService : ISettingsService
         _runAtStartup = false;
         _minimizeToTray = true;
         _autoSaveInterval = 5;
-        _defaultExportPath = Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments);
+        _defaultExportPath = GetDefaultDocumentsFolder();
         _language = "cs";
         _enableLogging = true;
         _logLevel = "Information";

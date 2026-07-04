@@ -900,7 +900,7 @@ public partial class AbsoluteDestructiveTestViewModel : ViewModelBase, INavigabl
                     {
                         CurrentPhaseProgress = p.ProgressPercent;
                         Phases[1].ProgressPercent = p.ProgressPercent;
-                        Phases[1].Detail = $"{p.Phase} — {p.CurrentSpeedMBps:F1} MB/s";
+                        Phases[1].Detail = FormatSanitizationProgressDetail(p);
                         UpdateTemperature(_smartBaseline?.Temperature ?? 30);
                         UpdateOverallProgress();
 
@@ -996,7 +996,7 @@ public partial class AbsoluteDestructiveTestViewModel : ViewModelBase, INavigabl
                     {
                         CurrentPhaseProgress = p.ProgressPercent;
                         Phases[5].ProgressPercent = p.ProgressPercent;
-                        Phases[5].Detail = $"{p.Phase} — {p.CurrentSpeedMBps:F1} MB/s";
+                        Phases[5].Detail = FormatSanitizationProgressDetail(p);
                         UpdateOverallProgress();
 
                         // Feed into sanitization chart (pass 2)
@@ -1294,6 +1294,16 @@ public partial class AbsoluteDestructiveTestViewModel : ViewModelBase, INavigabl
             case SeekTestType.Random: _smartPostSeekRandom = smart; break;
             case SeekTestType.Skip: _smartPostSeekSkip = smart; break;
         }
+    }
+
+    private async Task PersistSeekSamplesAsync(int sessionId)
+    {
+        if (_seekFullStrokeResult?.Samples.Count > 0)
+            await _diskCardRepository.CreateSeekSamplesAsync(sessionId, SeekTestType.FullStroke, _seekFullStrokeResult.Samples);
+        if (_seekRandomResult?.Samples.Count > 0)
+            await _diskCardRepository.CreateSeekSamplesAsync(sessionId, SeekTestType.Random, _seekRandomResult.Samples);
+        if (_seekSkipResult?.Samples.Count > 0)
+            await _diskCardRepository.CreateSeekSamplesAsync(sessionId, SeekTestType.Skip, _seekSkipResult.Samples);
     }
 
     private void StoreSeekResult(SeekTestType type, SeekTestResult result)
@@ -1935,6 +1945,31 @@ public partial class AbsoluteDestructiveTestViewModel : ViewModelBase, INavigabl
     {
         var gb = bytes / (1024.0 * 1024.0 * 1024.0);
         return gb >= 1024 ? $"{gb / 1024:F2} TB" : $"{gb:F0} GB";
+    }
+
+    private static string FormatSanitizationProgressDetail(SanitizationProgress progress)
+    {
+        if (progress.IsStalled || progress.IsWaitingForDevice)
+        {
+            var stall = progress.StallDuration ?? TimeSpan.Zero;
+            var effective = progress.EffectiveSpeedMBps ?? 0;
+            return $"{progress.Phase} — Waiting for device response… stall {stall:mm\\:ss}, current 0.0 MB/s, effective {effective:F1} MB/s";
+        }
+
+        var raw = progress.RawOperationSpeedMBps ?? progress.CurrentSpeedMBps;
+        var effectiveSpeed = progress.EffectiveSpeedMBps ?? progress.CurrentSpeedMBps;
+        var detail = $"{progress.Phase} — {progress.CurrentSpeedMBps:F1} MB/s";
+        if (progress.RawOperationSpeedMBps.HasValue || progress.EffectiveSpeedMBps.HasValue)
+        {
+            detail += $" (raw {raw:F1}, effective {effectiveSpeed:F1})";
+        }
+
+        if (!string.IsNullOrWhiteSpace(progress.StatusDetail))
+        {
+            detail += $" — {progress.StatusDetail}";
+        }
+
+        return detail;
     }
 
     /// <summary>

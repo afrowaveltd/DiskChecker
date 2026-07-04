@@ -114,6 +114,37 @@ public class SanitizationProgress
     public TimeSpan? EstimatedTimeRemaining { get; set; }
 
     /// <summary>
+    /// True while the current write/read request is still waiting for the device after the stall threshold.
+    /// BytesProcessed and ProgressPercent intentionally remain unchanged for these samples.
+    /// </summary>
+    public bool IsStalled { get; set; }
+
+    /// <summary>
+    /// Alias for UI text that wants to show the user that the application is waiting on the drive.
+    /// </summary>
+    public bool IsWaitingForDevice { get; set; }
+
+    /// <summary>
+    /// Elapsed time of the currently outstanding write/read operation.
+    /// </summary>
+    public TimeSpan? CurrentOperationElapsed { get; set; }
+
+    /// <summary>
+    /// Portion of the current operation elapsed time beyond the configured stall threshold.
+    /// </summary>
+    public TimeSpan? StallDuration { get; set; }
+
+    /// <summary>
+    /// Speed of the completed I/O chunk only. This excludes idle time between chunks but includes time spent inside that I/O call.
+    /// </summary>
+    public double? RawOperationSpeedMBps { get; set; }
+
+    /// <summary>
+    /// Phase-level throughput including all stalls observed so far.
+    /// </summary>
+    public double? EffectiveSpeedMBps { get; set; }
+
+    /// <summary>
     /// Optional additional status detail (e.g., recovery attempt reason).
     /// </summary>
     public string? StatusDetail { get; set; }
