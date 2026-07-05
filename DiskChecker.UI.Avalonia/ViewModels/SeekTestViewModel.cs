@@ -129,12 +129,7 @@ public partial class SeekTestViewModel : ViewModelBase, INavigableViewModel, IDi
 
     // Test type options for the UI – MUST match SeekTestType enum order (FullStroke=0, Random=1, Skip=2)
     // because EnumToIndexConverter uses (int)enumValue as the SelectedIndex.
-    public ObservableCollection<SeekTestTypeOption> TestTypeOptions { get; } = new()
-    {
-        new() { Type = SeekTestType.FullStroke, Name = "↔️ Plný rozsah (Full Stroke)", Description = "Zametá celý LBA rozsah od začátku do konce a zpět" },
-        new() { Type = SeekTestType.Random, Name = "🎲 Náhodný (Random)", Description = "Náhodné pozice napříč celým diskem – referenční test" },
-        new() { Type = SeekTestType.Skip, Name = "⏭️ Přeskakování (Skip)", Description = "Skáče o fixní segmenty (1000 segmentů) s variabilní velikostí skoku" }
-    };
+    public ObservableCollection<SeekTestTypeOption> TestTypeOptions { get; } = new();
 
     private CancellationTokenSource? _testCancellation;
     private bool _disposed;
@@ -158,6 +153,11 @@ public partial class SeekTestViewModel : ViewModelBase, INavigableViewModel, IDi
         _seekTestService = seekTestService;
         _certificateGenerator = certificateGenerator;
         _diskCardRepository = diskCardRepository;
+
+        // Build test type options
+        TestTypeOptions.Add(new() { Type = SeekTestType.FullStroke, Key = "FullStroke", Name = "↔️ " + L.Get("SeekTest.FullStroke") + " (Full Stroke)", Description = L.Get("SeekTest.FullStrokeDescFull") });
+        TestTypeOptions.Add(new() { Type = SeekTestType.Random, Key = "Random", Name = "🎲 " + L.Get("SeekTest.Random") + " (Random)", Description = L.Get("SeekTest.RandomDescFull") });
+        TestTypeOptions.Add(new() { Type = SeekTestType.Skip, Key = "Skip", Name = "⏭️ " + L.Get("SeekTest.Skip") + " (Skip)", Description = L.Get("SeekTest.SkipDescFull") });
 
         GoBackCommand = new RelayCommand(NavigateBack);
         StartTestCommand = new AsyncRelayCommand(StartTestAsync, () => !IsTesting && !IsDiskTooFragile && SelectedDrive != null);
@@ -539,23 +539,18 @@ public partial class SeekTestViewModel : ViewModelBase, INavigableViewModel, IDi
         {
             var rec = await _seekTestService.GetRecommendationAsync(SelectedDrive);
 
+            var typeName = rec.RecommendedType switch
+            {
+                SeekTestType.FullStroke => L.Get("SeekTest.FullStroke"),
+                SeekTestType.Random => L.Get("SeekTest.Random"),
+                SeekTestType.Skip => L.Get("SeekTest.Skip"),
+                _ => "?"
+            };
             RecommendationText = rec.IsTooFragile
-                ? "❌ Test NEDOPORUČEN"
+                ? "❌ " + L.Get("SeekTest.NotRecommended")
                 : rec.IsConservative
-                    ? $"⚠️ Konzervativní režim: {rec.RecommendedType switch
-                    {
-                        SeekTestType.FullStroke => "Plný rozsah (Full Stroke)",
-                        SeekTestType.Random => "Náhodný (Random)",
-                        SeekTestType.Skip => "Přeskakování (Skip)",
-                        _ => "Neznámý"
-                    }} – {rec.RecommendedSeekCount} seeků"
-                    : $"✅ Plný režim: {rec.RecommendedType switch
-                    {
-                        SeekTestType.FullStroke => "Plný rozsah (Full Stroke)",
-                        SeekTestType.Random => "Náhodný (Random)",
-                        SeekTestType.Skip => "Přeskakování (Skip)",
-                        _ => "Neznámý"
-                    }} – {rec.RecommendedSeekCount} seeků";
+                    ? $"⚠️ {L.Get("SeekTest.ConservativeMode")}: {typeName} – {rec.RecommendedSeekCount} {L.Get("SeekTestSeeks")}"
+                    : $"✅ {L.Get("SeekTest.FullMode")}: {typeName} – {rec.RecommendedSeekCount} {L.Get("SeekTestSeeks")}";
 
             RecommendationRationale = rec.Rationale;
             IsRecommendationConservative = rec.IsConservative;
@@ -1201,6 +1196,7 @@ public partial class SeekTestViewModel : ViewModelBase, INavigableViewModel, IDi
 public class SeekTestTypeOption
 {
     public SeekTestType Type { get; init; }
+    public string Key { get; init; } = "";
     public string Name { get; init; } = "";
     public string Description { get; init; } = "";
 }

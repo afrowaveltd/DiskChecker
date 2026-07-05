@@ -23,7 +23,7 @@ namespace DiskChecker.UI.Avalonia.ViewModels
         private bool _isLoading;
         private string _statusMessage = string.Empty;
         private int _selectedFilterIndex;
-        private static readonly string[] FilterLabels = { "Všechny", "Povrchový test", "SMART", "Sanitizace" };
+        private string[] _filterLabels = Array.Empty<string>();
 
         public HistoryViewModel(
             IHistoryService historyService,
@@ -37,6 +37,8 @@ namespace DiskChecker.UI.Avalonia.ViewModels
             _navigationService = navigationService ?? throw new ArgumentNullException(nameof(navigationService));
             _selectedDiskService = selectedDiskService ?? throw new ArgumentNullException(nameof(selectedDiskService));
             _diskCardRepository = diskCardRepository ?? throw new ArgumentNullException(nameof(diskCardRepository));
+
+            _filterLabels = new[] { L.Get("Common.All"), L.Get("History.Filter.Surface"), L.Get("History.Filter.Smart"), L.Get("History.Filter.Sanitize") };
             
             LoadTestsCommand = new AsyncRelayCommand(LoadTestsAsync);
             RefreshCommand = new AsyncRelayCommand(LoadTestsAsync);
@@ -76,7 +78,7 @@ namespace DiskChecker.UI.Avalonia.ViewModels
             }
         }
 
-        public string[] FilterOptions => FilterLabels;
+        public string[] FilterOptions => _filterLabels;
 
         public HistoricalTest? SelectedTest
         {
@@ -130,19 +132,19 @@ namespace DiskChecker.UI.Avalonia.ViewModels
             try
             {
                 IsLoading = true;
-                StatusMessage = "Načítám historii testů...";
+                StatusMessage = L.Get("History.Status.Loading");
                 
                 var tests = (await _historyService.GetHistoryAsync()).OrderByDescending(t => t.TestDate).ToList();
                 Tests = new ObservableCollection<HistoricalTest>(tests);
                 ApplyFilter();
                 OnPropertyChanged(nameof(AverageScore));
                 
-                StatusMessage = $"Načteno {tests.Count} testů z historie";
+                StatusMessage = L.Get("History.Status.Loaded", tests.Count.ToString());
             }
             catch (InvalidOperationException ex)
             {
-                StatusMessage = $"Chyba při načítání historie: {ex.Message}";
-                await _dialogService.ShowErrorAsync("Chyba", $"Nepodařilo se načíst historii testů: {ex.Message}");
+                StatusMessage = L.Get("History.Status.LoadError", ex.Message);
+                await _dialogService.ShowErrorAsync(L.Get("Common.Error"), L.Get("History.LoadTestsError", ex.Message));
             }
             finally
             {
@@ -162,8 +164,8 @@ namespace DiskChecker.UI.Avalonia.ViewModels
 
             FilteredTests = new ObservableCollection<HistoricalTest>(filtered.ToList());
             StatusMessage = _selectedFilterIndex == 0
-                ? $"Načteno {_tests.Count} testů z historie"
-                : $"Zobrazeno {FilteredTests.Count} z {_tests.Count} testů";
+                ? L.Get("History.Status.Loaded", _tests.Count.ToString())
+                : L.Get("History.Status.Filtered", FilteredTests.Count.ToString(), _tests.Count.ToString());
         }
 
         private static bool IsSurfaceTestType(string? testType)
@@ -222,13 +224,13 @@ namespace DiskChecker.UI.Avalonia.ViewModels
                     Tests.Remove(SelectedTest);
                     SelectedTest = null;
                     OnPropertyChanged(nameof(AverageScore));
-                    StatusMessage = "Test úspěšně smazán z historie";
+                    StatusMessage = L.Get("History.Status.Deleted");
                 }
             }
             catch (InvalidOperationException ex)
             {
-                StatusMessage = $"Chyba při mazání testu: {ex.Message}";
-                await _dialogService.ShowErrorAsync("Chyba", $"Nepodařilo se smazat test z historie: {ex.Message}");
+                StatusMessage = L.Get("History.Status.DeleteError", ex.Message);
+                await _dialogService.ShowErrorAsync(L.Get("Common.Error"), L.Get("History.DeleteFailed", ex.Message));
             }
         }
 
@@ -248,7 +250,7 @@ namespace DiskChecker.UI.Avalonia.ViewModels
 
             try
             {
-                StatusMessage = "Načítám detail testu...";
+                StatusMessage = L.Get("History.Status.LoadingDetail");
 
                 if (!string.IsNullOrWhiteSpace(test.SerialNumber))
                 {
@@ -289,12 +291,12 @@ namespace DiskChecker.UI.Avalonia.ViewModels
                     $"Chyby: {test.ErrorCount}\n\n" +
                     $"Poznámky: {test.Notes ?? "Žádné"}");
                 
-                StatusMessage = "Detaily testu zobrazeny";
+                StatusMessage = L.Get("History.Status.DetailShown");
             }
             catch (InvalidOperationException ex)
             {
-                StatusMessage = $"Chyba při zobrazení detailů: {ex.Message}";
-                await _dialogService.ShowErrorAsync("Chyba", $"Nepodařilo se zobrazit detaily testu: {ex.Message}");
+                StatusMessage = L.Get("History.Status.DetailError", ex.Message);
+                await _dialogService.ShowErrorAsync(L.Get("Common.Error"), L.Get("History.DetailError", ex.Message));
             }
         }
 

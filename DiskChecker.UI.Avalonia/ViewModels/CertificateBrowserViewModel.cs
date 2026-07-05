@@ -32,7 +32,7 @@ public partial class CertificateBrowserViewModel : ViewModelBase, INavigableView
     private bool _isLoading;
     private string _statusMessage = "Loading certificates...";
     private string _searchText = string.Empty;
-    private string _selectedGradeFilter = "All";
+    private string _selectedGradeFilter = string.Empty;
     private int _totalCertificateCount;
 
     // Graph properties
@@ -950,7 +950,7 @@ public partial class CertificateBrowserViewModel : ViewModelBase, INavigableView
                 }
             }
 
-            if (SelectedGradeFilter != L.Get("CertificateBrowser.Status.All") && cert.Grade != SelectedGradeFilter)
+            if (!string.IsNullOrEmpty(SelectedGradeFilter) && SelectedGradeFilter != L.Get("CertificateBrowser.Status.All") && cert.Grade != SelectedGradeFilter)
             {
                 continue;
             }

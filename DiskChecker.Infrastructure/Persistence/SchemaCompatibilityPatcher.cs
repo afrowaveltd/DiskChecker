@@ -80,6 +80,7 @@ public static class SchemaCompatibilityPatcher
         EnsureAnomalyEventsTable(dbContext);
         EnsureTelemetrySamplesTable(dbContext);
         EnsureSeekSamplesTable(dbContext);
+        EnsureTemperatureSamplesTable(dbContext);
 
         if (TableExists(dbContext, "DiskCertificates"))
         {
@@ -533,6 +534,28 @@ public static class SchemaCompatibilityPatcher
         dbContext.Database.ExecuteSqlRaw("CREATE INDEX IF NOT EXISTS IX_TestTelemetrySamples_TestSessionId_Phase_ProgressPercent ON TestTelemetrySamples (TestSessionId, Phase, ProgressPercent);");
         dbContext.Database.ExecuteSqlRaw("CREATE INDEX IF NOT EXISTS IX_TestTelemetrySamples_TestSessionId_IsStalled ON TestTelemetrySamples (TestSessionId, IsStalled);");
         dbContext.Database.ExecuteSqlRaw("CREATE INDEX IF NOT EXISTS IX_TestTelemetrySamples_TestSessionId_IsAnomaly ON TestTelemetrySamples (TestSessionId, IsAnomaly);");
+    }
+
+    private static void EnsureTemperatureSamplesTable(DiskCheckerDbContext dbContext)
+    {
+        if (TableExists(dbContext, "TestSessions_TemperatureSamples"))
+        {
+            return;
+        }
+
+        dbContext.Database.ExecuteSqlRaw("""
+            CREATE TABLE IF NOT EXISTS TestSessions_TemperatureSamples (
+                Id INTEGER NOT NULL CONSTRAINT PK_TestSessions_TemperatureSamples PRIMARY KEY AUTOINCREMENT,
+                TestSessionId INTEGER NOT NULL,
+                Timestamp TEXT NOT NULL,
+                TemperatureCelsius INTEGER NOT NULL,
+                Phase TEXT NULL,
+                ProgressPercent REAL NOT NULL,
+                CONSTRAINT FK_TestSessions_TemperatureSamples_TestSessions_TestSessionId FOREIGN KEY (TestSessionId) REFERENCES TestSessions (Id) ON DELETE CASCADE
+            );
+            """);
+        dbContext.Database.ExecuteSqlRaw("CREATE INDEX IF NOT EXISTS IX_TestSessions_TemperatureSamples_TestSessionId ON TestSessions_TemperatureSamples (TestSessionId);");
+        dbContext.Database.ExecuteSqlRaw("CREATE INDEX IF NOT EXISTS IX_TestSessions_TemperatureSamples_TestSessionId_Timestamp ON TestSessions_TemperatureSamples (TestSessionId, Timestamp);");
     }
 
     private static void EnsureSeekSamplesTable(DiskCheckerDbContext dbContext)

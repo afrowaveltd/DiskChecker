@@ -209,10 +209,10 @@ public partial class SurfaceTestViewModel : ViewModelBase, INavigableViewModel, 
 
       TestProfiles = new ObservableCollection<TestProfileItem>
         {
-            new() { Name = "Rychlý test (100 MB)", Description = "Rychlé ověření bez zápisu", IsSelected = true },
-            new() { Name = "Plný test (1 GB)", Description = "Kompletní zápis a ověření" },
-            new() { Name = "Test celého disku", Description = "Zápis a ověření celého disku" },
-            new() { Name = "⚡ SANITIZACE DISKU", Description = "DESTRUKTIVNÍ! Přepíše disk nulama", IsDestructive = true }
+            new() { Key = "Quick100MB", Name = L.Get("SurfaceTest.Profile.Quick100MB"), Description = L.Get("SurfaceTest.QuickTestDesc"), IsSelected = true },
+            new() { Key = "Full1GB", Name = L.Get("SurfaceTest.Profile.Full1GB"), Description = L.Get("SurfaceTest.FullTestDesc") },
+            new() { Key = "FullDisk", Name = L.Get("SurfaceTest.Profile.FullDisk"), Description = L.Get("SurfaceTest.Profile.FullDiskDesc") },
+            new() { Key = "Sanitize", Name = L.Get("SurfaceTest.Profile.Sanitize"), Description = L.Get("SurfaceTest.Profile.SanitizeDesc"), IsDestructive = true }
         };
 
       ZoomWindowPresetsGb = new ObservableCollection<double> { 1, 5, 10, 20, 50, 100 };
@@ -578,9 +578,10 @@ public partial class SurfaceTestViewModel : ViewModelBase, INavigableViewModel, 
 
             if(!IsLoadingDrives)
             {
+               var diskName = drive.Name ?? drive.Path;
                StatusMessage = isLocked
-                      ? $"Vybrán disk: {drive.Name ?? drive.Path} ( zamknut)"
-                      : $"Vybrán disk: {drive.Name ?? drive.Path}";
+                      ? L.Get("SurfaceTest.Status.DiskSelected", diskName) + " (🔒)"
+                      : L.Get("SurfaceTest.Status.DiskSelected", diskName);
             }
          });
       }
@@ -588,7 +589,7 @@ public partial class SurfaceTestViewModel : ViewModelBase, INavigableViewModel, 
       {
          await Dispatcher.UIThread.InvokeAsync(() =>
          {
-            StatusMessage = $"Chyba při kontrole stavu disku: {ex.Message}";
+            StatusMessage = L.Get("SurfaceTest.Status.Error", ex.Message);
          });
       }
    }
@@ -616,7 +617,7 @@ public partial class SurfaceTestViewModel : ViewModelBase, INavigableViewModel, 
       }
       else if(SelectedDrive == null && AvailableDrives.Count > 0)
       {
-         StatusMessage = $"Vybrán disk: {AvailableDrives[0].Name ?? AvailableDrives[0].Path}";
+         StatusMessage = L.Get("SurfaceTest.Status.DiskSelected", AvailableDrives[0].Name ?? AvailableDrives[0].Path);
       }
    }
 
@@ -627,7 +628,7 @@ public partial class SurfaceTestViewModel : ViewModelBase, INavigableViewModel, 
          await Dispatcher.UIThread.InvokeAsync(() =>
          {
             IsLoadingDrives = true;
-            StatusMessage = "Načítám disky...";
+            StatusMessage = L.Get("SurfaceTest.Status.LoadingDisks");
             AvailableDrives.Clear();
          });
 
@@ -643,7 +644,7 @@ public partial class SurfaceTestViewModel : ViewModelBase, INavigableViewModel, 
 
                if(drives.Count == 0)
                {
-                  StatusMessage = "Nebyly nalezeny žádné disky";
+                  StatusMessage = L.Get("SurfaceTest.Status.NoDisksFound");
                   IsLoadingDrives = false;
                   return;
                }
@@ -656,7 +657,7 @@ public partial class SurfaceTestViewModel : ViewModelBase, INavigableViewModel, 
                   {
                      SelectedDrive = existing;
                      IsLocked = _selectedDiskService.IsSelectedDiskLocked;
-                     StatusMessage = $"Vybrán disk: {SelectedDrive.Name ?? SelectedDrive.Path}";
+                     StatusMessage = L.Get("SurfaceTest.Status.DiskSelected", SelectedDrive.Name ?? SelectedDrive.Path);
                      IsLoadingDrives = false;
                      return;
                   }
@@ -671,7 +672,7 @@ public partial class SurfaceTestViewModel : ViewModelBase, INavigableViewModel, 
                _selectedDiskService.SelectedDiskDisplayName = firstDisk.Name;
                _selectedDiskService.IsSelectedDiskLocked = IsLocked;
 
-               StatusMessage = $"Vybrán disk: {SelectedDrive?.Name ?? SelectedDrive?.Path}";
+               StatusMessage = L.Get("SurfaceTest.Status.DiskSelected", SelectedDrive?.Name ?? SelectedDrive?.Path ?? "?");
             }
             finally
             {
@@ -683,7 +684,7 @@ public partial class SurfaceTestViewModel : ViewModelBase, INavigableViewModel, 
       {
          await Dispatcher.UIThread.InvokeAsync(() =>
          {
-            StatusMessage = $"Chyba: {ex.Message}";
+            StatusMessage = L.Get("SurfaceTest.Status.Error", ex.Message);
             IsLoadingDrives = false;
          });
       }
@@ -1066,7 +1067,7 @@ public partial class SurfaceTestViewModel : ViewModelBase, INavigableViewModel, 
       var profile = TestProfiles.FirstOrDefault(p => p.IsSelected);
       if(profile == null)
       {
-         SetStatusMessage("Nebyl vybrán profil testu");
+         SetStatusMessage(L.Get("SurfaceTest.Status.NoProfile"));
          return;
       }
 
@@ -1077,7 +1078,7 @@ public partial class SurfaceTestViewModel : ViewModelBase, INavigableViewModel, 
              $"Vybraný profil \"{profile.Name}\" přepíše obsah disku {SelectedDrive.Name ?? SelectedDrive.Path}. Pokračovat?");
          if(!confirmed)
          {
-            SetStatusMessage("Sanitizace byla zrušena uživatelem");
+            SetStatusMessage(L.Get("SurfaceTest.Status.SanitizeCancelled"));
             return;
          }
       }
@@ -1088,7 +1089,7 @@ public partial class SurfaceTestViewModel : ViewModelBase, INavigableViewModel, 
 
       ResetTestState();
       IsTesting = true;
-      SetStatusMessage(profile.IsDestructive ? "Spouštím sanitizaci disku..." : "Spouštím test povrchu...");
+      SetStatusMessage(profile.IsDestructive ? L.Get("Sanitize.Starting") : L.Get("SurfaceTest.Starting"));
 
       try
       {
@@ -1116,7 +1117,7 @@ public partial class SurfaceTestViewModel : ViewModelBase, INavigableViewModel, 
       }
       catch(OperationCanceledException)
       {
-         SetStatusMessage("Test zrušen");
+         SetStatusMessage(L.Get("SurfaceTest.Status.TestCancelled"));
       }
       catch(InvalidOperationException ex)
       {
@@ -1230,7 +1231,7 @@ public partial class SurfaceTestViewModel : ViewModelBase, INavigableViewModel, 
       // Check if user cancelled during operation
       if(cancellationToken.IsCancellationRequested)
       {
-         SetStatusMessage("Sanitizace zrušena (disk může být částečně přepsán)");
+         SetStatusMessage(L.Get("SurfaceTest.Status.SanitizeCancelledPartial"));
          cancellationToken.ThrowIfCancellationRequested();
       }
 
@@ -1239,8 +1240,9 @@ public partial class SurfaceTestViewModel : ViewModelBase, INavigableViewModel, 
          // Calculate test duration
          var duration = result.Duration;
          
-           StatusMessage = $"Dokončeno! Zápis: {result.WriteSpeedMBps:F1} MB/s, Čtení: {result.ReadSpeedMBps:F1} MB/s";
-           SetStatusMessage($"Dokončeno! Zápis: {result.WriteSpeedMBps:F1} MB/s, Čtení: {result.ReadSpeedMBps:F1} MB/s");
+           var completedMsg = L.Get("SurfaceTest.Status.Completed", result.WriteSpeedMBps.ToString("F1"), result.ReadSpeedMBps.ToString("F1"));
+           StatusMessage = completedMsg;
+           SetStatusMessage(completedMsg);
 
             var usbWarning = GetUsbBottleneckWarning(result);
 
@@ -1326,27 +1328,27 @@ public partial class SurfaceTestViewModel : ViewModelBase, INavigableViewModel, 
 
                await _cardTestService.SaveSanitizationAsync(card, result, writeSamples, readSamples, smartSnapshot, smartAfterSnapshot, cancellationToken);
                 
-               StatusMessage = $"Sanitizace uložena - {card.ModelName} ({writeSamples.Count + readSamples.Count} vzorků)";
-               SetStatusMessage($"Sanitizace uložena - {card.ModelName}");
+               StatusMessage = L.Get("SurfaceTest.Status.SanitizeSaved", card.ModelName, (writeSamples.Count + readSamples.Count).ToString());
+               SetStatusMessage(L.Get("SurfaceTest.Status.SanitizeSavedSimple", card.ModelName));
              }
              catch (InvalidOperationException ex)
              {
                  errorContext = ex.Message;
-               StatusMessage = $"Sanitizace dokončena, ale uložení karty selhalo: {ex.Message}";
-               SetStickyErrorStatus($"Chyba: Sanitizace dokončena, ale uložení karty selhalo: {ex.Message}");
+               StatusMessage = L.Get("SurfaceTest.Status.SanitizeSaveFailed", ex.Message);
+               SetStickyErrorStatus(L.Get("SurfaceTest.Status.SanitizeSaveFailed", ex.Message));
              }
              catch (DbUpdateException ex)
              {
                  var message = ex.InnerException?.Message ?? ex.Message;
                  errorContext = message;
-               StatusMessage = $"Sanitizace dokončena, ale uložení karty selhalo: {message}";
-               SetStickyErrorStatus($"Chyba: Sanitizace dokončena, ale uložení karty selhalo: {message}");
+               StatusMessage = L.Get("SurfaceTest.Status.SanitizeSaveFailed", message);
+               SetStickyErrorStatus(L.Get("SurfaceTest.Status.SanitizeSaveFailed", message));
              }
              catch (Exception ex)
              {
                  errorContext = ex.Message;
-               StatusMessage = $"Sanitizace dokončena, ale uložení karty selhalo: {ex.Message}";
-               SetStickyErrorStatus($"Chyba: Sanitizace dokončena, ale uložení karty selhalo: {ex.Message}");
+               StatusMessage = L.Get("SurfaceTest.Status.SanitizeSaveFailed", ex.Message);
+               SetStickyErrorStatus(L.Get("SurfaceTest.Status.SanitizeSaveFailed", ex.Message));
              }
 
          // Build success message but don't show dialog yet
@@ -1369,11 +1371,12 @@ public partial class SurfaceTestViewModel : ViewModelBase, INavigableViewModel, 
       }
       else
       {
-         StatusMessage = $"Chyba: {result.ErrorMessage}";
+         var errorMsg = result.ErrorMessage ?? "Unknown error";
+         StatusMessage = L.Get("SurfaceTest.Status.TestError", errorMsg);
          var detail = result.ErrorDetails.FirstOrDefault();
          var message = detail != null
              ? $"Chyba ({detail.Phase}/{detail.ErrorCode}): {detail.Message}"
-             : $"Chyba: {result.ErrorMessage}";
+             : L.Get("SurfaceTest.Status.TestError", errorMsg);
 
          if (detail != null && !string.IsNullOrWhiteSpace(detail.Details))
          {
@@ -1387,14 +1390,14 @@ public partial class SurfaceTestViewModel : ViewModelBase, INavigableViewModel, 
 
    private async Task RunTestAsync(SmartaData? smartSnapshot, CancellationToken cancellationToken)
    {
-      StatusMessage = "Spouštím test povrchu...";
+      StatusMessage = L.Get("SurfaceTest.Starting");
 
       var profile = TestProfiles.FirstOrDefault(p => p.IsSelected);
-      var testDurationMs = profile?.Name switch
+      var testDurationMs = profile?.Key switch
       {
-         "Rychlý test (100 MB)" => 30000,
-         "Plný test (1 GB)" => 60000,
-         "Test celého disku" => 120000,
+         "Quick100MB" => 30000,
+         "Full1GB" => 60000,
+         "FullDisk" => 120000,
          _ => 30000
       };
 
@@ -1410,11 +1413,11 @@ public partial class SurfaceTestViewModel : ViewModelBase, INavigableViewModel, 
       CurrentPhase = 0;
       var writePhaseDuration = testDurationMs / 2;
       var readPhaseDuration = testDurationMs / 2;
-      var syntheticTotalBytes = profile?.Name switch
+      var syntheticTotalBytes = profile?.Key switch
       {
-         "Rychlý test (100 MB)" => 100L * 1024 * 1024,
-         "Plný test (1 GB)" => 1L * 1024 * 1024 * 1024,
-         "Test celého disku" => Math.Max(SelectedDrive?.TotalSize ?? 0, 1L),
+         "Quick100MB" => 100L * 1024 * 1024,
+         "Full1GB" => 1L * 1024 * 1024 * 1024,
+         "FullDisk" => Math.Max(SelectedDrive?.TotalSize ?? 0, 1L),
          _ => 100L * 1024 * 1024
       };
       _currentPhaseTotalBytes = syntheticTotalBytes;
@@ -1422,7 +1425,7 @@ public partial class SurfaceTestViewModel : ViewModelBase, INavigableViewModel, 
       const int sampleIntervalMs = 20;
 
       // Write phase (0-50%)
-      StatusMessage = "Zápis dat...";
+      StatusMessage = L.Get("SurfaceTest.Status.Writing");
       for(int i = 0; i <= writePhaseDuration; i += sampleIntervalMs)
       {
          cancellationToken.ThrowIfCancellationRequested();
@@ -1454,7 +1457,7 @@ public partial class SurfaceTestViewModel : ViewModelBase, INavigableViewModel, 
          CurrentPhase = 1;
       });
       _currentPhaseTotalBytes = syntheticTotalBytes;
-      StatusMessage = "Čtení a ověřování...";
+      StatusMessage = L.Get("SurfaceTest.Status.Reading");
       for(int i = 0; i <= readPhaseDuration; i += sampleIntervalMs)
       {
          cancellationToken.ThrowIfCancellationRequested();
@@ -1512,7 +1515,7 @@ public partial class SurfaceTestViewModel : ViewModelBase, INavigableViewModel, 
       if(minWriteSpeed == double.MaxValue) minWriteSpeed = 0;
       if(minReadSpeed == double.MaxValue) minReadSpeed = 0;
 
-      StatusMessage = "Ukládám výsledky testu...";
+      StatusMessage = L.Get("SurfaceTest.Status.Saving");
 
       // Create and save test result
       try
@@ -1524,11 +1527,11 @@ public partial class SurfaceTestViewModel : ViewModelBase, INavigableViewModel, 
          }
 
          // Determine operation type based on profile
-         var operation = profile?.Name switch
+         var operation = profile?.Key switch
          {
-            "Rychlý test (100 MB)" => SurfaceTestOperation.ReadOnly,  // Read-only, no write
-            "Plný test (1 GB)" => SurfaceTestOperation.WritePattern,   // Write and verify
-            "Test celého disku" => SurfaceTestOperation.WritePattern,   // Full disk write and verify
+            "Quick100MB" => SurfaceTestOperation.ReadOnly,  // Read-only, no write
+            "Full1GB" => SurfaceTestOperation.WritePattern,   // Write and verify
+            "FullDisk" => SurfaceTestOperation.WritePattern,   // Full disk write and verify
             _ => SurfaceTestOperation.ReadOnly
          };
 
@@ -1593,7 +1596,7 @@ public partial class SurfaceTestViewModel : ViewModelBase, INavigableViewModel, 
          var overallMinSpeed = Math.Min(minWriteSpeed, minReadSpeed);
          var overallAvgSpeed = (avgWriteSpeed + avgReadSpeed) / 2;
 
-         StatusMessage = $"Test dokončen - Průměr: {overallAvgSpeed:F1} MB/s";
+         StatusMessage = L.Get("SurfaceTest.Status.TestDoneAvg", overallAvgSpeed.ToString("F1"));
 
          await _dialogService.ShowSuccessAsync("Test dokončen",
              $"Test povrchu byl úspěšně dokončen a uložen.\n\n" +

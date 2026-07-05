@@ -10,6 +10,12 @@ public class TestProfileItem : ObservableObject
     private bool _isSelected;
     private bool _isDestructive;
 
+    /// <summary>
+    /// Stable key for identifying this profile regardless of locale.
+    /// Used in switch statements instead of localized Name.
+    /// </summary>
+    public string Key { get; init; } = string.Empty;
+
     public string Name
     {
         get => _name;

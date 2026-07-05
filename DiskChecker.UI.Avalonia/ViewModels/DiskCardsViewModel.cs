@@ -26,8 +26,8 @@ public partial class DiskCardsViewModel : ViewModelBase, INavigableViewModel
     private ObservableCollection<DiskCard> _filteredCards = new();
     private DiskCard? _selectedCard;
     private string _searchText = "";
-    private string _selectedGradeFilter = "Všechny";
-    private string _selectedStatusFilter = "Všechny";
+    private string _selectedGradeFilter = string.Empty;
+    private string _selectedStatusFilter = string.Empty;
     private bool _showLockedOnly;
     private bool _showArchivedOnly;
     private bool _isLoading;
@@ -51,8 +51,8 @@ public partial class DiskCardsViewModel : ViewModelBase, INavigableViewModel
         NavigateBackCommand = new RelayCommand(NavigateBack);
         RefreshCommand = new AsyncRelayCommand(() => LoadDiskCardsAsync(includeMaintenance: true));
         
-        GradeFilters = new ObservableCollection<string> { "Všechny", "A", "B", "C", "D", "E", "F" };
-        StatusFilters = new ObservableCollection<string> { "Všechny", "Aktivní", "Archivované" };
+        GradeFilters = new ObservableCollection<string> { L.Get("Common.All"), "A", "B", "C", "D", "E", "F" };
+        StatusFilters = new ObservableCollection<string> { L.Get("Common.All"), L.Get("Common.Active"), L.Get("Common.Archived") };
     }
 
     #region Properties
@@ -194,7 +194,7 @@ public partial class DiskCardsViewModel : ViewModelBase, INavigableViewModel
         try
         {
             IsLoading = true;
-            StatusMessage = "Načítám karty disků...";
+            StatusMessage = L.Get("DiskCards.Status.Loading");
 
             var merged = 0;
             if (includeMaintenance)
@@ -276,16 +276,18 @@ public partial class DiskCardsViewModel : ViewModelBase, INavigableViewModel
 
             ApplyFilters();
 
+            var activeCount = DiskCards.Count(c => !c.IsArchived);
+            var archivedCount = DiskCards.Count(c => c.IsArchived);
             StatusMessage = merged > 0
-                ? $"Načteno {DiskCards.Count} karet disků (sloučeno duplicit: {merged})"
-                : $"Načteno {DiskCards.Count} karet disků";
+                ? L.Get("DiskCards.Status.Total", DiskCards.Count.ToString(), activeCount.ToString(), archivedCount.ToString()) + $" (sloučeno duplicit: {merged})"
+                : L.Get("DiskCards.Status.Total", DiskCards.Count.ToString(), activeCount.ToString(), archivedCount.ToString());
             OnPropertyChanged(nameof(CardCount));
             OnPropertyChanged(nameof(FilteredCount));
         }
         catch (InvalidOperationException ex)
         {
-            StatusMessage = $"Chyba: {ex.Message}";
-            await _dialogService.ShowErrorAsync("Chyba", $"Nepodařilo se načíst karty: {ex.Message}");
+            StatusMessage = L.Get("DiskCards.Status.Error", ex.Message);
+            await _dialogService.ShowErrorAsync(L.Get("Common.Error"), L.Get("DiskCard.LoadCardsError", ex.Message));
         }
         finally
         {
@@ -303,7 +305,7 @@ public partial class DiskCardsViewModel : ViewModelBase, INavigableViewModel
         }
         
         SelectedCard = card;
-        StatusMessage = $"Vybrán disk: {card.ModelName} ({card.SerialNumber})";
+        StatusMessage = L.Get("DiskCards.Status.DiskSelected", card.ModelName, card.SerialNumber);
     }
 
     [RelayCommand]
@@ -366,7 +368,7 @@ public partial class DiskCardsViewModel : ViewModelBase, INavigableViewModel
         {
             await _diskCardRepository.ArchiveAsync(card.Id, archiveReason, reason);
             await LoadDiskCardsAsync();
-            StatusMessage = "Disk archivován";
+            StatusMessage = L.Get("DiskCards.Status.Archived");
         }
         catch (Exception ex)
         {
@@ -389,7 +391,7 @@ public partial class DiskCardsViewModel : ViewModelBase, INavigableViewModel
         {
             await _diskCardRepository.RestoreAsync(card.Id);
             await LoadDiskCardsAsync();
-            StatusMessage = "Disk obnoven";
+            StatusMessage = L.Get("DiskCards.Status.Restored");
         }
         catch (Exception ex)
         {
@@ -414,7 +416,7 @@ public partial class DiskCardsViewModel : ViewModelBase, INavigableViewModel
             {
                 await _diskCardRepository.DeleteAsync(card.Id);
                 await LoadDiskCardsAsync();
-                StatusMessage = "Karta smazána";
+                StatusMessage = L.Get("DiskCards.Status.Deleted");
             }
             catch (Exception ex)
             {
@@ -473,11 +475,11 @@ public partial class DiskCardsViewModel : ViewModelBase, INavigableViewModel
         if (bestDisk != null)
         {
             SelectedCard = bestDisk;
-            StatusMessage = $"Nejlepší disk: {bestDisk.ModelName} (Známka: {bestDisk.OverallGrade}, Skóre: {bestDisk.OverallScore:F0})";
+            StatusMessage = L.Get("DiskCards.Status.BestDisk", bestDisk.ModelName, bestDisk.OverallGrade, bestDisk.OverallScore.ToString("F0"));
         }
         else
         {
-            StatusMessage = "Žádný disk s testem nenalezen";
+            StatusMessage = L.Get("DiskCards.Status.NoTestDisk");
         }
     }
 
@@ -519,6 +521,10 @@ public partial class DiskCardsViewModel : ViewModelBase, INavigableViewModel
     {
         FilteredCards.Clear();
 
+        var allLabel = L.Get("Common.All");
+        var activeLabel = L.Get("Common.Active");
+        var archivedLabel = L.Get("Common.Archived");
+
         foreach (var card in DiskCards)
         {
             if (!string.IsNullOrEmpty(SearchText))
@@ -532,7 +538,7 @@ public partial class DiskCardsViewModel : ViewModelBase, INavigableViewModel
                 }
             }
 
-            if (SelectedGradeFilter != "Všechny" && card.OverallGrade != SelectedGradeFilter)
+            if (!string.IsNullOrEmpty(SelectedGradeFilter) && SelectedGradeFilter != allLabel && card.OverallGrade != SelectedGradeFilter)
             {
                 continue;
             }
@@ -542,12 +548,12 @@ public partial class DiskCardsViewModel : ViewModelBase, INavigableViewModel
                 continue;
             }
 
-            if (!ShowArchivedOnly && SelectedStatusFilter == "Aktivní" && card.IsArchived)
+            if (!ShowArchivedOnly && SelectedStatusFilter == activeLabel && card.IsArchived)
             {
                 continue;
             }
             
-            if (!ShowArchivedOnly && SelectedStatusFilter == "Archivované" && !card.IsArchived)
+            if (!ShowArchivedOnly && SelectedStatusFilter == archivedLabel && !card.IsArchived)
             {
                 continue;
             }
@@ -565,15 +571,15 @@ public partial class DiskCardsViewModel : ViewModelBase, INavigableViewModel
         
         if (FilteredCards.Count == 0 && DiskCards.Count > 0)
         {
-            StatusMessage = $"Nalezeno {DiskCards.Count} karet disků (aktivní: {activeCount}, archivované: {archivedCount}), ale žádná neodpovídá filtru";
+            StatusMessage = L.Get("DiskCards.Status.NoMatch", DiskCards.Count.ToString(), activeCount.ToString(), archivedCount.ToString());
         }
         else if (FilteredCards.Count < DiskCards.Count)
         {
-            StatusMessage = $"Zobrazeno {FilteredCards.Count} z {DiskCards.Count} disků (aktivní: {activeCount}, archivované: {archivedCount})";
+            StatusMessage = L.Get("DiskCards.Status.Filtered", FilteredCards.Count.ToString(), DiskCards.Count.ToString(), activeCount.ToString(), archivedCount.ToString());
         }
         else
         {
-            StatusMessage = $"Celkem {DiskCards.Count} karet disků (aktivní: {activeCount}, archivované: {archivedCount})";
+            StatusMessage = L.Get("DiskCards.Status.Total", DiskCards.Count.ToString(), activeCount.ToString(), archivedCount.ToString());
         }
         
         OnPropertyChanged(nameof(FilteredCount));

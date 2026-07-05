@@ -374,7 +374,8 @@ public class CertificateGenerator : ICertificateGenerator
             {
                 float yy = y + 18 + row * 34;
                 DrawText(canvas, label, 64, yy, labelFont, textPaint);
-                DrawText(canvas, value, 250, yy, valueFont, textPaint);
+                float labelWidth = labelFont.MeasureText(label);
+                DrawText(canvas, value, 64 + labelWidth + 12, yy, valueFont, textPaint);
             }
 
             DrawLine(_locale?.GetString("CertificatePdf.Model", "Model:") ?? "Model:", cert.DiskModel, 0);

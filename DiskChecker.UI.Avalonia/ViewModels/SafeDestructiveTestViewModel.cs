@@ -292,7 +292,7 @@ public partial class SafeDestructiveTestViewModel : ViewModelBase, INavigableVie
         var disk = _selectedDiskService.SelectedDisk;
         if (disk == null)
         {
-            StatusMessage = "❌ Není vybrán žádný disk.";
+            StatusMessage = L.Get("SafeDestructive.Status.NoDisk");
             return;
         }
 
@@ -327,9 +327,9 @@ public partial class SafeDestructiveTestViewModel : ViewModelBase, INavigableVie
         Log($"SMART před testem: {(_smartBefore != null ? "dostupný" : "nedostupný")}");
 
         if (HasEnoughBackupSpace)
-            StatusMessage = "✅ Připraveno — lze spustit bezpečný destruktivní test.";
+            StatusMessage = L.Get("SafeDestructive.Status.Ready");
         else
-            StatusMessage = "❌ Nedostatek místa pro zálohu — uvolněte místo nebo vyberte jiný cílový disk.";
+            StatusMessage = L.Get("SafeDestructive.Status.NoSpace");
     }
 
     private async Task FindBackupTargetAsync()
@@ -669,11 +669,11 @@ public partial class SafeDestructiveTestViewModel : ViewModelBase, INavigableVie
 
             // ── Complete ──
             Phase = SafeDestructivePhase.Completed;
-            CurrentPhaseName = "Dokončeno";
+            CurrentPhaseName = L.Get("SafeDestructive.Phase.Done");
             CurrentPhaseIcon = "✅";
             OverallProgress = 100;
             OverallProgressText = "100%";
-            StatusMessage = "✅ Bezpečný destruktivní test dokončen — disk obnoven ze zálohy.";
+            StatusMessage = L.Get("SafeDestructive.Status.Done");
             HasResults = true;
 
             await BuildResultsAsync();
@@ -684,13 +684,13 @@ public partial class SafeDestructiveTestViewModel : ViewModelBase, INavigableVie
         catch (OperationCanceledException)
         {
             Phase = SafeDestructivePhase.Failed;
-            StatusMessage = "⏹ Operace zrušena uživatelem.";
+            StatusMessage = L.Get("SafeDestructive.Status.Cancelled");
             Log("⏹ Operace zrušena.");
         }
         catch (Exception ex)
         {
             Phase = SafeDestructivePhase.Failed;
-            StatusMessage = $"❌ Chyba: {ex.Message}";
+            StatusMessage = L.Get("SafeDestructive.Status.Error", ex.Message);
             Log($"❌ FATAL: {ex.Message}");
         }
     }
@@ -702,9 +702,9 @@ public partial class SafeDestructiveTestViewModel : ViewModelBase, INavigableVie
     private async Task RunBackupPhaseAsync(CancellationToken ct)
     {
         Phase = SafeDestructivePhase.Backup;
-        CurrentPhaseName = "Záloha (raw image)";
+        CurrentPhaseName = L.Get("SafeDestructive.Phase.BackupRaw");
         CurrentPhaseIcon = "💾";
-        StatusMessage = "Vytvářím bitovou kopii disku...";
+        StatusMessage = L.Get("SafeDestructive.Status.CreatingImage");
         OverallProgress = 0;
         OverallProgressText = "0%";
 
@@ -812,7 +812,7 @@ public partial class SafeDestructiveTestViewModel : ViewModelBase, INavigableVie
         await JsonSerializer.SerializeAsync(manifestStream, manifest, _jsonOptions, ct);
 
         Log($"Záloha dokončena: {FormatBytesLong(bytesRead)}");
-        StatusMessage = "✅ Záloha dokončena — zahajuji destruktivní test...";
+        StatusMessage = L.Get("SafeDestructive.Status.BackupDone");
     }
 
     // ──────────────────────────────────────────────
@@ -822,9 +822,9 @@ public partial class SafeDestructiveTestViewModel : ViewModelBase, INavigableVie
     private async Task RunTestPhaseAsync(CancellationToken ct)
     {
         Phase = SafeDestructivePhase.Test;
-        CurrentPhaseName = "Destruktivní test";
+        CurrentPhaseName = L.Get("SafeDestructive.Phase.DestructiveTest");
         CurrentPhaseIcon = "🧪";
-        StatusMessage = "Provádím destruktivní test...";
+        StatusMessage = L.Get("SafeDestructive.Status.RunningTest");
 
         if (SelectedDrive == null) return;
 
@@ -832,13 +832,13 @@ public partial class SafeDestructiveTestViewModel : ViewModelBase, INavigableVie
         TestPhases.Clear();
         var phases = new[]
         {
-            new TestPhaseViewModel { Name = "Sanitizace 1 (zápis)", Icon = "🧹", PhaseIndex = 0 },
-            new TestPhaseViewModel { Name = "Sanitizace 1 (čtení)", Icon = "🧹", PhaseIndex = 1 },
-            new TestPhaseViewModel { Name = "Seek — Full Stroke", Icon = "↔️", PhaseIndex = 2 },
-            new TestPhaseViewModel { Name = "Seek — Náhodný", Icon = "🎲", PhaseIndex = 3 },
-            new TestPhaseViewModel { Name = "Seek — Skip", Icon = "⏭️", PhaseIndex = 4 },
-            new TestPhaseViewModel { Name = "Sanitizace 2 (zápis)", Icon = "🧹", PhaseIndex = 5 },
-            new TestPhaseViewModel { Name = "Sanitizace 2 (čtení)", Icon = "🧹", PhaseIndex = 6 }
+            new TestPhaseViewModel { Name = L.Get("DestructiveTest.Sanitize.Write1"), Icon = "🧹", PhaseIndex = 0 },
+            new TestPhaseViewModel { Name = L.Get("DestructiveTest.Sanitize.Read1"), Icon = "🧹", PhaseIndex = 1 },
+            new TestPhaseViewModel { Name = L.Get("DestructiveTest.Phase.SeekFS"), Icon = "↔️", PhaseIndex = 2 },
+            new TestPhaseViewModel { Name = L.Get("DestructiveTest.Phase.SeekRND"), Icon = "🎲", PhaseIndex = 3 },
+            new TestPhaseViewModel { Name = L.Get("DestructiveTest.Phase.SeekSKIP"), Icon = "⏭️", PhaseIndex = 4 },
+            new TestPhaseViewModel { Name = L.Get("DestructiveTest.Sanitize.Write2"), Icon = "🧹", PhaseIndex = 5 },
+            new TestPhaseViewModel { Name = L.Get("DestructiveTest.Sanitize.Read2"), Icon = "🧹", PhaseIndex = 6 }
         };
         foreach (var p in phases) TestPhases.Add(p);
 
@@ -894,7 +894,7 @@ public partial class SafeDestructiveTestViewModel : ViewModelBase, INavigableVie
             _smartAfter = null;
         }
 
-        StatusMessage = "✅ Test dokončen — obnovuji data ze zálohy...";
+        StatusMessage = L.Get("SafeDestructive.Status.TestDoneRestoring");
     }
 
     private async Task RunSanitizePhaseAsync(int phaseIndex, string mode,
@@ -1022,9 +1022,9 @@ public partial class SafeDestructiveTestViewModel : ViewModelBase, INavigableVie
     private async Task RunRestorePhaseAsync(CancellationToken ct)
     {
         Phase = SafeDestructivePhase.Restore;
-        CurrentPhaseName = "Obnova (raw image)";
+        CurrentPhaseName = L.Get("SafeDestructive.Phase.RestoreRaw");
         CurrentPhaseIcon = "🔄";
-        StatusMessage = "Obnovuji data ze zálohy...";
+        StatusMessage = L.Get("SafeDestructive.Status.Restoring");
 
         if (_backupImagePath == null || !File.Exists(_backupImagePath))
             throw new InvalidOperationException("Záloha nebyla nalezena.");
@@ -1075,7 +1075,7 @@ public partial class SafeDestructiveTestViewModel : ViewModelBase, INavigableVie
         }
 
         Log($"Obnova dokončena: {FormatBytesLong(bytesWritten)}");
-        StatusMessage = "✅ Data obnovena — workflow dokončen.";
+        StatusMessage = L.Get("SafeDestructive.Status.RestoreDone");
     }
 
     // ──────────────────────────────────────────────

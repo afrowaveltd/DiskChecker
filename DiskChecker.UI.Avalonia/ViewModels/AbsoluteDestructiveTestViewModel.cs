@@ -162,7 +162,7 @@ public partial class AbsoluteDestructiveTestViewModel : ViewModelBase, INavigabl
     [ObservableProperty] private DiskCertificate? _certificate;
 
     // ── Sanitization chart properties ──
-    [ObservableProperty] private string _sanitizeChartTitle = "Sanitizace";
+    [ObservableProperty] private string _sanitizeChartTitle = "Sanitizace"; // Will be set from locale in constructor
     [ObservableProperty] private string _sanitizeDataWritten = "Zapsáno: 0 / 0 GB";
     [ObservableProperty] private string _sanitizeDataRead = "Přečteno: 0 / 0 GB";
     [ObservableProperty] private double _sanitizeProgressPercent;
@@ -195,12 +195,7 @@ public partial class AbsoluteDestructiveTestViewModel : ViewModelBase, INavigabl
     public ObservableCollection<TestPhaseViewModel> Phases { get; } = new();
 
     // Manual profile options
-    public ObservableCollection<ManualProfileOption> ManualProfiles { get; } = new()
-    {
-        new() { Profile = ManualTestProfile.Conservative, Name = "🛡️ Konzervativní", Description = "Pro staré/opotřebené disky — 800 seeků, nižší zátěž", SeekCount = 800 },
-        new() { Profile = ManualTestProfile.Standard, Name = "⚖️ Standardní (výchozí)", Description = "Pro disky středního stáří — 1500 seeků, vyvážený test", SeekCount = 1500 },
-        new() { Profile = ManualTestProfile.Aggressive, Name = "🚀 Agresivní", Description = "Pro mladé/zdravé disky — 3000 seeků, plná zátěž", SeekCount = 3000 }
-    };
+    public ObservableCollection<ManualProfileOption> ManualProfiles { get; } = new();
 
     // LiveCharts for current phase
     public ObservableCollection<ObservablePoint> CurrentPhasePoints => _currentPhasePoints;
@@ -281,14 +276,19 @@ public partial class AbsoluteDestructiveTestViewModel : ViewModelBase, INavigabl
         _notificationService = notificationService;
         _powerManagementService = powerManagementService;
 
+        // Build manual profiles
+        ManualProfiles.Add(new() { Profile = ManualTestProfile.Conservative, Name = L.Get("DestructiveTest.Profile.Conservative"), Description = L.Get("DestructiveTest.Profile.ConservativeDesc"), SeekCount = 800 });
+        ManualProfiles.Add(new() { Profile = ManualTestProfile.Standard, Name = L.Get("DestructiveTest.Profile.Standard"), Description = L.Get("DestructiveTest.Profile.StandardDesc"), SeekCount = 1500 });
+        ManualProfiles.Add(new() { Profile = ManualTestProfile.Aggressive, Name = L.Get("DestructiveTest.Profile.Aggressive"), Description = L.Get("DestructiveTest.Profile.AggressiveDesc"), SeekCount = 3000 });
+
         // Build phase timeline
-        Phases.Add(new TestPhaseViewModel { Name = "Příprava", Icon = "🔍", PhaseIndex = 0 });
-        Phases.Add(new TestPhaseViewModel { Name = "1. Sanitizace", Icon = "🧹", PhaseIndex = 1 });
-        Phases.Add(new TestPhaseViewModel { Name = "Seek: Full Stroke", Icon = "↔️", PhaseIndex = 2 });
-        Phases.Add(new TestPhaseViewModel { Name = "Seek: Náhodný", Icon = "🎲", PhaseIndex = 3 });
-        Phases.Add(new TestPhaseViewModel { Name = "Seek: Přeskakování", Icon = "⏭️", PhaseIndex = 4 });
-        Phases.Add(new TestPhaseViewModel { Name = "2. Sanitizace", Icon = "🧹", PhaseIndex = 5 });
-        Phases.Add(new TestPhaseViewModel { Name = "Finalizace", Icon = "📄", PhaseIndex = 6 });
+        Phases.Add(new TestPhaseViewModel { Name = L.Get("DestructiveTest.Phase.Prep"), Icon = "🔍", PhaseIndex = 0 });
+        Phases.Add(new TestPhaseViewModel { Name = L.Get("DestructiveTest.Phase.Sanitize1"), Icon = "🧹", PhaseIndex = 1 });
+        Phases.Add(new TestPhaseViewModel { Name = L.Get("DestructiveTest.Phase.SeekFS"), Icon = "↔️", PhaseIndex = 2 });
+        Phases.Add(new TestPhaseViewModel { Name = L.Get("DestructiveTest.Phase.SeekRND"), Icon = "🎲", PhaseIndex = 3 });
+        Phases.Add(new TestPhaseViewModel { Name = L.Get("DestructiveTest.Phase.SeekSKIP"), Icon = "⏭️", PhaseIndex = 4 });
+        Phases.Add(new TestPhaseViewModel { Name = L.Get("DestructiveTest.Phase.Sanitize2"), Icon = "🧹", PhaseIndex = 5 });
+        Phases.Add(new TestPhaseViewModel { Name = L.Get("DestructiveTest.Phase.Finalize"), Icon = "📄", PhaseIndex = 6 });
 
         // LiveCharts setup
         CurrentPhaseSeries = new ISeries[]
@@ -457,7 +457,7 @@ public partial class AbsoluteDestructiveTestViewModel : ViewModelBase, INavigabl
         SelectedDrive = _selectedDiskService.SelectedDisk;
         if (SelectedDrive == null)
         {
-            StatusMessage = "Není vybrán žádný disk. Vyberte disk v přehledu.";
+            StatusMessage = L.Get("DestructiveTest.Status.NoDisk");
             return;
         }
 
@@ -468,7 +468,7 @@ public partial class AbsoluteDestructiveTestViewModel : ViewModelBase, INavigabl
     {
         try
         {
-            StatusMessage = "Zjišťuji SMART dostupnost...";
+            StatusMessage = L.Get("DestructiveTest.Status.CheckingSmart");
 
             // Use pre-detected SMART support flag to avoid device contention
             if (SelectedDrive!.SupportsSmart)
@@ -482,30 +482,30 @@ public partial class AbsoluteDestructiveTestViewModel : ViewModelBase, INavigabl
                     ShowManualProfileSelector = false;
                     _smartBaseline = smarta;
                     SmartBaselineSummary = FormatSmartSummary(smarta, "Výchozí");
-                    StatusMessage = $"SMART dostupný — {smarta.DeviceModel}";
+                    StatusMessage = L.Get("DestructiveTest.Status.SmartAvailable", smarta.DeviceModel);
                 }
                 else
                 {
                     IsSmartAvailable = false;
                     ShowManualProfileSelector = true;
-                    SmartBaselineSummary = "SMART nedostupný — vyberte manuální profil";
-                    StatusMessage = "SMART nedostupný. Vyberte manuální testovací profil.";
+                    SmartBaselineSummary = L.Get("DestructiveTest.Status.SmartUnavailable");
+                    StatusMessage = L.Get("DestructiveTest.Status.SmartUnavailable");
                 }
             }
             else
             {
                 IsSmartAvailable = false;
                 ShowManualProfileSelector = true;
-                SmartBaselineSummary = "SMART nedostupný (disk nepodporuje SMART)";
-                StatusMessage = "SMART nedostupný. Vyberte manuální testovací profil.";
+                SmartBaselineSummary = L.Get("DestructiveTest.Status.SmartUnavailable");
+                StatusMessage = L.Get("DestructiveTest.Status.SmartUnavailable");
             }
         }
         catch
         {
             IsSmartAvailable = false;
             ShowManualProfileSelector = true;
-            SmartBaselineSummary = "SMART nedostupný (chyba čtení)";
-            StatusMessage = "SMART nedostupný. Vyberte manuální testovací profil.";
+            SmartBaselineSummary = L.Get("DestructiveTest.Status.SmartUnavailable");
+            StatusMessage = L.Get("DestructiveTest.Status.SmartUnavailable");
         }
     }
 
@@ -561,7 +561,7 @@ public partial class AbsoluteDestructiveTestViewModel : ViewModelBase, INavigabl
             try
             {
                 _powerSession = await _powerManagementService.BeginTestSessionAsync(_testCancellation.Token);
-                StatusMessage = "🔋 Aktivováno řízení napájení — zabráněno uspání systému";
+                StatusMessage = L.Get("DestructiveTest.Status.PowerActive");
             }
             catch (Exception ex)
             {
@@ -576,12 +576,12 @@ public partial class AbsoluteDestructiveTestViewModel : ViewModelBase, INavigabl
         catch (OperationCanceledException)
         {
             WasAborted = true;
-            StatusMessage = "Test přerušen uživatelem.";
+            StatusMessage = L.Get("DestructiveTest.Cancelled");
         }
         catch (Exception ex)
         {
             WasAborted = true;
-            StatusMessage = $"Test selhal: {ex.Message}";
+            StatusMessage = L.Get("DestructiveTest.Error", ex.Message);
             await _dialogService.ShowErrorAsync("Chyba testu", $"Test selhal s chybou:\n{ex.Message}");
         }
         finally
@@ -594,12 +594,12 @@ public partial class AbsoluteDestructiveTestViewModel : ViewModelBase, INavigabl
                     await _powerSession.RestoreAsync();
                     _powerSession.Dispose();
                     _powerSession = null;
-                    StatusMessage = "🔋 Obnoveno původní nastavení napájení";
+                    StatusMessage = L.Get("DestructiveTest.Status.PowerRestored");
                 }
                 catch (Exception ex)
                 {
                     // Log but don't interrupt cleanup
-                    StatusMessage = $"⚠️ Chyba při obnovení nastavení napájení: {ex.Message}";
+                    StatusMessage = L.Get("DestructiveTest.Status.PowerRestoreError", ex.Message);
                 }
             }
 
@@ -613,7 +613,7 @@ public partial class AbsoluteDestructiveTestViewModel : ViewModelBase, INavigabl
     private void CancelTest()
     {
         _testCancellation?.Cancel();
-        StatusMessage = "Přerušuji test...";
+        StatusMessage = L.Get("DestructiveTest.Status.Interrupting");
     }
 
     [RelayCommand]
@@ -627,7 +627,7 @@ public partial class AbsoluteDestructiveTestViewModel : ViewModelBase, INavigabl
 
         try
         {
-            StatusMessage = "Generuji certifikát...";
+            StatusMessage = L.Get("DestructiveTest.Status.GeneratingCert");
             var card = await _diskCardRepository.GetByDevicePathAsync(SelectedDrive!.Path);
             if (card == null)
             {
@@ -636,7 +636,7 @@ public partial class AbsoluteDestructiveTestViewModel : ViewModelBase, INavigabl
             }
 
             await _diskCardRepository.CreateCertificateAsync(Certificate);
-            StatusMessage = $"Certifikát uložen: {Certificate.CertificateNumber}";
+            StatusMessage = L.Get("DestructiveTest.Status.CertSaved", Certificate.CertificateNumber);
 
             _selectedDiskService.SelectedCertificateId = Certificate.Id;
             _navigationService.NavigateTo<CertificateViewModel>();
@@ -868,7 +868,7 @@ public partial class AbsoluteDestructiveTestViewModel : ViewModelBase, INavigabl
             SetPhase(1, TestPhaseStatus.Running, "Zápis nul + ověření...");
 
             IsSanitizePass2 = false;
-            SanitizeChartTitle = "🧹 1. Sanitizace – Zápis nul + Ověření";
+            SanitizeChartTitle = L.Get("DestructiveTest.SanitizeChart1");
             _sanitizePass1WritePoints.Clear();
             _sanitizePass1ReadPoints.Clear();
             _sanitizePass2WritePoints.Clear();
@@ -968,7 +968,7 @@ public partial class AbsoluteDestructiveTestViewModel : ViewModelBase, INavigabl
             SetPhase(5, TestPhaseStatus.Running, "Zápis nul + ověření (finální)...");
 
             IsSanitizePass2 = true;
-            SanitizeChartTitle = "🧹 2. Sanitizace – Zápis nul + Ověření (finální)";
+            SanitizeChartTitle = L.Get("DestructiveTest.SanitizeChart2");
 
             // Initialize adaptive sampler for pass 2
             _samplerPass2 = new AdaptiveSpeedSampler();
@@ -1057,7 +1057,7 @@ public partial class AbsoluteDestructiveTestViewModel : ViewModelBase, INavigabl
             IsCompleted = true;
             HasResults = true;
             IsCertificateReady = true;
-            StatusMessage = "✅ Absolutní destruktivní test dokončen!";
+            StatusMessage = L.Get("DestructiveTest.Completed");
         }, ct);
     }
 
@@ -1189,7 +1189,7 @@ public partial class AbsoluteDestructiveTestViewModel : ViewModelBase, INavigabl
             Dispatcher.UIThread.Post(() =>
             {
                 var remaining = end - DateTime.UtcNow;
-                StatusMessage = $"Teplotní stabilizace... {remaining.TotalSeconds:F0}s";
+                StatusMessage = L.Get("DestructiveTest.Status.TempStabilizing", remaining.TotalSeconds.ToString("F0"));
             });
         }
     }
@@ -1695,12 +1695,12 @@ public partial class AbsoluteDestructiveTestViewModel : ViewModelBase, INavigabl
                 Certificate.TestSessionId = session.Id;
                 Certificate.DiskCardId = card.Id;
                 await _diskCardRepository.CreateCertificateAsync(Certificate);
-                StatusMessage = $"✅ Test dokončen – certifikát {Certificate.CertificateNumber} uložen";
+                StatusMessage = L.Get("DestructiveTest.Status.TestDoneCertSaved", Certificate.CertificateNumber);
             }
         }
         catch (Exception ex)
         {
-            StatusMessage = $"Uložení session selhalo: {ex.Message}";
+            StatusMessage = L.Get("DestructiveTest.Status.SessionSaveFailed", ex.Message);
         }
     }
 
