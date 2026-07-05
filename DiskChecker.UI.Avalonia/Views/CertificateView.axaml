@@ -232,12 +232,30 @@
                                             <Line StartPoint="10,110" EndPoint="520,110" Stroke="#FFCBD5E1" StrokeThickness="1"/>
 
                                             <Polyline Points="{Binding WriteProfilePoints, Converter={StaticResource PointsStringConverter}}"
-                                                      Stroke="{Binding ChartStrokeWrite}" StrokeThickness="2"/>
+                                                      Stroke="{Binding ChartStrokeWrite}" StrokeThickness="2"
+                                                      IsVisible="{Binding IsThroughputChart}"/>
                                             <Polyline Points="{Binding ReadProfilePoints, Converter={StaticResource PointsStringConverter}}"
-                                                      Stroke="{Binding ChartStrokeRead}" StrokeThickness="2"/>
+                                                      Stroke="{Binding ChartStrokeRead}" StrokeThickness="2"
+                                                      IsVisible="{Binding IsThroughputChart}"/>
                                             <Polyline Points="{Binding TemperatureProfilePoints, Converter={StaticResource PointsStringConverter}}"
                                                       Stroke="#FF7C3AED" StrokeThickness="2"
                                                       IsVisible="{Binding HasTemperatureProfile}"/>
+
+                                            <ItemsControl ItemsSource="{Binding SeekScatterPoints}"
+                                                          IsVisible="{Binding IsSeekChart}">
+                                                <ItemsControl.ItemsPanel>
+                                                    <ItemsPanelTemplate>
+                                                        <Canvas/>
+                                                    </ItemsPanelTemplate>
+                                                </ItemsControl.ItemsPanel>
+                                                <ItemsControl.ItemTemplate>
+                                                    <DataTemplate>
+                                                        <Ellipse Width="2.4" Height="2.4" Fill="#DC2626"
+                                                                 Canvas.Left="{Binding X}"
+                                                                 Canvas.Top="{Binding Y}"/>
+                                                    </DataTemplate>
+                                                </ItemsControl.ItemTemplate>
+                                            </ItemsControl>
                                          </Canvas>
                                      </Viewbox>
 
@@ -402,4 +420,4 @@
             </Border>
         </Panel>
     </Panel>
-</UserControl>
+</UserControl>

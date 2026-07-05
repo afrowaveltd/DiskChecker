@@ -14,8 +14,10 @@ using DiskChecker.Core.Interfaces;
 using DiskChecker.Core.Models;
 using DiskChecker.UI.Avalonia.Services;
 using DiskChecker.UI.Avalonia.Services.Interfaces;
+using LiveChartsCore.Defaults;
 using Microsoft.EntityFrameworkCore;
 using System.Data.Common;
+using System.Text.Json;
 
 namespace DiskChecker.UI.Avalonia.ViewModels;
 
@@ -42,6 +44,8 @@ public partial class CertificateViewModel : ViewModelBase, INavigableViewModel
    private TestSession? _selectedSession;
    private List<SpeedSample> _writeGraphSamples = [];
    private List<SpeedSample> _readGraphSamples = [];
+   private List<double> _seekLatencyGraphSamples = [];
+   private ObservableCollection<ObservablePoint> _seekScatterPoints = new();
    private string _writeProfilePoints = "10,62 70,58 130,56 190,54 250,50 310,48 370,45 430,42 490,40";
    private string _readProfilePoints = "10,66 70,61 130,58 190,55 250,53 310,50 370,47 430,45 490,43";
    private string _chartMaxSpeedLabel = "0 MB/s";
@@ -152,6 +156,8 @@ public partial class CertificateViewModel : ViewModelBase, INavigableViewModel
             OnPropertyChanged(nameof(Sanitize2ReadLine));
             OnPropertyChanged(nameof(WriteSpeedChangeLine));
             OnPropertyChanged(nameof(ReadSpeedChangeLine));
+            OnPropertyChanged(nameof(IsSeekChart));
+            OnPropertyChanged(nameof(IsThroughputChart));
          }
       }
    }
@@ -256,6 +262,23 @@ public partial class CertificateViewModel : ViewModelBase, INavigableViewModel
       get => _chartXAxisEndLabel;
       private set => SetProperty(ref _chartXAxisEndLabel, value);
    }
+
+   public ObservableCollection<ObservablePoint> SeekScatterPoints
+   {
+      get => _seekScatterPoints;
+      private set
+      {
+         if(SetProperty(ref _seekScatterPoints, value))
+         {
+            OnPropertyChanged(nameof(IsSeekChart));
+            OnPropertyChanged(nameof(IsThroughputChart));
+         }
+      }
+   }
+
+   public bool IsSeekChart => HasSeekMetrics && SeekScatterPoints.Count > 0;
+
+   public bool IsThroughputChart => !IsSeekChart;
 
    /// <summary>
    /// Gets temperature profile polyline points for the certificate chart.
@@ -796,6 +819,8 @@ public partial class CertificateViewModel : ViewModelBase, INavigableViewModel
          StatusMessage = L.Get("CertificateView.Status.Loading");
          _writeGraphSamples = [];
          _readGraphSamples = [];
+         _seekLatencyGraphSamples = [];
+         SeekScatterPoints = new ObservableCollection<ObservablePoint>();
 
          DiskCard? card = null;
          DiskCertificate? selectedCert = null;
@@ -1040,6 +1065,10 @@ public partial class CertificateViewModel : ViewModelBase, INavigableViewModel
 
       var hasWriteProfile = certificate.WriteProfilePoints is { Count: > 0 };
       var hasReadProfile = certificate.ReadProfilePoints is { Count: > 0 };
+      var testTypeStr = certificate.TestType ?? string.Empty;
+      var isSeekCertificate = certificate.SeekAvgLatencyMs.HasValue ||
+         string.Equals(testTypeStr, "Seek", StringComparison.OrdinalIgnoreCase) ||
+         testTypeStr.Contains("Seek", StringComparison.OrdinalIgnoreCase);
 
       if(_selectedSession != null)
       {
@@ -1059,6 +1088,25 @@ public partial class CertificateViewModel : ViewModelBase, INavigableViewModel
          {
             certificate.ChartImagePath = _selectedSession.ChartImagePath;
          }
+      }
+
+      if(isSeekCertificate && _seekLatencyGraphSamples.Count == 0 && sessionId > 0)
+      {
+         _seekLatencyGraphSamples = await LoadSeekLatencySamplesAsync(sessionId);
+         if(_seekLatencyGraphSamples.Count > 0)
+         {
+            certificate.SeekLatencyPoints = _seekLatencyGraphSamples.ToList();
+         }
+      }
+
+      if(isSeekCertificate && _seekLatencyGraphSamples.Count == 0 && certificate.SeekLatencyPoints.Count > 0)
+      {
+         _seekLatencyGraphSamples = certificate.SeekLatencyPoints.Where(v => v > 0).ToList();
+      }
+
+      if(isSeekCertificate)
+      {
+         return;
       }
 
       if((_writeGraphSamples.Count == 0 && _readGraphSamples.Count == 0) && sessionId > 0)
@@ -1093,6 +1141,15 @@ public partial class CertificateViewModel : ViewModelBase, INavigableViewModel
       if(sessionId <= 0)
       {
          return;
+      }
+
+      if(_seekLatencyGraphSamples.Count == 0 && sessionId > 0)
+      {
+         _seekLatencyGraphSamples = await LoadSeekLatencySamplesAsync(sessionId);
+         if(_seekLatencyGraphSamples.Count > 0)
+         {
+            certificate.SeekLatencyPoints = _seekLatencyGraphSamples.ToList();
+         }
       }
 
       if(_writeGraphSamples.Count == 0 && _readGraphSamples.Count == 0)
@@ -1180,6 +1237,105 @@ public partial class CertificateViewModel : ViewModelBase, INavigableViewModel
       OnPropertyChanged(nameof(ReadSpeedChangeLine));
    }
 
+   private async Task<List<double>> LoadSeekLatencySamplesAsync(int sessionId)
+   {
+      try
+      {
+         var records = await _diskCardRepository.GetSeekSamplesAsync(sessionId);
+         var values = records
+            .Where(s => !s.HasError && s.LatencyMs > 0)
+            .OrderBy(s => s.TestType)
+            .ThenBy(s => s.Index)
+            .Select(s => s.LatencyMs)
+            .ToList();
+         if(values.Count > 0)
+         {
+            return values;
+         }
+      }
+      catch
+      {
+         // Fall back to SeekResultsJson below for older databases or partially migrated data.
+      }
+
+      return ExtractSeekLatenciesFromSession(_selectedSession);
+   }
+
+   private static List<double> ExtractSeekLatenciesFromSession(TestSession? session)
+   {
+      if(string.IsNullOrWhiteSpace(session?.SeekResultsJson))
+      {
+         return [];
+      }
+
+      try
+      {
+         var single = JsonSerializer.Deserialize<SeekTestResult>(session.SeekResultsJson);
+         if(single?.Samples.Count > 0)
+         {
+            return single.Samples.Where(s => !s.HasError && s.LatencyMs > 0).OrderBy(s => s.Index).Select(s => s.LatencyMs).ToList();
+         }
+      }
+      catch(JsonException) { }
+
+      try
+      {
+         var envelope = JsonSerializer.Deserialize<SeekResultsEnvelope>(session.SeekResultsJson);
+         return new[] { envelope?.FullStroke, envelope?.Random, envelope?.Skip }
+            .Where(r => r != null)
+            .SelectMany(r => r!.Samples)
+            .Where(s => !s.HasError && s.LatencyMs > 0)
+            .OrderBy(s => s.Index)
+            .Select(s => s.LatencyMs)
+            .ToList();
+      }
+      catch(JsonException)
+      {
+         return [];
+      }
+   }
+
+   private void ApplySeekScatterGraph(IReadOnlyList<double> latencies)
+   {
+      var values = latencies.Where(v => v > 0).ToList();
+      if(values.Count == 0)
+      {
+         SeekScatterPoints = new ObservableCollection<ObservablePoint>();
+         return;
+      }
+
+      var max = values.Max();
+      var yMax = Math.Max(max * 1.15, max + 1);
+      const double startX = 10d;
+      const double endX = 490d;
+      const double minY = 18d;
+      const double maxY = 102d;
+      var points = new ObservableCollection<ObservablePoint>();
+
+      for(var i = 0; i < values.Count; i++)
+      {
+         var x = values.Count == 1 ? startX : startX + (i / (double)(values.Count - 1)) * (endX - startX);
+         var y = maxY - ((maxY - minY) * Math.Clamp(values[i] / yMax, 0d, 1d));
+         points.Add(new ObservablePoint(x, y));
+      }
+
+      SeekScatterPoints = points;
+      TemperatureProfilePoints = "10,110 490,110";
+      HasTemperatureProfile = false;
+      ChartMaxSpeedLabel = $"{yMax:F1} ms";
+      ChartMidSpeedLabel = $"{(yMax / 2):F1} ms";
+      ChartMinSpeedLabel = "0 ms";
+      ChartXAxisStartLabel = "1";
+      ChartXAxisMidLabel = Math.Max(1, values.Count / 2).ToString(CultureInfo.InvariantCulture);
+      ChartXAxisEndLabel = values.Count.ToString(CultureInfo.InvariantCulture);
+   }
+
+   private sealed class SeekResultsEnvelope
+   {
+      public SeekTestResult? FullStroke { get; set; }
+      public SeekTestResult? Random { get; set; }
+      public SeekTestResult? Skip { get; set; }
+   }
    private async Task<(List<SpeedSample> WriteSamples, List<SpeedSample> ReadSamples)> LoadCertificateGraphSamplesProgressiveAsync(int sessionId)
     {
        var writeSamples = new List<SpeedSample>();
@@ -1214,6 +1370,15 @@ public partial class CertificateViewModel : ViewModelBase, INavigableViewModel
     {
        ArgumentNullException.ThrowIfNull(certificate);
 
+       if(HasSeekMetrics)
+       {
+          var seekValues = _seekLatencyGraphSamples.Count > 0
+             ? _seekLatencyGraphSamples
+             : certificate.SeekLatencyPoints.Where(v => v > 0).ToList();
+          ApplySeekScatterGraph(seekValues);
+          return;
+       }
+
        var writeGraphSamples = _writeGraphSamples;
        var readGraphSamples = _readGraphSamples;
        var temperatureSamples = _selectedSession?.TemperatureSamples ?? [];
@@ -1235,6 +1400,8 @@ public partial class CertificateViewModel : ViewModelBase, INavigableViewModel
     {
        _writeGraphSamples = [];
        _readGraphSamples = [];
+       _seekLatencyGraphSamples = [];
+       SeekScatterPoints = new ObservableCollection<ObservablePoint>();
        var graphData = CertificateGraphData.Default;
        WriteProfilePoints = graphData.WriteProfilePoints;
        ReadProfilePoints = graphData.ReadProfilePoints;
@@ -1555,3 +1722,4 @@ public partial class CertificateViewModel : ViewModelBase, INavigableViewModel
 
    #endregion
 }
+

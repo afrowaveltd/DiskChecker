@@ -52,6 +52,7 @@ public partial class DiskCardDetailViewModel : ViewModelBase, INavigableViewMode
     private string _selectedSessionErrorSummary = "Vyberte test pro zobrazení detailu chyb.";
     private string _selectedSessionDiagnosticSummary = "Vyberte test pro diagnostický rozbor průběhu výkonu.";
     private string _selectedSessionDiagnosticHighlights = string.Empty;
+    private PlotModel? _seekChartModel;
 
     public DiskCardDetailViewModel(
         IDiskCardRepository diskCardRepository,
@@ -150,6 +151,11 @@ public partial class DiskCardDetailViewModel : ViewModelBase, INavigableViewMode
 
     public PlotModel SpeedChartModel { get; }
     public PlotModel TemperatureChartModel { get; }
+    public PlotModel? SeekChartModel
+    {
+        get => _seekChartModel;
+        private set => SetProperty(ref _seekChartModel, value);
+    }
 
     public string Notes
     {
@@ -649,6 +655,7 @@ public partial class DiskCardDetailViewModel : ViewModelBase, INavigableViewMode
 
         SelectedSessionDiagnosticSummary = BuildDiagnosticSummary(SelectedSession);
         SelectedSessionDiagnosticHighlights = BuildDiagnosticHighlights(SelectedSession.Notes);
+        BuildSeekScatterChart(SelectedSession);
 
         var smartSnapshot = SelectedSession.SmartBefore;
         if (smartSnapshot == null)
@@ -887,6 +894,118 @@ public partial class DiskCardDetailViewModel : ViewModelBase, INavigableViewMode
         {
             return json;
         }
+    }
+
+    private void BuildSeekScatterChart(TestSession session)
+    {
+        SeekChartModel = null;
+
+        if (string.IsNullOrWhiteSpace(session.SeekResultsJson))
+            return;
+
+        var latencies = ExtractSeekLatencies(session.SeekResultsJson);
+        if (latencies.Count == 0)
+            return;
+
+        var maxLatency = latencies.Max();
+        var yMax = Math.Max(maxLatency * 1.15, maxLatency + 1);
+
+        var model = new PlotModel
+        {
+            Title = L.Get("DiskCardDetail.Status.SeekLatency"),
+            TitleFontSize = 13,
+            TitleFontWeight = 700,
+            PlotMargins = new OxyThickness(60, 10, 20, 40),
+            Background = OxyColors.White
+        };
+
+        model.Axes.Add(new LinearAxis
+        {
+            Position = AxisPosition.Left,
+            Title = L.Get("DiskCardDetail.Status.LatencyMs"),
+            TitleFontSize = 11,
+            Minimum = 0,
+            Maximum = yMax,
+            MajorStep = yMax > 10 ? Math.Ceiling(yMax / 5) : yMax / 5,
+            MinorStep = 1,
+            MajorGridlineStyle = LineStyle.Dot,
+            MajorGridlineColor = OxyColor.FromArgb(30, 0, 0, 0),
+            TickStyle = TickStyle.Outside,
+            FontSize = 10
+        });
+
+        model.Axes.Add(new LinearAxis
+        {
+            Position = AxisPosition.Bottom,
+            Title = L.Get("DiskCardDetail.Status.SampleIndex"),
+            TitleFontSize = 11,
+            Minimum = 1,
+            Maximum = latencies.Count,
+            MajorStep = Math.Max(1, latencies.Count / 5),
+            MinorStep = 1,
+            MajorGridlineStyle = LineStyle.Dot,
+            MajorGridlineColor = OxyColor.FromArgb(30, 0, 0, 0),
+            TickStyle = TickStyle.Outside,
+            FontSize = 10
+        });
+
+        var scatterSeries = new ScatterSeries
+        {
+            Title = L.Get("DiskCardDetail.Status.Latency"),
+            MarkerType = MarkerType.Circle,
+            MarkerSize = 2.4,
+            MarkerFill = OxyColor.FromRgb(220, 38, 38),
+            MarkerStroke = OxyColor.FromRgb(220, 38, 38),
+            MarkerStrokeThickness = 0
+        };
+
+        for (var i = 0; i < latencies.Count; i++)
+        {
+            scatterSeries.Points.Add(new ScatterPoint(i + 1, latencies[i]));
+        }
+
+        model.Series.Add(scatterSeries);
+        SeekChartModel = model;
+    }
+
+    private static List<double> ExtractSeekLatencies(string seekResultsJson)
+    {
+        try
+        {
+            var single = JsonSerializer.Deserialize<SeekTestResult>(seekResultsJson);
+            if (single?.Samples.Count > 0)
+            {
+                return single.Samples
+                    .Where(s => !s.HasError && s.LatencyMs > 0)
+                    .OrderBy(s => s.Index)
+                    .Select(s => s.LatencyMs)
+                    .ToList();
+            }
+        }
+        catch (JsonException) { }
+
+        try
+        {
+            var envelope = JsonSerializer.Deserialize<SeekResultsEnvelope>(seekResultsJson);
+            return new[] { envelope?.FullStroke, envelope?.Random, envelope?.Skip }
+                .Where(r => r != null)
+                .SelectMany(r => r!.Samples)
+                .Where(s => !s.HasError && s.LatencyMs > 0)
+                .OrderBy(s => s.Index)
+                .Select(s => s.LatencyMs)
+                .ToList();
+        }
+        catch (JsonException)
+        {
+            return [];
+        }
+    }
+
+    private sealed class SeekResultsEnvelope
+    {
+        public SeekTestResult? FullStroke { get; set; }
+        public SeekTestResult? Random { get; set; }
+        public SeekTestResult? Skip { get; set; }
     }
 
     #endregion

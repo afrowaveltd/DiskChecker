@@ -3,6 +3,7 @@
              xmlns:vm="using:DiskChecker.UI.Avalonia.ViewModels"
              xmlns:converters="using:DiskChecker.UI.Avalonia.Converters"
              xmlns:dg="clr-namespace:Avalonia.Controls;assembly=Avalonia.Controls.DataGrid"
+             xmlns:oxy="clr-namespace:OxyPlot.Avalonia;assembly=OxyPlot.Avalonia"
              x:Class="DiskChecker.UI.Avalonia.Views.DiskCardDetailView"
              Background="{DynamicResource ThemeBackgroundBrush}">
 
@@ -251,6 +252,16 @@
                      </Border>
                  </Grid>
              </TabItem>
+
+            <!-- Seek Latency Chart Tab -->
+            <TabItem Header="{Binding L[DiskCardDetailView.SeekLatency]}"
+                     IsVisible="{Binding SeekChartModel, Converter={StaticResource NotNullConverter}}">
+                <Grid Margin="10">
+                    <oxy:PlotView Model="{Binding SeekChartModel}"
+                                  VerticalAlignment="Stretch"
+                                  HorizontalAlignment="Stretch"/>
+                </Grid>
+            </TabItem>
 
             <!-- Notes Tab -->
             <TabItem Header="{Binding L[DiskCardDetailView.Notes]}">

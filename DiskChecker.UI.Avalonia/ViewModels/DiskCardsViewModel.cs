@@ -236,14 +236,21 @@ public partial class DiskCardsViewModel : ViewModelBase, INavigableViewModel
                     LockReason = card.LockReason
                 };
 
-                var matchedDrive = drives.FirstOrDefault(d =>
-                    string.Equals(d.Path, copy.DevicePath, StringComparison.OrdinalIgnoreCase) ||
-                    (!string.IsNullOrWhiteSpace(d.SerialNumber) && string.Equals(
+                // DevicePath is not a stable historical identity: PhysicalDrive0 / /dev/sda can later point to
+                // a different disk. Use it only for live volume enrichment, never to overwrite the card's
+                // stored serial shown in the grid. Otherwise many old cards appear to have the currently
+                // inserted disk's serial number.
+                var identityMatchedDrive = drives.FirstOrDefault(d =>
+                    !string.IsNullOrWhiteSpace(d.SerialNumber) && string.Equals(
                         DriveIdentityResolver.BuildIdentityKey(d.Path, d.SerialNumber, d.Name ?? "Unknown", d.FirmwareVersion),
                         storedSerial,
-                        StringComparison.OrdinalIgnoreCase)));
+                        StringComparison.OrdinalIgnoreCase));
 
-                copy.SerialNumber = ResolveDisplaySerial(storedSerial, matchedDrive?.SerialNumber);
+                var pathMatchedDrive = drives.FirstOrDefault(d =>
+                    string.Equals(d.Path, copy.DevicePath, StringComparison.OrdinalIgnoreCase));
+
+                var matchedDrive = identityMatchedDrive ?? pathMatchedDrive;
+                copy.SerialNumber = ResolveDisplaySerial(storedSerial, identityMatchedDrive?.SerialNumber);
 
                 if (matchedDrive?.Volumes != null)
                 {
@@ -497,23 +504,24 @@ public partial class DiskCardsViewModel : ViewModelBase, INavigableViewModel
 
     #region Private Methods
 
-    private static string ResolveDisplaySerial(string storedSerial, string? detectedSerial)
+    public static string ResolveDisplaySerial(string storedSerial, string? identityMatchedDetectedSerial)
     {
-        // Only use detected serial if it's reliable (not a placeholder like "00000000")
-        if (!string.IsNullOrWhiteSpace(detectedSerial) &&
-            DriveIdentityResolver.IsReliableSerialNumber(detectedSerial))
+        // Only use a live detected serial when the drive matched by stable identity, not just by
+        // reusable OS path. Path-only matches can point to another disk inserted later.
+        if (!string.IsNullOrWhiteSpace(identityMatchedDetectedSerial) &&
+            DriveIdentityResolver.IsReliableSerialNumber(identityMatchedDetectedSerial))
         {
-            return detectedSerial.Trim();
+            return identityMatchedDetectedSerial.Trim();
         }
 
-        // If stored serial is a NOSN hash or empty, show "N/A"
+        // If stored serial is a NOSN hash or empty, show "N/A" instead of leaking the fallback identity hash.
         if (string.IsNullOrWhiteSpace(storedSerial) ||
             storedSerial.StartsWith("NOSN-", StringComparison.OrdinalIgnoreCase))
         {
             return "N/A";
         }
 
-        // Otherwise use the stored serial (which should be a real serial number)
+        // Otherwise use the stored serial captured with the card/certificate.
         return storedSerial;
     }
 
