@@ -304,6 +304,36 @@ public class DiskCardTestService
 
       await _dbContext.SaveChangesAsync(cancellationToken);
 
+      // Persist SMART snapshot for trend analysis
+      try
+      {
+          var snapshot = new SmartSnapshotRecord
+          {
+              DiskCardId = card.Id,
+              TestSessionId = session.Id,
+              RetrievedAtUtc = smartaData.RetrievedAtUtc ?? DateTime.UtcNow,
+              IsHealthy = smartaData.IsHealthy,
+              IsFailing = smartaData.IsFailing,
+              Temperature = smartaData.Temperature,
+              PowerOnHours = smartaData.PowerOnHours,
+              PowerCycleCount = smartaData.PowerCycleCount,
+              ReallocatedSectorCount = smartaData.ReallocatedSectorCount,
+              PendingSectorCount = smartaData.PendingSectorCount,
+              UncorrectableErrorCount = smartaData.UncorrectableErrorCount,
+              WearLevelingCount = smartaData.WearLevelingCount,
+              AvailableSpare = smartaData.AvailableSpare,
+              PercentageUsed = smartaData.PercentageUsed,
+              MediaErrors = smartaData.MediaErrors,
+              UnsafeShutdowns = smartaData.UnsafeShutdowns
+          };
+          _dbContext.SmartSnapshots.Add(snapshot);
+          await _dbContext.SaveChangesAsync(cancellationToken);
+      }
+      catch
+      {
+          // Non-critical - trend data can be backfilled later
+      }
+
       if(_logger != null)
       {
          LogSmartSaved(_logger, card.Id, session.Grade, null);

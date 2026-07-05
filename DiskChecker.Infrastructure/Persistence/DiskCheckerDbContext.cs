@@ -29,6 +29,9 @@ public class DiskCheckerDbContext : DbContext
     public DbSet<DiskArchive> DiskArchives { get; set; } = null!;
     public DbSet<SeekSampleRecord> SeekSamples { get; set; } = null!;
     public DbSet<TestTelemetrySample> TestTelemetrySamples { get; set; } = null!;
+    public DbSet<TestAnomalyEvent> TestAnomalyEvents { get; set; } = null!;
+    public DbSet<TestStallEvent> TestStallEvents { get; set; } = null!;
+    public DbSet<SmartSnapshotRecord> SmartSnapshots { get; set; } = null!;
 
     // Legacy aliases for backward compatibility
     public DbSet<DriveRecord> Drives => DriveRecords;
@@ -230,6 +233,37 @@ public class DiskCheckerDbContext : DbContext
                 .OnDelete(DeleteBehavior.Cascade);
         });
 
+
+        modelBuilder.Entity<TestAnomalyEvent>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.OverlayGroup).HasMaxLength(128);
+            entity.Property(e => e.DefectType).HasMaxLength(128);
+            entity.HasIndex(e => e.TestSessionId);
+            entity.HasIndex(e => new { e.TestSessionId, e.Phase, e.StartProgressPercent });
+            entity.HasIndex(e => new { e.TestSessionId, e.Phase, e.StartLba512 });
+            entity.HasIndex(e => new { e.TestSessionId, e.SeverityScore });
+
+            entity.HasOne(e => e.TestSession)
+                .WithMany()
+                .HasForeignKey(e => e.TestSessionId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+
+        modelBuilder.Entity<TestStallEvent>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            entity.HasIndex(e => e.TestSessionId);
+            entity.HasIndex(e => new { e.TestSessionId, e.Phase, e.StartedAtUtc });
+            entity.HasIndex(e => new { e.TestSessionId, e.Phase, e.StartProgressPercent });
+
+            entity.HasOne(e => e.TestSession)
+                .WithMany()
+                .HasForeignKey(e => e.TestSessionId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
         // Complete seek-test sample persistence. Unlike throughput samples these are
         // intentionally not reduced because seek tests are bounded (usually <= 3000).
         modelBuilder.Entity<SeekSampleRecord>(entity =>
@@ -260,6 +294,32 @@ public class DiskCheckerDbContext : DbContext
             entity.HasIndex(e => e.DiskCardId);
             entity.HasIndex(e => e.ArchivedAt);
             entity.HasIndex(e => e.Reason);
+        });
+
+        // SmartSnapshotRecord - historical SMART snapshots for trend analysis
+        modelBuilder.Entity<SmartSnapshotRecord>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            
+            entity.Property(e => e.RetrievedAtUtc).IsRequired();
+
+            entity.HasIndex(e => e.DiskCardId);
+            entity.HasIndex(e => e.TestSessionId);
+            entity.HasIndex(e => e.RetrievedAtUtc);
+            entity.HasIndex(e => new { e.DiskCardId, e.RetrievedAtUtc });
+            entity.HasIndex(e => new { e.DiskCardId, e.PowerOnHours });
+            entity.HasIndex(e => new { e.DiskCardId, e.ReallocatedSectorCount });
+            entity.HasIndex(e => new { e.DiskCardId, e.PercentageUsed });
+
+            entity.HasOne(e => e.DiskCard)
+                .WithMany()
+                .HasForeignKey(e => e.DiskCardId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            entity.HasOne(e => e.TestSession)
+                .WithMany()
+                .HasForeignKey(e => e.TestSessionId)
+                .OnDelete(DeleteBehavior.SetNull);
         });
     }
 }

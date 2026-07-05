@@ -136,7 +136,7 @@
                             <Run Text="{Binding SelectedBackup.SourceModel}"/>
                         </TextBlock>
                         <TextBlock FontSize="12">
-                            <Run Text="Cesta: " FontWeight="SemiBold"/>
+                            <Run Text="{Binding L[RestoreView.PathLabel]}" FontWeight="SemiBold"/>
                             <Run Text="{Binding SelectedBackup.SourceDrivePath}" FontFamily="Consolas"/>
                         </TextBlock>
                         <TextBlock FontSize="12">
@@ -148,7 +148,7 @@
                             <Run Text="{Binding SelectedBackup.Mode}"/>
                         </TextBlock>
                         <TextBlock FontSize="12">
-                            <Run Text="Velikost: " FontWeight="SemiBold"/>
+                            <Run Text="{Binding L[RestoreView.SizeLabel]}" FontWeight="SemiBold"/>
                             <Run Text="{Binding SelectedBackup.TotalBytesText}"/>
                         </TextBlock>
                         <TextBlock FontSize="12">
@@ -232,7 +232,7 @@
                 Background="{DynamicResource ThemeCardBrush}"
                 IsVisible="{Binding Phase, Converter={StaticResource EnumEqConverter}, ConverterParameter=Failed}">
             <StackPanel Spacing="8">
-                <TextBlock Text="❌ OBNOVA SELHALA" FontSize="16" FontWeight="Bold"
+                <TextBlock Text="{Binding L[RestoreView.RestoreFailed]}" FontSize="16" FontWeight="Bold"
                            Foreground="{DynamicResource ThemeErrorBrush}"/>
                 <TextBlock Text="{Binding StatusMessage}" FontSize="13" TextWrapping="Wrap"/>
                 <TextBlock Text="{Binding RestoreLogText}" FontSize="10" FontFamily="Consolas"

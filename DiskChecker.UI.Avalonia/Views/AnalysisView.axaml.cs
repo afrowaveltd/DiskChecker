@@ -8,6 +8,13 @@ namespace DiskChecker.UI.Avalonia.Views
         public AnalysisView()
         {
             InitializeComponent();
+            SizeChanged += (_, args) =>
+            {
+                if (DataContext is DiskChecker.UI.Avalonia.ViewModels.AnalysisViewModel vm)
+                {
+                    vm.AvailableWidth = args.NewSize.Width;
+                }
+            };
         }
 
         private void InitializeComponent() => AvaloniaXamlLoader.Load(this);

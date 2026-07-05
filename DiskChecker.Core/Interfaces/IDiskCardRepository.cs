@@ -30,6 +30,28 @@ public interface IDiskCardRepository
     /// Sloučí duplicitní karty disku a převede navázaná data na primární kartu.
     /// </summary>
     Task<int> MergeDuplicateCardsAsync();
+
+    // ========== SMART Snapshots ==========
+
+    /// <summary>
+    /// Uloží historický SMART snapshot pro trendovou analýzu.
+    /// </summary>
+    Task<SmartSnapshotRecord> CreateSmartSnapshotAsync(SmartSnapshotRecord snapshot);
+
+    /// <summary>
+    /// Načte všechny SMART snapshoty pro daný disk, seřazené chronologicky.
+    /// </summary>
+    Task<List<SmartSnapshotRecord>> GetSmartSnapshotsAsync(int diskCardId);
+
+    /// <summary>
+    /// Načte SMART snapshoty pro daný disk v časovém rozsahu.
+    /// </summary>
+    Task<List<SmartSnapshotRecord>> GetSmartSnapshotsInRangeAsync(int diskCardId, DateTime fromUtc, DateTime toUtc);
+
+    /// <summary>
+    /// Smaže všechny SMART snapshoty pro daný disk.
+    /// </summary>
+    Task DeleteSmartSnapshotsAsync(int diskCardId);
     
     // ========== Test Sessions ==========
     
@@ -69,6 +91,18 @@ public interface IDiskCardRepository
 
     /// <summary>Načte throughput telemetrii pro test session.</summary>
     Task<List<TestTelemetrySample>> GetTelemetrySamplesAsync(int sessionId, TelemetrySamplePhase? phase = null);
+
+    /// <summary>Persistuje detekované výkonové anomálie a jejich high-res vzorky do analytických tabulek.</summary>
+    Task CreateAnomalyEventsAsync(int sessionId, IReadOnlyCollection<SpeedAnomaly> anomalies, bool replaceExisting = true);
+
+    /// <summary>Načte detekované výkonové anomálie pro test session.</summary>
+    Task<List<TestAnomalyEvent>> GetAnomalyEventsAsync(int sessionId, TelemetrySamplePhase? phase = null);
+
+    /// <summary>Persistuje intervaly zamrznutí zařízení odvozené z telemetrie.</summary>
+    Task CreateStallEventsAsync(int sessionId, TelemetrySamplePhase phase, IReadOnlyCollection<TestStallEvent> events, bool replacePhase = true);
+
+    /// <summary>Načte intervaly zamrznutí zařízení pro test session.</summary>
+    Task<List<TestStallEvent>> GetStallEventsAsync(int sessionId, TelemetrySamplePhase? phase = null);
 
     /// <summary>Persistuje kompletní seek vzorky pro detailní pozdější analýzu.</summary>
     Task CreateSeekSamplesAsync(int sessionId, SeekTestType testType, IReadOnlyCollection<SeekLatencySample> samples);

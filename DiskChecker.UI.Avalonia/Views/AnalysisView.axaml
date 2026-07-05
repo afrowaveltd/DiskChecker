@@ -1,232 +1,263 @@
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-             xmlns:vm="using:DiskChecker.UI.Avalonia.ViewModels"
              x:Class="DiskChecker.UI.Avalonia.Views.AnalysisView"
              Background="{DynamicResource ThemeBackgroundBrush}">
-    <Grid>
-        <Grid.RowDefinitions>
-            <RowDefinition Height="Auto"/>
-            <RowDefinition Height="*"/>
-            <RowDefinition Height="Auto"/>
-        </Grid.RowDefinitions>
-
-        <!-- ========== HEADER ========== -->
-        <Border Grid.Row="0" 
-                Classes="PageHeader">
-            <Grid ColumnDefinitions="*,Auto">
+    <Grid RowDefinitions="Auto,* ,Auto">
+        <Border Grid.Row="0" Classes="PageHeader">
+            <Grid ColumnDefinitions="*,Auto,Auto">
                 <StackPanel>
-                    <TextBlock Text="{Binding L[AnalysisView.SurfaceAnalysis]}" Classes="PageTitle"/>
-                    <TextBlock Text="{Binding L[AnalysisView.ComplexCheck]}" Classes="PageSubtitle"/>
+                    <TextBlock Text="{Binding L[AnalysisView.Title]}" Classes="PageTitle"/>
+                    <TextBlock Text="{Binding L[AnalysisView.Subtitle]}" Classes="PageSubtitle"/>
                     <TextBlock Text="{Binding StatusMessage}" Classes="PageMetaText" Margin="0,2,0,0"/>
                 </StackPanel>
-                <Button Grid.Column="1"
-                        Content="{Binding L[Common.Back]}"
-                        Command="{Binding $parent[UserControl].DataContext.NavigationService.NavigateToDiskSelectionCommand}"
-                        Background="{DynamicResource ThemeSecondaryBackgroundBrush}"
-                        Foreground="{DynamicResource ThemeTextPrimaryBrush}"
-                        BorderBrush="{DynamicResource ThemeBorderBrush}"
-                        VerticalAlignment="Center"
-                        CornerRadius="6"
-                        Padding="14,8"
-                        FontWeight="SemiBold"/>
+                <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center" Margin="0,0,12,0">
+                    <TextBlock Text="{Binding L[AnalysisView.DisplayMode]}" VerticalAlignment="Center" Foreground="{DynamicResource ThemeTextSecondaryBrush}"/>
+                    <ComboBox ItemsSource="{Binding WorkspaceModes}" SelectedItem="{Binding SelectedWorkspaceMode}" MinWidth="120"/>
+                    <TextBlock Text="{Binding EffectiveWorkspaceModeText}" VerticalAlignment="Center" Foreground="{DynamicResource ThemeTextMutedBrush}"/>
+                </StackPanel>
+                <Button Grid.Column="2" Content="{Binding L[Common.Refresh]}" Command="{Binding RefreshWorkspaceCommand}" Padding="14,8"/>
             </Grid>
         </Border>
 
-        <!-- ========== MAIN CONTENT ========== -->
-        <Grid Grid.Row="1" Margin="16" ColumnDefinitions="1*,2*">
-            
-            <!-- ========== CONTROLS PANEL ========== -->
-            <Border Grid.Column="0" 
-                   Background="{DynamicResource ThemeCardBackgroundBrush}"
-                   BorderBrush="{DynamicResource ThemeBorderBrush}"
-                   BorderThickness="1"
-                   CornerRadius="8"
-                   Padding="16"
-                   Margin="0,0,8,0">
-                <StackPanel Spacing="12">
-                    <TextBlock Text="{Binding L[AnalysisView.TestSettings]}" 
-                              FontSize="14" FontWeight="Bold" 
-                              Foreground="{DynamicResource ThemeTextPrimaryBrush}"
-                              Margin="0,0,0,8"/>
-
-                    <Border Background="{DynamicResource ThemePanelBackgroundBrush}" 
-                           CornerRadius="6" Padding="10">
-                        <StackPanel Spacing="8">
-                            <CheckBox Content="{Binding L[AnalysisView.QuickTest]}" 
-                                      IsChecked="True"
-                                      FontSize="11"/>
-                            <CheckBox Content="{Binding L[AnalysisView.DetailedAnalysis]}" 
-                                      IsChecked="False"
-                                      FontSize="11"/>
-                            <CheckBox Content="{Binding L[AnalysisView.AutoFix]}" 
-                                      IsChecked="False"
-                                      FontSize="11"/>
-                        </StackPanel>
-                    </Border>
-
-                    <TextBlock Text="{Binding L[AnalysisView.TestPriority]}" 
-                              FontSize="12" FontWeight="SemiBold"
-                              Foreground="{DynamicResource ThemeTextPrimaryBrush}"
-                              Margin="0,8,0,4"/>
-                    
-                    <ComboBox SelectedIndex="1" 
-                              HorizontalAlignment="Stretch"
-                              Background="{DynamicResource ThemeCardBackgroundBrush}"
-                              BorderBrush="{DynamicResource ThemeBorderBrush}"
-                              Padding="10,6">
-                        <ComboBoxItem Content="{Binding L[AnalysisView.LowPriority]}"/>
-                        <ComboBoxItem Content="{Binding L[AnalysisView.Normal]}"/>
-                        <ComboBoxItem Content="{Binding L[AnalysisView.HighPriority]}"/>
-                    </ComboBox>
-
-                    <Border Height="1" Background="{DynamicResource ThemeBorderBrush}" Margin="0,8"/>
-
-                    <StackPanel Spacing="8">
-                        <Button Content="{Binding L[AnalysisView.StartAnalysis]}"
-                                Command="{Binding StartAnalysisCommand}"
-                                IsEnabled="{Binding IsAnalyzing, Converter={StaticResource InverseBooleanConverter}}"
-                                Background="{DynamicResource ThemeSuccessBrush}"
-                                Foreground="White"
-                                FontWeight="SemiBold"
-                                HorizontalAlignment="Stretch"
-                                CornerRadius="6"
-                                Padding="12,10">
-                            <Button.Styles>
-                                <Style Selector="Button:pointerover">
-                                    <Setter Property="Opacity" Value="0.9"/>
-                                </Style>
-                            </Button.Styles>
-                        </Button>
-
-                        <Button Content="{Binding L[AnalysisView.StopAnalysis]}"
-                                Command="{Binding CancelAnalysisCommand}"
-                                IsEnabled="{Binding IsAnalyzing}"
-                                Background="{DynamicResource ThemeDangerBrush}"
-                                Foreground="White"
-                                FontWeight="SemiBold"
-                                HorizontalAlignment="Stretch"
-                                CornerRadius="6"
-                                Padding="12,10">
-                            <Button.Styles>
-                                <Style Selector="Button:pointerover">
-                                    <Setter Property="Opacity" Value="0.9"/>
-                                </Style>
-                            </Button.Styles>
-                        </Button>
-                    </StackPanel>
-
-                    <!-- Quick Stats -->
-                    <Border Background="{DynamicResource ThemePanelBackgroundBrush}" 
-                           CornerRadius="6" Padding="10" Margin="0,8,0,0">
-                        <StackPanel>
-                            <TextBlock Text="{Binding L[AnalysisView.QuickStats]}" 
-                                      FontSize="11" FontWeight="SemiBold"
-                                      Foreground="{DynamicResource ThemeTextPrimaryBrush}"
-                                      Margin="0,0,0,6"/>
-                            <Grid ColumnDefinitions="*,*">
-                                <StackPanel>
-                                    <TextBlock Text="{Binding L[AnalysisView.Tests]}" FontSize="9" Foreground="{DynamicResource ThemeTextMutedBrush}"/>
-                                    <TextBlock Text="0" FontSize="16" FontWeight="Bold" Foreground="{DynamicResource ThemePrimaryBrush}"/>
-                                </StackPanel>
-                                <StackPanel Grid.Column="1">
-                                    <TextBlock Text="{Binding L[AnalysisView.Errors]}" FontSize="9" Foreground="{DynamicResource ThemeTextMutedBrush}"/>
-                                    <TextBlock Text="0" FontSize="16" FontWeight="Bold" Foreground="{DynamicResource ThemeSuccessBrush}"/>
-                                </StackPanel>
-                            </Grid>
-                        </StackPanel>
-                    </Border>
-                </StackPanel>
+        <Grid Grid.Row="1" Margin="16" ColumnDefinitions="320,*" RowDefinitions="*">
+            <Border Grid.Column="0" Background="{DynamicResource ThemeCardBackgroundBrush}" BorderBrush="{DynamicResource ThemeBorderBrush}" BorderThickness="1" CornerRadius="8" Padding="12" Margin="0,0,10,0">
+                <Grid RowDefinitions="Auto,*">
+                    <TextBlock Text="{Binding L[AnalysisView.Measurements]}" FontSize="14" FontWeight="Bold" Foreground="{DynamicResource ThemeTextPrimaryBrush}" Margin="0,0,0,8"/>
+                    <ScrollViewer Grid.Row="1">
+                        <ItemsControl ItemsSource="{Binding AnalysisSummaries}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <Button Command="{Binding $parent[UserControl].DataContext.LoadSelectedAnalysisCommand}"
+                                            HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch"
+                                            Padding="0" Margin="0,0,0,6"
+                                            Background="Transparent" BorderThickness="0">
+                                        <Border Background="{DynamicResource ThemePanelBackgroundBrush}" CornerRadius="6" Padding="10">
+                                            <StackPanel>
+                                                <TextBlock Text="{Binding DiskModel}" FontWeight="SemiBold" FontSize="12"/>
+                                                <TextBlock Text="{Binding TestType}" FontSize="10" Foreground="{DynamicResource ThemeTextSecondaryBrush}"/>
+                                                <TextBlock Text="{Binding StartedAt, StringFormat='{}{0:g}'}" FontSize="10" Foreground="{DynamicResource ThemeTextMutedBrush}"/>
+                                                <TextBlock Text="{Binding Grade, StringFormat='Známka {0}'}" FontSize="10" Foreground="{DynamicResource ThemePrimaryBrush}"/>
+                                                <TextBlock Text="{Binding TelemetrySampleCount, StringFormat='Telemetry: {0} bodů'}" FontSize="10" Foreground="{DynamicResource ThemeTextMutedBrush}"/>
+                                            </StackPanel>
+                                        </Border>
+                                    </Button>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </ScrollViewer>
+                </Grid>
             </Border>
 
-            <!-- ========== PROGRESS AND RESULTS ========== -->
-            <Grid Grid.Column="1" Margin="8,0,0,0" RowDefinitions="Auto,*">
-                
-                <!-- Progress Section -->
-                <Border Grid.Row="0" 
-                       Background="{DynamicResource ThemeCardBackgroundBrush}"
-                       BorderBrush="{DynamicResource ThemeBorderBrush}"
-                       BorderThickness="1"
-                       CornerRadius="8"
-                       Padding="16"
-                       Margin="0,0,0,8">
-                    <StackPanel Spacing="8">
-                        <Grid ColumnDefinitions="*,Auto">
-                            <TextBlock Grid.Column="0" Text="{Binding L[AnalysisView.Progress]}" 
-                                      FontSize="14" FontWeight="Bold"
-                                      Foreground="{DynamicResource ThemeTextPrimaryBrush}"/>
-                            <TextBlock Grid.Column="1" 
-                                      Text="{Binding ProgressPercentage, StringFormat='{}{0}%'}"
-                                      FontSize="14" FontWeight="Bold"
-                                      Foreground="{DynamicResource ThemePrimaryBrush}"/>
+            <Grid Grid.Column="1" RowDefinitions="Auto,*">
+                <Border Grid.Row="0" Background="{DynamicResource ThemeCardBackgroundBrush}" BorderBrush="{DynamicResource ThemeBorderBrush}" BorderThickness="1" CornerRadius="8" Padding="14" Margin="0,0,0,10">
+                    <StackPanel>
+                        <TextBlock Text="{Binding SummaryLine}" FontWeight="Bold" FontSize="14" Foreground="{DynamicResource ThemeTextPrimaryBrush}"/>
+                        <TextBlock Text="{Binding FullTelemetryLine}" FontSize="11" Foreground="{DynamicResource ThemeTextSecondaryBrush}"/>
+                        <StackPanel Orientation="Horizontal" Spacing="8">
+                            <TextBlock Text="{Binding FullEventsLine}" FontSize="11" Foreground="{DynamicResource ThemeTextSecondaryBrush}"/>
+                            <TextBlock Text="{Binding ZoomText}" FontSize="11" Foreground="{DynamicResource ThemePrimaryBrush}"/>
+                            <TextBlock Text="{Binding SmartAnalysisLine}" FontSize="11" Foreground="{DynamicResource ThemeTextSecondaryBrush}"/>
+                            <Button Content="Reset zoom" Command="{Binding ResetZoomCommand}" Padding="6,2" FontSize="10"/>
+                        </StackPanel>
+                        <Grid ColumnDefinitions="*,*" Margin="0,8,0,0">
+                            <TextBlock Text="{Binding SelectedAnomalyDetail}" TextWrapping="Wrap" FontSize="10" FontFamily="Consolas" Foreground="{DynamicResource ThemeTextSecondaryBrush}"/>
+                            <TextBlock Grid.Column="1" Text="{Binding SelectedStallDetail}" TextWrapping="Wrap" FontSize="10" FontFamily="Consolas" Foreground="{DynamicResource ThemeTextSecondaryBrush}" Margin="12,0,0,0"/>
                         </Grid>
-                        
-                        <ProgressBar Value="{Binding ProgressPercentage}" 
-                                    Minimum="0" Maximum="100" 
-                                    Height="10"
-                                    CornerRadius="5"
-                                    Background="{DynamicResource ThemeBorderLightBrush}"
-                                    Foreground="{DynamicResource ThemePrimaryBrush}"/>
-                        
-                        <TextBlock Text="{Binding L[AnalysisView.PercentDone]}"
-                                  HorizontalAlignment="Center" FontSize="10"
-                                  Foreground="{DynamicResource ThemeTextMutedBrush}"/>
                     </StackPanel>
                 </Border>
 
-                <!-- Results Section -->
-                <Border Grid.Row="1" 
-                       Background="{DynamicResource ThemeCardBackgroundBrush}"
-                       BorderBrush="{DynamicResource ThemeBorderBrush}"
-                       BorderThickness="1"
-                       CornerRadius="8"
-                       Padding="16">
-                    <Grid RowDefinitions="Auto,*">
-                        <TextBlock Grid.Row="0" Text="{Binding L[AnalysisView.TestResults]}" 
-                                  FontSize="14" FontWeight="Bold"
-                                  Foreground="{DynamicResource ThemeTextPrimaryBrush}"
-                                  Margin="0,0,0,10"/>
+                <Grid Grid.Row="1">
+                    <!-- Empty state when no measurement selected -->
+                    <Border IsVisible="{Binding !HasAnalysisData}" Background="{DynamicResource ThemeCardBackgroundBrush}" BorderBrush="{DynamicResource ThemeBorderBrush}" BorderThickness="1" CornerRadius="8" Padding="24" VerticalAlignment="Center" HorizontalAlignment="Center">
+                        <StackPanel Spacing="12" MaxWidth="500">
+                            <TextBlock Text="📊" FontSize="48" HorizontalAlignment="Center"/>
+                            <TextBlock Text="{Binding L[AnalysisView.Title]}" FontSize="20" FontWeight="Bold" HorizontalAlignment="Center"/>
+                            <TextBlock Text="{Binding L[AnalysisView.Subtitle]}" FontSize="13" Foreground="{DynamicResource ThemeTextSecondaryBrush}" TextWrapping="Wrap" HorizontalAlignment="Center"/>
+                            <Separator Margin="0,8"/>
+                            <TextBlock Text="Vyberte měření z levého panelu pro zobrazení detailní analýzy." FontSize="13" Foreground="{DynamicResource ThemeTextMutedBrush}" TextWrapping="Wrap"/>
+                            <TextBlock Text="K dispozici jsou:" FontSize="13" Foreground="{DynamicResource ThemeTextMutedBrush}"/>
+                            <TextBlock Text="• Grafy propustnosti (throughput) podle průběhu a času" FontSize="12" Foreground="{DynamicResource ThemeTextMutedBrush}"/>
+                            <TextBlock Text="• Seek latency grafy" FontSize="12" Foreground="{DynamicResource ThemeTextMutedBrush}"/>
+                            <TextBlock Text="• Teplotní trendy" FontSize="12" Foreground="{DynamicResource ThemeTextMutedBrush}"/>
+                            <TextBlock Text="• Detekce anomálií a stallů s možností zoomu" FontSize="12" Foreground="{DynamicResource ThemeTextMutedBrush}"/>
+                            <TextBlock Text="• SMART trendy napříč testy (teplota, reallocated, wear leveling)" FontSize="12" Foreground="{DynamicResource ThemeTextMutedBrush}"/>
+                            <TextBlock Text="• Vendor-specific hodnocení opotřebení SSD" FontSize="12" Foreground="{DynamicResource ThemeTextMutedBrush}"/>
+                            <TextBlock Text="{Binding AnalysisSummaries.Count, StringFormat='Počet dostupných měření: {0}'}" FontSize="12" Foreground="{DynamicResource ThemeTextMutedBrush}" Margin="0,8,0,0"/>
+                        </StackPanel>
+                    </Border>
 
-                        <ScrollViewer Grid.Row="1">
-                            <ItemsControl ItemsSource="{Binding TestResults}">
-                                <ItemsControl.ItemTemplate>
-                                    <DataTemplate>
-                                        <Border Background="{DynamicResource ThemePanelBackgroundBrush}"
-                                               CornerRadius="6"
-                                               Padding="12"
-                                               Margin="0,0,0,8">
-                                            <Grid RowDefinitions="Auto,Auto">
-                                                <Grid Grid.Row="0" ColumnDefinitions="*,Auto">
-                                                    <TextBlock Grid.Column="0" 
-                                                              Text="{Binding TestId}" 
-                                                              FontWeight="SemiBold"
-                                                              FontSize="11"/>
-                                                    <TextBlock Grid.Column="1" 
-                                                              Text="{Binding ErrorCount, StringFormat='{}{0}'}" 
-                                                              Foreground="{DynamicResource ThemeTextMutedBrush}"
-                                                              FontSize="10"/>
-                                                </Grid>
-                                                <TextBlock Grid.Row="1" 
-                                                          Text="{Binding Notes}" 
-                                                          FontSize="10"
-                                                          Foreground="{DynamicResource ThemeTextSecondaryBrush}"
-                                                          TextWrapping="Wrap"
-                                                          Margin="0,4,0,0"/>
-                                            </Grid>
-                                        </Border>
-                                    </DataTemplate>
-                                </ItemsControl.ItemTemplate>
-                            </ItemsControl>
-                        </ScrollViewer>
+                    <!-- Content area (visible when data is loaded) -->
+                    <Grid IsVisible="{Binding HasAnalysisData}">
+                        <!-- Compact layout -->
+                        <Grid IsVisible="{Binding IsCompactLayout}" RowDefinitions="Auto,*,Auto,Auto">
+                        <Border Grid.Row="0" Background="{DynamicResource ThemeCardBackgroundBrush}" BorderBrush="{DynamicResource ThemeBorderBrush}" BorderThickness="1" CornerRadius="8" Padding="14" Margin="0,0,0,10">
+                            <StackPanel>
+                                <TextBlock Text="{Binding L[AnalysisView.CompactMode]}" FontSize="15" FontWeight="Bold"/>
+                                <TextBlock Text="{Binding CompactPrimaryChartTitle}" Foreground="{DynamicResource ThemeTextSecondaryBrush}"/>
+                            </StackPanel>
+                        </Border>
+                        <Border Grid.Row="1" Background="{DynamicResource ThemePanelBackgroundBrush}" BorderBrush="{DynamicResource ThemeBorderBrush}" BorderThickness="1" CornerRadius="8" Padding="18">
+                            <Viewbox Stretch="Uniform">
+                                <Canvas Width="520" Height="180" Background="#FFFFFFFF" ClipToBounds="True">
+                                    <Line StartPoint="0,180" EndPoint="520,180" Stroke="#FFCBD5E1" StrokeThickness="1"/>
+                                    <Line StartPoint="0,90" EndPoint="520,90" Stroke="#FFE2E8F0" StrokeThickness="1"/>
+                                    <ItemsControl ItemsSource="{Binding StallOverlays}">
+                                        <ItemsControl.ItemsPanel><ItemsPanelTemplate><Canvas/></ItemsPanelTemplate></ItemsControl.ItemsPanel>
+                                        <ItemsControl.ItemTemplate><DataTemplate><Rectangle Canvas.Left="{Binding X}" Canvas.Top="0" Width="{Binding Width}" Height="180" Fill="#33F59E0B"/></DataTemplate></ItemsControl.ItemTemplate>
+                                    </ItemsControl>
+                                    <ItemsControl ItemsSource="{Binding AnomalyOverlays}">
+                                        <ItemsControl.ItemsPanel><ItemsPanelTemplate><Canvas/></ItemsPanelTemplate></ItemsControl.ItemsPanel>
+                                        <ItemsControl.ItemTemplate><DataTemplate><Rectangle Canvas.Left="{Binding X}" Canvas.Top="0" Width="{Binding Width}" Height="180" Fill="#33DC2626"/></DataTemplate></ItemsControl.ItemTemplate>
+                                    </ItemsControl>
+                                    <Polyline Points="{Binding ThroughputProgressWritePoints, Converter={StaticResource PointsStringConverter}}" Stroke="#FFDC2626" StrokeThickness="2"/>
+                                    <Polyline Points="{Binding ThroughputProgressReadPoints, Converter={StaticResource PointsStringConverter}}" Stroke="#FF059669" StrokeThickness="2"/>
+                                    <Polyline Points="{Binding SeekLatencyPoints, Converter={StaticResource PointsStringConverter}}" Stroke="#FF7C3AED" StrokeThickness="2"/>
+                                </Canvas>
+                            </Viewbox>
+                        </Border>
+                        <Border Grid.Row="2" Background="{DynamicResource ThemeCardBackgroundBrush}" BorderBrush="{DynamicResource ThemeBorderBrush}" BorderThickness="1" CornerRadius="8" Padding="12" Margin="0,10,0,0">
+                            <Grid ColumnDefinitions="*,*">
+                                <StackPanel>
+                                    <TextBlock Text="{Binding L[AnalysisView.TopAnomalies]}" FontWeight="Bold"/>
+                                    <ItemsControl ItemsSource="{Binding TopAnomalies}">
+                                        <ItemsControl.ItemTemplate><DataTemplate><Button Command="{Binding $parent[UserControl].DataContext.SelectAnomalyCommand}" CommandParameter="{Binding}" HorizontalAlignment="Stretch" HorizontalContentAlignment="Left" Padding="4" Margin="0,1"><TextBlock FontSize="11" Text="{Binding DisplayText}" TextWrapping="Wrap"/></Button></DataTemplate></ItemsControl.ItemTemplate>
+                                    </ItemsControl>
+                                </StackPanel>
+                                <StackPanel Grid.Column="1">
+                                    <TextBlock Text="{Binding L[AnalysisView.TopStalls]}" FontWeight="Bold"/>
+                                    <ItemsControl ItemsSource="{Binding TopStalls}">
+                                        <ItemsControl.ItemTemplate><DataTemplate><Button Command="{Binding $parent[UserControl].DataContext.SelectStallCommand}" CommandParameter="{Binding}" HorizontalAlignment="Stretch" HorizontalContentAlignment="Left" Padding="4" Margin="0,1"><TextBlock FontSize="11" Text="{Binding DisplayText}" TextWrapping="Wrap"/></Button></DataTemplate></ItemsControl.ItemTemplate>
+                                    </ItemsControl>
+                                </StackPanel>
+                            </Grid>
+                        </Border>
+                        <!-- SMART Trend Charts (Compact) -->
+                        <Border Grid.Row="3" Background="{DynamicResource ThemeCardBackgroundBrush}" BorderBrush="{DynamicResource ThemeBorderBrush}" BorderThickness="1" CornerRadius="8" Padding="12" Margin="0,10,0,0" IsVisible="{Binding HasSmartTrendData}">
+                            <StackPanel>
+                                <TextBlock Text="{Binding L[AnalysisView.SmartTrends]}" FontWeight="Bold" FontSize="14"/>
+                                <TextBlock Text="{Binding SmartTrendSummary}" FontSize="11" Foreground="{DynamicResource ThemeTextSecondaryBrush}" TextWrapping="Wrap"/>
+                                <TextBlock Text="{Binding SmartWearAssessment}" FontSize="11" Foreground="{DynamicResource ThemeWarningBrush}" TextWrapping="Wrap" Margin="0,4,0,0"/>
+                                <TextBlock Text="{Binding SmartTrendDateRange}" FontSize="10" Foreground="{DynamicResource ThemeTextMutedBrush}" Margin="0,2,0,4"/>
+                                <Grid ColumnDefinitions="*,*" RowDefinitions="Auto,Auto" Margin="0,4,0,0">
+                                    <Border Grid.Row="0" Grid.Column="0" Background="{DynamicResource ThemePanelBackgroundBrush}" CornerRadius="6" Padding="6" Margin="0,0,4,4">
+                                        <StackPanel>
+                                            <TextBlock Text="{Binding L[AnalysisView.Temperature]}" FontSize="10" FontWeight="SemiBold"/>
+                                            <Viewbox Stretch="Uniform" Height="80">
+                                                <Canvas Width="240" Height="80" Background="#FFFFFFFF">
+                                                    <Polyline Points="{Binding SmartTrendTemperaturePoints, Converter={StaticResource PointsStringConverter}}" Stroke="#FFF59E0B" StrokeThickness="2"/>
+                                                </Canvas>
+                                            </Viewbox>
+                                        </StackPanel>
+                                    </Border>
+                                    <Border Grid.Row="0" Grid.Column="1" Background="{DynamicResource ThemePanelBackgroundBrush}" CornerRadius="6" Padding="6" Margin="4,0,0,4">
+                                        <StackPanel>
+                                            <TextBlock Text="{Binding L[AnalysisView.ReallocatedSectors]}" FontSize="10" FontWeight="SemiBold"/>
+                                            <Viewbox Stretch="Uniform" Height="80">
+                                                <Canvas Width="240" Height="80" Background="#FFFFFFFF">
+                                                    <Polyline Points="{Binding SmartTrendReallocatedPoints, Converter={StaticResource PointsStringConverter}}" Stroke="#FFDC2626" StrokeThickness="2"/>
+                                                </Canvas>
+                                            </Viewbox>
+                                        </StackPanel>
+                                    </Border>
+                                    <Border Grid.Row="1" Grid.Column="0" Background="{DynamicResource ThemePanelBackgroundBrush}" CornerRadius="6" Padding="6" Margin="0,4,4,0">
+                                        <StackPanel>
+                                            <TextBlock Text="{Binding L[AnalysisView.WearLeveling]}" FontSize="10" FontWeight="SemiBold"/>
+                                            <Viewbox Stretch="Uniform" Height="80">
+                                                <Canvas Width="240" Height="80" Background="#FFFFFFFF">
+                                                    <Polyline Points="{Binding SmartTrendWearPoints, Converter={StaticResource PointsStringConverter}}" Stroke="#FF059669" StrokeThickness="2"/>
+                                                </Canvas>
+                                            </Viewbox>
+                                        </StackPanel>
+                                    </Border>
+                                    <Border Grid.Row="1" Grid.Column="1" Background="{DynamicResource ThemePanelBackgroundBrush}" CornerRadius="6" Padding="6" Margin="4,4,0,0">
+                                        <StackPanel>
+                                            <TextBlock Text="{Binding L[AnalysisView.PercentUsed]}" FontSize="10" FontWeight="SemiBold"/>
+                                            <Viewbox Stretch="Uniform" Height="80">
+                                                <Canvas Width="240" Height="80" Background="#FFFFFFFF">
+                                                    <Polyline Points="{Binding SmartTrendPercentageUsedPoints, Converter={StaticResource PointsStringConverter}}" Stroke="#FF7C3AED" StrokeThickness="2"/>
+                                                </Canvas>
+                                            </Viewbox>
+                                        </StackPanel>
+                                    </Border>
+                                </Grid>
+                            </StackPanel>
+                        </Border>
                     </Grid>
-                </Border>
+
+                    <!-- Full layout -->
+                    <Grid IsVisible="{Binding IsFullLayout}" RowDefinitions="*,*" ColumnDefinitions="*,*,Auto" Margin="0">
+                        <Border Grid.Row="0" Grid.Column="0" Background="{DynamicResource ThemePanelBackgroundBrush}" BorderBrush="{DynamicResource ThemeBorderBrush}" BorderThickness="1" CornerRadius="8" Padding="14" Margin="0,0,6,6">
+                            <Grid RowDefinitions="Auto,*">
+                                <TextBlock Text="{Binding L[AnalysisView.ThroughputProgress]}" FontWeight="Bold"/>
+                                <Viewbox Grid.Row="1" Stretch="Uniform"><Canvas Width="520" Height="180" Background="#FFFFFFFF"><ItemsControl ItemsSource="{Binding StallOverlays}"><ItemsControl.ItemsPanel><ItemsPanelTemplate><Canvas/></ItemsPanelTemplate></ItemsControl.ItemsPanel><ItemsControl.ItemTemplate><DataTemplate><Rectangle Canvas.Left="{Binding X}" Canvas.Top="0" Width="{Binding Width}" Height="180" Fill="#33F59E0B"/></DataTemplate></ItemsControl.ItemTemplate></ItemsControl><ItemsControl ItemsSource="{Binding AnomalyOverlays}"><ItemsControl.ItemsPanel><ItemsPanelTemplate><Canvas/></ItemsPanelTemplate></ItemsControl.ItemsPanel><ItemsControl.ItemTemplate><DataTemplate><Rectangle Canvas.Left="{Binding X}" Canvas.Top="0" Width="{Binding Width}" Height="180" Fill="#33DC2626"/></DataTemplate></ItemsControl.ItemTemplate></ItemsControl><Polyline Points="{Binding ThroughputProgressWritePoints, Converter={StaticResource PointsStringConverter}}" Stroke="#FFDC2626" StrokeThickness="2"/><Polyline Points="{Binding ThroughputProgressReadPoints, Converter={StaticResource PointsStringConverter}}" Stroke="#FF059669" StrokeThickness="2"/></Canvas></Viewbox>
+                            </Grid>
+                        </Border>
+                        <Border Grid.Row="0" Grid.Column="1" Background="{DynamicResource ThemePanelBackgroundBrush}" BorderBrush="{DynamicResource ThemeBorderBrush}" BorderThickness="1" CornerRadius="8" Padding="14" Margin="6,0,0,6">
+                            <Grid RowDefinitions="Auto,*">
+                                <TextBlock Text="{Binding L[AnalysisView.ThroughputTime]}" FontWeight="Bold"/>
+                                <Viewbox Grid.Row="1" Stretch="Uniform"><Canvas Width="520" Height="180" Background="#FFFFFFFF"><Polyline Points="{Binding ThroughputTimeWritePoints, Converter={StaticResource PointsStringConverter}}" Stroke="#FFDC2626" StrokeThickness="2"/><Polyline Points="{Binding ThroughputTimeReadPoints, Converter={StaticResource PointsStringConverter}}" Stroke="#FF059669" StrokeThickness="2"/></Canvas></Viewbox>
+                            </Grid>
+                        </Border>
+                        <Border Grid.Row="1" Grid.Column="0" Background="{DynamicResource ThemePanelBackgroundBrush}" BorderBrush="{DynamicResource ThemeBorderBrush}" BorderThickness="1" CornerRadius="8" Padding="14" Margin="0,6,6,0">
+                            <Grid RowDefinitions="Auto,*">
+                                <TextBlock Text="{Binding L[AnalysisView.TempAnomalySmart]}" FontWeight="Bold"/>
+                                <Grid Grid.Row="1" ColumnDefinitions="*,180">
+                                    <Viewbox Stretch="Uniform"><Canvas Width="520" Height="180" Background="#FFFFFFFF"><Polyline Points="{Binding TemperaturePoints, Converter={StaticResource PointsStringConverter}}" Stroke="#FFF59E0B" StrokeThickness="2"/></Canvas></Viewbox>
+                                    <ScrollViewer Grid.Column="1" MaxHeight="180"><StackPanel><TextBlock Text="{Binding L[AnalysisView.SmartLabel]}" FontWeight="Bold"/><TextBlock Text="{Binding SmartAnalysisDetails}" FontSize="10" TextWrapping="Wrap"/><TextBlock Text="{Binding L[AnalysisView.AnomaliesLabel]}" Margin="0,8,0,0" FontWeight="Bold"/><ItemsControl ItemsSource="{Binding TopAnomalies}"><ItemsControl.ItemTemplate><DataTemplate><Button Command="{Binding $parent[UserControl].DataContext.SelectAnomalyCommand}" CommandParameter="{Binding}" Padding="2" HorizontalAlignment="Stretch"><TextBlock FontSize="10" Text="{Binding DisplayText}" TextWrapping="Wrap"/></Button></DataTemplate></ItemsControl.ItemTemplate></ItemsControl><TextBlock Text="{Binding L[AnalysisView.StallsLabel]}" FontWeight="Bold" Margin="0,8,0,0"/><ItemsControl ItemsSource="{Binding TopStalls}"><ItemsControl.ItemTemplate><DataTemplate><Button Command="{Binding $parent[UserControl].DataContext.SelectStallCommand}" CommandParameter="{Binding}" Padding="2" HorizontalAlignment="Stretch"><TextBlock FontSize="10" Text="{Binding DisplayText}" TextWrapping="Wrap"/></Button></DataTemplate></ItemsControl.ItemTemplate></ItemsControl></StackPanel></ScrollViewer>
+                                </Grid>
+                            </Grid>
+                        </Border>
+                        <Border Grid.Row="1" Grid.Column="1" Background="{DynamicResource ThemePanelBackgroundBrush}" BorderBrush="{DynamicResource ThemeBorderBrush}" BorderThickness="1" CornerRadius="8" Padding="14" Margin="6,6,0,0">
+                            <Grid RowDefinitions="Auto,*">
+                                <TextBlock Text="{Binding L[AnalysisView.SeekLatency]}" FontWeight="Bold"/>
+                                <Viewbox Grid.Row="1" Stretch="Uniform"><Canvas Width="520" Height="180" Background="#FFFFFFFF"><Polyline Points="{Binding SeekLatencyPoints, Converter={StaticResource PointsStringConverter}}" Stroke="#FF7C3AED" StrokeThickness="2"/></Canvas></Viewbox>
+                            </Grid>
+                        </Border>
+                        <!-- SMART Trend Charts (Full) -->
+                        <Border Grid.Row="0" Grid.Column="2" Background="{DynamicResource ThemePanelBackgroundBrush}" BorderBrush="{DynamicResource ThemeBorderBrush}" BorderThickness="1" CornerRadius="8" Padding="14" Margin="6,0,0,6" IsVisible="{Binding HasSmartTrendData}">
+                            <Grid RowDefinitions="Auto,Auto,Auto,Auto,Auto,*">
+                                <TextBlock Text="{Binding L[AnalysisView.SmartTrends]}" FontWeight="Bold" FontSize="14"/>
+                                <TextBlock Grid.Row="1" Text="{Binding SmartTrendSummary}" FontSize="10" Foreground="{DynamicResource ThemeTextSecondaryBrush}" TextWrapping="Wrap"/>
+                                <TextBlock Grid.Row="2" Text="{Binding SmartWearAssessment}" FontSize="10" Foreground="{DynamicResource ThemeWarningBrush}" TextWrapping="Wrap" Margin="0,2,0,0"/>
+                                <TextBlock Grid.Row="3" Text="{Binding SmartTrendDateRange}" FontSize="9" Foreground="{DynamicResource ThemeTextMutedBrush}" Margin="0,2,0,4"/>
+                                <Grid Grid.Row="4" ColumnDefinitions="*,*" Margin="0,4,0,0">
+                                    <Viewbox Stretch="Uniform" Height="70">
+                                        <Canvas Width="200" Height="70" Background="#FFFFFFFF">
+                                            <TextBlock Canvas.Left="2" Canvas.Top="0" Text="{Binding L[AnalysisView.Temperature]}" FontSize="8"/>
+                                            <Polyline Points="{Binding SmartTrendTemperaturePoints, Converter={StaticResource PointsStringConverter}}" Stroke="#FFF59E0B" StrokeThickness="2"/>
+                                        </Canvas>
+                                    </Viewbox>
+                                    <Viewbox Grid.Column="1" Stretch="Uniform" Height="70">
+                                        <Canvas Width="200" Height="70" Background="#FFFFFFFF">
+                                            <TextBlock Canvas.Left="2" Canvas.Top="0" Text="{Binding L[AnalysisView.ReallocShort]}" FontSize="8"/>
+                                            <Polyline Points="{Binding SmartTrendReallocatedPoints, Converter={StaticResource PointsStringConverter}}" Stroke="#FFDC2626" StrokeThickness="2"/>
+                                        </Canvas>
+                                    </Viewbox>
+                                </Grid>
+                                <Grid Grid.Row="5" ColumnDefinitions="*,*">
+                                    <Viewbox Stretch="Uniform" Height="70">
+                                        <Canvas Width="200" Height="70" Background="#FFFFFFFF">
+                                            <TextBlock Canvas.Left="2" Canvas.Top="0" Text="{Binding L[AnalysisView.WearShort]}" FontSize="8"/>
+                                            <Polyline Points="{Binding SmartTrendWearPoints, Converter={StaticResource PointsStringConverter}}" Stroke="#FF059669" StrokeThickness="2"/>
+                                        </Canvas>
+                                    </Viewbox>
+                                    <Viewbox Grid.Column="1" Stretch="Uniform" Height="70">
+                                        <Canvas Width="200" Height="70" Background="#FFFFFFFF">
+                                            <TextBlock Canvas.Left="2" Canvas.Top="0" Text="{Binding L[AnalysisView.PctUsedShort]}" FontSize="8"/>
+                                            <Polyline Points="{Binding SmartTrendPercentageUsedPoints, Converter={StaticResource PointsStringConverter}}" Stroke="#FF7C3AED" StrokeThickness="2"/>
+                                        </Canvas>
+                                    </Viewbox>
+                                </Grid>
+                            </Grid>
+                        </Border>
+                    </Grid>
+                    </Grid>
+                </Grid>
             </Grid>
         </Grid>
 
-        <!-- ========== STATUS BAR ========== -->
         <Border Grid.Row="2" Classes="StatusBar">
-            <TextBlock Text="{Binding StatusMessage}" 
-                      Classes="StatusText"
-                      Margin="16,0"/>
+            <TextBlock Text="{Binding StatusMessage}" Classes="StatusText" Margin="16,0"/>
         </Border>
     </Grid>
 </UserControl>

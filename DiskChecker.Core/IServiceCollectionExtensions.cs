@@ -14,6 +14,7 @@ public static class ServiceCollectionExtensions
     {
         // Register core services
         services.AddSingleton<Interfaces.IQualityCalculator, Services.QualityCalculator>();
+        services.AddSingleton<Services.SmartTrendService>();
         
         return services;
     }

@@ -76,6 +76,8 @@ public static class SchemaCompatibilityPatcher
             EnsureColumn(dbContext, "EmailSettings", "IncludeCertificateAttachment");
         }
 
+        EnsureStallEventsTable(dbContext);
+        EnsureAnomalyEventsTable(dbContext);
         EnsureTelemetrySamplesTable(dbContext);
         EnsureSeekSamplesTable(dbContext);
 
@@ -252,6 +254,30 @@ public static class SchemaCompatibilityPatcher
             return;
         }
 
+        if (tableName == "TestAnomalyEvents" && columnName == "StartBytesProcessed")
+        {
+            dbContext.Database.ExecuteSqlRaw("ALTER TABLE TestAnomalyEvents ADD COLUMN StartBytesProcessed INTEGER NOT NULL DEFAULT 0;");
+            return;
+        }
+
+        if (tableName == "TestAnomalyEvents" && columnName == "EndBytesProcessed")
+        {
+            dbContext.Database.ExecuteSqlRaw("ALTER TABLE TestAnomalyEvents ADD COLUMN EndBytesProcessed INTEGER NOT NULL DEFAULT 0;");
+            return;
+        }
+
+        if (tableName == "TestAnomalyEvents" && columnName == "StartLba512")
+        {
+            dbContext.Database.ExecuteSqlRaw("ALTER TABLE TestAnomalyEvents ADD COLUMN StartLba512 INTEGER NOT NULL DEFAULT 0;");
+            return;
+        }
+
+        if (tableName == "TestAnomalyEvents" && columnName == "EndLba512")
+        {
+            dbContext.Database.ExecuteSqlRaw("ALTER TABLE TestAnomalyEvents ADD COLUMN EndLba512 INTEGER NOT NULL DEFAULT 0;");
+            return;
+        }
+
         if (tableName == "DiskCards" && columnName == "PowerOnHours")
         {
             dbContext.Database.ExecuteSqlRaw("ALTER TABLE DiskCards ADD COLUMN PowerOnHours INTEGER NULL;");
@@ -402,6 +428,79 @@ public static class SchemaCompatibilityPatcher
             default:
                 return;
         }
+    }
+
+    private static void EnsureStallEventsTable(DiskCheckerDbContext dbContext)
+    {
+        if (TableExists(dbContext, "TestStallEvents"))
+        {
+            return;
+        }
+
+        dbContext.Database.ExecuteSqlRaw("""
+            CREATE TABLE IF NOT EXISTS TestStallEvents (
+                Id INTEGER NOT NULL CONSTRAINT PK_TestStallEvents PRIMARY KEY AUTOINCREMENT,
+                TestSessionId INTEGER NOT NULL,
+                Phase INTEGER NOT NULL,
+                StartedAtUtc TEXT NOT NULL,
+                EndedAtUtc TEXT NOT NULL,
+                DurationMs REAL NOT NULL,
+                StartProgressPercent REAL NOT NULL,
+                EndProgressPercent REAL NOT NULL,
+                BytesProcessed INTEGER NOT NULL,
+                LastSpeedBeforeStallMBps REAL NULL,
+                FirstSpeedAfterStallMBps REAL NULL,
+                CONSTRAINT FK_TestStallEvents_TestSessions_TestSessionId FOREIGN KEY (TestSessionId) REFERENCES TestSessions (Id) ON DELETE CASCADE
+            );
+            """);
+        dbContext.Database.ExecuteSqlRaw("CREATE INDEX IF NOT EXISTS IX_TestStallEvents_TestSessionId ON TestStallEvents (TestSessionId);");
+        dbContext.Database.ExecuteSqlRaw("CREATE INDEX IF NOT EXISTS IX_TestStallEvents_TestSessionId_Phase_StartedAtUtc ON TestStallEvents (TestSessionId, Phase, StartedAtUtc);");
+        dbContext.Database.ExecuteSqlRaw("CREATE INDEX IF NOT EXISTS IX_TestStallEvents_TestSessionId_Phase_StartProgressPercent ON TestStallEvents (TestSessionId, Phase, StartProgressPercent);");
+    }
+
+    private static void EnsureAnomalyEventsTable(DiskCheckerDbContext dbContext)
+    {
+        if (TableExists(dbContext, "TestAnomalyEvents"))
+        {
+            EnsureAnomalyEventColumns(dbContext);
+            return;
+        }
+
+        dbContext.Database.ExecuteSqlRaw("""
+            CREATE TABLE IF NOT EXISTS TestAnomalyEvents (
+                Id INTEGER NOT NULL CONSTRAINT PK_TestAnomalyEvents PRIMARY KEY AUTOINCREMENT,
+                TestSessionId INTEGER NOT NULL,
+                Phase INTEGER NOT NULL,
+                StartStandardIndex INTEGER NOT NULL,
+                EndStandardIndex INTEGER NOT NULL,
+                StartProgressPercent REAL NOT NULL,
+                EndProgressPercent REAL NOT NULL,
+                DurationMs REAL NOT NULL,
+                MinSpeedMBps REAL NOT NULL,
+                MaxSpeedMBps REAL NOT NULL,
+                AvgSpeedMBps REAL NOT NULL,
+                EntrySpeedMBps REAL NOT NULL,
+                ExitSpeedMBps REAL NOT NULL,
+                MaxDeviationPercent REAL NOT NULL,
+                SeverityScore REAL NOT NULL,
+                OverlayGroup TEXT NULL,
+                DefectType TEXT NULL,
+                CONSTRAINT FK_TestAnomalyEvents_TestSessions_TestSessionId FOREIGN KEY (TestSessionId) REFERENCES TestSessions (Id) ON DELETE CASCADE
+            );
+            """);
+        dbContext.Database.ExecuteSqlRaw("CREATE INDEX IF NOT EXISTS IX_TestAnomalyEvents_TestSessionId ON TestAnomalyEvents (TestSessionId);");
+        EnsureAnomalyEventColumns(dbContext);
+    }
+
+    private static void EnsureAnomalyEventColumns(DiskCheckerDbContext dbContext)
+    {
+        EnsureColumn(dbContext, "TestAnomalyEvents", "StartBytesProcessed");
+        EnsureColumn(dbContext, "TestAnomalyEvents", "EndBytesProcessed");
+        EnsureColumn(dbContext, "TestAnomalyEvents", "StartLba512");
+        EnsureColumn(dbContext, "TestAnomalyEvents", "EndLba512");
+        dbContext.Database.ExecuteSqlRaw("CREATE INDEX IF NOT EXISTS IX_TestAnomalyEvents_TestSessionId_Phase_StartProgressPercent ON TestAnomalyEvents (TestSessionId, Phase, StartProgressPercent);");
+        dbContext.Database.ExecuteSqlRaw("CREATE INDEX IF NOT EXISTS IX_TestAnomalyEvents_TestSessionId_Phase_StartLba512 ON TestAnomalyEvents (TestSessionId, Phase, StartLba512);");
+        dbContext.Database.ExecuteSqlRaw("CREATE INDEX IF NOT EXISTS IX_TestAnomalyEvents_TestSessionId_SeverityScore ON TestAnomalyEvents (TestSessionId, SeverityScore);");
     }
 
     private static void EnsureTelemetrySamplesTable(DiskCheckerDbContext dbContext)

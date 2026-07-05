@@ -31,6 +31,18 @@ public class SpeedAnomaly
     /// <summary>Progress percentage at anomaly end (0-100).</summary>
     public double EndProgressPercent { get; set; }
 
+    /// <summary>Byte offset / processed-byte position at anomaly start.</summary>
+    public long StartBytesProcessed { get; set; }
+
+    /// <summary>Byte offset / processed-byte position at anomaly end.</summary>
+    public long EndBytesProcessed { get; set; }
+
+    /// <summary>Approximate 512-byte LBA at anomaly start, derived from bytes processed.</summary>
+    public long StartLba512 { get; set; }
+
+    /// <summary>Approximate 512-byte LBA at anomaly end, derived from bytes processed.</summary>
+    public long EndLba512 { get; set; }
+
     /// <summary>Duration of the anomaly in milliseconds.</summary>
     public double DurationMs { get; set; }
 
@@ -93,6 +105,7 @@ public class SpeedAnomaly
         var direction = MinSpeedMBps < EntrySpeedMBps ? "↓" : "↑";
         return $"{Phase} {direction}{MaxDeviationPercent:F0}% " +
                $"({MinSpeedMBps:F0}–{MaxSpeedMBps:F0} MB/s, {DurationMs / 1000:F1}s) " +
-               $"@{StartProgressPercent:F0}–{EndProgressPercent:F0}%";
+               $"@{StartProgressPercent:F0}–{EndProgressPercent:F0}% " +
+               $"LBA~{StartLba512:N0}–{EndLba512:N0}";
     }
 }

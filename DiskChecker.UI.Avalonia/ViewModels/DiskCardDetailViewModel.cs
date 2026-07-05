@@ -10,6 +10,7 @@ using CommunityToolkit.Mvvm.Input;
 using DiskChecker.Application.Services;
 using DiskChecker.Core.Interfaces;
 using DiskChecker.Core.Models;
+using DiskChecker.Core.Services;
 using DiskChecker.UI.Avalonia.Services;
 using DiskChecker.UI.Avalonia.Services.Interfaces;
 using OxyPlot;
@@ -35,6 +36,7 @@ public partial class DiskCardDetailViewModel : ViewModelBase, INavigableViewMode
     private readonly ICertificateGenerator _certificateGenerator;
     private readonly ISelectedDiskService _selectedDiskService;
     private readonly CertificateExportService _certificateExportService;
+    private readonly SmartTrendService _smartTrendService;
     
     private DiskCard? _currentCard;
     private TestSession? _selectedSession;
@@ -43,6 +45,7 @@ public partial class DiskCardDetailViewModel : ViewModelBase, INavigableViewMode
     private string _statusMessage = "Detail karty disku";
 
     private string _notes = string.Empty;
+    private string _wearAssessmentText = string.Empty;
     private string _selectedSessionSmartSummary = "Vyberte test pro zobrazení SMART snapshotu.";
     private string _selectedSessionSmartJson = string.Empty;
     private string _selectedSessionDegradationSummary = "Porovnání degradace bude dostupné po výběru testu.";
@@ -57,7 +60,8 @@ public partial class DiskCardDetailViewModel : ViewModelBase, INavigableViewMode
         IDiskComparisonService comparisonService,
         ICertificateGenerator certificateGenerator,
         ISelectedDiskService selectedDiskService,
-        CertificateExportService certificateExportService)
+        CertificateExportService certificateExportService,
+        SmartTrendService smartTrendService)
     {
         _diskCardRepository = diskCardRepository;
         _navigationService = navigationService;
@@ -66,6 +70,7 @@ public partial class DiskCardDetailViewModel : ViewModelBase, INavigableViewMode
         _certificateGenerator = certificateGenerator;
         _selectedDiskService = selectedDiskService;
         _certificateExportService = certificateExportService;
+        _smartTrendService = smartTrendService;
         
         TestSessions = new ObservableCollection<TestSession>();
         Certificates = new ObservableCollection<DiskCertificate>();
@@ -151,6 +156,23 @@ public partial class DiskCardDetailViewModel : ViewModelBase, INavigableViewMode
         get => _notes;
         set => SetProperty(ref _notes, value);
     }
+
+    /// <summary>
+    /// Vendor-specific SSD wear assessment text.
+    /// </summary>
+    public string WearAssessmentText
+    {
+        get => _wearAssessmentText;
+        private set
+        {
+            if (SetProperty(ref _wearAssessmentText, value))
+            {
+                OnPropertyChanged(nameof(HasWearAssessment));
+            }
+        }
+    }
+
+    public bool HasWearAssessment => !string.IsNullOrWhiteSpace(WearAssessmentText);
 
     public string SelectedSessionSmartSummary
     {
@@ -548,6 +570,9 @@ public partial class DiskCardDetailViewModel : ViewModelBase, INavigableViewMode
 
                 Notes = CurrentCard.Notes ?? string.Empty;
 
+                // Load vendor-specific wear assessment
+                await LoadWearAssessmentAsync(cardId);
+
                 // Load latest certificate
                 LatestCertificate = await _diskCardRepository.GetLatestCertificateAsync(cardId);
 
@@ -829,6 +854,26 @@ public partial class DiskCardDetailViewModel : ViewModelBase, INavigableViewMode
         }
 
         return flags.Count == 0 ? L.Get("DiskCardDetail.Status.Ok") : string.Join(" | ", flags);
+    }
+
+    private async Task LoadWearAssessmentAsync(int diskCardId)
+    {
+        try
+        {
+            var report = await _smartTrendService.BuildTrendReportAsync(diskCardId);
+            if (report.WearAssessment != null)
+            {
+                WearAssessmentText = report.WearAssessment.Description;
+            }
+            else
+            {
+                WearAssessmentText = string.Empty;
+            }
+        }
+        catch
+        {
+            WearAssessmentText = string.Empty;
+        }
     }
 
     private string FormatSmartJson(string json)

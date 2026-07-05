@@ -357,9 +357,9 @@
                         <TextBlock Grid.Column="2" FontSize="10" Margin="8,0,0,0"
                                    Foreground="{DynamicResource ThemeTextMutedBrush}"
                                    VerticalAlignment="Center">
-                            <Run Text="Min: "/>
+                            <Run Text="{Binding L[DestructiveTestView.TempMin]}"/>
                             <Run Text="{Binding MinTemperature}"/>
-                            <Run Text="°C | Max: "/>
+                            <Run Text="{Binding L[DestructiveTestView.TempMax]}"/>
                             <Run Text="{Binding MaxTemperature}"/>
                             <Run Text="°C"/>
                         </TextBlock>
@@ -437,7 +437,7 @@
                     <Border Background="{DynamicResource ThemeSecondaryBackgroundBrush}"
                             CornerRadius="6" Padding="10">
                         <StackPanel Spacing="4">
-                            <TextBlock Text="📊 Statistika" FontSize="12" FontWeight="SemiBold"
+                            <TextBlock Text="{Binding L[DestructiveTestView.Statistics]}" FontSize="12" FontWeight="SemiBold"
                                        Foreground="{DynamicResource ThemeTextPrimaryBrush}"/>
                             <TextBlock Text="{Binding PostTestStatistics}" FontSize="10"
                                        Foreground="{DynamicResource ThemeTextSecondaryBrush}"

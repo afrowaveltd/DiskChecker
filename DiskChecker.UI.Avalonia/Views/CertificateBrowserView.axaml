@@ -165,19 +165,19 @@
                         <Grid ColumnDefinitions="2*,*" ColumnSpacing="14">
                             <Border Grid.Column="0" Background="{Binding PanelBackground}" Padding="12" CornerRadius="8">
                                 <Grid ColumnDefinitions="Auto,*" RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto" RowSpacing="3" ColumnSpacing="10">
-                                    <TextBlock Grid.Row="0" Grid.Column="0" Text="Model:" FontWeight="Bold" FontSize="11"/>
+                                    <TextBlock Grid.Row="0" Grid.Column="0" Text="{Binding L[CertificateBrowserView.ModelLabel]}" FontWeight="Bold" FontSize="11"/>
                                     <TextBlock Grid.Row="0" Grid.Column="1" Text="{Binding DiskModel}" FontSize="11"/>
 
                                     <TextBlock Grid.Row="1" Grid.Column="0" Text="{Binding L[CertificateBrowser.SerialNumberLabel]}" FontWeight="Bold" FontSize="11"/>
                                     <TextBlock Grid.Row="1" Grid.Column="1" Text="{Binding SerialNumber}" FontFamily="Consolas" FontSize="11"/>
 
-                                    <TextBlock Grid.Row="2" Grid.Column="0" Text="Kapacita:" FontWeight="Bold" FontSize="11"/>
+                                    <TextBlock Grid.Row="2" Grid.Column="0" Text="{Binding L[CertificateBrowserView.CapacityLabel]}" FontWeight="Bold" FontSize="11"/>
                                     <TextBlock Grid.Row="2" Grid.Column="1" Text="{Binding Capacity}" FontSize="11"/>
 
-                                    <TextBlock Grid.Row="3" Grid.Column="0" Text="Typ disku:" FontWeight="Bold" FontSize="11"/>
+                                    <TextBlock Grid.Row="3" Grid.Column="0" Text="{Binding L[CertificateBrowserView.DiskTypeLabel]}" FontWeight="Bold" FontSize="11"/>
                                     <TextBlock Grid.Row="3" Grid.Column="1" Text="{Binding DiskType}" FontSize="11"/>
 
-                                    <TextBlock Grid.Row="4" Grid.Column="0" Text="Firmware:" FontWeight="Bold" FontSize="11"/>
+                                    <TextBlock Grid.Row="4" Grid.Column="0" Text="{Binding L[CertificateBrowserView.FirmwareLabel]}" FontWeight="Bold" FontSize="11"/>
                                     <TextBlock Grid.Row="4" Grid.Column="1" Text="{Binding Firmware}" FontSize="11"/>
 
                                     <TextBlock Grid.Row="5" Grid.Column="0" Text="{Binding L[CertificateBrowser.Interface]}" FontWeight="Bold" FontSize="11"/>
@@ -242,7 +242,7 @@
                         <!-- SMART Summary -->
                         <Border Background="{Binding PanelBackground}" Padding="10" CornerRadius="8">
                             <StackPanel Spacing="4">
-                                <TextBlock Text="SMART souhrn" FontWeight="Bold" FontSize="12"/>
+                                <TextBlock Text="{Binding L[CertificateBrowserView.SmartSummary]}" FontWeight="Bold" FontSize="12"/>
                                 <TextBlock Text="{Binding SmartPowerOnHoursText, StringFormat='Provozní hodiny: {0}'}" FontSize="11"/>
                                 <TextBlock Text="{Binding SmartPowerCyclesText, StringFormat='Počet startů: {0}'}" FontSize="11"/>
                                 <TextBlock Text="{Binding SmartReallocatedSectorsText, StringFormat='Realokované sektory: {0}'}" FontSize="11"/>
@@ -258,17 +258,17 @@
                         <Border Background="{Binding PanelBackground}" Padding="10" CornerRadius="8"
                                 IsVisible="{Binding HasSeekMetrics}">
                             <StackPanel Spacing="4">
-                                <TextBlock Text="🎯 Seek test (latence)" FontWeight="Bold" FontSize="12"/>
+                                <TextBlock Text="{Binding L[CertificateBrowserView.SeekTest]}" FontWeight="Bold" FontSize="12"/>
                                 <TextBlock Text="{Binding SeekTestSummaryText, StringFormat='Souhrn: {0}'}"
                                            FontSize="10" TextWrapping="Wrap"/>
                                 <Grid ColumnDefinitions="Auto,*" RowDefinitions="Auto,Auto,Auto,Auto" RowSpacing="2" ColumnSpacing="8">
                                     <TextBlock Grid.Row="0" Grid.Column="0" Text="{Binding L[CertificateBrowser.Average]}" FontSize="10"/>
                                     <TextBlock Grid.Row="0" Grid.Column="1" Text="{Binding SeekAvgLatencyMsText}" FontSize="10" FontWeight="SemiBold"/>
-                                    <TextBlock Grid.Row="1" Grid.Column="0" Text="Minimum:" FontSize="10"/>
+                                    <TextBlock Grid.Row="1" Grid.Column="0" Text="{Binding L[CertificateBrowserView.MinLabel]}" FontSize="10"/>
                                     <TextBlock Grid.Row="1" Grid.Column="1" Text="{Binding SeekMinLatencyMsText}" FontSize="10"/>
-                                    <TextBlock Grid.Row="2" Grid.Column="0" Text="Maximum:" FontSize="10"/>
+                                    <TextBlock Grid.Row="2" Grid.Column="0" Text="{Binding L[CertificateBrowserView.MaxLabel]}" FontSize="10"/>
                                     <TextBlock Grid.Row="2" Grid.Column="1" Text="{Binding SeekMaxLatencyMsText}" FontSize="10"/>
-                                    <TextBlock Grid.Row="3" Grid.Column="0" Text="P95:" FontSize="10"/>
+                                    <TextBlock Grid.Row="3" Grid.Column="0" Text="{Binding L[CertificateBrowserView.P95Label]}" FontSize="10"/>
                                     <TextBlock Grid.Row="3" Grid.Column="1" Text="{Binding SeekP95LatencyMsText}" FontSize="10" FontWeight="SemiBold"/>
                                 </Grid>
                             </StackPanel>
@@ -313,7 +313,7 @@
                         <Border Background="{Binding PanelBackground}" Padding="10" CornerRadius="8"
                                 IsVisible="{Binding SanitizationPerformed}">
                             <StackPanel Spacing="3">
-                                <TextBlock Text="🧹 Detaily sanitizace" FontWeight="Bold" FontSize="12"/>
+                                <TextBlock Text="{Binding L[CertificateBrowserView.SanitizeDetails]}" FontWeight="Bold" FontSize="12"/>
                                 <TextBlock Text="{Binding SanitizationMethod, StringFormat='Metoda: {0}'}" FontSize="10"/>
                                 <TextBlock Text="{Binding DataVerified, StringFormat='Data ověřena: {0}'}" FontSize="10"/>
                                 <TextBlock Text="{Binding PartitionScheme, StringFormat='Schéma: {0}'}" FontSize="10"/>
@@ -373,7 +373,7 @@
                                     </StackPanel>
                                     <StackPanel Orientation="Horizontal" Spacing="5" IsVisible="{Binding HasTemperatureProfile}">
                                         <Border Width="10" Height="10" Background="#FF7C3AED" CornerRadius="2"/>
-                                        <TextBlock Text="Teplota" FontSize="10"/>
+                                        <TextBlock Text="{Binding L[CertificateBrowserView.TemperatureChart]}" FontSize="10"/>
                                     </StackPanel>
                                 </StackPanel>
                             </StackPanel>

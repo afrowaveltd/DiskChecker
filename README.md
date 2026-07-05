@@ -23,6 +23,16 @@ DiskChecker je dnes více než jednoduchá SMART utilita. Obsahuje kompletní ap
   - Cache SMART dat s konfigurovatelným TTL v `appsettings.json`.
   - **Negativní cache** – pokud disk SMART nepodporuje (USB adaptéry, RAID řadiče), uloží se sentinel do cache na 30 minut, aby se předešlo opakovaným timeoutům a zamrzání UI.
   - Instrukce a pokus o instalaci závislostí tam, kde jsou potřeba externí nástroje.
+- **SMART historické trendy**
+  - Automatické ukládání SMART snapshotů do dedikované tabulky `SmartSnapshots` při každém testu.
+  - **Trendová analýza** napříč testy – teplota, reallocated sectors, wear leveling, percentage used, pending sectors a další.
+  - Lineární regrese pro výpočet rychlosti degradace a predikce dnů do kritické meze.
+  - Vizuální zobrazení trendových grafů přímo v analytickém pracovišti.
+- **Vendor-specific hodnocení opotřebení SSD**
+  - Mapování Wear_Leveling_Count (ID 177) podle výrobce – Samsung, Intel, Seagate, Western Digital, SanDisk, Crucial/Micron, Kingston, Toshiba/Kioxia, SK Hynix, ADATA, Corsair a další.
+  - Interpretace normalizované hodnoty jako zbývající životnosti v % (100 = nový, 0 = mrtvý).
+  - Automatické rozpoznání NVMe zařízení a použití standardizovaného `PercentageUsed`.
+  - Lidsky čitelný popis stavu opotřebení s barevnou severitou.
 - **Hodnocení zdraví disku**
   - Výpočet skóre a známky A–F.
   - Vyhodnocení kritických SMART atributů, chyb, výkonu a průběhu testů.
@@ -51,6 +61,15 @@ DiskChecker je dnes více než jednoduchá SMART utilita. Obsahuje kompletní ap
   - Samostatná UI část pro bezpečnější průchod destruktivním testem.
   - Záloha před testem, destruktivní test, obnova po testu.
   - Důraz na potvrzení vybraného zařízení a minimalizaci omylů.
+- **Analytické pracoviště**
+  - Prohlížeč historických testovacích session s detailními grafy.
+  - **Throughput grafy** – write/read rychlost podle průběhu disku i podle času.
+  - **Seek latency grafy** – latence přeskoků podle indexu.
+  - **Teplotní trendy** – vývoj teploty během testu.
+  - **Detekce anomálií a stallů** – přetížené oblasti v grafu s možností zoomu.
+  - **SMART trendy** – vývoj klíčových metrik napříč testy (teplota, reallocated, wear leveling, % used).
+  - **Vendor-specific hodnocení opotřebení** – interpretace Wear_Leveling_Count podle výrobce.
+  - Kompaktní a plný režim zobrazení, automatické přizpůsobení šířce okna.
 - **Karty disků**
   - Servisní karta disku podle sériového čísla.
   - Evidence testovacích session, SMART snapshotů, skóre, známky, poznámek, archivace a zámků.
@@ -63,7 +82,7 @@ DiskChecker je dnes více než jednoduchá SMART utilita. Obsahuje kompletní ap
   - Kompletní reporty, náhled a tisk/export podle implementovaných možností UI.
 - **Historie a databáze**
   - SQLite databáze `DiskChecker.db`.
-  - Starší tabulky testů i nové entity `DiskCards`, `TestSessions`, `DiskCertificates`, `DiskArchives`.
+  - Starší tabulky testů i nové entity `DiskCards`, `TestSessions`, `DiskCertificates`, `DiskArchives`, `SmartSnapshots`.
   - Kompatibilitní patcher schématu při startu aplikace (automatické přidávání chybějících sloupců).
 - **Porovnání disků**
   - Porovnání vybraných diskových karet a jejich výkonových/zdravotních metrik.
@@ -79,17 +98,18 @@ DiskChecker je dnes více než jednoduchá SMART utilita. Obsahuje kompletní ap
   - Odesílání reportů a notifikací po dokončení testu.
 - **Lokalizace**
   - Aktuálně jsou v repozitáři lokalizační soubory `cs.json` a `en.json`.
+  - Dynamické přepínání jazyka za běhu aplikace.
 
 ## Projekty v řešení
 
 | Projekt | Role |
 | --- | --- |
-| `DiskChecker.Core` | Doménové modely, rozhraní a základní služby. Obsahuje např. `CoreDriveInfo`, `SmartaData`, `DiskCard`, `TestSession`, `DiskCertificate`, `SpeedAnomaly`, `SurfaceTestResult`, `SeekTestResult`, `AdaptiveSpeedSampler`, `AnomalyAnalysisService`, `QualityCalculator`. |
+| `DiskChecker.Core` | Doménové modely, rozhraní a základní služby. Obsahuje např. `CoreDriveInfo`, `SmartaData`, `DiskCard`, `TestSession`, `DiskCertificate`, `SpeedAnomaly`, `SurfaceTestResult`, `SeekTestResult`, `AdaptiveSpeedSampler`, `AnomalyAnalysisService`, `QualityCalculator`, `SmartTrendService`, `VendorWearMapping`. |
 | `DiskChecker.Infrastructure` | Platformní a technická implementace: SMART provideři pro Windows/Linux, detekce svazků, surface/seek executory, sanitizace, SQLite persistence, repozitáře, generátor certifikátů (SkiaSharp), porovnání disků a SchemaCompatibilityPatcher. |
 | `DiskChecker.Application` | Aplikační/use-case vrstva: SMART check, diskové karty a testovací session, historie, reporty, certifikace, e-mail, nastavení, notifikace, archivace a analýza testů. |
 | `DiskChecker.UI.Avalonia` | Hlavní desktopové UI v Avalonia + MVVM. Obsahuje view modely, views, navigaci, dialogy, lokalizaci, zálohy/obnovu a registraci DI. |
 | `DiskChecker.TUI` | Samostatný terminálový/experimentální projekt mimo hlavní `.slnx` workflow. |
-| `tests/DiskChecker.Tests` | Unit testy (164 testů) pro adaptivní vzorkování, analýzu anomálií, certifikáty, identitu disku, sanitizační progress, seek testy, nastavení, SMART parser/cache a další části. |
+| `tests/DiskChecker.Tests` | Unit testy (190 testů) pro adaptivní vzorkování, analýzu anomálií, certifikáty, identitu disku, sanitizační progress, seek testy, nastavení, SMART parser/cache a další části. |
 
 ## Architektura
 
@@ -115,7 +135,8 @@ DiskChecker je dnes více než jednoduchá SMART utilita. Obsahuje kompletní ap
 ┌───────────────────────────────▼─────────────────────────────┐
 │ DiskChecker.Core                                             │
 │ Modely · rozhraní · AdaptiveSpeedSampler ·                   │
-│ AnomalyAnalysisService · QualityCalculator · shared contracts│
+│ AnomalyAnalysisService · QualityCalculator · SmartTrendService│
+│ VendorWearMapping · shared contracts                         │
 └─────────────────────────────────────────────────────────────┘
 ```
 
@@ -126,10 +147,11 @@ Podrobnější technický popis je v dokumentu [`docs/ARCHITECTURE_CS.md`](docs/
 - **.NET 10.0** (`net10.0`)
 - **Avalonia 11.3.12**
   - Projekt záměrně drží Avalonia 11.3.12 kvůli kompatibilitě s `LiveChartsCore.SkiaSharpView.Avalonia 2.0.5`.
-- **CommunityToolkit.Mvvm**
+- **CommunityToolkit.Mvvm 8.4.2**
 - **Entity Framework Core + SQLite**
-- **SkiaSharp** – cross-platform rendering pro certifikáty, grafy a štítky
-- **LiveChartsCore** – grafy v UI (povrchový test, seek test, sanitizace)
+- **SkiaSharp 3.119.4** – cross-platform rendering pro certifikáty, grafy a štítky
+- **LiveChartsCore 2.0.5** – grafy v UI (povrchový test, seek test, sanitizace)
+- **OxyPlot.Avalonia 2.1.0** – doplňkové grafy
 - **MailKit/MimeKit** pro SMTP
 - **smartmontools/smartctl** hlavně na Linuxu a pro pokročilé SMART scénáře
 - **xUnit v3**, **NSubstitute** pro testy
@@ -210,7 +232,7 @@ Výchozí desktopová aplikace registruje SQLite databázi jako:
 DiskChecker.db
 ```
 
-Soubor se vytváří v pracovním adresáři spuštěné aplikace. Databáze obsahuje jak legacy tabulky (`DriveRecords`, `TestRecords`, `SmartaRecords`, `SurfaceTestSamples`), tak nové servisní entity pro karty disků, session, certifikáty, archivaci, SMTP nastavení a replikační frontu.
+Soubor se vytváří v pracovním adresáři spuštěné aplikace. Databáze obsahuje jak legacy tabulky (`DriveRecords`, `TestRecords`, `SmartaRecords`, `SurfaceTestSamples`), tak nové servisní entity pro karty disků, session, certifikáty, archivaci, SMART snapshoty, SMTP nastavení a replikační frontu.
 
 Při startu aplikace se volá `EnsureCreated()` a následně `SchemaCompatibilityPatcher.Apply(...)`, aby se starší databáze přizpůsobily aktuálnímu schématu. Patcher automaticky přidává chybějící sloupce (např. `AnomaliesJson`, `Sanitize1ResultJson`, `SeekResultsJson`) bez ztráty existujících dat.
 
@@ -244,6 +266,26 @@ Po dokončení testu `AnomalyAnalysisService`:
 - Generuje lidsky čitelný report (součást certifikátu).
 - Počítá penalizaci 0–50 bodů do celkového skóre disku.
 
+### SMART historické trendy
+
+Při každém testu se automaticky ukládá SMART snapshot do tabulky `SmartSnapshots`. Služba `SmartTrendService` poté:
+
+- Agreguje všechny snapshoty pro daný disk.
+- Počítá lineární regresi pro klíčové metriky (teplota, reallocated sectors, wear leveling, percentage used, pending sectors, uncorrectable errors, media errors, unsafe shutdowns, power-on hours, available spare).
+- Vypočítává rychlost změny za den a predikuje dny do kritické meze.
+- Generuje lidsky čitelný souhrnný report.
+- Poskytuje data pro vykreslení trendových grafů v analytickém pracovišti.
+
+### Vendor-specific hodnocení opotřebení SSD
+
+`VendorWearMapping` obsahuje mapování pro 20+ výrobců SSD. Každý záznam specifikuje:
+
+- **Semantiku normalizované hodnoty** – většina výrobců používá klesající škálu 100→0 (100 = nový, 0 = mrtvý).
+- **Raw hodnotu** – průměrný počet mazacích cyklů NAND bloků.
+- **Prahové hodnoty** pro varování (≤30) a kritický stav (≤10).
+
+Pro NVMe disky se automaticky používá standardizovaný atribut `PercentageUsed` (0–100 % opotřebení).
+
 ### Režimy zálohy
 
 | Režim | Popis | Použití |
@@ -262,7 +304,7 @@ Pokud disk nebo adaptér nepodporuje SMART, provider uloží sentinel do cache n
 
 ```text
 DiskChecker/
-├── DiskChecker.Core/              # Doménové modely, rozhraní, AdaptiveSpeedSampler, AnomalyAnalysisService, QualityCalculator
+├── DiskChecker.Core/              # Doménové modely, rozhraní, AdaptiveSpeedSampler, AnomalyAnalysisService, QualityCalculator, SmartTrendService, VendorWearMapping
 ├── DiskChecker.Infrastructure/    # Platformní implementace, SMART, testy, sanitizace, SQLite, SchemaCompatibilityPatcher
 ├── DiskChecker.Application/       # Aplikační služby a obchodní logika
 ├── DiskChecker.UI.Avalonia/       # Hlavní desktopové UI
@@ -273,7 +315,7 @@ DiskChecker/
 │   ├── Locales/                   # cs/en překlady
 │   └── Assets/                    # Ikony a assety
 ├── DiskChecker.TUI/               # Terminálový/experimentální projekt
-├── tests/DiskChecker.Tests/       # Unit testy (164 testů)
+├── tests/DiskChecker.Tests/       # Unit testy (190 testů)
 ├── docs/                          # Uživatelská a technická dokumentace
 ├── installer/                     # Linux/Windows instalační podklady
 ├── scripts/                       # Pomocné build skripty
@@ -297,7 +339,7 @@ DiskChecker/
 dotnet test
 ```
 
-Testovací projekt (164 testů) pokrývá:
+Testovací projekt (190 testů) pokrývá:
 - Adaptivní vzorkování a detekci anomálií (11 testů)
 - Analýzu anomálií – překryvy, korelace, penalizace, reporty
 - Generování certifikátů
@@ -306,6 +348,7 @@ Testovací projekt (164 testů) pokrývá:
 - Seek testy
 - Nastavení
 - SMART parsery a cache
+- SMART detekci podpory
 
 ## Licence
 

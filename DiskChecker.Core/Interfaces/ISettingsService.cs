@@ -126,4 +126,8 @@ public interface ISettingsService
     // Database storage settings
     Task<DatabaseStorageSettings> GetDatabaseStorageSettingsAsync();
     Task SetDatabaseStorageSettingsAsync(DatabaseStorageSettings settings);
+
+    Task<AnalysisWorkspaceMode> GetAnalysisWorkspaceModeAsync();
+    Task SetAnalysisWorkspaceModeAsync(AnalysisWorkspaceMode mode);
 }
+

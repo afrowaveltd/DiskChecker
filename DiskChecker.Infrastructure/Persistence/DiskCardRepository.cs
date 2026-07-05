@@ -8,6 +8,7 @@ using System.Text;
 using System.Threading.Tasks;
 using DiskChecker.Core.Interfaces;
 using DiskChecker.Core.Models;
+using DiskChecker.Core.Services;
 using Microsoft.EntityFrameworkCore;
 
 namespace DiskChecker.Infrastructure.Persistence;
@@ -655,10 +656,8 @@ public class DiskCardRepository : IDiskCardRepository
             }
         }
 
-        var ordered = samples
-            .Where(s => s.SpeedMBps > 0 || s.IsStalled)
-            .OrderBy(s => s.Timestamp == default ? DateTime.MaxValue : s.Timestamp)
-            .ThenBy(s => s.ProgressPercent)
+        var ordered = SpeedSampleRetentionService
+            .ReduceForPersistenceWithReasons(samples, TelemetryRetentionProfile.Balanced)
             .ToList();
 
         if (ordered.Count == 0)
@@ -668,25 +667,44 @@ public class DiskCardRepository : IDiskCardRepository
             return;
         }
 
-        var firstTimestamp = ordered.FirstOrDefault(s => s.Timestamp != default)?.Timestamp;
-        var records = ordered.Select((sample, index) => new TestTelemetrySample
+        var firstTimestamp = ordered.FirstOrDefault(s => s.Sample.Timestamp != default)?.Sample.Timestamp;
+        var records = ordered.Select((retained, index) =>
         {
-            TestSessionId = sessionId,
-            Phase = phase,
-            SequenceIndex = index + 1,
-            TimestampUtc = sample.Timestamp == default ? DateTime.UtcNow : sample.Timestamp,
-            ElapsedMs = firstTimestamp.HasValue && sample.Timestamp != default
-                ? (sample.Timestamp - firstTimestamp.Value).TotalMilliseconds
-                : null,
-            ProgressPercent = sample.ProgressPercent,
-            BytesProcessed = sample.BytesProcessed,
-            SpeedMBps = sample.SpeedMBps,
-            IsStalled = sample.IsStalled,
-            IsAnomaly = false,
-            RetentionReason = sample.IsStalled ? "Stall" : "Raw"
+            var sample = retained.Sample;
+            return new TestTelemetrySample
+            {
+                TestSessionId = sessionId,
+                Phase = phase,
+                SequenceIndex = index + 1,
+                TimestampUtc = sample.Timestamp == default ? DateTime.UtcNow : sample.Timestamp,
+                ElapsedMs = firstTimestamp.HasValue && sample.Timestamp != default
+                    ? (sample.Timestamp - firstTimestamp.Value).TotalMilliseconds
+                    : null,
+                ProgressPercent = sample.ProgressPercent,
+                BytesProcessed = sample.BytesProcessed,
+                SpeedMBps = sample.SpeedMBps,
+                IsStalled = sample.IsStalled,
+                IsAnomaly = retained.RetentionReason.Contains("Anomaly", StringComparison.OrdinalIgnoreCase),
+                RetentionReason = retained.RetentionReason
+            };
         }).ToList();
 
         _context.TestTelemetrySamples.AddRange(records);
+
+        var existingStalls = await _context.TestStallEvents
+            .Where(e => e.TestSessionId == sessionId && e.Phase == phase)
+            .ToListAsync();
+        if (existingStalls.Count > 0)
+        {
+            _context.TestStallEvents.RemoveRange(existingStalls);
+        }
+
+        var stallEvents = BuildStallEvents(sessionId, phase, ordered);
+        if (stallEvents.Count > 0)
+        {
+            _context.TestStallEvents.AddRange(stallEvents);
+        }
+
         await _context.SaveChangesAsync();
     }
 
@@ -705,6 +723,226 @@ public class DiskCardRepository : IDiskCardRepository
             .OrderBy(s => s.Phase)
             .ThenBy(s => s.SequenceIndex)
             .ToListAsync();
+    }
+
+
+
+    private static List<TestStallEvent> BuildStallEvents(int sessionId, TelemetrySamplePhase phase, IReadOnlyList<RetainedSpeedSample> ordered)
+    {
+        var events = new List<TestStallEvent>();
+        var i = 0;
+        while (i < ordered.Count)
+        {
+            if (!ordered[i].Sample.IsStalled)
+            {
+                i++;
+                continue;
+            }
+
+            var start = i;
+            while (i + 1 < ordered.Count && ordered[i + 1].Sample.IsStalled)
+            {
+                i++;
+            }
+            var end = i;
+
+            var startSample = ordered[start].Sample;
+            var endSample = ordered[end].Sample;
+            var startedAt = startSample.Timestamp == default ? DateTime.UtcNow : startSample.Timestamp;
+            var endedAt = endSample.Timestamp == default ? startedAt : endSample.Timestamp;
+            if (endedAt < startedAt)
+            {
+                endedAt = startedAt;
+            }
+
+            var before = start > 0 ? ordered[start - 1].Sample.SpeedMBps : (double?)null;
+            var after = end + 1 < ordered.Count ? ordered[end + 1].Sample.SpeedMBps : (double?)null;
+            events.Add(new TestStallEvent
+            {
+                TestSessionId = sessionId,
+                Phase = phase,
+                StartedAtUtc = startedAt,
+                EndedAtUtc = endedAt,
+                DurationMs = Math.Max(0, (endedAt - startedAt).TotalMilliseconds),
+                StartProgressPercent = startSample.ProgressPercent,
+                EndProgressPercent = endSample.ProgressPercent,
+                BytesProcessed = endSample.BytesProcessed != 0 ? endSample.BytesProcessed : startSample.BytesProcessed,
+                LastSpeedBeforeStallMBps = before > 0 ? before : null,
+                FirstSpeedAfterStallMBps = after > 0 ? after : null
+            });
+
+            i++;
+        }
+
+        return events;
+    }
+
+
+    public async Task CreateStallEventsAsync(int sessionId, TelemetrySamplePhase phase, IReadOnlyCollection<TestStallEvent> events, bool replacePhase = true)
+    {
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(sessionId);
+        ArgumentNullException.ThrowIfNull(events);
+
+        if (replacePhase)
+        {
+            var existing = await _context.TestStallEvents
+                .Where(e => e.TestSessionId == sessionId && e.Phase == phase)
+                .ToListAsync();
+            if (existing.Count > 0)
+            {
+                _context.TestStallEvents.RemoveRange(existing);
+            }
+        }
+
+        if (events.Count > 0)
+        {
+            var records = events.Select(e => new TestStallEvent
+            {
+                TestSessionId = sessionId,
+                Phase = phase,
+                StartedAtUtc = e.StartedAtUtc,
+                EndedAtUtc = e.EndedAtUtc,
+                DurationMs = e.DurationMs,
+                StartProgressPercent = e.StartProgressPercent,
+                EndProgressPercent = e.EndProgressPercent,
+                BytesProcessed = e.BytesProcessed,
+                LastSpeedBeforeStallMBps = e.LastSpeedBeforeStallMBps,
+                FirstSpeedAfterStallMBps = e.FirstSpeedAfterStallMBps
+            }).ToList();
+            _context.TestStallEvents.AddRange(records);
+        }
+
+        await _context.SaveChangesAsync();
+    }
+
+    public async Task<List<TestStallEvent>> GetStallEventsAsync(int sessionId, TelemetrySamplePhase? phase = null)
+    {
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(sessionId);
+
+        var query = _context.TestStallEvents
+            .AsNoTracking()
+            .Where(e => e.TestSessionId == sessionId);
+        if (phase.HasValue)
+            query = query.Where(e => e.Phase == phase.Value);
+
+        return await query
+            .OrderBy(e => e.Phase)
+            .ThenBy(e => e.StartedAtUtc)
+            .ToListAsync();
+    }
+
+    public async Task CreateAnomalyEventsAsync(int sessionId, IReadOnlyCollection<SpeedAnomaly> anomalies, bool replaceExisting = true)
+    {
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(sessionId);
+        ArgumentNullException.ThrowIfNull(anomalies);
+
+        if (replaceExisting)
+        {
+            var existing = await _context.TestAnomalyEvents
+                .Where(a => a.TestSessionId == sessionId)
+                .ToListAsync();
+            if (existing.Count > 0)
+            {
+                _context.TestAnomalyEvents.RemoveRange(existing);
+            }
+        }
+
+        var events = anomalies.Select(a => new TestAnomalyEvent
+        {
+            TestSessionId = sessionId,
+            Phase = MapTelemetryPhase(a.Phase),
+            StartStandardIndex = a.StartStandardIndex,
+            EndStandardIndex = a.EndStandardIndex,
+            StartProgressPercent = a.StartProgressPercent,
+            EndProgressPercent = a.EndProgressPercent,
+            StartBytesProcessed = a.StartBytesProcessed,
+            EndBytesProcessed = a.EndBytesProcessed,
+            StartLba512 = a.StartLba512,
+            EndLba512 = a.EndLba512,
+            DurationMs = a.DurationMs,
+            MinSpeedMBps = a.MinSpeedMBps,
+            MaxSpeedMBps = a.MaxSpeedMBps,
+            AvgSpeedMBps = a.AvgSpeedMBps,
+            EntrySpeedMBps = a.EntrySpeedMBps,
+            ExitSpeedMBps = a.ExitSpeedMBps,
+            MaxDeviationPercent = a.MaxDeviationPercent,
+            SeverityScore = a.SeverityScore,
+            OverlayGroup = a.OverlayGroup,
+            DefectType = a.DefectType
+        }).ToList();
+
+        if (events.Count > 0)
+        {
+            _context.TestAnomalyEvents.AddRange(events);
+        }
+
+        foreach (var group in anomalies.GroupBy(a => MapTelemetryPhase(a.Phase)))
+        {
+            var highResSamples = group
+                .SelectMany(a => a.HighResSamples.Select(s => new SpeedSample
+                {
+                    Timestamp = s.Timestamp,
+                    ProgressPercent = s.ProgressPercent,
+                    BytesProcessed = s.BytesProcessed,
+                    SpeedMBps = s.SpeedMBps,
+                    IsStalled = s.IsStalled
+                }))
+                .Where(s => s.SpeedMBps > 0 || s.IsStalled)
+                .OrderBy(s => s.Timestamp == default ? DateTime.MaxValue : s.Timestamp)
+                .ThenBy(s => s.ProgressPercent)
+                .ToList();
+
+            if (highResSamples.Count == 0)
+            {
+                continue;
+            }
+
+            var existingCount = await _context.TestTelemetrySamples
+                .CountAsync(t => t.TestSessionId == sessionId && t.Phase == group.Key);
+            var firstTimestamp = highResSamples.FirstOrDefault(s => s.Timestamp != default)?.Timestamp;
+            var records = highResSamples.Select((sample, index) => new TestTelemetrySample
+            {
+                TestSessionId = sessionId,
+                Phase = group.Key,
+                SequenceIndex = existingCount + index + 1,
+                TimestampUtc = sample.Timestamp == default ? DateTime.UtcNow : sample.Timestamp,
+                ElapsedMs = firstTimestamp.HasValue && sample.Timestamp != default
+                    ? (sample.Timestamp - firstTimestamp.Value).TotalMilliseconds
+                    : null,
+                ProgressPercent = sample.ProgressPercent,
+                BytesProcessed = sample.BytesProcessed,
+                SpeedMBps = sample.SpeedMBps,
+                IsStalled = sample.IsStalled,
+                IsAnomaly = true,
+                RetentionReason = sample.IsStalled ? "Anomaly+Stall" : "Anomaly"
+            }).ToList();
+            _context.TestTelemetrySamples.AddRange(records);
+        }
+
+        await _context.SaveChangesAsync();
+    }
+
+    public async Task<List<TestAnomalyEvent>> GetAnomalyEventsAsync(int sessionId, TelemetrySamplePhase? phase = null)
+    {
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(sessionId);
+
+        var query = _context.TestAnomalyEvents
+            .AsNoTracking()
+            .Where(a => a.TestSessionId == sessionId);
+        if (phase.HasValue)
+            query = query.Where(a => a.Phase == phase.Value);
+
+        return await query
+            .OrderByDescending(a => a.SeverityScore)
+            .ThenBy(a => a.StartProgressPercent)
+            .ToListAsync();
+    }
+
+    private static TelemetrySamplePhase MapTelemetryPhase(string? phase)
+    {
+        return string.Equals(phase, "Read", StringComparison.OrdinalIgnoreCase)
+            ? TelemetrySamplePhase.Read
+            : TelemetrySamplePhase.Write;
     }
 
     public async Task CreateSeekSamplesAsync(int sessionId, SeekTestType testType, IReadOnlyCollection<SeekLatencySample> samples)
@@ -799,6 +1037,11 @@ public class DiskCardRepository : IDiskCardRepository
         if (session.ReadSamples.Count > 0)
         {
             await CreateTelemetrySamplesAsync(session.Id, TelemetrySamplePhase.Read, session.ReadSamples);
+        }
+
+        if (session.Anomalies.Count > 0)
+        {
+            await CreateAnomalyEventsAsync(session.Id, session.Anomalies);
         }
 
         return session;
@@ -1009,6 +1252,60 @@ public class DiskCardRepository : IDiskCardRepository
         if (!string.IsNullOrWhiteSpace(incoming.FirmwareVersion)) existing.FirmwareVersion = incoming.FirmwareVersion;
         if (incoming.Capacity > 0) existing.Capacity = incoming.Capacity;
         existing.LastTestedAt = DateTime.UtcNow;
+    }
+
+    // ========== SMART Snapshots ==========
+
+    public async Task<SmartSnapshotRecord> CreateSmartSnapshotAsync(SmartSnapshotRecord snapshot)
+    {
+        ArgumentNullException.ThrowIfNull(snapshot);
+
+        if (snapshot.DiskCardId <= 0)
+            throw new InvalidOperationException("DiskCardId must be set.");
+
+        if (snapshot.RetrievedAtUtc == default)
+            snapshot.RetrievedAtUtc = DateTime.UtcNow;
+
+        _context.SmartSnapshots.Add(snapshot);
+        await _context.SaveChangesAsync();
+        return snapshot;
+    }
+
+    public async Task<List<SmartSnapshotRecord>> GetSmartSnapshotsAsync(int diskCardId)
+    {
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(diskCardId);
+
+        return await _context.SmartSnapshots
+            .AsNoTracking()
+            .Where(s => s.DiskCardId == diskCardId)
+            .OrderBy(s => s.RetrievedAtUtc)
+            .ToListAsync();
+    }
+
+    public async Task<List<SmartSnapshotRecord>> GetSmartSnapshotsInRangeAsync(int diskCardId, DateTime fromUtc, DateTime toUtc)
+    {
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(diskCardId);
+
+        return await _context.SmartSnapshots
+            .AsNoTracking()
+            .Where(s => s.DiskCardId == diskCardId && s.RetrievedAtUtc >= fromUtc && s.RetrievedAtUtc <= toUtc)
+            .OrderBy(s => s.RetrievedAtUtc)
+            .ToListAsync();
+    }
+
+    public async Task DeleteSmartSnapshotsAsync(int diskCardId)
+    {
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(diskCardId);
+
+        var snapshots = await _context.SmartSnapshots
+            .Where(s => s.DiskCardId == diskCardId)
+            .ToListAsync();
+
+        if (snapshots.Count > 0)
+        {
+            _context.SmartSnapshots.RemoveRange(snapshots);
+            await _context.SaveChangesAsync();
+        }
     }
 
     private static string GenerateCertificateNumber()

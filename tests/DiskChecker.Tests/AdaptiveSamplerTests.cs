@@ -72,6 +72,38 @@ public class AdaptiveSpeedSamplerTests
         Assert.True(anomaly.SeverityScore > 0);
     }
 
+
+    [Fact]
+    public void AddSample_SuddenDrop_StoresByteAndLbaRange()
+    {
+        var sampler = new AdaptiveSpeedSampler
+        {
+            AnomalyThresholdPercent = 15.0,
+            HysteresisPercent = 5.0,
+            MinAnomalyDurationMs = 100,
+            BaselineWindowSize = 5,
+            MinStandardIntervalMs = 50
+        };
+        sampler.Initialize(1_000_000_000);
+
+        var startTime = new DateTime(2025, 1, 1, 0, 0, 0, DateTimeKind.Utc);
+        for (int i = 0; i < 10; i++)
+            sampler.AddSample(100.0, i * 20_000_000L, startTime.AddMilliseconds(i * 200));
+        for (int i = 0; i < 10; i++)
+            sampler.AddSample(50.0, (10 + i) * 20_000_000L, startTime.AddMilliseconds((10 + i) * 200));
+        for (int i = 0; i < 10; i++)
+            sampler.AddSample(100.0, (20 + i) * 20_000_000L, startTime.AddMilliseconds((20 + i) * 200));
+
+        sampler.FinalizePhase();
+
+        var anomaly = Assert.Single(sampler.Anomalies);
+        Assert.True(anomaly.StartBytesProcessed > 0);
+        Assert.True(anomaly.EndBytesProcessed >= anomaly.StartBytesProcessed);
+        Assert.Equal(anomaly.StartBytesProcessed / 512L, anomaly.StartLba512);
+        Assert.Equal(anomaly.EndBytesProcessed / 512L, anomaly.EndLba512);
+        Assert.True(anomaly.EndLba512 >= anomaly.StartLba512);
+    }
+
     [Fact]
     public void AddSample_BriefSpike_FilteredByMinDuration()
     {

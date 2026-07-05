@@ -204,7 +204,7 @@
                         </Grid>
                         
                         <Grid ColumnDefinitions="200,*">
-                            <TextBlock Grid.Column="0" Text="DB backend"
+                            <TextBlock Grid.Column="0" Text="{Binding L[SettingsView.DbBackend]}"
                                       FontSize="11" VerticalAlignment="Center"
                                       Foreground="{DynamicResource ThemeTextSecondaryBrush}"/>
                             <ComboBox Grid.Column="1"
@@ -216,7 +216,7 @@
                         </Grid>
 
                         <Grid ColumnDefinitions="200,*">
-                            <TextBlock Grid.Column="0" Text="Connection string"
+                            <TextBlock Grid.Column="0" Text="{Binding L[SettingsView.ConnectionString]}"
                                       FontSize="11" VerticalAlignment="Center"
                                       Foreground="{DynamicResource ThemeTextSecondaryBrush}"/>
                             <TextBox Grid.Column="1"
@@ -227,7 +227,7 @@
                                     Padding="8,4"/>
                         </Grid>
 
-                        <TextBlock Text="Změna backendu se bezpečně projeví po restartu aplikace. V této vývojové fázi se stará data nemigrují automaticky."
+                        <TextBlock Text="{Binding L[SettingsView.DbChangeNote]}"
                                    TextWrapping="Wrap"
                                    FontSize="10"
                                    Foreground="{DynamicResource ThemeTextMutedBrush}"/>

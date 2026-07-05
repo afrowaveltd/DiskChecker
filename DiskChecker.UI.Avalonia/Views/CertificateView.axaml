@@ -65,7 +65,7 @@
                                     <TextBlock Grid.Row="2" Grid.Column="0" Text="{Binding L[Disk.Capacity]}" FontWeight="Bold"/>
                                     <TextBlock Grid.Row="2" Grid.Column="1" Text="{Binding Capacity}"/>
 
-                                    <TextBlock Grid.Row="3" Grid.Column="0" Text="Typ disku:" FontWeight="Bold"/>
+                                    <TextBlock Grid.Row="3" Grid.Column="0" Text="{Binding L[CertificateView.DiskTypeLabel]}" FontWeight="Bold"/>
                                     <TextBlock Grid.Row="3" Grid.Column="1" Text="{Binding DiskType}"/>
 
                                     <TextBlock Grid.Row="4" Grid.Column="0" Text="{Binding L[CertificateView.PowerOnHours]}" FontWeight="Bold"/>
@@ -261,7 +261,7 @@
                                      </StackPanel>
                                     <StackPanel Orientation="Horizontal" Spacing="6" IsVisible="{Binding HasTemperatureProfile}">
                                         <Border Width="10" Height="10" Background="#FF7C3AED" CornerRadius="2"/>
-                                        <TextBlock Text="Teplota" FontSize="11"/>
+                                        <TextBlock Text="{Binding L[CertificateView.TemperatureChart]}" FontSize="11"/>
                                      </StackPanel>
                                  </StackPanel>
                              </StackPanel>
@@ -293,7 +293,7 @@
                         <Separator Background="{DynamicResource ThemeBorderBrush}"/>
 
                         <Grid ColumnDefinitions="Auto,*" ColumnSpacing="8" Margin="0,2,0,2">
-                            <TextBlock Grid.Column="0" Text="Relace testu:" FontWeight="Bold" VerticalAlignment="Center"/>
+                            <TextBlock Grid.Column="0" Text="{Binding L[CertificateView.TestSessionLabel]}" FontWeight="Bold" VerticalAlignment="Center"/>
                             <ComboBox Grid.Column="1"
                                       ItemsSource="{Binding AvailableSessions}"
                                       SelectedItem="{Binding SelectedSessionItem}"
@@ -322,7 +322,7 @@
                             </Border>
                             <Border Grid.Column="1" Background="{Binding PanelBackground}" Padding="12" CornerRadius="8">
                                 <StackPanel Spacing="6">
-                                    <TextBlock Text="SMART detail" FontWeight="Bold" FontSize="13"/>
+                                    <TextBlock Text="{Binding L[CertificateView.SmartDetail]}" FontWeight="Bold" FontSize="13"/>
                                     <TextBlock Text="{Binding SelectedSessionSmartSummary}" TextWrapping="Wrap" FontFamily="Consolas" FontSize="11"/>
                                 </StackPanel>
                             </Border>
@@ -373,7 +373,7 @@
                             <TextBlock Text="🖨️" FontSize="12" VerticalAlignment="Center"/>
                         </StackPanel>
                         <Panel IsVisible="{Binding IsLoading}">
-                            <TextBlock Text="⏳ Pracuji..." FontSize="10" Foreground="{DynamicResource ThemeWarningBrush}"/>
+                            <TextBlock Text="{Binding L[CertificateView.Working]}" FontSize="10" Foreground="{DynamicResource ThemeWarningBrush}"/>
                         </Panel>
                     </StackPanel>
                 </Grid>

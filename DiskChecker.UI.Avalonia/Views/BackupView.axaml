@@ -84,7 +84,7 @@
                         <TextBlock Text="{Binding L[BackupView.SourceDisk]}" FontSize="14" FontWeight="Bold"
                                    Foreground="{DynamicResource ThemeTextPrimaryBrush}"/>
                         <Grid ColumnDefinitions="Auto,*" RowDefinitions="Auto,Auto,Auto" ColumnSpacing="12" RowSpacing="4">
-                            <TextBlock Grid.Row="0" Grid.Column="0" Text="Disk:"
+                            <TextBlock Grid.Row="0" Grid.Column="0" Text="{Binding L[BackupView.DiskLabel]}"
                                        Foreground="{DynamicResource ThemeTextMutedBrush}" FontSize="10"/>
                             <TextBlock Grid.Row="0" Grid.Column="1" Text="{Binding SourceDrive.Name}"
                                        Foreground="{DynamicResource ThemeTextPrimaryBrush}" FontWeight="SemiBold" FontSize="10"/>
@@ -94,7 +94,7 @@
                             <TextBlock Grid.Row="1" Grid.Column="1" Text="{Binding SourceDrive.Path}"
                                        Foreground="{DynamicResource ThemeTextSecondaryBrush}" FontSize="10" FontFamily="Courier New"/>
 
-                            <TextBlock Grid.Row="2" Grid.Column="0" Text="SMART:"
+                            <TextBlock Grid.Row="2" Grid.Column="0" Text="{Binding L[BackupView.SmartLabel]}"
                                        Foreground="{DynamicResource ThemeTextMutedBrush}" FontSize="10"/>
                             <TextBlock Grid.Row="2" Grid.Column="1"
                                        Text="{Binding SourceSmarta.HealthStatus}"

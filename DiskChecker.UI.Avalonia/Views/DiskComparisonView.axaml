@@ -63,7 +63,7 @@
 
                 <!-- Disk 1 Selection -->
                 <StackPanel Grid.Column="0">
-                    <TextBlock Text="🔍 Disk 1" FontSize="12" FontWeight="Bold" Margin="0,0,0,8"/>
+                    <TextBlock Text="{Binding L[DiskComparisonView.Disk1]}" FontSize="12" FontWeight="Bold" Margin="0,0,0,8"/>
                     <ComboBox ItemsSource="{Binding AvailableDisks}"
                               SelectedItem="{Binding SelectedDisk1}"
                               Width="280" HorizontalAlignment="Left">
@@ -81,12 +81,12 @@
                 </StackPanel>
 
                 <!-- VS Label -->
-                <TextBlock Grid.Column="1" Text="VS" FontSize="22" FontWeight="Bold"
+                <TextBlock Grid.Column="1" Text="{Binding L[DiskComparisonView.VsLabel]}" FontSize="22" FontWeight="Bold"
                           Foreground="{DynamicResource ThemeTextMutedBrush}" VerticalAlignment="Center" Margin="20,10,20,0"/>
 
                 <!-- Disk 2 Selection -->
                 <StackPanel Grid.Column="2">
-                    <TextBlock Text="🔍 Disk 2" FontSize="12" FontWeight="Bold" Margin="0,0,0,8"/>
+                    <TextBlock Text="{Binding L[DiskComparisonView.Disk2]}" FontSize="12" FontWeight="Bold" Margin="0,0,0,8"/>
                     <ComboBox ItemsSource="{Binding AvailableDisks}"
                               SelectedItem="{Binding SelectedDisk2}"
                               Width="280" HorizontalAlignment="Right">
@@ -155,10 +155,10 @@
                                     <TextBlock Text="{Binding L[DiskComparison.Capacity]}" FontSize="11"/>
                                 </Grid>
                                 <Grid Margin="0,3">
-                                    <TextBlock Text="Typ disku:" FontSize="11"/>
+                                    <TextBlock Text="{Binding L[DiskComparisonView.DiskTypeLabel]}" FontSize="11"/>
                                 </Grid>
                                 <Grid Margin="0,3">
-                                    <TextBlock Text="Firmware:" FontSize="11"/>
+                                    <TextBlock Text="{Binding L[DiskComparisonView.FirmwareLabel]}" FontSize="11"/>
                                 </Grid>
                                 <Grid Margin="0,3">
                                     <TextBlock Text="{Binding L[DiskComparison.OverallRating]}" FontSize="11" FontWeight="Bold"/>
@@ -237,7 +237,7 @@
                             <!-- SMART Metrics Section -->
                             <Border Grid.Row="9" Grid.ColumnSpan="4" Background="{DynamicResource ThemePanelBackgroundBrush}" Padding="10,5"
                                     BorderBrush="{DynamicResource ThemeBorderBrush}" BorderThickness="1,1,0,1">
-                                <TextBlock Text="📈 SMART Metriky" FontWeight="Bold" FontSize="14"/>
+                                <TextBlock Text="{Binding L[DiskComparisonView.SmartMetrics]}" FontWeight="Bold" FontSize="14"/>
                             </Border>
 
                             <!-- SMART Labels -->
@@ -249,10 +249,10 @@
                                     <TextBlock Text="{Binding L[DiskComparison.PowerOnHours]}" FontSize="11"/>
                                 </Grid>
                                 <Grid Margin="0,3">
-                                    <TextBlock Text="Reallocated sektory:" FontSize="11"/>
+                                    <TextBlock Text="{Binding L[DiskComparisonView.ReallocatedSectors]}" FontSize="11"/>
                                 </Grid>
                                 <Grid Margin="0,3">
-                                    <TextBlock Text="Pending sektory:" FontSize="11"/>
+                                    <TextBlock Text="{Binding L[DiskComparisonView.PendingSectors]}" FontSize="11"/>
                                 </Grid>
                                 <Grid Margin="0,3">
                                     <TextBlock Text="{Binding L[DiskComparison.ReadErrors]}" FontSize="11"/>

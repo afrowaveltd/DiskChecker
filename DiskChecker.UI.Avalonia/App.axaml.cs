@@ -158,8 +158,8 @@ public partial class App : global::Avalonia.Application
         services.AddScoped<ISurfaceTestService, SurfaceTestService>();
         // Register analysis/reporting components
         services.AddSingleton<TestReportAnalysisService>();
-        // Register UI analysis service implementation so AnalysisViewModel can resolve IAnalysisService.
-        services.AddSingleton<IAnalysisService, AnalysisService>();
+        services.AddScoped<ITestAnalysisDataService, TestAnalysisDataService>();
+
 
         // Seek test components
         services.AddSingleton<ISeekTestExecutor, SeekTestExecutor>();

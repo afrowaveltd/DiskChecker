@@ -346,7 +346,7 @@
                         BorderBrush="{DynamicResource ThemeBorderBrush}" BorderThickness="1"
                         IsVisible="{Binding LogText, Converter={StaticResource NotNullConverter}}">
                     <StackPanel Spacing="4">
-                        <TextBlock Text="📋 Log" FontSize="12" FontWeight="SemiBold"
+                        <TextBlock Text="{Binding L[SafeDestructiveTestView.Log]}" FontSize="12" FontWeight="SemiBold"
                                    Foreground="{DynamicResource ThemeTextPrimaryBrush}"/>
                         <Border Background="{DynamicResource ThemeCodeBackgroundBrush}"
                                 CornerRadius="4" Padding="8" MaxHeight="200">

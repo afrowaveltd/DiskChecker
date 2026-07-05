@@ -30,6 +30,7 @@ public class SettingsService : ISettingsService
     private bool _emailIncludeCertificateAttachment = true;
     private string? _certificatePath;
     private DatabaseStorageSettings _databaseStorageSettings = DatabaseStorageSettings.Default;
+    private AnalysisWorkspaceMode _analysisWorkspaceMode = AnalysisWorkspaceMode.Auto;
     
     private readonly string _settingsFilePath;
     private readonly string _lockedDisksFilePath;
@@ -252,6 +253,15 @@ public class SettingsService : ISettingsService
         {
             _databaseStorageSettings.ConnectionString = DatabaseStorageSettings.Default.ConnectionString;
         }
+        SaveSettingsToFile();
+        return Task.CompletedTask;
+    }
+
+    public Task<AnalysisWorkspaceMode> GetAnalysisWorkspaceModeAsync() => Task.FromResult(_analysisWorkspaceMode);
+
+    public Task SetAnalysisWorkspaceModeAsync(AnalysisWorkspaceMode mode)
+    {
+        _analysisWorkspaceMode = mode;
         SaveSettingsToFile();
         return Task.CompletedTask;
     }
