@@ -1864,9 +1864,17 @@ public partial class SafeDestructiveTestViewModel : ViewModelBase, INavigableVie
         long header1Pos = fs.Position;
         WriteVhdxHeaderAt(writer, 0, logicalSectorSize, physicalSectorSize);
 
+        // Pad from end of Header 1 (64KB + 4KB = 68KB) to Header 2 position (128KB)
+        while (fs.Position < 128L * 1024)
+            writer.Write((byte)0);
+
         // 3. Header 2 (at 128 KB) — sequence 1
         long header2Pos = fs.Position;
         WriteVhdxHeaderAt(writer, 1, logicalSectorSize, physicalSectorSize);
+
+        // Pad from end of Header 2 (128KB + 4KB = 132KB) to Region Table position (192KB)
+        while (fs.Position < 192L * 1024)
+            writer.Write((byte)0);
 
         // 4. Region Table (at 192 KB)
         long regionTablePos = fs.Position;
@@ -1880,14 +1888,14 @@ public partial class SafeDestructiveTestViewModel : ViewModelBase, INavigableVie
         writer.Write((ulong)(256L * 1024)); // FileOffset (BAT at 256 KB)
         writer.Write((uint)batSize); // Length
         writer.Write((uint)1); // Required
-        writer.Write(new byte[28]); // Padding
+        // Entry is exactly 32 bytes (16+8+4+4), no padding
 
         // Entry 1: Metadata — GUID {8B983ECF-8B1D-CC43-ADE4-BCD55AEF5C6E}
         writer.Write(new byte[] { 0xCF, 0x3E, 0x98, 0x8B, 0x1D, 0x8B, 0x43, 0xCC, 0xAD, 0xE4, 0xBC, 0xD5, 0x5A, 0xEF, 0x5C, 0x6E });
         writer.Write((ulong)(256L * 1024 + batSize)); // FileOffset
         writer.Write((uint)(1024L * 1024)); // Length (1 MiB)
         writer.Write((uint)1); // Required
-        writer.Write(new byte[28]); // Padding
+        // Entry is exactly 32 bytes (16+8+4+4), no padding
 
         // Pad region table to 256 KB
         while (fs.Position < 256L * 1024) writer.Write((byte)0);
@@ -1911,43 +1919,43 @@ public partial class SafeDestructiveTestViewModel : ViewModelBase, INavigableVie
         // Pad to data start offset
         while (fs.Position < dataStartOffset) writer.Write((byte)0);
 
-        // 7. Log (4 KB after each header) — must be zero-filled
-        fs.Position = header1Pos + 4096;
-        writer.Write(new byte[4096]);
-        fs.Position = header2Pos + 4096;
-        writer.Write(new byte[4096]);
-
         await fs.FlushAsync(ct);
     }
 
     private static void WriteVhdxHeaderAt(BinaryWriter writer, ulong sequenceNumber, int logicalSectorSize, int physicalSectorSize)
     {
         long startPos = writer.BaseStream.Position;
-        writer.Write(new byte[] { 0x68, 0x65, 0x61, 0x64 }); // "head"
-        writer.Write((uint)0); // Checksum placeholder (will be calculated)
-        writer.Write(sequenceNumber);
-        writer.Write(Guid.NewGuid().ToByteArray()); // FileWriteGuid
-        writer.Write(Guid.NewGuid().ToByteArray()); // DataWriteGuid
-        writer.Write(new byte[16]); // LogGuid (zero = no log)
-        writer.Write((ushort)1); // LogVersion = 1
-        writer.Write((ushort)6); // Version = 6 (VHDx v1.0)
-        writer.Write((uint)logicalSectorSize); // LogLength
-        writer.Write((ulong)(startPos + 4096)); // LogOffset (next 4K)
-        writer.Write((uint)0); // Reserved
-        writer.Write(new byte[4012]); // Pad to 4 KB
 
-        // Calculate and write checksum (CRC32 over the 4KB block with checksum field zeroed)
-        long endPos = writer.BaseStream.Position;
-        long savedPos = writer.BaseStream.Position;
-        writer.BaseStream.Position = startPos;
-        byte[] headerBytes = new byte[4096];
-        writer.BaseStream.ReadExactly(headerBytes, 0, 4096);
-        // Zero out the checksum field (bytes 4-7) for CRC calculation
-        headerBytes[4] = 0; headerBytes[5] = 0; headerBytes[6] = 0; headerBytes[7] = 0;
-        uint crc = Crc32(headerBytes);
-        writer.BaseStream.Position = startPos + 4;
-        writer.Write(crc);
-        writer.BaseStream.Position = savedPos;
+        // Build header in memory first (stream is write-only, can't read back)
+        using var ms = new MemoryStream(4096);
+        using var bw = new BinaryWriter(ms);
+
+        bw.Write(new byte[] { 0x68, 0x65, 0x61, 0x64 }); // "head"
+        bw.Write((uint)0); // Checksum placeholder (will be calculated)
+        bw.Write(sequenceNumber);
+        bw.Write(Guid.NewGuid().ToByteArray()); // FileWriteGuid
+        bw.Write(Guid.NewGuid().ToByteArray()); // DataWriteGuid
+        bw.Write(new byte[16]); // LogGuid (zero = no log → no log present)
+        bw.Write((ushort)0); // LogVersion = 0 (must be 0 when no log)
+        bw.Write((ushort)6); // Version = 6 (VHDx v1.0)
+        bw.Write((uint)0); // LogLength = 0 (no log)
+        bw.Write((ulong)0); // LogOffset = 0 (no log)
+        bw.Write((uint)0); // Reserved
+        bw.Write(new byte[4012]); // Pad to 4 KB
+
+        byte[] header = ms.ToArray();
+
+        // CRC32 over the 4KB block (checksum field bytes 4-7 are already zero)
+        uint crc = Crc32(header);
+
+        // Write CRC32 into the buffer at offset 4
+        header[4] = (byte)(crc & 0xFF);
+        header[5] = (byte)((crc >> 8) & 0xFF);
+        header[6] = (byte)((crc >> 16) & 0xFF);
+        header[7] = (byte)((crc >> 24) & 0xFF);
+
+        // Write the complete header to the actual stream
+        writer.Write(header);
     }
 
     private static uint Crc32(byte[] data)
