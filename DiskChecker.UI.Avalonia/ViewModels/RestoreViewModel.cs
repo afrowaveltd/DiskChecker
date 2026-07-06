@@ -201,6 +201,10 @@ public partial class RestoreViewModel : ViewModelBase, INavigableViewModel, IDis
             {
                 ScanDirectoryForBackups(dir);
             }
+            foreach (var dir in Directory.GetDirectories(rootPath, "DiskChecker_VhdxBackup_*", SearchOption.TopDirectoryOnly))
+            {
+                ScanDirectoryForBackups(dir);
+            }
         }
         catch { }
     }
@@ -260,7 +264,12 @@ public partial class RestoreViewModel : ViewModelBase, INavigableViewModel, IDis
                     SourceDrivePath = sourceDrive,
                     SourceModel = sourceModel,
                     BackupDate = dateDisplay,
-                    Mode = mode == "RawImage" ? "Raw obraz" : "Souborová",
+                    Mode = mode switch
+                    {
+                        "RawImage" => "Raw obraz",
+                        "VhdxImage" => "VHDx obraz",
+                        _ => "Souborová"
+                    },
                     TotalBytes = totalBytes,
                     TotalBytesText = FormatBytesLong(totalBytes),
                     Parts = parts,
@@ -388,7 +397,7 @@ public partial class RestoreViewModel : ViewModelBase, INavigableViewModel, IDis
 
         try
         {
-            if (SelectedBackup.Mode == "Raw obraz")
+            if (SelectedBackup.Mode is "Raw obraz" or "VHDx obraz")
             {
                 await RunRawRestoreAsync(targetDisk.DrivePath, _restoreCancellation.Token);
             }
@@ -551,8 +560,16 @@ public partial class RestoreViewModel : ViewModelBase, INavigableViewModel, IDis
         if (File.Exists(legacySingleRaw))
             return new[] { legacySingleRaw };
 
+        // VHDx single image
+        var singleVhdx = Path.Combine(backup.BackupRoot, "disk_image.vhdx");
+        if (File.Exists(singleVhdx))
+            return new[] { singleVhdx };
+
         // New split IMG format, first part normally lives next to the manifest.
         result.AddRange(Directory.GetFiles(backup.BackupRoot, "disk_image.img.part*", SearchOption.TopDirectoryOnly));
+
+        // VHDx split parts
+        result.AddRange(Directory.GetFiles(backup.BackupRoot, "disk_image.vhdx.part*", SearchOption.TopDirectoryOnly));
 
         // Legacy split RAW format.
         result.AddRange(Directory.GetFiles(backup.BackupRoot, "disk_image_part*.raw", SearchOption.TopDirectoryOnly));
@@ -569,6 +586,7 @@ public partial class RestoreViewModel : ViewModelBase, INavigableViewModel, IDis
                     foreach (var dir in Directory.GetDirectories(drive.RootDirectory.FullName, baseName + "_part*", SearchOption.TopDirectoryOnly))
                     {
                         result.AddRange(Directory.GetFiles(dir, "disk_image.img.part*", SearchOption.TopDirectoryOnly));
+                        result.AddRange(Directory.GetFiles(dir, "disk_image.vhdx.part*", SearchOption.TopDirectoryOnly));
                         result.AddRange(Directory.GetFiles(dir, "disk_image_part*.raw", SearchOption.TopDirectoryOnly));
                     }
                 }
@@ -591,13 +609,53 @@ public partial class RestoreViewModel : ViewModelBase, INavigableViewModel, IDis
 
         var allParts = FindRawImageParts(SelectedBackup);
         if (allParts.Count == 0)
-            throw new FileNotFoundException("Raw/IMG obraz nenalezen v záloze.");
+            throw new FileNotFoundException("Raw/IMG/VHDx obraz nenalezen v záloze.");
+
+        // Determine if this is a VHDx restore (need to skip headers)
+        bool isVhdx = SelectedBackup.Mode == "VHDx obraz";
+        long vhdxDataOffset = 0;
+
+        if (isVhdx)
+        {
+            // Read DataStartOffset from manifest
+            try
+            {
+                using var doc = JsonDocument.Parse(File.ReadAllText(SelectedBackup.ManifestPath));
+                if (doc.RootElement.TryGetProperty("DataStartOffset", out var dso))
+                    vhdxDataOffset = dso.GetInt64();
+            }
+            catch { }
+
+            if (vhdxDataOffset <= 0)
+            {
+                // Fallback: calculate from VHDx file structure
+                // Data starts after: 1MB header area + BAT + 1MB metadata, aligned to 1MB
+                var firstPart = allParts[0];
+                var fi = new FileInfo(firstPart);
+                long totalSize = fi.Length;
+                const int logicalSectorSize = 1048576;
+                long chunkCount = ((totalSize + logicalSectorSize - 1) / logicalSectorSize);
+                long batSize = ((chunkCount * 8 + 4096 - 1) / 4096) * 4096;
+                long metadataEnd = 256L * 1024 + batSize + 1024L * 1024;
+                vhdxDataOffset = ((metadataEnd + logicalSectorSize - 1) / logicalSectorSize) * logicalSectorSize;
+            }
+
+            _restoreLog.Add($"[{DateTime.Now:HH:mm:ss}] VHDx obnova — data začínají na offsetu {FormatBytesLong(vhdxDataOffset)}");
+        }
 
         const int bufferSize = 1024 * 1024; // 1MB buffer
         var buffer = new byte[bufferSize];
 
         using var targetStream = new FileStream(targetPath, FileMode.Open, FileAccess.Write,
             FileShare.None, bufferSize, FileOptions.SequentialScan);
+
+        long totalSourceDataBytes = 0;
+        foreach (var partPath in allParts)
+        {
+            var partInfo = new FileInfo(partPath);
+            // For VHDx, only count data portion (skip headers)
+            totalSourceDataBytes += isVhdx ? Math.Max(0, partInfo.Length - vhdxDataOffset) : partInfo.Length;
+        }
 
         foreach (var partPath in allParts)
         {
@@ -612,20 +670,29 @@ public partial class RestoreViewModel : ViewModelBase, INavigableViewModel, IDis
             using var sourceStream = new FileStream(partPath, FileMode.Open, FileAccess.Read,
                 FileShare.Read, bufferSize, FileOptions.SequentialScan);
 
+            // For VHDx, skip the header/metadata portion
+            if (isVhdx && vhdxDataOffset > 0)
+            {
+                sourceStream.Position = vhdxDataOffset;
+            }
+
             long partBytesRead = 0;
-            while (partBytesRead < partInfo.Length)
+            long partDataSize = isVhdx ? Math.Max(0, partInfo.Length - vhdxDataOffset) : partInfo.Length;
+
+            while (partBytesRead < partDataSize)
             {
                 ct.ThrowIfCancellationRequested();
 
-                int bytesRead = await sourceStream.ReadAsync(buffer.AsMemory(0, bufferSize), ct);
+                int bytesToRead = (int)Math.Min(bufferSize, partDataSize - partBytesRead);
+                int bytesRead = await sourceStream.ReadAsync(buffer.AsMemory(0, bytesToRead), ct);
                 if (bytesRead == 0) break;
 
                 await targetStream.WriteAsync(buffer.AsMemory(0, bytesRead), ct);
                 partBytesRead += bytesRead;
                 _totalBytesRestored += bytesRead;
 
-                CurrentFileProgress = partInfo.Length > 0
-                    ? (double)partBytesRead / partInfo.Length * 100
+                CurrentFileProgress = partDataSize > 0
+                    ? (double)partBytesRead / partDataSize * 100
                     : 0;
 
                 OverallProgress = _totalBytesToRestore > 0
@@ -637,7 +704,7 @@ public partial class RestoreViewModel : ViewModelBase, INavigableViewModel, IDis
         }
 
         await targetStream.FlushAsync(ct);
-        _restoreLog.Add($"[{DateTime.Now:HH:mm:ss}] Raw obnova dokončena.");
+        _restoreLog.Add($"[{DateTime.Now:HH:mm:ss}] Raw obnova dokončena — zapsáno {FormatBytesLong(_totalBytesRestored)}.");
     }
 
     private async Task VerifyRestoreAsync(string targetRoot, CancellationToken ct)
@@ -650,7 +717,7 @@ public partial class RestoreViewModel : ViewModelBase, INavigableViewModel, IDis
 
         try
         {
-            if (SelectedBackup.Mode == "Raw obraz")
+            if (SelectedBackup.Mode is "Raw obraz" or "VHDx obraz")
             {
                 await VerifyRawRestoreAsync(targetRoot, ct);
             }

@@ -1502,6 +1502,7 @@ public partial class BackupViewModel : ViewModelBase, INavigableViewModel, IDisp
             Parts = targetIndex + 1,
             PartFiles = createdParts.Select(Path.GetFileName).ToList(),
             PartPaths = createdParts.ToList(),
+            DataStartOffset = dataStartOffset,
             Note = "Soubor disk_image.vhdx je fixed VHDx obraz disku. Lze jej připojit: Windows — poklepáním; Linux — sudo qemu-nbd -c /dev/nbd0 disk_image.vhdx && sudo mount /dev/nbd0p1 /mnt"
         };
         using var manifestStream = File.OpenWrite(manifestPath);
@@ -1550,7 +1551,7 @@ private static async Task WriteVhdxHeaderAsync(string path, long diskSizeBytes, 
         writer.Write(new byte[] { 0x72, 0x65, 0x67, 0x69 }); // "regi"
         writer.Write((uint)0); // Checksum (simplified — 0 is acceptable)
         writer.Write((uint)2); // EntryCount = 2 (BAT + Metadata)
-        writer.Write(new byte[24]); // Reserved
+        writer.Write(new byte[4]); // Reserved (header = 16 bytes total)
 
         // Entry 0: BAT — GUID {2DC277E9-0F79-41E9-9E2E-7A1D5A1CB5D3}
         writer.Write(new byte[] { 0xE9, 0x77, 0xC2, 0x2D, 0x79, 0x0F, 0xE9, 0x41, 0x9E, 0x2E, 0x7A, 0x1D, 0x5A, 0x1C, 0xB5, 0xD3 });
@@ -1573,8 +1574,8 @@ private static async Task WriteVhdxHeaderAsync(string path, long diskSizeBytes, 
         long fileOffsetInSectors = dataStartOffset / logicalSectorSize;
         for (long i = 0; i < chunkCount; i++)
         {
-            // State = 3 (fully allocated), FileOffset = fileOffsetInSectors + i
-            ulong batEntry = (3UL << 0) | ((ulong)(fileOffsetInSectors + i) << 3);
+            // State = 6 (PAYLOAD_BLOCK_FULLY_PRESENT), FileOffset at bits 20-63
+            ulong batEntry = (6UL << 0) | ((ulong)(fileOffsetInSectors + i) << 20);
             writer.Write(batEntry);
         }
 
@@ -1606,7 +1607,7 @@ private static async Task WriteVhdxHeaderAsync(string path, long diskSizeBytes, 
         bw.Write(Guid.NewGuid().ToByteArray()); // DataWriteGuid
         bw.Write(new byte[16]); // LogGuid (zero = no log → no log present)
         bw.Write((ushort)0); // LogVersion = 0 (must be 0 when no log)
-        bw.Write((ushort)6); // Version = 6 (VHDx v1.0)
+        bw.Write((ushort)1); // Version = 1 (VHDx v1.0)
         bw.Write((uint)0); // LogLength = 0 (no log)
         bw.Write((ulong)0); // LogOffset = 0 (no log)
         bw.Write((uint)0); // Reserved
@@ -1627,6 +1628,7 @@ private static async Task WriteVhdxHeaderAsync(string path, long diskSizeBytes, 
         writer.Write(header);
     }
 
+    /// <summary>CRC-32C (Castagnoli) as required by VHDX spec. Polynomial 0x1EDC6F41, reflected 0x82F63B78.</summary>
     private static uint Crc32(byte[] data)
     {
         uint[] table = new uint[256];
@@ -1634,7 +1636,7 @@ private static async Task WriteVhdxHeaderAsync(string path, long diskSizeBytes, 
         {
             uint crc = i;
             for (int j = 0; j < 8; j++)
-                crc = (crc & 1) != 0 ? (crc >> 1) ^ 0xEDB88320 : crc >> 1;
+                crc = (crc & 1) != 0 ? (crc >> 1) ^ 0x82F63B78 : crc >> 1;
             table[i] = crc;
         }
         uint result = 0xFFFFFFFF;
@@ -1648,7 +1650,7 @@ private static async Task WriteVhdxHeaderAsync(string path, long diskSizeBytes, 
         long metadataStart = writer.BaseStream.Position;
 
         // Metadata Table Header
-        writer.Write(new byte[] { 0x6D, 0x65, 0x74, 0x61 }); // "meta"
+        writer.Write(new byte[] { 0x6D, 0x65, 0x74, 0x61, 0x64, 0x61, 0x74, 0x61 }); // "metadata"
         writer.Write((ushort)0); // Reserved
         writer.Write((ushort)5); // EntryCount = 5
         writer.Write(new byte[20]); // Reserved
