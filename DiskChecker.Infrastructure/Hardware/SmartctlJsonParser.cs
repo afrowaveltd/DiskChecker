@@ -342,10 +342,34 @@ public static class SmartctlJsonParser
     
     private static uint GetRawValue(JsonElement item)
     {
-        if (item.TryGetProperty("raw", out var raw) &&
-            raw.TryGetProperty("value", out var val))
+        if (!item.TryGetProperty("raw", out var raw))
+            return 0;
+
+        // smartctl JSON exposes two different views of the ATA raw bytes:
+        //   raw.value  = numeric interpretation of the vendor raw bytes
+        //   raw.string = the human SMART RAW_VALUE column, e.g. "3 (0 1)"
+        // For counters such as Reallocated_Sector_Ct (5), Current_Pending_Sector
+        // (197) and Offline_Uncorrectable (198), the UI must use the displayed
+        // counter, not the packed/vendor bytes.  Otherwise "3 (0 1)" becomes
+        // 0x00010003 = 65539.  Prefer the leading integer from raw.string when
+        // available and fall back to raw.value for older smartctl output.
+        if (raw.TryGetProperty("string", out var strEl) && strEl.ValueKind == JsonValueKind.String)
         {
-            if (val.TryGetInt64(out var l)) return (uint)Math.Min(l, uint.MaxValue);
+            var text = strEl.GetString()?.Trim();
+            if (!string.IsNullOrEmpty(text))
+            {
+                var i = 0;
+                while (i < text.Length && char.IsWhiteSpace(text[i])) i++;
+                var start = i;
+                while (i < text.Length && char.IsDigit(text[i])) i++;
+                if (i > start && ulong.TryParse(text[start..i], out var parsed))
+                    return (uint)Math.Min(parsed, uint.MaxValue);
+            }
+        }
+
+        if (raw.TryGetProperty("value", out var val))
+        {
+            if (val.TryGetInt64(out var l)) return (uint)Math.Clamp(l, 0, uint.MaxValue);
             if (val.TryGetUInt64(out var u)) return (uint)Math.Min(u, uint.MaxValue);
         }
         return 0;

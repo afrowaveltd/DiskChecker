@@ -373,7 +373,7 @@
 
                                 <!-- Live speed chart -->
                                 <Grid Grid.Row="2">
-                                    <lvc:CartesianChart Series="{Binding SpeedSeries}"
+                                    <lvc:CartesianChart Background="{DynamicResource ThemeGraphBackgroundBrush}" Series="{Binding SpeedSeries}"
                                                         XAxes="{Binding SpeedXAxes}"
                                                         YAxes="{Binding SpeedYAxes}"
                                                         ZoomMode="None"

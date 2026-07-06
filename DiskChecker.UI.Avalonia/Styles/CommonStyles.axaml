@@ -23,7 +23,7 @@
       <SolidColorBrush x:Key="ThemeTextSecondaryBrush" Color="#495057"/>
       <SolidColorBrush x:Key="ThemeTextMutedBrush" Color="#6C757D"/>
       <SolidColorBrush x:Key="ThemeTextInverseBrush" Color="#FFFFFF"/>
-      <SolidColorBrush x:Key="ThemeGraphBackgroundBrush" Color="#0F1F33"/>
+      <SolidColorBrush x:Key="ThemeGraphBackgroundBrush" Color="#FFFFFF"/>
       <SolidColorBrush x:Key="ThemeCodeBackgroundBrush" Color="#1E1E1E"/>
       <SolidColorBrush x:Key="ThemeCodeForegroundBrush" Color="#DCDCDC"/>
       <SolidColorBrush x:Key="ThemeWarningBackgroundBrush" Color="#FFF8E1"/>

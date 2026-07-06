@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
+using System.ComponentModel;
 using System.Diagnostics;
 using System.Linq;
 using System.Runtime.InteropServices;
@@ -21,6 +22,7 @@ public partial class MainWindowViewModel : ViewModelBase
     private readonly ISettingsService _settingsService;
     private readonly LocaleService _localeService;
     private ViewModelBase? _currentContent;
+    private INotifyPropertyChanged? _currentContentNotifier;
     private string _statusMessage = "Připraven";
     private Type? _currentViewModelType;
     
@@ -249,7 +251,7 @@ public partial class MainWindowViewModel : ViewModelBase
             ["ThemeSuccessBrush"] = "#27AE60",
             ["ThemeWarningBrush"] = "#F39C12",
             ["ThemeDangerBrush"] = "#E74C3C",
-            ["ThemeGraphBackgroundBrush"] = "#0F1F33",
+            ["ThemeGraphBackgroundBrush"] = "#FFFFFF",
         };
         
         foreach (var kvp in colors)
@@ -635,117 +637,99 @@ public partial class MainWindowViewModel : ViewModelBase
     public bool IsOnRestore => _currentViewModelType == typeof(RestoreViewModel);
     public bool IsOnSettings => _currentViewModelType == typeof(SettingsViewModel);
 
-    [RelayCommand]
-    private void NavigateToCertificateBrowser()
+    /// <summary>
+    /// Disables top navigation while an operation that owns a disk handle is running.
+    /// This prevents leaving a view while a test/backup/restore task continues in the background.
+    /// </summary>
+    public bool CanNavigateFromCurrentView => !IsNavigationLocked();
+
+    private bool IsNavigationLocked() => CurrentContent switch
     {
-        _navigationService.NavigateTo<CertificateBrowserViewModel>();
-        StatusMessage = "Naviguji na prohlížeč certifikátů...";
+        SurfaceTestViewModel surface => surface.IsTesting,
+        SeekTestViewModel seek => seek.IsTesting,
+        AbsoluteDestructiveTestViewModel absolute => absolute.IsTesting,
+        SafeDestructiveTestViewModel safe => safe.Phase is SafeDestructivePhase.Backup or SafeDestructivePhase.Test or SafeDestructivePhase.Restore or SafeDestructivePhase.Partition,
+        BackupViewModel backup => backup.Phase == BackupPhase.Running,
+        RestoreViewModel restore => restore.Phase is RestorePhase.Running or RestorePhase.Verifying,
+        _ => false
+    };
+
+    private bool GuardNavigation()
+    {
+        if (CanNavigateFromCurrentView)
+            return true;
+
+        StatusMessage = "Probíhá test nebo operace s diskem – nejprve ji dokončete nebo přerušte.";
+        return false;
+    }
+
+    private void NavigateSafely<TViewModel>(string statusMessage) where TViewModel : ViewModelBase
+    {
+        if (!GuardNavigation())
+            return;
+
+        _navigationService.NavigateTo<TViewModel>();
+        StatusMessage = statusMessage;
     }
 
     [RelayCommand]
-    private void NavigateToBackup()
-    {
-        _navigationService.NavigateTo<BackupViewModel>();
-        StatusMessage = "Naviguji na zálohování...";
-    }
+    private void NavigateToCertificateBrowser() => NavigateSafely<CertificateBrowserViewModel>("Naviguji na prohlížeč certifikátů...");
 
     [RelayCommand]
-    private void NavigateToRestore()
-    {
-        _navigationService.NavigateTo<RestoreViewModel>();
-        StatusMessage = "Naviguji na obnovu záloh...";
-    }
+    private void NavigateToBackup() => NavigateSafely<BackupViewModel>("Naviguji na zálohování...");
 
     [RelayCommand]
-    private void NavigateToDiskSelection()
-    {
-        _navigationService.NavigateTo<DiskSelectionViewModel>();
-        StatusMessage = "Naviguji na výběr disků...";
-    }
+    private void NavigateToRestore() => NavigateSafely<RestoreViewModel>("Naviguji na obnovu záloh...");
 
     [RelayCommand]
-    private void NavigateToDiskCards()
-    {
-        _navigationService.NavigateTo<DiskCardsViewModel>();
-        StatusMessage = "Naviguji na karty disků...";
-    }
+    private void NavigateToDiskSelection() => NavigateSafely<DiskSelectionViewModel>("Naviguji na výběr disků...");
 
     [RelayCommand]
-    private void NavigateToSurfaceTest()
-    {
-        _navigationService.NavigateTo<SurfaceTestViewModel>();
-        StatusMessage = "Naviguji na test povrchu...";
-    }
+    private void NavigateToDiskCards() => NavigateSafely<DiskCardsViewModel>("Naviguji na karty disků...");
 
     [RelayCommand]
-    private void NavigateToSmartCheck()
-    {
-        _navigationService.NavigateTo<SmartCheckViewModel>();
-        StatusMessage = "Naviguji na SMART kontrolu...";
-    }
+    private void NavigateToSurfaceTest() => NavigateSafely<SurfaceTestViewModel>("Naviguji na test povrchu...");
 
     [RelayCommand]
-    private void NavigateToSeekTest()
-    {
-        _navigationService.NavigateTo<SeekTestViewModel>();
-        StatusMessage = "Naviguji na seek test...";
-    }
+    private void NavigateToSmartCheck() => NavigateSafely<SmartCheckViewModel>("Naviguji na SMART kontrolu...");
 
     [RelayCommand]
-    private void NavigateToAbsoluteDestructiveTest()
-    {
-        _navigationService.NavigateTo<AbsoluteDestructiveTestViewModel>();
-        StatusMessage = "Naviguji na absolutní destruktivní test...";
-    }
+    private void NavigateToSeekTest() => NavigateSafely<SeekTestViewModel>("Naviguji na seek test...");
 
     [RelayCommand]
-    private void NavigateToSafeDestructiveTest()
-    {
-        _navigationService.NavigateTo<SafeDestructiveTestViewModel>();
-        StatusMessage = "Naviguji na bezpečný destruktivní test...";
-    }
+    private void NavigateToAbsoluteDestructiveTest() => NavigateSafely<AbsoluteDestructiveTestViewModel>("Naviguji na absolutní destruktivní test...");
 
     [RelayCommand]
-    private void NavigateToAnalysis()
-    {
-        _navigationService.NavigateTo<AnalysisViewModel>();
-        StatusMessage = "Naviguji na analýzu...";
-    }
+    private void NavigateToSafeDestructiveTest() => NavigateSafely<SafeDestructiveTestViewModel>("Naviguji na bezpečný destruktivní test...");
 
     [RelayCommand]
-    private void NavigateToDiskComparison()
-    {
-        _navigationService.NavigateTo<DiskComparisonViewModel>();
-        StatusMessage = "Naviguji na porovnání disků...";
-    }
+    private void NavigateToAnalysis() => NavigateSafely<AnalysisViewModel>("Naviguji na analýzu...");
 
     [RelayCommand]
-    private void NavigateToReport()
-    {
-        _navigationService.NavigateTo<ReportViewModel>();
-        StatusMessage = "Naviguji na report...";
-    }
+    private void NavigateToDiskComparison() => NavigateSafely<DiskComparisonViewModel>("Naviguji na porovnání disků...");
 
     [RelayCommand]
-    private void NavigateToHistory()
-    {
-        _navigationService.NavigateTo<HistoryViewModel>();
-        StatusMessage = "Naviguji na historii...";
-    }
+    private void NavigateToReport() => NavigateSafely<ReportViewModel>("Naviguji na report...");
 
     [RelayCommand]
-    private void NavigateToSettings()
-    {
-        _navigationService.NavigateTo<SettingsViewModel>();
-        StatusMessage = "Naviguji na nastavení...";
-    }
+    private void NavigateToHistory() => NavigateSafely<HistoryViewModel>("Naviguji na historii...");
+
+    [RelayCommand]
+    private void NavigateToSettings() => NavigateSafely<SettingsViewModel>("Naviguji na nastavení...");
 
     private void OnNavigated(object? sender, AppNavigationEventArgs e)
     {
         // Close language menu when navigating
         IsLanguageMenuOpen = false;
         
+        if (_currentContentNotifier != null)
+            _currentContentNotifier.PropertyChanged -= OnCurrentContentPropertyChanged;
+
         CurrentContent = e.ViewModel;
+        _currentContentNotifier = e.ViewModel as INotifyPropertyChanged;
+        if (_currentContentNotifier != null)
+            _currentContentNotifier.PropertyChanged += OnCurrentContentPropertyChanged;
+
         _currentViewModelType = e.ViewModel?.GetType();
         
         // Notify all IsOn* properties changed
@@ -764,5 +748,19 @@ public partial class MainWindowViewModel : ViewModelBase
         OnPropertyChanged(nameof(IsOnBackup));
         OnPropertyChanged(nameof(IsOnRestore));
         OnPropertyChanged(nameof(IsOnSettings));
+        OnPropertyChanged(nameof(CanNavigateFromCurrentView));
+    }
+
+    private void OnCurrentContentPropertyChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName is nameof(SurfaceTestViewModel.IsTesting)
+            or nameof(SeekTestViewModel.IsTesting)
+            or nameof(AbsoluteDestructiveTestViewModel.IsTesting)
+            or nameof(SafeDestructiveTestViewModel.Phase)
+            or nameof(BackupViewModel.Phase)
+            or nameof(RestoreViewModel.Phase))
+        {
+            OnPropertyChanged(nameof(CanNavigateFromCurrentView));
+        }
     }
 }

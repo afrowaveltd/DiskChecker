@@ -334,7 +334,7 @@
                                 CornerRadius="6" Padding="8"
                                 IsVisible="{Binding IsTesting}">
                             <Grid>
-                                <lvc:CartesianChart Series="{Binding LatencySeries}"
+                                <lvc:CartesianChart Background="{DynamicResource ThemeGraphBackgroundBrush}" Series="{Binding LatencySeries}"
                                                     XAxes="{Binding LatencyXAxes}"
                                                     YAxes="{Binding LatencyYAxes}"
                                                     ZoomMode="None"
@@ -523,7 +523,7 @@
                                     </StackPanel>
                                 </StackPanel>
                                 <Grid>
-                                    <lvc:CartesianChart Series="{Binding FinalLatencySeries}"
+                                    <lvc:CartesianChart Background="{DynamicResource ThemeGraphBackgroundBrush}" Series="{Binding FinalLatencySeries}"
                                                         XAxes="{Binding FinalLatencyXAxes}"
                                                         YAxes="{Binding FinalLatencyYAxes}"
                                                         ZoomMode="None"

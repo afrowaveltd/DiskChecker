@@ -5,6 +5,7 @@ using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Runtime.InteropServices;
+using System.Security.Cryptography;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
@@ -45,7 +46,7 @@ public enum SafeDestructiveMode
 {
     /// <summary>Full backup → test → restore (original behavior).</summary>
     BackupAndRestore,
-    /// <summary>VHDx backup → verify → test → partition (no restore, data can be restored manually).</summary>
+    /// <summary>VHDx backup → verify → test → restore from VHDx.</summary>
     VhdxOnly
 }
 
@@ -109,6 +110,9 @@ public partial class SafeDestructiveTestViewModel : ViewModelBase, INavigableVie
     [ObservableProperty] private string _backupElapsedText = string.Empty;
     [ObservableProperty] private string _backupEtaText = string.Empty;
     [ObservableProperty] private string _backupCurrentSectorText = string.Empty;
+    [ObservableProperty] private double _backupProgress;
+    [ObservableProperty] private string _backupProgressText = "0%";
+    [ObservableProperty] private string _backupVerificationText = string.Empty;
 
     // ── Backup target selection ──
     [ObservableProperty] private ObservableCollection<BackupTargetItem> _backupTargetDrives = new();
@@ -143,6 +147,8 @@ public partial class SafeDestructiveTestViewModel : ViewModelBase, INavigableVie
     [ObservableProperty] private string _restoreElapsedText = string.Empty;
     [ObservableProperty] private string _restoreEtaText = string.Empty;
     [ObservableProperty] private string _restoreCurrentSectorText = string.Empty;
+    [ObservableProperty] private double _restoreProgress;
+    [ObservableProperty] private string _restoreProgressText = "0%";
 
     // ──────────────────────────────────────────────
     [ObservableProperty] private string _resultsSummary = string.Empty;
@@ -240,6 +246,11 @@ public partial class SafeDestructiveTestViewModel : ViewModelBase, INavigableVie
     private string? _backupManifestPath;
     private string? _backupImagePath;
     private long _backupTotalBytes;
+    private long _backupDataStartOffset;
+    private string _backupSha256 = string.Empty;
+    private bool _backupVerified;
+    private bool _destructivePhaseStarted;
+    private bool _restoreCompleted;
 
     // ──────────────────────────────────────────────
     //  Timing
@@ -261,6 +272,13 @@ public partial class SafeDestructiveTestViewModel : ViewModelBase, INavigableVie
     public IRelayCommand SwitchToVhdxOnlyCommand { get; }
 
     private static readonly JsonSerializerOptions _jsonOptions = new() { WriteIndented = true };
+
+    private const double BackupAndRestoreBackupWeight = 30d;
+    private const double BackupAndRestoreTestWeight = 40d;
+    private const double BackupAndRestoreRestoreWeight = 30d;
+    private const double VhdxBackupWeight = 40d;
+    private const double VhdxTestWeight = 30d;
+    private const double VhdxRestoreWeight = 30d;
 
     // ──────────────────────────────────────────────
     //  Constructor
@@ -671,10 +689,15 @@ public partial class SafeDestructiveTestViewModel : ViewModelBase, INavigableVie
 
         _cts = new CancellationTokenSource();
         var ct = _cts.Token;
+        _backupVerified = false;
+        _destructivePhaseStarted = false;
+        _restoreCompleted = false;
+        _backupSha256 = string.Empty;
+        _backupDataStartOffset = 0;
 
         try
         {
-            // ── Phase 1: Backup ──
+            // ── Phase 1: Backup + verification ──
             if (SelectedMode == SafeDestructiveMode.VhdxOnly)
             {
                 await RunVhdxBackupPhaseAsync(ct);
@@ -685,46 +708,46 @@ public partial class SafeDestructiveTestViewModel : ViewModelBase, INavigableVie
             }
             if (ct.IsCancellationRequested) return;
 
+            if (!_backupVerified)
+                throw new InvalidOperationException("Záloha nebyla ověřena; destruktivní test nebude spuštěn.");
+
             // ── Phase 2: Destructive Test ──
+            _destructivePhaseStarted = true;
             await RunTestPhaseAsync(ct);
             if (ct.IsCancellationRequested) return;
 
-            // ── Phase 3: Restore (only in BackupAndRestore mode) ──
-            if (SelectedMode == SafeDestructiveMode.BackupAndRestore)
-            {
-                await RunRestorePhaseAsync(ct);
-                if (ct.IsCancellationRequested) return;
-            }
-
-            // ── Phase 4: Partition (VhdxOnly mode) ──
-            if (SelectedMode == SafeDestructiveMode.VhdxOnly)
-            {
-                await RunPartitionPhaseAsync(ct);
-                if (ct.IsCancellationRequested) return;
-            }
+            // ── Phase 3: Restore (raw i VHDx režim obnovují původní data) ──
+            await RunRestorePhaseAsync(ct);
+            if (ct.IsCancellationRequested) return;
 
             // ── Complete ──
             Phase = SafeDestructivePhase.Completed;
             CurrentPhaseName = L.Get("SafeDestructive.Phase.Done");
             CurrentPhaseIcon = "✅";
             OverallProgress = 100;
-            OverallProgressText = "100%";
+            OverallProgressText = "Celkem 100%";
             StatusMessage = L.Get("SafeDestructive.Status.Done");
             HasResults = true;
 
             await BuildResultsAsync();
             await BuildCertificateAsync();
             await SaveTestSessionAsync();
-            Log("═══ WORKFLOW DOKONČEN ═══");
+            Log("═══ WORKFLOW DOKONČEN — DATA OBNOVENA ═══");
         }
         catch (OperationCanceledException)
         {
+            if (_destructivePhaseStarted && !_restoreCompleted)
+                await TryEmergencyRestoreAsync("Operace byla zrušena po zahájení destruktivní části");
+
             Phase = SafeDestructivePhase.Failed;
             StatusMessage = L.Get("SafeDestructive.Status.Cancelled");
             Log("⏹ Operace zrušena.");
         }
         catch (Exception ex)
         {
+            if (_destructivePhaseStarted && !_restoreCompleted)
+                await TryEmergencyRestoreAsync($"Došlo k chybě po zahájení destruktivní části: {ex.Message}");
+
             Phase = SafeDestructivePhase.Failed;
             StatusMessage = L.Get("SafeDestructive.Status.Error", ex.Message);
             Log($"❌ FATAL: {ex.Message}");
@@ -742,7 +765,7 @@ public partial class SafeDestructiveTestViewModel : ViewModelBase, INavigableVie
         CurrentPhaseIcon = "💾";
         StatusMessage = L.Get("SafeDestructive.Status.CreatingImage");
         OverallProgress = 0;
-        OverallProgressText = "0%";
+        OverallProgressText = "Celkem 0%";
 
         var backupRoot = Path.Combine(BackupTargetPath, $"DiskChecker_SafeBackup_{DateTime.Now:yyyyMMdd_HHmmss}");
         Directory.CreateDirectory(backupRoot);
@@ -761,6 +784,12 @@ public partial class SafeDestructiveTestViewModel : ViewModelBase, INavigableVie
         const int maxConsecutiveErrors = 64;
         _phaseStartTime = DateTime.UtcNow;
         _phaseBytesProcessed = 0;
+        _backupDataStartOffset = 0;
+        _backupVerified = false;
+        BackupVerificationText = "";
+        BackupProgress = 0;
+        BackupProgressText = "0%";
+        using var backupHash = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
 
         using var sourceStream = new FileStream(DiskPath, FileMode.Open, FileAccess.Read,
             FileShare.Read, blockSize, FileOptions.SequentialScan);
@@ -816,6 +845,7 @@ public partial class SafeDestructiveTestViewModel : ViewModelBase, INavigableVie
             }
 
             await targetStream.WriteAsync(buffer.AsMemory(0, bytesReadNow), ct);
+            backupHash.AppendData(buffer, 0, bytesReadNow);
             bytesRead += bytesReadNow;
             _phaseBytesProcessed += bytesReadNow;
 
@@ -824,8 +854,10 @@ public partial class SafeDestructiveTestViewModel : ViewModelBase, INavigableVie
             BackupCurrentSectorText = $"Blok {bytesRead / blockSize:N0} / {totalSize / blockSize:N0}";
 
             double backupProgress = totalSize > 0 ? (double)bytesRead / totalSize * 100 : 0;
-            OverallProgress = backupProgress * 0.30; // Backup = 30% of total workflow
-            OverallProgressText = $"{OverallProgress:F0}%";
+            BackupProgress = backupProgress;
+            BackupProgressText = $"{backupProgress:F0}%";
+            OverallProgress = ScaleWorkflowProgress(0, GetBackupWeight(), backupProgress);
+            OverallProgressText = $"Celkem {OverallProgress:F0}%";
 
             UpdatePhaseSpeedAndEta(ref _phaseStartTime, ref _phaseBytesProcessed,
                 out var speed, out var elapsed, out var eta);
@@ -848,6 +880,7 @@ public partial class SafeDestructiveTestViewModel : ViewModelBase, INavigableVie
         }
 
         _backupTotalBytes = bytesRead;
+        _backupSha256 = Convert.ToHexString(backupHash.GetHashAndReset());
 
         if (unreadableBytes > 0)
             Log($"⚠️ Celkem {FormatBytesLong(unreadableBytes)} nečitelných sektorů nahrazeno nulami.");
@@ -861,12 +894,15 @@ public partial class SafeDestructiveTestViewModel : ViewModelBase, INavigableVie
             Mode = "RawImage",
             TotalBytes = bytesRead,
             BlockSize = blockSize,
-            UnreadableBytes = unreadableBytes
+            UnreadableBytes = unreadableBytes,
+            Sha256 = _backupSha256
         };
         using var manifestStream = File.OpenWrite(_backupManifestPath);
         await JsonSerializer.SerializeAsync(manifestStream, manifest, _jsonOptions, ct);
 
-        Log($"Záloha dokončena: {FormatBytesLong(bytesRead)}");
+        await VerifyBackupImageAsync(_backupImagePath, _backupDataStartOffset, _backupTotalBytes, _backupSha256, ct);
+
+        Log($"Záloha dokončena a ověřena: {FormatBytesLong(bytesRead)}");
         StatusMessage = L.Get("SafeDestructive.Status.BackupDone");
     }
 
@@ -898,38 +934,39 @@ public partial class SafeDestructiveTestViewModel : ViewModelBase, INavigableVie
         foreach (var p in phases) TestPhases.Add(p);
 
         int totalPhases = phases.Length;
-        double testWeight = 0.40; // Test = 40% of total workflow
+        double testStart = GetBackupWeight() / 100d;
+        double testWeight = GetTestWeight() / 100d;
         double phaseWeight = testWeight / totalPhases;
 
         // ── Sanitize Pass 1 Write ──
-        await RunSanitizePhaseAsync(0, "write", SanitizePass1WritePoints, phaseWeight, 0, ct);
+        await RunSanitizePhaseAsync(0, "write", SanitizePass1WritePoints, phaseWeight, testStart, ct);
         if (ct.IsCancellationRequested) return;
 
         // ── Sanitize Pass 1 Read ──
-        await RunSanitizePhaseAsync(1, "read", SanitizePass1ReadPoints, phaseWeight, phaseWeight, ct);
+        await RunSanitizePhaseAsync(1, "read", SanitizePass1ReadPoints, phaseWeight, testStart + phaseWeight, ct);
         if (ct.IsCancellationRequested) return;
 
         // ── Seek Full Stroke ──
-        await RunSeekPhaseAsync(2, SeekTestType.FullStroke, SeekFullStrokePoints, phaseWeight, phaseWeight * 2, ct);
+        await RunSeekPhaseAsync(2, SeekTestType.FullStroke, SeekFullStrokePoints, phaseWeight, testStart + phaseWeight * 2, ct);
         if (ct.IsCancellationRequested) return;
 
         // ── Seek Random ──
-        await RunSeekPhaseAsync(3, SeekTestType.Random, SeekRandomPoints, phaseWeight, phaseWeight * 3, ct);
+        await RunSeekPhaseAsync(3, SeekTestType.Random, SeekRandomPoints, phaseWeight, testStart + phaseWeight * 3, ct);
         if (ct.IsCancellationRequested) return;
 
         // ── Seek Skip ──
-        await RunSeekPhaseAsync(4, SeekTestType.Skip, SeekSkipPoints, phaseWeight, phaseWeight * 4, ct);
+        await RunSeekPhaseAsync(4, SeekTestType.Skip, SeekSkipPoints, phaseWeight, testStart + phaseWeight * 4, ct);
         if (ct.IsCancellationRequested) return;
 
         HasSeekCharts = true;
         RebuildSeekChart();
 
         // ── Sanitize Pass 2 Write ──
-        await RunSanitizePhaseAsync(5, "write", SanitizePass2WritePoints, phaseWeight, phaseWeight * 5, ct);
+        await RunSanitizePhaseAsync(5, "write", SanitizePass2WritePoints, phaseWeight, testStart + phaseWeight * 5, ct);
         if (ct.IsCancellationRequested) return;
 
         // ── Sanitize Pass 2 Read ──
-        await RunSanitizePhaseAsync(6, "read", SanitizePass2ReadPoints, phaseWeight, phaseWeight * 6, ct);
+        await RunSanitizePhaseAsync(6, "read", SanitizePass2ReadPoints, phaseWeight, testStart + phaseWeight * 6, ct);
         if (ct.IsCancellationRequested) return;
 
         // Capture post-test SMART (only if drive supports SMART)
@@ -1028,8 +1065,8 @@ public partial class SafeDestructiveTestViewModel : ViewModelBase, INavigableVie
             TestElapsedText = elapsed;
             TestEtaText = eta;
 
-            OverallProgress = baseProgress + (phaseProgress / 100 * phaseWeight) * 100;
-            OverallProgressText = $"{OverallProgress:F0}%";
+            OverallProgress = baseProgress * 100 + (phaseProgress / 100 * phaseWeight) * 100;
+            OverallProgressText = $"Celkem {OverallProgress:F0}%";
 
             await Dispatcher.UIThread.InvokeAsync(() => { }, DispatcherPriority.Background, ct);
             }
@@ -1081,8 +1118,8 @@ public partial class SafeDestructiveTestViewModel : ViewModelBase, INavigableVie
                 TestCurrentSpeedText = $"{progress.CurrentAverageLatencyMs:F2} ms";
                 TestElapsedText = $"{(int)(DateTime.UtcNow - _phaseStartTime).TotalHours:D2}:{(DateTime.UtcNow - _phaseStartTime).Minutes:D2}:{(DateTime.UtcNow - _phaseStartTime).Seconds:D2}";
 
-                OverallProgress = baseProgress + (phaseProgress / 100 * phaseWeight) * 100;
-                OverallProgressText = $"{OverallProgress:F0}%";
+                OverallProgress = baseProgress * 100 + (phaseProgress / 100 * phaseWeight) * 100;
+                OverallProgressText = $"Celkem {OverallProgress:F0}%";
             },
             cancellationToken: ct);
 
@@ -1102,7 +1139,7 @@ public partial class SafeDestructiveTestViewModel : ViewModelBase, INavigableVie
         CurrentPhaseIcon = "💾";
         StatusMessage = "Vytvářím VHDx obraz disku...";
         OverallProgress = 0;
-        OverallProgressText = "0%";
+        OverallProgressText = "Celkem 0%";
 
         if (SelectedDrive == null) return;
 
@@ -1126,16 +1163,23 @@ public partial class SafeDestructiveTestViewModel : ViewModelBase, INavigableVie
         const int maxConsecutiveErrors = 64;
         _phaseStartTime = DateTime.UtcNow;
         _phaseBytesProcessed = 0;
+        _backupVerified = false;
+        BackupVerificationText = "";
+        BackupProgress = 0;
+        BackupProgressText = "0%";
+        using var backupHash = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
+
+        var dataStartOffset = CalculateVhdxDataStartOffset(totalSize);
+        _backupDataStartOffset = dataStartOffset;
+        var requiredBytes = dataStartOffset + RoundUp(totalSize, blockSize);
+        if (BackupTargetFreeBytes < requiredBytes)
+            throw new IOException($"Cílový disk nemá dost místa pro platný VHDx soubor. Potřeba {FormatBytesLong(requiredBytes)}, dostupné {FormatBytesLong(BackupTargetFreeBytes)}.");
 
         // Write VHDx header + BAT — fixed VHDx, all blocks pre-allocated
         await WriteVhdxHeaderAsync(_backupImagePath, totalSize, ct);
 
-        // Calculate data start offset (same calculation as in WriteVhdxHeaderAsync)
+        // Data start offset of the VHDx payload area.
         const int logicalSectorSize = 1048576;
-        long chunkCount = ((totalSize + logicalSectorSize - 1) / logicalSectorSize);
-        long batSize = ((chunkCount * 8 + 4096 - 1) / 4096) * 4096;
-        long metadataEnd = 256L * 1024 + batSize + 1024L * 1024;
-        long dataStartOffset = ((metadataEnd + logicalSectorSize - 1) / logicalSectorSize) * logicalSectorSize;
 
         using var sourceStream = new FileStream(DiskPath, FileMode.Open, FileAccess.Read,
             FileShare.Read, blockSize, FileOptions.SequentialScan);
@@ -1195,6 +1239,7 @@ public partial class SafeDestructiveTestViewModel : ViewModelBase, INavigableVie
                 long writeOffset = dataStartOffset + chunkIndex * logicalSectorSize;
                 targetStream.Position = writeOffset;
                 await targetStream.WriteAsync(buffer.AsMemory(0, bytesReadNow), ct);
+                backupHash.AppendData(buffer, 0, bytesReadNow);
                 bytesRead += bytesReadNow;
                 _phaseBytesProcessed += bytesReadNow;
 
@@ -1203,8 +1248,10 @@ public partial class SafeDestructiveTestViewModel : ViewModelBase, INavigableVie
                 BackupCurrentSectorText = $"Blok {bytesRead / blockSize:N0} / {totalSize / blockSize:N0}";
 
                 double backupProgress = totalSize > 0 ? (double)bytesRead / totalSize * 100 : 0;
-                OverallProgress = backupProgress * 0.30; // Backup = 30% of total workflow
-                OverallProgressText = $"{OverallProgress:F0}%";
+                BackupProgress = backupProgress;
+                BackupProgressText = $"{backupProgress:F0}%";
+                OverallProgress = ScaleWorkflowProgress(0, GetBackupWeight(), backupProgress);
+                OverallProgressText = $"Celkem {OverallProgress:F0}%";
 
                 UpdatePhaseSpeedAndEta(ref _phaseStartTime, ref _phaseBytesProcessed,
                     out var speed, out var elapsed, out var eta);
@@ -1226,6 +1273,7 @@ public partial class SafeDestructiveTestViewModel : ViewModelBase, INavigableVie
         }
 
         _backupTotalBytes = bytesRead;
+        _backupSha256 = Convert.ToHexString(backupHash.GetHashAndReset());
 
         if (unreadableBytes > 0)
             Log($"⚠️ Celkem {FormatBytesLong(unreadableBytes)} nečitelných sektorů nahrazeno nulami.");
@@ -1243,24 +1291,16 @@ public partial class SafeDestructiveTestViewModel : ViewModelBase, INavigableVie
             BlockSize = blockSize,
             UnreadableBytes = unreadableBytes,
             DataStartOffset = dataStartOffset,
+            Sha256 = _backupSha256,
             Note = "Soubor disk_image.vhdx je fixed VHDx obraz disku. Lze jej připojit: Windows — poklepáním; Linux — sudo qemu-nbd -c /dev/nbd0 disk_image.vhdx && sudo mount /dev/nbd0p1 /mnt"
         };
         using var manifestStream = File.OpenWrite(_backupManifestPath);
         await JsonSerializer.SerializeAsync(manifestStream, manifest, _jsonOptions, ct);
 
-        // Verify backup — check file exists and has correct size
-        var fi = new FileInfo(_backupImagePath);
-        if (fi.Exists && fi.Length > 0)
-        {
-            VhdxBackupVerified = true;
-            Log($"VHDx záloha ověřena: {FormatBytesLong(fi.Length)}");
-        }
-        else
-        {
-            throw new InvalidOperationException("VHDx záloha se nepodařila ověřit — soubor neexistuje nebo je prázdný.");
-        }
+        await VerifyBackupImageAsync(_backupImagePath, _backupDataStartOffset, _backupTotalBytes, _backupSha256, ct);
+        VhdxBackupVerified = true;
 
-        Log($"VHDx záloha dokončena: {FormatBytesLong(bytesRead)}");
+        Log($"VHDx záloha dokončena a ověřena: {FormatBytesLong(bytesRead)}");
         StatusMessage = "VHDx záloha dokončena a ověřena.";
     }
 
@@ -1286,11 +1326,15 @@ public partial class SafeDestructiveTestViewModel : ViewModelBase, INavigableVie
         var buffer = new byte[blockSize];
         long totalSize = _backupTotalBytes;
         long bytesWritten = 0;
+        RestoreProgress = 0;
+        RestoreProgressText = "0%";
         _phaseStartTime = DateTime.UtcNow;
         _phaseBytesProcessed = 0;
 
         using var sourceStream = new FileStream(_backupImagePath, FileMode.Open, FileAccess.Read,
             FileShare.Read, blockSize, FileOptions.SequentialScan);
+        if (_backupDataStartOffset > 0)
+            sourceStream.Position = _backupDataStartOffset;
         using var targetStream = new FileStream(DiskPath, FileMode.Open, FileAccess.Write,
             FileShare.Read, blockSize, FileOptions.SequentialScan);
 
@@ -1334,8 +1378,10 @@ public partial class SafeDestructiveTestViewModel : ViewModelBase, INavigableVie
             RestoreCurrentSectorText = $"Blok {bytesWritten / blockSize:N0} / {totalSize / blockSize:N0}";
 
             double restoreProgress = totalSize > 0 ? (double)bytesWritten / totalSize * 100 : 0;
-            OverallProgress = 70 + restoreProgress * 0.30; // Restore = 30% of total workflow
-            OverallProgressText = $"{OverallProgress:F0}%";
+            RestoreProgress = restoreProgress;
+            RestoreProgressText = $"{restoreProgress:F0}%";
+            OverallProgress = ScaleWorkflowProgress(GetBackupWeight() + GetTestWeight(), GetRestoreWeight(), restoreProgress);
+            OverallProgressText = $"Celkem {OverallProgress:F0}%";
 
             UpdatePhaseSpeedAndEta(ref _phaseStartTime, ref _phaseBytesProcessed,
                 out var speed, out var elapsed, out var eta);
@@ -1356,7 +1402,13 @@ public partial class SafeDestructiveTestViewModel : ViewModelBase, INavigableVie
                 $"❌ Zařízení zmizelo během obnovy. Zkontrolujte připojení disku a opakujte operaci.", ex);
         }
 
-        Log($"Obnova dokončena: {FormatBytesLong(bytesWritten)}");
+        if (bytesWritten != totalSize)
+            throw new IOException($"Obnova zapsala jen {FormatBytesLong(bytesWritten)} z {FormatBytesLong(totalSize)}.");
+
+        await VerifyRestoredDiskAsync(ct);
+        _restoreCompleted = true;
+
+        Log($"Obnova dokončena a ověřena: {FormatBytesLong(bytesWritten)}");
         StatusMessage = L.Get("SafeDestructive.Status.RestoreDone");
     }
 
@@ -1501,7 +1553,7 @@ public partial class SafeDestructiveTestViewModel : ViewModelBase, INavigableVie
             Capacity = DiskTotalSizeText,
             DiskType = _smartBefore?.DeviceType ?? "HDD",
             TestType = SelectedMode == SafeDestructiveMode.VhdxOnly
-                ? "Bezpečný destruktivní test (VHDx záloha → test → oddíl)"
+                ? "Bezpečný destruktivní test (VHDx záloha → test → obnova)"
                 : "Bezpečný destruktivní test (záloha → test → obnova)",
             TestDuration = DateTime.UtcNow - _phaseStartTime,
             Grade = CalculateSafeGrade(),
@@ -1755,6 +1807,94 @@ public partial class SafeDestructiveTestViewModel : ViewModelBase, INavigableVie
     //  Helpers
     // ──────────────────────────────────────────────
 
+    private double GetBackupWeight() => SelectedMode == SafeDestructiveMode.VhdxOnly ? VhdxBackupWeight : BackupAndRestoreBackupWeight;
+    private double GetTestWeight() => SelectedMode == SafeDestructiveMode.VhdxOnly ? VhdxTestWeight : BackupAndRestoreTestWeight;
+    private double GetRestoreWeight() => SelectedMode == SafeDestructiveMode.VhdxOnly ? VhdxRestoreWeight : BackupAndRestoreRestoreWeight;
+
+    private static double ScaleWorkflowProgress(double startPercent, double weightPercent, double phaseProgressPercent)
+        => startPercent + Math.Clamp(phaseProgressPercent, 0, 100) / 100d * weightPercent;
+
+    private async Task VerifyBackupImageAsync(string imagePath, long dataOffset, long dataBytes, string expectedSha256, CancellationToken ct)
+    {
+        if (string.IsNullOrWhiteSpace(imagePath) || !File.Exists(imagePath))
+            throw new InvalidOperationException("Ověření zálohy selhalo — soubor zálohy neexistuje.");
+
+        var fi = new FileInfo(imagePath);
+        if (fi.Length < dataOffset + dataBytes)
+            throw new InvalidOperationException($"Ověření zálohy selhalo — soubor je kratší ({FormatBytesLong(fi.Length)}) než očekávaná data ({FormatBytesLong(dataOffset + dataBytes)}).");
+
+        BackupVerificationText = "Ověřuji zálohu čtením...";
+        StatusMessage = BackupVerificationText;
+        Log("Ověřuji vytvořenou zálohu plným čtením a SHA-256...");
+
+        var actual = await ComputeFileRegionSha256Async(imagePath, dataOffset, dataBytes, ct);
+        if (!string.Equals(actual, expectedSha256, StringComparison.OrdinalIgnoreCase))
+            throw new InvalidOperationException("Ověření zálohy selhalo — kontrolní součet nesouhlasí. Destruktivní test nebude spuštěn.");
+
+        _backupVerified = true;
+        BackupVerificationText = "✅ Záloha ověřena";
+        Log($"✅ Záloha ověřena SHA-256: {actual}");
+    }
+
+    private async Task VerifyRestoredDiskAsync(CancellationToken ct)
+    {
+        if (string.IsNullOrWhiteSpace(_backupSha256))
+            throw new InvalidOperationException("Nelze ověřit obnovu — chybí kontrolní součet zálohy.");
+
+        StatusMessage = "Ověřuji obnovená data na disku...";
+        Log("Ověřuji obnovený disk plným čtením a SHA-256...");
+
+        var actual = await ComputeFileRegionSha256Async(DiskPath, 0, _backupTotalBytes, ct);
+        if (!string.Equals(actual, _backupSha256, StringComparison.OrdinalIgnoreCase))
+            throw new InvalidOperationException("Ověření obnovy selhalo — data na disku neodpovídají ověřené záloze.");
+
+        Log($"✅ Obnova ověřena SHA-256: {actual}");
+    }
+
+    private static async Task<string> ComputeFileRegionSha256Async(string path, long offset, long bytesToHash, CancellationToken ct)
+    {
+        const int bufferSize = 1024 * 1024;
+        var buffer = new byte[bufferSize];
+        using var hash = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
+        using var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite, bufferSize, FileOptions.SequentialScan);
+        if (offset > 0)
+            stream.Position = offset;
+
+        long remaining = bytesToHash;
+        while (remaining > 0)
+        {
+            ct.ThrowIfCancellationRequested();
+            int toRead = (int)Math.Min(buffer.Length, remaining);
+            int read = await stream.ReadAsync(buffer.AsMemory(0, toRead), ct);
+            if (read == 0)
+                throw new EndOfStreamException("Neočekávaný konec souboru při výpočtu kontrolního součtu.");
+            hash.AppendData(buffer, 0, read);
+            remaining -= read;
+        }
+
+        return Convert.ToHexString(hash.GetHashAndReset());
+    }
+
+    private async Task TryEmergencyRestoreAsync(string reason)
+    {
+        if (!_backupVerified || string.IsNullOrWhiteSpace(_backupImagePath) || !File.Exists(_backupImagePath))
+        {
+            Log($"⚠️ Nouzová obnova nelze spustit: {reason}; záloha není ověřená nebo není dostupná.");
+            return;
+        }
+
+        try
+        {
+            Log($"⚠️ {reason}. Spouštím nouzovou obnovu ověřené zálohy...");
+            await RunRestorePhaseAsync(CancellationToken.None);
+            Log("✅ Nouzová obnova dokončena.");
+        }
+        catch (Exception restoreEx)
+        {
+            Log($"❌ NOUZOVÁ OBNOVA SELHALA: {restoreEx.Message}");
+        }
+    }
+
     /// <summary>
     /// Detects whether an exception indicates the target device has disappeared
     /// (disconnected, powered off, or driver unloaded).
@@ -1840,18 +1980,28 @@ public partial class SafeDestructiveTestViewModel : ViewModelBase, INavigableVie
     /// Writes a minimal VHDx header and Block Allocation Table for a dynamic disk.
     /// This creates a valid, mountable VHDx file that Windows and Linux can open.
     /// </summary>
-        private static async Task WriteVhdxHeaderAsync(string path, long diskSizeBytes, CancellationToken ct)
+        private static long RoundUp(long value, long alignment) => ((value + alignment - 1) / alignment) * alignment;
+
+    private static long CalculateVhdxDataStartOffset(long diskSizeBytes)
+    {
+        const int logicalSectorSize = 1048576;
+        const int physicalSectorSize = 4096;
+        long diskSizeRounded = RoundUp(diskSizeBytes, logicalSectorSize);
+        long chunkCount = diskSizeRounded / logicalSectorSize;
+        long batSize = RoundUp(chunkCount * 8, physicalSectorSize);
+        long metadataEnd = 256L * 1024 + batSize + 1024L * 1024;
+        return RoundUp(metadataEnd, logicalSectorSize);
+    }
+
+    private static async Task WriteVhdxHeaderAsync(string path, long diskSizeBytes, CancellationToken ct)
     {
         const int logicalSectorSize = 1048576; // 1 MiB
         const int physicalSectorSize = 4096;
 
-        long diskSizeRounded = ((diskSizeBytes + logicalSectorSize - 1) / logicalSectorSize) * logicalSectorSize;
+        long diskSizeRounded = RoundUp(diskSizeBytes, logicalSectorSize);
         long chunkCount = diskSizeRounded / logicalSectorSize;
-        long batSize = ((chunkCount * 8 + physicalSectorSize - 1) / physicalSectorSize) * physicalSectorSize;
-
-        // Data start offset = 256K (region table end) + BAT + 1MiB metadata, aligned to 1MiB
-        long metadataEnd = 256L * 1024 + batSize + 1024L * 1024;
-        long dataStartOffset = ((metadataEnd + logicalSectorSize - 1) / logicalSectorSize) * logicalSectorSize;
+        long batSize = RoundUp(chunkCount * 8, physicalSectorSize);
+        long dataStartOffset = CalculateVhdxDataStartOffset(diskSizeBytes);
 
         using var fs = new FileStream(path, FileMode.Create, FileAccess.Write, FileShare.None, 4096, FileOptions.SequentialScan);
         using var writer = new BinaryWriter(fs);
@@ -1882,7 +2032,7 @@ public partial class SafeDestructiveTestViewModel : ViewModelBase, INavigableVie
         writer.Write(new byte[] { 0x72, 0x65, 0x67, 0x69 }); // "regi"
         writer.Write((uint)0); // Checksum (simplified — 0 is acceptable)
         writer.Write((uint)2); // EntryCount = 2 (BAT + Metadata)
-        writer.Write(new byte[20]); // Reserved (header = 32 bytes total)
+        writer.Write(new byte[4]); // Reserved (header = 16 bytes total)
 
         // Entry 0: BAT — GUID {2DC277E9-0F79-41E9-9E2E-7A1D5A1CB5D3}
         writer.Write(new byte[] { 0xE9, 0x77, 0xC2, 0x2D, 0x79, 0x0F, 0xE9, 0x41, 0x9E, 0x2E, 0x7A, 0x1D, 0x5A, 0x1C, 0xB5, 0xD3 });

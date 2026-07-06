@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.IO;
 using System.Linq;
+using System.Security.Cryptography;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
@@ -201,6 +202,10 @@ public partial class RestoreViewModel : ViewModelBase, INavigableViewModel, IDis
             {
                 ScanDirectoryForBackups(dir);
             }
+            foreach (var dir in Directory.GetDirectories(rootPath, "DiskChecker_SafeBackup_*", SearchOption.TopDirectoryOnly))
+            {
+                ScanDirectoryForBackups(dir);
+            }
             foreach (var dir in Directory.GetDirectories(rootPath, "DiskChecker_VhdxBackup_*", SearchOption.TopDirectoryOnly))
             {
                 ScanDirectoryForBackups(dir);
@@ -245,7 +250,7 @@ public partial class RestoreViewModel : ViewModelBase, INavigableViewModel, IDis
             var firstSource = folders.FirstOrDefault() ?? files.FirstOrDefault();
             var foldersSummary = sourceCount switch
             {
-                0 => mode == "RawImage" ? "Raw obraz disku" : "—",
+                0 => mode == "RawImage" ? "Raw obraz disku" : mode == "VhdxImage" ? "VHDx obraz disku" : "—",
                 1 => Path.GetFileName(firstSource) ?? "—",
                 _ => $"{Path.GetFileName(firstSource) ?? "—"} + {sourceCount - 1} dalších"
             };
@@ -362,6 +367,14 @@ public partial class RestoreViewModel : ViewModelBase, INavigableViewModel, IDis
         if (targetDisk == null)
         {
             await _dialogService.ShowErrorAsync("Chyba", "Není vybrán cílový disk pro obnovu.");
+            return;
+        }
+
+        // Capacity check for raw/VHDx images. Unknown block-device size is represented as 0 and is allowed.
+        if (SelectedBackup.Mode is "Raw obraz" or "VHDx obraz" && targetDisk.TotalSize > 0 && targetDisk.TotalSize < SelectedBackup.TotalBytes)
+        {
+            await _dialogService.ShowErrorAsync("Cílový disk je malý",
+                $"Cílový disk má {targetDisk.TotalSizeText}, ale záloha obsahuje {SelectedBackup.TotalBytesText}. Vyberte dostatečně velký disk.");
             return;
         }
 
@@ -678,6 +691,11 @@ public partial class RestoreViewModel : ViewModelBase, INavigableViewModel, IDis
 
             long partBytesRead = 0;
             long partDataSize = isVhdx ? Math.Max(0, partInfo.Length - vhdxDataOffset) : partInfo.Length;
+            if (SelectedBackup.TotalBytes > 0)
+            {
+                var remainingImageBytes = Math.Max(0, SelectedBackup.TotalBytes - _totalBytesRestored);
+                partDataSize = Math.Min(partDataSize, remainingImageBytes);
+            }
 
             while (partBytesRead < partDataSize)
             {
@@ -819,52 +837,94 @@ public partial class RestoreViewModel : ViewModelBase, INavigableViewModel, IDis
     {
         if (SelectedBackup == null) return;
 
-        // For raw restore, verify that the target size matches
         try
         {
-            var targetInfo = new FileInfo(targetPath);
-            if (!targetInfo.Exists)
-            {
-                VerifyResult = "❌ Cílový soubor nenalezen.";
-                IsVerifyOk = false;
-                return;
-            }
-
             var allParts = FindRawImageParts(SelectedBackup);
-            long totalSourceBytes = allParts.Sum(part => new FileInfo(part).Length);
-
-            if (allParts.Count == 0 || totalSourceBytes <= 0)
+            if (allParts.Count == 0)
             {
                 IsVerifyOk = false;
-                VerifyResult = "❌ Raw/IMG části zálohy nebyly nalezeny.";
+                VerifyResult = "❌ Raw/IMG/VHDx obraz nebyl nalezen.";
                 return;
             }
 
-            // FileInfo.Length is meaningful for image-file targets. For block devices (/dev/..., \.\PhysicalDrive*)
-            // it may be unavailable/zero, so successful flush plus readable source parts is the safest portable check here.
-            var isBlockDeviceTarget = targetPath.StartsWith("/dev/", StringComparison.OrdinalIgnoreCase) ||
-                                      targetPath.StartsWith("\\\\.\\", StringComparison.OrdinalIgnoreCase);
+            var expectedSha = TryReadManifestString(SelectedBackup.ManifestPath, "Sha256");
+            var bytesToVerify = SelectedBackup.TotalBytes;
 
-            if (isBlockDeviceTarget || targetInfo.Length >= totalSourceBytes)
+            if (!string.IsNullOrWhiteSpace(expectedSha) && bytesToVerify > 0)
+            {
+                _restoreLog.Add($"[VERIFY] Ověřuji cílový disk SHA-256 ({FormatBytesLong(bytesToVerify)})...");
+                var actualSha = await ComputeFileRegionSha256Async(targetPath, 0, bytesToVerify, ct);
+                IsVerifyOk = string.Equals(actualSha, expectedSha, StringComparison.OrdinalIgnoreCase);
+                VerifyResult = IsVerifyOk
+                    ? $"✅ Raw/VHDx obnova ověřena SHA-256 — {FormatBytesLong(bytesToVerify)}"
+                    : "❌ Kontrolní součet obnoveného disku nesouhlasí se zálohou.";
+                _restoreLog.Add($"[VERIFY] SHA-256 target={actualSha}, expected={expectedSha}");
+                return;
+            }
+
+            // Legacy backups without checksum: at least verify that something was written and source parts exist.
+            var totalSourceBytes = SelectedBackup.TotalBytes > 0
+                ? SelectedBackup.TotalBytes
+                : allParts.Sum(part => new FileInfo(part).Length);
+
+            var isBlockDeviceTarget = targetPath.StartsWith("/dev/", StringComparison.OrdinalIgnoreCase) ||
+                                      targetPath.StartsWith(@"\.\", StringComparison.OrdinalIgnoreCase);
+
+            if (isBlockDeviceTarget)
             {
                 IsVerifyOk = true;
-                VerifyResult = isBlockDeviceTarget
-                    ? $"✅ Raw obnova dokončena — zdrojový obraz {FormatBytesLong(totalSourceBytes)} byl zapsán na blokové zařízení."
-                    : $"✅ Raw obraz ověřen — {FormatBytesLong(targetInfo.Length)} zapsáno";
+                VerifyResult = $"✅ Legacy raw obnova dokončena — zapsáno {FormatBytesLong(totalSourceBytes)} na blokové zařízení (záloha nemá SHA-256).";
+                return;
             }
-            else
-            {
-                IsVerifyOk = false;
-                VerifyResult = $"⚠️ Velikost nesouhlasí — zdroj: {FormatBytesLong(totalSourceBytes)}, cíl: {FormatBytesLong(targetInfo.Length)}";
-            }
+
+            var targetInfo = new FileInfo(targetPath);
+            IsVerifyOk = targetInfo.Exists && targetInfo.Length >= totalSourceBytes;
+            VerifyResult = IsVerifyOk
+                ? $"✅ Legacy raw obraz ověřen velikostí — {FormatBytesLong(targetInfo.Length)}"
+                : $"⚠️ Velikost nesouhlasí — zdroj: {FormatBytesLong(totalSourceBytes)}, cíl: {(targetInfo.Exists ? FormatBytesLong(targetInfo.Length) : "nenalezen")}";
         }
         catch (Exception ex)
         {
             VerifyResult = $"Ověření selhalo: {ex.Message}";
             IsVerifyOk = false;
         }
+    }
 
-        await Task.CompletedTask;
+    private static string? TryReadManifestString(string manifestPath, string propertyName)
+    {
+        try
+        {
+            using var doc = JsonDocument.Parse(File.ReadAllText(manifestPath));
+            return doc.RootElement.TryGetProperty(propertyName, out var el) ? el.GetString() : null;
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    private static async Task<string> ComputeFileRegionSha256Async(string path, long offset, long bytesToHash, CancellationToken ct)
+    {
+        const int bufferSize = 1024 * 1024;
+        var buffer = new byte[bufferSize];
+        using var hash = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
+        using var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite, bufferSize, FileOptions.SequentialScan);
+        if (offset > 0)
+            stream.Position = offset;
+
+        long remaining = bytesToHash;
+        while (remaining > 0)
+        {
+            ct.ThrowIfCancellationRequested();
+            int toRead = (int)Math.Min(buffer.Length, remaining);
+            int read = await stream.ReadAsync(buffer.AsMemory(0, toRead), ct);
+            if (read == 0)
+                throw new EndOfStreamException("Neočekávaný konec cíle při ověřování.");
+            hash.AppendData(buffer, 0, read);
+            remaining -= read;
+        }
+
+        return Convert.ToHexString(hash.GetHashAndReset());
     }
 
     private async Task CopyFileWithProgressAsync(string sourcePath, string destPath, long fileSize, CancellationToken ct)

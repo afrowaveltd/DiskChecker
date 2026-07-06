@@ -1300,7 +1300,6 @@ public partial class BackupViewModel : ViewModelBase, INavigableViewModel, IDisp
 
                 await currentStream.WriteAsync(buffer.AsMemory(0, bytesReadNow), ct);
                 bytesRead += bytesReadNow;
-                targetRemaining -= bytesReadNow;
 
                 _totalBytesBackedUp = bytesRead;
                 OverallProgress = totalSize > 0 ? (double)bytesRead / totalSize * 100 : 0;
@@ -1365,9 +1364,11 @@ public partial class BackupViewModel : ViewModelBase, INavigableViewModel, IDisp
 
         const int blockSize = 1024 * 1024; // 1 MiB
         var buffer = new byte[blockSize];
-        int targetIndex = 0;
-        long targetRemaining = targetDrives[0].AllocatedBytes;
-        var createdParts = new List<string> { vhdxPath };
+
+        var dataStartOffset = CalculateVhdxDataStartOffset(totalSize);
+        var requiredBytes = dataStartOffset + RoundUp(totalSize, blockSize);
+        if (targetDrives[0].AllocatedBytes < requiredBytes)
+            throw new IOException($"Cílový disk nemá dost místa pro jeden platný VHDx soubor. Potřeba {FormatBytesLong(requiredBytes)}, dostupné {FormatBytesLong(targetDrives[0].AllocatedBytes)}. VHDx zálohu nelze bezpečně dělit na více částí; vyberte větší cílový disk nebo použijte raw režim.");
 
         // Write VHDx header + BAT — fixed VHDx, all blocks pre-allocated
         await WriteVhdxHeaderAsync(vhdxPath, totalSize, ct);
@@ -1376,12 +1377,8 @@ public partial class BackupViewModel : ViewModelBase, INavigableViewModel, IDisp
         using var vhdxStream = new FileStream(vhdxPath, FileMode.Open, FileAccess.Write,
             FileShare.Read, blockSize, FileOptions.SequentialScan);
 
-        // Calculate data start offset (same calculation as in WriteVhdxHeaderAsync)
+        // Data start offset of the VHDx payload area.
         const int logicalSectorSize = 1048576;
-        long chunkCount = ((totalSize + logicalSectorSize - 1) / logicalSectorSize);
-        long batSize = ((chunkCount * 8 + 4096 - 1) / 4096) * 4096;
-        long metadataEnd = 256L * 1024 + batSize + 1024L * 1024;
-        long dataStartOffset = ((metadataEnd + logicalSectorSize - 1) / logicalSectorSize) * logicalSectorSize;
 
         try
         {
@@ -1431,32 +1428,6 @@ public partial class BackupViewModel : ViewModelBase, INavigableViewModel, IDisp
                     consecutiveErrors = 0;
                 }
 
-                // Check target space
-                if (bytesReadNow > targetRemaining)
-                {
-                    if (targetIndex + 1 >= targetDrives.Count)
-                        throw new IOException("Cílové úložiště VHDx zálohy je plné.");
-
-                    vhdxStream.Dispose();
-
-                    targetIndex++;
-                    targetRemaining = targetDrives[targetIndex].AllocatedBytes;
-                    var partRoot = Path.Combine(targetDrives[targetIndex].DrivePath, $"{backupSetName}_part{targetIndex + 1}");
-                    Directory.CreateDirectory(partRoot);
-                    vhdxPath = Path.Combine(partRoot, $"disk_image.vhdx.part{targetIndex + 1:000}");
-                    createdParts.Add(vhdxPath);
-                    await WriteVhdxHeaderAsync(vhdxPath, totalSize - bytesRead, ct);
-                    // Reopen new file for writing at offsets
-                    // For simplicity, use append for continuation parts
-                    using var partStream = new FileStream(vhdxPath, FileMode.Open, FileAccess.Write,
-                        FileShare.Read, blockSize, FileOptions.SequentialScan);
-                    await partStream.WriteAsync(buffer.AsMemory(0, bytesReadNow), ct);
-                    bytesRead += bytesReadNow;
-                    targetRemaining -= bytesReadNow;
-                    _backupLog.Add($"[{DateTime.Now:HH:mm:ss}] Přepnuto na část {targetIndex + 1}: {vhdxPath}");
-                    continue;
-                }
-
                 // Write data at the correct offset in the fixed VHDx
                 long chunkIndex = bytesRead / logicalSectorSize;
                 long writeOffset = dataStartOffset + chunkIndex * logicalSectorSize;
@@ -1464,7 +1435,6 @@ public partial class BackupViewModel : ViewModelBase, INavigableViewModel, IDisp
                 await vhdxStream.WriteAsync(buffer.AsMemory(0, bytesReadNow), ct);
 
                 bytesRead += bytesReadNow;
-                targetRemaining -= bytesReadNow;
 
                 _totalBytesBackedUp = bytesRead;
                 OverallProgress = totalSize > 0 ? (double)bytesRead / totalSize * 100 : 0;
@@ -1496,31 +1466,41 @@ public partial class BackupViewModel : ViewModelBase, INavigableViewModel, IDisp
             BackupDate = DateTime.Now.ToString("O"),
             Mode = "VhdxImage",
             ImageFormat = "VHDx Fixed (mountable)",
-            MountableImage = createdParts.Count == 1 ? createdParts[0] : null,
+            MountableImage = vhdxPath,
             TotalBytes = bytesRead,
             BlockSize = blockSize,
-            Parts = targetIndex + 1,
-            PartFiles = createdParts.Select(Path.GetFileName).ToList(),
-            PartPaths = createdParts.ToList(),
+            Parts = 1,
+            PartFiles = new[] { Path.GetFileName(vhdxPath) },
+            PartPaths = new[] { vhdxPath },
             DataStartOffset = dataStartOffset,
             Note = "Soubor disk_image.vhdx je fixed VHDx obraz disku. Lze jej připojit: Windows — poklepáním; Linux — sudo qemu-nbd -c /dev/nbd0 disk_image.vhdx && sudo mount /dev/nbd0p1 /mnt"
         };
         using var manifestStream = File.OpenWrite(manifestPath);
         await JsonSerializer.SerializeAsync(manifestStream, manifest, _jsonOptions, ct);
-        _backupLog.Add($"[{DateTime.Now:HH:mm:ss}] VHDx záloha dokončena: {FormatBytesLong(bytesRead)} v {targetIndex + 1} části(ch)");
+        _backupLog.Add($"[{DateTime.Now:HH:mm:ss}] VHDx záloha dokončena: {FormatBytesLong(bytesRead)} v jednom platném VHDx souboru");
     }
-private static async Task WriteVhdxHeaderAsync(string path, long diskSizeBytes, CancellationToken ct)
+private static long RoundUp(long value, long alignment) => ((value + alignment - 1) / alignment) * alignment;
+
+    private static long CalculateVhdxDataStartOffset(long diskSizeBytes)
+    {
+        const int logicalSectorSize = 1048576;
+        const int physicalSectorSize = 4096;
+        long diskSizeRounded = RoundUp(diskSizeBytes, logicalSectorSize);
+        long chunkCount = diskSizeRounded / logicalSectorSize;
+        long batSize = RoundUp(chunkCount * 8, physicalSectorSize);
+        long metadataEnd = 256L * 1024 + batSize + 1024L * 1024;
+        return RoundUp(metadataEnd, logicalSectorSize);
+    }
+
+    private static async Task WriteVhdxHeaderAsync(string path, long diskSizeBytes, CancellationToken ct)
     {
         const int logicalSectorSize = 1048576; // 1 MiB
         const int physicalSectorSize = 4096;
 
-        long diskSizeRounded = ((diskSizeBytes + logicalSectorSize - 1) / logicalSectorSize) * logicalSectorSize;
+        long diskSizeRounded = RoundUp(diskSizeBytes, logicalSectorSize);
         long chunkCount = diskSizeRounded / logicalSectorSize;
-        long batSize = ((chunkCount * 8 + physicalSectorSize - 1) / physicalSectorSize) * physicalSectorSize;
-
-        // Data start offset = 256K (region table end) + BAT + 1MiB metadata, aligned to 1MiB
-        long metadataEnd = 256L * 1024 + batSize + 1024L * 1024;
-        long dataStartOffset = ((metadataEnd + logicalSectorSize - 1) / logicalSectorSize) * logicalSectorSize;
+        long batSize = RoundUp(chunkCount * 8, physicalSectorSize);
+        long dataStartOffset = CalculateVhdxDataStartOffset(diskSizeBytes);
 
         using var fs = new FileStream(path, FileMode.Create, FileAccess.Write, FileShare.None, 4096, FileOptions.SequentialScan);
         using var writer = new BinaryWriter(fs);

@@ -232,7 +232,7 @@
                             </StackPanel>
                         </Button>
                     </StackPanel>
-                    <lvc:CartesianChart Series="{Binding SanitizeChartSeries}"
+                    <lvc:CartesianChart Background="{DynamicResource ThemeGraphBackgroundBrush}" Series="{Binding SanitizeChartSeries}"
                                         XAxes="{Binding SanitizeChartXAxes}"
                                         YAxes="{Binding SanitizeChartYAxes}"
                                         ZoomMode="None"
@@ -254,7 +254,7 @@
                         <Run Text="{Binding L[DestructiveTest.CurrentPhase]}"/>
                         <Run Text="{Binding CurrentPhaseName}"/>
                     </TextBlock>
-                    <lvc:CartesianChart Series="{Binding CurrentPhaseSeries}"
+                    <lvc:CartesianChart Background="{DynamicResource ThemeGraphBackgroundBrush}" Series="{Binding CurrentPhaseSeries}"
                                         XAxes="{Binding CurrentPhaseXAxes}"
                                         YAxes="{Binding CurrentPhaseYAxes}"
                                         ZoomMode="None"
@@ -295,7 +295,7 @@
                         </StackPanel>
                     </Grid>
                     <Grid>
-                        <lvc:CartesianChart Series="{Binding SeekChartSeries}"
+                        <lvc:CartesianChart Background="{DynamicResource ThemeGraphBackgroundBrush}" Series="{Binding SeekChartSeries}"
                                             XAxes="{Binding SeekChartXAxes}"
                                             YAxes="{Binding SeekChartYAxes}"
                                             ZoomMode="None"

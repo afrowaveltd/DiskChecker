@@ -84,7 +84,7 @@
                                 <StackPanel Spacing="4">
                                     <TextBlock Text="💾 VHDx pouze" FontSize="13" FontWeight="Bold"
                                                Foreground="{DynamicResource ThemeTextPrimaryBrush}"/>
-                                    <TextBlock Text="Vytvoří VHDx obraz (lze připojit v systému), provede testy a vytvoří oddíl. Data lze obnovit ručně." FontSize="10"
+                                    <TextBlock Text="Vytvoří a ověří VHDx obraz, provede testy a automaticky obnoví data zpět." FontSize="10"
                                                Foreground="{DynamicResource ThemeTextSecondaryBrush}" TextWrapping="Wrap"/>
                                 </StackPanel>
                             </Button>
@@ -173,9 +173,13 @@
                         <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
                             <TextBlock Grid.Column="0" Text="{Binding BackupCurrentSectorText}" FontSize="10"
                                        Foreground="{DynamicResource ThemeTextSecondaryBrush}"/>
-                            <TextBlock Grid.Column="1" Text="{Binding BackupBytesWrittenText}" FontSize="10"
+                            <TextBlock Grid.Column="1" Text="{Binding BackupProgressText}" FontSize="10" FontWeight="Bold"
                                        Foreground="{DynamicResource ThemePrimaryBrush}"/>
                         </Grid>
+                        <ProgressBar Value="{Binding BackupProgress}" Height="6"
+                                     Foreground="{DynamicResource ThemePrimaryBrush}"/>
+                        <TextBlock Text="{Binding BackupVerificationText}" FontSize="10"
+                                   Foreground="{DynamicResource ThemeSuccessBrush}"/>
                         <Grid ColumnDefinitions="Auto,Auto,Auto,*" ColumnSpacing="16">
                             <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="4">
                                 <TextBlock Text="⏱" FontSize="10"/>
@@ -254,9 +258,11 @@
                         <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
                             <TextBlock Grid.Column="0" Text="{Binding RestoreCurrentSectorText}" FontSize="10"
                                        Foreground="{DynamicResource ThemeTextSecondaryBrush}"/>
-                            <TextBlock Grid.Column="1" Text="{Binding RestoreBytesWrittenText}" FontSize="10"
+                            <TextBlock Grid.Column="1" Text="{Binding RestoreProgressText}" FontSize="10" FontWeight="Bold"
                                        Foreground="{DynamicResource ThemePrimaryBrush}"/>
                         </Grid>
+                        <ProgressBar Value="{Binding RestoreProgress}" Height="6"
+                                     Foreground="{DynamicResource ThemePrimaryBrush}"/>
                         <Grid ColumnDefinitions="Auto,Auto,Auto,*" ColumnSpacing="16">
                             <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="4">
                                 <TextBlock Text="⏱" FontSize="10"/>
@@ -310,7 +316,7 @@
                                        FontSize="10" Foreground="{DynamicResource ThemeSuccessBrush}"/>
                         </Grid>
 
-                        <lvc:CartesianChart Series="{Binding SanitizeChartSeries}"
+                        <lvc:CartesianChart Background="{DynamicResource ThemeGraphBackgroundBrush}" Series="{Binding SanitizeChartSeries}"
                                             XAxes="{Binding SanitizeChartXAxes}"
                                             YAxes="{Binding SanitizeChartYAxes}"
                                             Height="250" Margin="0,4"/>
@@ -336,7 +342,7 @@
                                     Command="{Binding SwitchSeekChartCommand}" Cursor="Hand"/>
                         </StackPanel>
 
-                        <lvc:CartesianChart Series="{Binding SeekChartSeries}"
+                        <lvc:CartesianChart Background="{DynamicResource ThemeGraphBackgroundBrush}" Series="{Binding SeekChartSeries}"
                                             XAxes="{Binding SeekChartXAxes}"
                                             YAxes="{Binding SeekChartYAxes}"
                                             Height="250" Margin="0,4"/>

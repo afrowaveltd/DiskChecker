@@ -40,7 +40,7 @@
                 </StackPanel>
 
                 <!-- Navigation Menu -->
-                <WrapPanel Grid.Column="1" HorizontalAlignment="Center" VerticalAlignment="Center" Margin="8,6" ItemHeight="36">
+                <WrapPanel Grid.Column="1" HorizontalAlignment="Center" VerticalAlignment="Center" Margin="8,6" ItemHeight="36" IsEnabled="{Binding CanNavigateFromCurrentView}">
                     <!-- Navigation buttons -->
                     <Button Content="{Binding L[Nav.DiskSelection]}"
                             Command="{Binding NavigateToDiskSelectionCommand}"
@@ -176,6 +176,7 @@
                     </Button>
                     
                     <Button Command="{Binding NavigateToSettingsCommand}"
+                            IsEnabled="{Binding CanNavigateFromCurrentView}"
                             Background="{Binding IsOnSettings, Converter={StaticResource ActiveNavConverter}}"
                             Foreground="{Binding IsOnSettings, Converter={StaticResource ActiveNavTextConverter}}"
                             BorderBrush="{DynamicResource ThemeBorderBrush}"
