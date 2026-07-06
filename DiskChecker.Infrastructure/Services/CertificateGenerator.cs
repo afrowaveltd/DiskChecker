@@ -472,7 +472,11 @@ public class CertificateGenerator : ICertificateGenerator
 
             // Performance chart
             y += 220;
-            DrawText(canvas, _locale?.GetString("CertificatePdf.PerformanceProfile", "Výkonový profil testu") ?? "Výkonový profil testu", 48, y, sectionFont, accentPaint);
+            var isSeekChart = cert.SeekLatencyPoints.Count > 0;
+            var chartTitle = isSeekChart
+                ? (_locale?.GetString("CertificatePdf.SeekLatencyChart", "Seek latence") ?? "Seek latence")
+                : (_locale?.GetString("CertificatePdf.PerformanceProfile", "Výkonový profil testu") ?? "Výkonový profil testu");
+            DrawText(canvas, chartTitle, 48, y, sectionFont, accentPaint);
             y += 34;
 
             float chartX = 72f;
@@ -486,6 +490,69 @@ public class CertificateGenerator : ICertificateGenerator
                 using var chartImage = SKBitmap.Decode(cert.ChartImagePath);
                 if (chartImage != null)
                     canvas.DrawBitmap(chartImage, new SKRect(chartX, chartY, chartX + chartW, chartY + chartH));
+            }
+            else if (isSeekChart)
+            {
+                // ── Seek scatter chart (latency dots) ──
+                var latencies = cert.SeekLatencyPoints.Where(v => v > 0).ToList();
+                if (latencies.Count > 0)
+                {
+                    var maxLatency = latencies.Max();
+                    var yMax = Math.Max(maxLatency * 1.15, maxLatency + 1);
+
+                    // Y axis
+                    canvas.DrawLine(chartX + 30, chartY + 14, chartX + 30, chartY + chartH - 26, axisPen);
+                    // X axis
+                    canvas.DrawLine(chartX + 30, chartY + chartH - 26, chartX + chartW - 20, chartY + chartH - 26, axisPen);
+
+                    // Horizontal grid lines
+                    for (int g = 1; g <= 3; g++)
+                    {
+                        float gy = chartY + 14 + (chartH - 40) * g / 4f;
+                        canvas.DrawLine(chartX + 30, gy, chartX + chartW - 20, gy, axisPen);
+                    }
+
+                    // Scatter dots
+                    using var dotPaint = new SKPaint
+                    {
+                        Color = new SKColor(220, 38, 38),
+                        Style = SKPaintStyle.Fill,
+                        IsAntialias = true
+                    };
+                    float plotW = chartW - 50;
+                    float plotH = chartH - 40;
+                    for (var i = 0; i < latencies.Count; i++)
+                    {
+                        float sx = chartX + 30 + (i / (float)Math.Max(1, latencies.Count - 1)) * plotW;
+                        float sy = chartY + 14 + plotH - (float)(latencies[i] / yMax * plotH);
+                        canvas.DrawCircle(sx, sy, 2.4f, dotPaint);
+                    }
+
+                    // Y axis labels
+                    DrawText(canvas, _locale?.GetString("CertificatePdf.Ms", "ms") ?? "ms", chartX - 4, chartY + 8, chartLabelFont, mutedPaint);
+                    DrawText(canvas, $"{yMax:F1}", chartX - 22, chartY + 14, chartLabelFont, mutedPaint);
+                    DrawText(canvas, $"{yMax / 2:F1}", chartX - 22, chartY + (chartH - 40) / 2 + 10, chartLabelFont, mutedPaint);
+                    DrawText(canvas, "0", chartX - 12, chartY + chartH - 30, chartLabelFont, mutedPaint);
+
+                    // X axis labels
+                    DrawText(canvas, "1", chartX + 26, chartY + chartH - 18, chartLabelFont, mutedPaint);
+                    var midLabel = Math.Max(1, latencies.Count / 2).ToString(CultureInfo.InvariantCulture);
+                    DrawText(canvas, midLabel, chartX + 30 + plotW / 2f - 8, chartY + chartH - 18, chartLabelFont, mutedPaint);
+                    DrawText(canvas, latencies.Count.ToString(CultureInfo.InvariantCulture), chartX + chartW - 40, chartY + chartH - 18, chartLabelFont, mutedPaint);
+
+                    // Legend
+                    using var legendDotPaint = new SKPaint { Color = new SKColor(220, 38, 38), IsAntialias = true };
+                    DrawText(canvas, _locale?.GetString("CertificatePdf.Latency", "Latence") ?? "Latence", chartX + chartW - 120, chartY + 8, chartLabelFont, legendDotPaint);
+                }
+                else
+                {
+                    var noDataText = _locale?.GetString("CertificatePdf.NoChartData", "Data nejsou k dispozici") ?? "Data nejsou k dispozici";
+                    using var noDataFont = ResolveFont(18, bold: false);
+                    float textWidth = noDataFont.MeasureText(noDataText);
+                    float textX = chartX + (chartW - textWidth) / 2f;
+                    float textY = chartY + chartH / 2f - noDataFont.Size / 2f;
+                    DrawText(canvas, noDataText, textX, textY, noDataFont, mutedPaint);
+                }
             }
             else
             {

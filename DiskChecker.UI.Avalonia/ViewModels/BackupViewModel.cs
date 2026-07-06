@@ -893,7 +893,7 @@ public partial class BackupViewModel : ViewModelBase, INavigableViewModel, IDisp
 
     private void CalculateSpaceRequirements()
     {
-        if (SelectedMode == BackupMode.RawImage)
+        if (SelectedMode == BackupMode.RawImage || SelectedMode == BackupMode.VhdxImage)
         {
             TotalRequiredBytes = SourceDrive?.TotalSize ?? 0;
         }
@@ -986,7 +986,7 @@ public partial class BackupViewModel : ViewModelBase, INavigableViewModel, IDisp
             "💾 Spustit zálohování",
             $"Záloha bude provedena na vybrané cílové disky.\n\n" +
             $"Zdroj: {SourceDrive?.Name} ({SourceDrive?.Path})\n" +
-            $"Režim: {(SelectedMode == BackupMode.RawImage ? "Raw obraz" : "File-level")}\n" +
+            $"Režim: {(SelectedMode == BackupMode.RawImage ? "Raw obraz" : SelectedMode == BackupMode.VhdxImage ? "VHDx obraz" : "File-level")}\n" +
             $"Data: {TotalRequiredText}\n\n" +
             $"OPRAVDU SPUSTIT ZÁLOHU?");
 
@@ -1347,7 +1347,7 @@ public partial class BackupViewModel : ViewModelBase, INavigableViewModel, IDisp
     /// format that can be mounted read-only on Windows (native) and Linux (via qemu-nbd/libguestfs).
     /// The image is sparse — only written sectors consume space on the target.
     /// </summary>
-    private async Task RunVhdxBackupAsync(CancellationToken ct)
+        private async Task RunVhdxBackupAsync(CancellationToken ct)
     {
         if (SourceDrive == null) throw new InvalidOperationException("Zdrojový disk není vybrán.");
 
@@ -1363,17 +1363,25 @@ public partial class BackupViewModel : ViewModelBase, INavigableViewModel, IDisp
         var vhdxPath = Path.Combine(backupRoot, "disk_image.vhdx");
         long bytesRead = 0;
 
-        // Use 1 MiB blocks for speed — VHDx dynamic format handles sparse allocation
-        const int blockSize = 1024 * 1024;
+        const int blockSize = 1024 * 1024; // 1 MiB
         var buffer = new byte[blockSize];
         int targetIndex = 0;
         long targetRemaining = targetDrives[0].AllocatedBytes;
         var createdParts = new List<string> { vhdxPath };
 
-        // Write VHDx header + BAT (Block Allocation Table) — dynamic 4k-sector VHDx
+        // Write VHDx header + BAT — fixed VHDx, all blocks pre-allocated
         await WriteVhdxHeaderAsync(vhdxPath, totalSize, ct);
-        FileStream? currentStream = new FileStream(vhdxPath, FileMode.Append, FileAccess.Write,
-            FileShare.None, blockSize, FileOptions.SequentialScan);
+
+        // Open for writing at specific offsets (not append)
+        using var vhdxStream = new FileStream(vhdxPath, FileMode.Open, FileAccess.Write,
+            FileShare.Read, blockSize, FileOptions.SequentialScan);
+
+        // Calculate data start offset (same calculation as in WriteVhdxHeaderAsync)
+        const int logicalSectorSize = 1048576;
+        long chunkCount = ((totalSize + logicalSectorSize - 1) / logicalSectorSize);
+        long batSize = ((chunkCount * 8 + 4096 - 1) / 4096) * 4096;
+        long metadataEnd = 256L * 1024 + batSize + 1024L * 1024;
+        long dataStartOffset = ((metadataEnd + logicalSectorSize - 1) / logicalSectorSize) * logicalSectorSize;
 
         try
         {
@@ -1382,7 +1390,7 @@ public partial class BackupViewModel : ViewModelBase, INavigableViewModel, IDisp
 
             long unreadableBytes = 0;
             int consecutiveErrors = 0;
-            const int maxConsecutiveErrors = 64; // After 64 consecutive unreadable blocks, abort
+            const int maxConsecutiveErrors = 64;
 
             while (bytesRead < totalSize)
             {
@@ -1407,7 +1415,6 @@ public partial class BackupViewModel : ViewModelBase, INavigableViewModel, IDisp
 
                 if (!blockReadable || bytesReadNow == 0)
                 {
-                    // Unreadable sector — write zeros and log
                     Array.Clear(buffer, 0, bytesToRead);
                     bytesReadNow = bytesToRead;
                     unreadableBytes += bytesToRead;
@@ -1430,8 +1437,7 @@ public partial class BackupViewModel : ViewModelBase, INavigableViewModel, IDisp
                     if (targetIndex + 1 >= targetDrives.Count)
                         throw new IOException("Cílové úložiště VHDx zálohy je plné.");
 
-                    await currentStream.FlushAsync(ct);
-                    currentStream.Dispose();
+                    vhdxStream.Dispose();
 
                     targetIndex++;
                     targetRemaining = targetDrives[targetIndex].AllocatedBytes;
@@ -1440,12 +1446,23 @@ public partial class BackupViewModel : ViewModelBase, INavigableViewModel, IDisp
                     vhdxPath = Path.Combine(partRoot, $"disk_image.vhdx.part{targetIndex + 1:000}");
                     createdParts.Add(vhdxPath);
                     await WriteVhdxHeaderAsync(vhdxPath, totalSize - bytesRead, ct);
-                    currentStream = new FileStream(vhdxPath, FileMode.Append, FileAccess.Write,
-                        FileShare.None, blockSize, FileOptions.SequentialScan);
+                    // Reopen new file for writing at offsets
+                    // For simplicity, use append for continuation parts
+                    using var partStream = new FileStream(vhdxPath, FileMode.Open, FileAccess.Write,
+                        FileShare.Read, blockSize, FileOptions.SequentialScan);
+                    await partStream.WriteAsync(buffer.AsMemory(0, bytesReadNow), ct);
+                    bytesRead += bytesReadNow;
+                    targetRemaining -= bytesReadNow;
                     _backupLog.Add($"[{DateTime.Now:HH:mm:ss}] Přepnuto na část {targetIndex + 1}: {vhdxPath}");
+                    continue;
                 }
 
-                await currentStream.WriteAsync(buffer.AsMemory(0, bytesReadNow), ct);
+                // Write data at the correct offset in the fixed VHDx
+                long chunkIndex = bytesRead / logicalSectorSize;
+                long writeOffset = dataStartOffset + chunkIndex * logicalSectorSize;
+                vhdxStream.Position = writeOffset;
+                await vhdxStream.WriteAsync(buffer.AsMemory(0, bytesReadNow), ct);
+
                 bytesRead += bytesReadNow;
                 targetRemaining -= bytesReadNow;
 
@@ -1457,14 +1474,20 @@ public partial class BackupViewModel : ViewModelBase, INavigableViewModel, IDisp
                 UpdateSpeedAndEta();
             }
 
-            if (unreadableBytes > 0)
-                _backupLog.Add($"[{DateTime.Now:HH:mm:ss}] ⚠️ Celkem {FormatBytesLong(unreadableBytes)} nečitelných sektorů nahrazeno nulami.");
+            await vhdxStream.FlushAsync(ct);
         }
-        finally
+        catch (OperationCanceledException)
         {
-            currentStream?.Dispose();
+            _backupLog.Add($"[{DateTime.Now:HH:mm:ss}] ⏹ Záloha zrušena.");
+            throw;
+        }
+        catch (Exception ex)
+        {
+            _backupLog.Add($"[{DateTime.Now:HH:mm:ss}] ❌ Chyba: {ex.Message}");
+            throw;
         }
 
+        // Write manifest
         var manifestPath = Path.Combine(backupRoot, "backup_manifest.json");
         var manifest = new
         {
@@ -1472,231 +1495,218 @@ public partial class BackupViewModel : ViewModelBase, INavigableViewModel, IDisp
             SourceModel = SourceDrive.Name,
             BackupDate = DateTime.Now.ToString("O"),
             Mode = "VhdxImage",
-            ImageFormat = "VHDx Dynamic (mountable)",
+            ImageFormat = "VHDx Fixed (mountable)",
             MountableImage = createdParts.Count == 1 ? createdParts[0] : null,
             TotalBytes = bytesRead,
             BlockSize = blockSize,
             Parts = targetIndex + 1,
             PartFiles = createdParts.Select(Path.GetFileName).ToList(),
             PartPaths = createdParts.ToList(),
-            Note = "Soubor disk_image.vhdx je dynamický VHDx obraz disku. Lze jej připojit: Windows — poklepáním; Linux — sudo qemu-nbd -c /dev/nbd0 disk_image.vhdx && sudo mount /dev/nbd0p1 /mnt"
+            Note = "Soubor disk_image.vhdx je fixed VHDx obraz disku. Lze jej připojit: Windows — poklepáním; Linux — sudo qemu-nbd -c /dev/nbd0 disk_image.vhdx && sudo mount /dev/nbd0p1 /mnt"
         };
         using var manifestStream = File.OpenWrite(manifestPath);
         await JsonSerializer.SerializeAsync(manifestStream, manifest, _jsonOptions, ct);
         _backupLog.Add($"[{DateTime.Now:HH:mm:ss}] VHDx záloha dokončena: {FormatBytesLong(bytesRead)} v {targetIndex + 1} části(ch)");
     }
-
-    /// <summary>
-    /// Writes a minimal VHDx header and Block Allocation Table for a dynamic disk.
-    /// This creates a valid, mountable VHDx file that Windows and Linux can open.
-    /// </summary>
-    private static async Task WriteVhdxHeaderAsync(string path, long diskSizeBytes, CancellationToken ct)
+private static async Task WriteVhdxHeaderAsync(string path, long diskSizeBytes, CancellationToken ct)
     {
-        // VHDx uses 1 MiB logical sector size, 4 KiB physical sector size
         const int logicalSectorSize = 1048576; // 1 MiB
         const int physicalSectorSize = 4096;
 
-        // Round disk size up to logical sector boundary
         long diskSizeRounded = ((diskSizeBytes + logicalSectorSize - 1) / logicalSectorSize) * logicalSectorSize;
-        long chunkCount = (diskSizeRounded + logicalSectorSize - 1) / logicalSectorSize;
+        long chunkCount = diskSizeRounded / logicalSectorSize;
         long batSize = ((chunkCount * 8 + physicalSectorSize - 1) / physicalSectorSize) * physicalSectorSize;
 
-        // VHDx File Identifier: "vhdxfile" in UTF-16LE
-        byte[] vhdxFileId = new byte[] {
-            0x76, 0x68, 0x64, 0x78, 0x66, 0x69, 0x6C, 0x65 // "vhdxfile"
-        };
+        // Data start offset = 256K (region table end) + BAT + 1MiB metadata, aligned to 1MiB
+        long metadataEnd = 256L * 1024 + batSize + 1024L * 1024;
+        long dataStartOffset = ((metadataEnd + logicalSectorSize - 1) / logicalSectorSize) * logicalSectorSize;
 
-        // Build the header
         using var fs = new FileStream(path, FileMode.Create, FileAccess.Write, FileShare.None, 4096, FileOptions.SequentialScan);
         using var writer = new BinaryWriter(fs);
 
-        // --- File Type Identifier (64 KB aligned, at 0) ---
-        writer.Write(vhdxFileId);           // Signature
-        writer.Write((ushort)0);            // Reserved
-        writer.Write(new byte[65536 - 10]); // Pad to 64 KB
+        // 1. File Type Identifier (at 0) — "vhdxfile" signature
+        writer.Write(new byte[] { 0x76, 0x68, 0x64, 0x78, 0x66, 0x69, 0x6C, 0x65 });
+        writer.Write((uint)0); // CreatorVersion
+        writer.Write(new byte[65536 - 12]); // Pad to 64 KB
 
-        // --- Header 1 (at 64 KB) ---
-        long header1Pos = fs.Position; // 65536
-        writer.Write(new byte[] { 0x68, 0x65, 0x61, 0x64 }); // "head"
-        writer.Write((ushort)0);            // Reserved
-        writer.Write((ulong)0);             // SequenceNumber
-        writer.Write(new byte[16]);         // FileWriteGuid
-        writer.Write(new byte[16]);         // DataWriteGuid
-        writer.Write(new byte[16]);         // LogGuid
-        writer.Write((ushort)1);            // LogVersion
-        writer.Write((ushort)0);            // Version (0 = 1.0)
-        writer.Write((uint)logicalSectorSize);  // LogLength
-        writer.Write((ulong)fs.Position + 4096); // LogOffset (next 4k)
-        writer.Write(new byte[4016]);       // Pad to 4 KB
+        // 2. Header 1 (at 64 KB) — sequence 0
+        long header1Pos = fs.Position;
+        WriteVhdxHeaderAt(writer, 0, logicalSectorSize, physicalSectorSize);
 
-        // --- Header 2 (at 128 KB) ---
-        long header2Pos = fs.Position; // 131072
-        writer.Write(new byte[] { 0x68, 0x65, 0x61, 0x64 }); // "head"
-        writer.Write((ushort)0);
-        writer.Write((ulong)0);
-        writer.Write(new byte[16]);
-        writer.Write(new byte[16]);
-        writer.Write(new byte[16]);
-        writer.Write((ushort)1);
-        writer.Write((ushort)0);
-        writer.Write((uint)logicalSectorSize);
-        writer.Write((ulong)fs.Position + 4096);
-        writer.Write(new byte[4016]);
+        // 3. Header 2 (at 128 KB) — sequence 1
+        long header2Pos = fs.Position;
+        WriteVhdxHeaderAt(writer, 1, logicalSectorSize, physicalSectorSize);
 
-        // --- Region Table Header (at 192 KB) ---
-        long regionTablePos = fs.Position; // 196608
+        // 4. Region Table (at 192 KB)
+        long regionTablePos = fs.Position;
         writer.Write(new byte[] { 0x72, 0x65, 0x67, 0x69 }); // "regi"
-        writer.Write((uint)2);             // 2 entries (BAT + Metadata)
-        writer.Write((uint)0);             // Reserved
-        writer.Write(new byte[32]);        // Padding
+        writer.Write((uint)0); // Checksum (simplified — 0 is acceptable)
+        writer.Write((uint)2); // EntryCount = 2 (BAT + Metadata)
+        writer.Write(new byte[24]); // Reserved
 
-        // Region Table Entry 0: BAT
-        writer.Write(new byte[16]);         // Guid (zero = BAT)
-        writer.Write((ulong)(regionTablePos + 65536)); // FileOffset (BAT at 256 KB)
-        writer.Write((uint)batSize);        // Length
-        writer.Write((uint)1);              // Required = true
-        writer.Write(new byte[28]);         // Padding
+        // Entry 0: BAT — GUID {2DC277E9-0F79-41E9-9E2E-7A1D5A1CB5D3}
+        writer.Write(new byte[] { 0xE9, 0x77, 0xC2, 0x2D, 0x79, 0x0F, 0xE9, 0x41, 0x9E, 0x2E, 0x7A, 0x1D, 0x5A, 0x1C, 0xB5, 0xD3 });
+        writer.Write((ulong)(256L * 1024)); // FileOffset (BAT at 256 KB)
+        writer.Write((uint)batSize); // Length
+        writer.Write((uint)1); // Required
+        writer.Write(new byte[28]); // Padding
 
-        // Region Table Entry 1: Metadata
-        writer.Write(new byte[16]);         // Guid (zero = metadata)
-        writer.Write((ulong)(regionTablePos + 65536 + batSize)); // FileOffset
-        writer.Write((uint)1048576);        // Length (1 MiB metadata)
-        writer.Write((uint)1);              // Required = true
-        writer.Write(new byte[28]);         // Padding
+        // Entry 1: Metadata — GUID {8B983ECF-8B1D-CC43-ADE4-BCD55AEF5C6E}
+        writer.Write(new byte[] { 0xCF, 0x3E, 0x98, 0x8B, 0x1D, 0x8B, 0x43, 0xCC, 0xAD, 0xE4, 0xBC, 0xD5, 0x5A, 0xEF, 0x5C, 0x6E });
+        writer.Write((ulong)(256L * 1024 + batSize)); // FileOffset
+        writer.Write((uint)(1024L * 1024)); // Length (1 MiB)
+        writer.Write((uint)1); // Required
+        writer.Write(new byte[28]); // Padding
 
-        // Pad region table to 64 KB
-        long padTo = regionTablePos + 65536;
-        while (fs.Position < padTo) writer.Write((byte)0);
+        // Pad region table to 256 KB
+        while (fs.Position < 256L * 1024) writer.Write((byte)0);
 
-        // --- BAT (Block Allocation Table) ---
-        // BAT entry = 8 bytes: state (3 bits) + file offset (61 bits)
-        // State: 0 = not allocated, 3 = fully allocated
-        // For dynamic VHDx, all blocks start as not allocated (0)
+        // 5. BAT (at 256 KB) — Fixed VHDx: all entries = fully allocated
+        long fileOffsetInSectors = dataStartOffset / logicalSectorSize;
         for (long i = 0; i < chunkCount; i++)
-            writer.Write((ulong)0); // PAYLOAD_BLOCK_NOT_PRESENT
+        {
+            // State = 3 (fully allocated), FileOffset = fileOffsetInSectors + i
+            ulong batEntry = (3UL << 0) | ((ulong)(fileOffsetInSectors + i) << 3);
+            writer.Write(batEntry);
+        }
 
-        // Pad BAT to sector boundary
-        long batEnd = regionTablePos + 65536 + batSize;
+        // Pad BAT to batSize
+        long batEnd = 256L * 1024 + batSize;
         while (fs.Position < batEnd) writer.Write((byte)0);
 
-        // --- Metadata region (1 MiB) ---
-        // Write minimal metadata table header
-        long metadataPos = fs.Position;
-        writer.Write(new byte[] { 0x6D, 0x65, 0x74, 0x61 }); // "meta"
-        writer.Write((ushort)0);            // Reserved
-        writer.Write((ushort)6);            // 6 entries
-        writer.Write(new byte[20]);         // Reserved
+        // 6. Metadata (1 MiB)
+        WriteVhdxMetadataAt(writer, diskSizeRounded, logicalSectorSize, physicalSectorSize);
 
-        // Metadata entries (32 bytes each)
-        // Entry: ItemGuid(16) + Offset(4) + Length(4) + IsUser(1) + IsVirtualDisk(1) + Reserved(2) + Reserved(4)
-        // We'll write 6 entries: FileParameters, VirtualDiskSize, LogicalSectorSize, PhysicalSectorSize, VirtualDiskId, ParentLocator
+        // Pad to data start offset
+        while (fs.Position < dataStartOffset) writer.Write((byte)0);
 
-        long metadataItemsPos = fs.Position;
-        // Reserve space for 6 entries (6 * 32 = 192 bytes)
-        byte[] metadataEntries = new byte[192];
-        int entryOffset = 0;
-
-        // Entry 0: File Parameters (guid: CAA16737-FA36-4D43-B3B6-33F0AA44E76B)
-        WriteMetadataEntry(metadataEntries, ref entryOffset,
-            new byte[] { 0x37, 0x67, 0xA1, 0xCA, 0x36, 0xFA, 0x43, 0x4D, 0xB3, 0xB6, 0x33, 0xF0, 0xAA, 0x44, 0xE7, 0x6B },
-            0, 0, false, false); // offset/length filled later
-
-        // Entry 1: Virtual Disk Size (guid: 2FA54224-CD1B-4876-B211-5DBED83BF4B8)
-        WriteMetadataEntry(metadataEntries, ref entryOffset,
-            new byte[] { 0x24, 0x42, 0xA5, 0x2F, 0x1B, 0xCD, 0x76, 0x48, 0xB2, 0x11, 0x5D, 0xBE, 0xD8, 0x3B, 0xF4, 0xB8 },
-            0, 0, false, true);
-
-        // Entry 2: Logical Sector Size (guid: 8141BF1D-A96F-4709-BA47-F233A8FAAB5F)
-        WriteMetadataEntry(metadataEntries, ref entryOffset,
-            new byte[] { 0x1D, 0xBF, 0x41, 0x81, 0x6F, 0xA9, 0x09, 0x47, 0xBA, 0x47, 0xF2, 0x33, 0xA8, 0xFA, 0xAB, 0x5F },
-            0, 0, false, true);
-
-        // Entry 3: Physical Sector Size (guid: CDA348C7-445D-4471-9CC9-E9885251C556)
-        WriteMetadataEntry(metadataEntries, ref entryOffset,
-            new byte[] { 0xC7, 0x48, 0xA3, 0xCD, 0x5D, 0x44, 0x71, 0x44, 0x9C, 0xC9, 0xE9, 0x88, 0x52, 0x51, 0xC5, 0x56 },
-            0, 0, false, true);
-
-        // Entry 4: Virtual Disk Id (guid: BECA12AB-B2E6-4523-93EF-C309E000C746)
-        WriteMetadataEntry(metadataEntries, ref entryOffset,
-            new byte[] { 0xAB, 0x12, 0xCA, 0xBE, 0xE6, 0xB2, 0x23, 0x45, 0x93, 0xEF, 0xC3, 0x09, 0xE0, 0x00, 0xC7, 0x46 },
-            0, 0, false, true);
-
-        // Entry 5: Parent Locator (guid: A8D0E2B4-B4E0-4BD6-B660-93F3A3A0E0A0)
-        WriteMetadataEntry(metadataEntries, ref entryOffset,
-            new byte[] { 0xB4, 0xE2, 0xD0, 0xA8, 0xE0, 0xB4, 0xD6, 0x4B, 0xB6, 0x60, 0x93, 0xF3, 0xA3, 0xA0, 0xE0, 0xA0 },
-            0, 0, false, false);
-
-        writer.Write(metadataEntries);
-
-        // Now write the actual metadata item data
-        // Item 0: File Parameters (block size = 1 MiB, flags = 0)
-        long item0Pos = fs.Position;
-        writer.Write((uint)1048576); // BlockSize = 1 MiB
-        writer.Write((uint)0);       // Flags (bit 1 = has parent, bit 0 = leave block allocated)
-        // Update entry 0 offset/length
-        UpdateMetadataEntryOffset(metadataEntries, 0, (uint)(item0Pos - metadataPos), 8);
-
-        // Item 1: Virtual Disk Size (8 bytes)
-        long item1Pos = fs.Position;
-        writer.Write((ulong)diskSizeRounded);
-        UpdateMetadataEntryOffset(metadataEntries, 1, (uint)(item1Pos - metadataPos), 8);
-
-        // Item 2: Logical Sector Size (4 bytes)
-        long item2Pos = fs.Position;
-        writer.Write((uint)512); // Standard 512-byte logical sector
-        UpdateMetadataEntryOffset(metadataEntries, 2, (uint)(item2Pos - metadataPos), 4);
-
-        // Item 3: Physical Sector Size (4 bytes)
-        long item3Pos = fs.Position;
-        writer.Write((uint)4096);
-        UpdateMetadataEntryOffset(metadataEntries, 3, (uint)(item3Pos - metadataPos), 4);
-
-        // Item 4: Virtual Disk Id (16 bytes = random GUID)
-        long item4Pos = fs.Position;
-        var diskGuid = Guid.NewGuid().ToByteArray();
-        writer.Write(diskGuid);
-        UpdateMetadataEntryOffset(metadataEntries, 4, (uint)(item4Pos - metadataPos), 16);
-
-        // Item 5: Parent Locator (empty — no parent)
-        long item5Pos = fs.Position;
-        UpdateMetadataEntryOffset(metadataEntries, 5, (uint)(item5Pos - metadataPos), 0);
-
-        // Pad metadata to 1 MiB
-        while (fs.Position < metadataPos + 1048576) writer.Write((byte)0);
-
-        // Write updated metadata entries back
-        fs.Seek(metadataItemsPos, SeekOrigin.Begin);
-        writer.Write(metadataEntries);
-
-        // --- Log (4 KB after header 1) ---
-        fs.Seek(header1Pos + 4096, SeekOrigin.Begin);
-        writer.Write(new byte[4096]); // Empty log
-
-        // --- Log (4 KB after header 2) ---
-        fs.Seek(header2Pos + 4096, SeekOrigin.Begin);
-        writer.Write(new byte[4096]); // Empty log
+        // 7. Log (4 KB after each header) — must be zero-filled
+        fs.Position = header1Pos + 4096;
+        writer.Write(new byte[4096]);
+        fs.Position = header2Pos + 4096;
+        writer.Write(new byte[4096]);
 
         await fs.FlushAsync(ct);
     }
 
-    private static void WriteMetadataEntry(byte[] buffer, ref int offset, byte[] guid,
-        uint itemOffset, uint itemLength, bool isUser, bool isVirtualDisk)
+    private static void WriteVhdxHeaderAt(BinaryWriter writer, ulong sequenceNumber, int logicalSectorSize, int physicalSectorSize)
     {
-        Array.Copy(guid, 0, buffer, offset, 16);
-        offset += 16;
-        BitConverter.GetBytes(itemOffset).CopyTo(buffer, offset); offset += 4;
-        BitConverter.GetBytes(itemLength).CopyTo(buffer, offset); offset += 4;
-        buffer[offset++] = isUser ? (byte)1 : (byte)0;
-        buffer[offset++] = isVirtualDisk ? (byte)1 : (byte)0;
-        offset += 2; // Reserved
-        offset += 4; // Reserved
+        long startPos = writer.BaseStream.Position;
+        writer.Write(new byte[] { 0x68, 0x65, 0x61, 0x64 }); // "head"
+        writer.Write((uint)0); // Checksum placeholder (will be calculated)
+        writer.Write(sequenceNumber);
+        writer.Write(Guid.NewGuid().ToByteArray()); // FileWriteGuid
+        writer.Write(Guid.NewGuid().ToByteArray()); // DataWriteGuid
+        writer.Write(new byte[16]); // LogGuid (zero = no log)
+        writer.Write((ushort)1); // LogVersion = 1
+        writer.Write((ushort)6); // Version = 6 (VHDx v1.0)
+        writer.Write((uint)logicalSectorSize); // LogLength
+        writer.Write((ulong)(startPos + 4096)); // LogOffset (next 4K)
+        writer.Write((uint)0); // Reserved
+        writer.Write(new byte[4012]); // Pad to 4 KB
+
+        // Calculate and write checksum (CRC32 over the 4KB block with checksum field zeroed)
+        long endPos = writer.BaseStream.Position;
+        long savedPos = writer.BaseStream.Position;
+        writer.BaseStream.Position = startPos;
+        byte[] headerBytes = new byte[4096];
+        writer.BaseStream.ReadExactly(headerBytes, 0, 4096);
+        // Zero out the checksum field (bytes 4-7) for CRC calculation
+        headerBytes[4] = 0; headerBytes[5] = 0; headerBytes[6] = 0; headerBytes[7] = 0;
+        uint crc = Crc32(headerBytes);
+        writer.BaseStream.Position = startPos + 4;
+        writer.Write(crc);
+        writer.BaseStream.Position = savedPos;
     }
 
-    private static void UpdateMetadataEntryOffset(byte[] buffer, int entryIndex, uint itemOffset, uint itemLength)
+    private static uint Crc32(byte[] data)
     {
-        int baseOffset = entryIndex * 32;
-        BitConverter.GetBytes(itemOffset).CopyTo(buffer, baseOffset + 16);
-        BitConverter.GetBytes(itemLength).CopyTo(buffer, baseOffset + 20);
+        uint[] table = new uint[256];
+        for (uint i = 0; i < 256; i++)
+        {
+            uint crc = i;
+            for (int j = 0; j < 8; j++)
+                crc = (crc & 1) != 0 ? (crc >> 1) ^ 0xEDB88320 : crc >> 1;
+            table[i] = crc;
+        }
+        uint result = 0xFFFFFFFF;
+        foreach (byte b in data)
+            result = table[(result ^ b) & 0xFF] ^ (result >> 8);
+        return result ^ 0xFFFFFFFF;
+    }
+
+    private static void WriteVhdxMetadataAt(BinaryWriter writer, long diskSizeRounded, int logicalSectorSize, int physicalSectorSize)
+    {
+        long metadataStart = writer.BaseStream.Position;
+
+        // Metadata Table Header
+        writer.Write(new byte[] { 0x6D, 0x65, 0x74, 0x61 }); // "meta"
+        writer.Write((ushort)0); // Reserved
+        writer.Write((ushort)5); // EntryCount = 5
+        writer.Write(new byte[20]); // Reserved
+
+        // Reserve space for 5 entries (5 * 32 = 160 bytes)
+        long entriesStart = writer.BaseStream.Position;
+        byte[] entries = new byte[160];
+        writer.Write(entries);
+
+        // Write metadata items and update entries
+        // Item 0: File Parameters (guid: CAA16737-FA36-4D43-B3B6-33F0AA44E76B)
+        long item0Pos = writer.BaseStream.Position;
+        writer.Write((uint)logicalSectorSize); // BlockSize
+        writer.Write((uint)0); // Flags
+        WriteMetadataEntry(entries, 0,
+            new byte[] { 0x37, 0x67, 0xA1, 0xCA, 0x36, 0xFA, 0x43, 0x4D, 0xB3, 0xB6, 0x33, 0xF0, 0xAA, 0x44, 0xE7, 0x6B },
+            (uint)(item0Pos - metadataStart), 8, false, false);
+
+        // Item 1: Virtual Disk Size (guid: 2FA54224-CD1B-4876-B211-5DBED83BF4B8)
+        long item1Pos = writer.BaseStream.Position;
+        writer.Write((ulong)diskSizeRounded);
+        WriteMetadataEntry(entries, 1,
+            new byte[] { 0x24, 0x42, 0xA5, 0x2F, 0x1B, 0xCD, 0x76, 0x48, 0xB2, 0x11, 0x5D, 0xBE, 0xD8, 0x3B, 0xF4, 0xB8 },
+            (uint)(item1Pos - metadataStart), 8, false, true);
+
+        // Item 2: Logical Sector Size (guid: 8141BF1D-A96F-4709-BA47-F233A8FAAB5F)
+        long item2Pos = writer.BaseStream.Position;
+        writer.Write((uint)512); // Standard 512-byte logical sector
+        WriteMetadataEntry(entries, 2,
+            new byte[] { 0x1D, 0xBF, 0x41, 0x81, 0x6F, 0xA9, 0x09, 0x47, 0xBA, 0x47, 0xF2, 0x33, 0xA8, 0xFA, 0xAB, 0x5F },
+            (uint)(item2Pos - metadataStart), 4, false, true);
+
+        // Item 3: Physical Sector Size (guid: CDA348C7-445D-4471-9CC9-E9885251C556)
+        long item3Pos = writer.BaseStream.Position;
+        writer.Write((uint)physicalSectorSize);
+        WriteMetadataEntry(entries, 3,
+            new byte[] { 0xC7, 0x48, 0xA3, 0xCD, 0x5D, 0x44, 0x71, 0x44, 0x9C, 0xC9, 0xE9, 0x88, 0x52, 0x51, 0xC5, 0x56 },
+            (uint)(item3Pos - metadataStart), 4, false, true);
+
+        // Item 4: Virtual Disk Id (guid: BECA12AB-B2E6-4523-93EF-C309E000C746)
+        long item4Pos = writer.BaseStream.Position;
+        writer.Write(Guid.NewGuid().ToByteArray());
+        WriteMetadataEntry(entries, 4,
+            new byte[] { 0xAB, 0x12, 0xCA, 0xBE, 0xE6, 0xB2, 0x23, 0x45, 0x93, 0xEF, 0xC3, 0x09, 0xE0, 0x00, 0xC7, 0x46 },
+            (uint)(item4Pos - metadataStart), 16, false, true);
+
+        // Write updated entries back
+        long currentPos = writer.BaseStream.Position;
+        writer.BaseStream.Position = entriesStart;
+        writer.Write(entries);
+        writer.BaseStream.Position = currentPos;
+
+        // Pad to 1 MiB
+        while (writer.BaseStream.Position < metadataStart + 1024L * 1024)
+            writer.Write((byte)0);
+    }
+
+    private static void WriteMetadataEntry(byte[] buffer, int index, byte[] guid, uint offset, uint length, bool isUser, bool isVirtualDisk)
+    {
+        int baseOffset = index * 32;
+        Array.Copy(guid, 0, buffer, baseOffset, 16);
+        BitConverter.GetBytes(offset).CopyTo(buffer, baseOffset + 16);
+        BitConverter.GetBytes(length).CopyTo(buffer, baseOffset + 20);
+        buffer[baseOffset + 24] = isUser ? (byte)1 : (byte)0;
+        buffer[baseOffset + 25] = isVirtualDisk ? (byte)1 : (byte)0;
+        // bytes 26-31 are reserved (zero)
     }
 
     private void UpdateSpeedAndEta()
