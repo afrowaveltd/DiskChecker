@@ -1368,6 +1368,119 @@ if ($disk -and $disk.PartitionStyle -eq 'GPT') {{
         };
     }
 
+    /// <summary>
+    /// Create a GPT partition on the device and optionally format it.
+    /// Does NOT write zeros or verify — only creates partition structure.
+    /// </summary>
+    public async Task<SanitizationResult> CreatePartitionAsync(
+        string devicePath,
+        string volumeLabel = "Tested",
+        bool format = true,
+        IProgress<SanitizationProgress>? progress = null,
+        CancellationToken cancellationToken = default)
+    {
+        var result = new SanitizationResult();
+        var stopwatch = Stopwatch.StartNew();
+
+        try
+        {
+            // Phase 1: Verify administrator privileges
+            progress?.Report(new SanitizationProgress
+            {
+                Phase = "Kontrola oprávnění",
+                ProgressPercent = 0
+            });
+
+            if (!await VerifyAdministratorPrivilegesAsync())
+            {
+                result.ErrorMessage = "Vytvoření oddílu vyžaduje správcovská práva. Spusťte aplikaci jako správce.";
+                return result;
+            }
+
+            var driveNumber = new string(devicePath.Where(char.IsDigit).ToArray());
+
+            // Phase 2: Dismount all volumes on the disk
+            progress?.Report(new SanitizationProgress
+            {
+                Phase = "Odpojování svazků",
+                ProgressPercent = 0
+            });
+
+            var dismountResult = await DismountAllVolumesAsync(driveNumber, cancellationToken);
+            result.ErrorDetails.AddRange(dismountResult.ErrorDetails);
+            if (!dismountResult.Success)
+            {
+                result.ErrorMessage = dismountResult.ErrorMessage;
+                return result;
+            }
+
+            // Phase 3: Create GPT partition
+            progress?.Report(new SanitizationProgress
+            {
+                Phase = "Vytváření GPT oddílu",
+                ProgressPercent = 50
+            });
+
+            var partitionResult = await CreateGptPartitionAsync(devicePath, cancellationToken);
+            result.ErrorDetails.AddRange(partitionResult.ErrorDetails);
+            if (!partitionResult.Success)
+            {
+                result.ErrorMessage = partitionResult.ErrorMessage;
+                return result;
+            }
+            result.PartitionCreated = true;
+            result.Formatted = partitionResult.PartitionFormatted;
+            if (result.Formatted)
+            {
+                result.FileSystem = "NTFS";
+                result.VolumeLabel = volumeLabel;
+            }
+
+            // Phase 4: Format NTFS (only if not already formatted by diskpart)
+            if (format && !result.Formatted)
+            {
+                progress?.Report(new SanitizationProgress
+                {
+                    Phase = "Formátování NTFS",
+                    ProgressPercent = 80
+                });
+
+                var formatResult = await FormatNtfsAsync(devicePath, volumeLabel, cancellationToken);
+                result.ErrorDetails.AddRange(formatResult.ErrorDetails);
+                if (!formatResult.Success)
+                {
+                    _logger?.LogWarning("Formatting failed, but partition was created: {Error}", formatResult.ErrorMessage);
+                    result.ErrorMessage = formatResult.ErrorMessage;
+                    return result;
+                }
+                result.Formatted = true;
+                result.FileSystem = "NTFS";
+                result.VolumeLabel = volumeLabel;
+            }
+
+            result.Success = true;
+            stopwatch.Stop();
+            result.Duration = stopwatch.Elapsed;
+
+            if (_logger != null && _logger.IsEnabled(LogLevel.Information))
+            {
+                _logger.LogInformation("Partition created successfully for {DevicePath}. Duration: {Duration}",
+                    devicePath, result.Duration);
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            result.ErrorMessage = "Operace zrušena uživatelem";
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogError(ex, "Error creating partition for {DevicePath}", devicePath);
+            result.ErrorMessage = ex.Message;
+        }
+
+        return result;
+    }
+
     private sealed class SanitizationPhaseResult
     {
         public bool Success { get; set; }

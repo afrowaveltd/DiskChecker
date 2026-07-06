@@ -289,6 +289,7 @@ public partial class AbsoluteDestructiveTestViewModel : ViewModelBase, INavigabl
         Phases.Add(new TestPhaseViewModel { Name = L.Get("DestructiveTest.Phase.SeekSKIP"), Icon = "⏭️", PhaseIndex = 4 });
         Phases.Add(new TestPhaseViewModel { Name = L.Get("DestructiveTest.Phase.Sanitize2"), Icon = "🧹", PhaseIndex = 5 });
         Phases.Add(new TestPhaseViewModel { Name = L.Get("DestructiveTest.Phase.Finalize"), Icon = "📄", PhaseIndex = 6 });
+        Phases.Add(new TestPhaseViewModel { Name = L.Get("DestructiveTest.Phase.Partition"), Icon = "📋", PhaseIndex = 7 });
 
         // LiveCharts setup
         CurrentPhaseSeries = new ISeries[]
@@ -1058,6 +1059,50 @@ public partial class AbsoluteDestructiveTestViewModel : ViewModelBase, INavigabl
             HasResults = true;
             IsCertificateReady = true;
             StatusMessage = L.Get("DestructiveTest.Completed");
+        }, ct);
+
+        // Phase 7: Create partition
+        await RunPhaseAsync(7, "Vytvoření oddílu", async () =>
+        {
+            ct.ThrowIfCancellationRequested();
+            SetPhase(7, TestPhaseStatus.Running, "Vytvářím oddíl...");
+
+            if (SelectedDrive != null)
+            {
+                try
+                {
+                    var partitionResult = await _sanitizationService.CreatePartitionAsync(
+                        SelectedDrive.Path,
+                        volumeLabel: "Tested",
+                        format: true,
+                        progress: new Progress<SanitizationProgress>(p =>
+                        {
+                            Dispatcher.UIThread.Post(() =>
+                            {
+                                Phases[7].Detail = p.Phase;
+                                Phases[7].ProgressPercent = p.ProgressPercent;
+                            });
+                        }),
+                        ct);
+
+                    if (partitionResult.Success)
+                    {
+                        SetPhase(7, TestPhaseStatus.Completed, $"Oddíl vytvořen: {partitionResult.FileSystem}");
+                    }
+                    else
+                    {
+                        SetPhase(7, TestPhaseStatus.Completed, $"Oddíl: {partitionResult.ErrorMessage ?? "selhal"}");
+                    }
+                }
+                catch (Exception ex)
+                {
+                    SetPhase(7, TestPhaseStatus.Completed, $"Oddíl: {ex.Message}");
+                }
+            }
+            else
+            {
+                SetPhase(7, TestPhaseStatus.Skipped, "Disk není vybrán");
+            }
         }, ct);
     }
 

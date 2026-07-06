@@ -525,7 +525,7 @@ public partial class BackupViewModel : ViewModelBase, INavigableViewModel, IDisp
         TargetDrives.Clear();
 
         var allDrives = System.IO.DriveInfo.GetDrives()
-            .Where(d => d.IsReady && d.DriveType != DriveType.CDRom)
+            .Where(d => d.IsReady && d.DriveType != DriveType.CDRom && d.DriveType != DriveType.Ram)
             .ToList();
 
         await CalculateSystemReserveAsync();

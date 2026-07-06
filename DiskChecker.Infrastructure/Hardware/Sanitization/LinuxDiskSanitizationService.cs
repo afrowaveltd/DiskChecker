@@ -1069,6 +1069,110 @@ public class LinuxDiskSanitizationService : IDiskSanitizationService
         }
     }
 
+    /// <summary>
+    /// Create a GPT partition on the device and optionally format it.
+    /// Does NOT write zeros or verify — only creates partition structure.
+    /// </summary>
+    public async Task<SanitizationResult> CreatePartitionAsync(
+        string devicePath,
+        string volumeLabel = "Tested",
+        bool format = true,
+        IProgress<SanitizationProgress>? progress = null,
+        CancellationToken cancellationToken = default)
+    {
+        var result = new SanitizationResult();
+        var stopwatch = Stopwatch.StartNew();
+
+        try
+        {
+            var normalizedPath = NormalizeDevicePath(devicePath);
+
+            if (_logger != null && _logger.IsEnabled(LogLevel.Information))
+            {
+                _logger.LogInformation("Creating partition for {DevicePath}", normalizedPath);
+            }
+
+            // Verify we have root privileges
+            if (!await VerifyRootPrivilegesAsync())
+            {
+                result.ErrorMessage = "Vytvoření oddílu vyžaduje root práva. Spusťte aplikaci s sudo.";
+                return result;
+            }
+
+            // Verify device exists
+            if (!File.Exists(normalizedPath))
+            {
+                result.ErrorMessage = $"Zařízení neexistuje: {normalizedPath}";
+                return result;
+            }
+
+            // Phase 1: Unmount all partitions on the device
+            progress?.Report(new SanitizationProgress
+            {
+                Phase = "Odpojování oddílů",
+                ProgressPercent = 0
+            });
+
+            await UnmountAllPartitionsAsync(normalizedPath, cancellationToken);
+
+            // Phase 2: Create GPT partition
+            progress?.Report(new SanitizationProgress
+            {
+                Phase = "Vytváření GPT oddílu",
+                ProgressPercent = 50
+            });
+
+            var partitionResult = await CreateGptPartitionAsync(normalizedPath, cancellationToken);
+            if (!partitionResult.Success)
+            {
+                result.ErrorMessage = partitionResult.ErrorMessage;
+                return result;
+            }
+            result.PartitionCreated = true;
+
+            // Phase 3: Format (ext4 on Linux)
+            if (format)
+            {
+                progress?.Report(new SanitizationProgress
+                {
+                    Phase = "Formátování ext4",
+                    ProgressPercent = 80
+                });
+
+                var formatResult = await FormatExt4Async(normalizedPath, volumeLabel, cancellationToken);
+                if (!formatResult.Success)
+                {
+                    result.ErrorMessage = formatResult.ErrorMessage;
+                    return result;
+                }
+                result.Formatted = true;
+                result.FileSystem = "ext4";
+                result.VolumeLabel = volumeLabel;
+            }
+
+            result.Success = true;
+            stopwatch.Stop();
+            result.Duration = stopwatch.Elapsed;
+
+            if (_logger != null && _logger.IsEnabled(LogLevel.Information))
+            {
+                _logger.LogInformation("Partition created successfully for {DevicePath}. Duration: {Duration}",
+                    normalizedPath, result.Duration);
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            result.ErrorMessage = "Operace zrušena uživatelem";
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogError(ex, "Error creating partition for {DevicePath}", devicePath);
+            result.ErrorMessage = ex.Message;
+        }
+
+        return result;
+    }
+
     private sealed class SanitizationPhaseResult
     {
         public bool Success { get; set; }

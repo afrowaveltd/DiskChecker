@@ -26,6 +26,23 @@ public interface IDiskSanitizationService
         string volumeLabel = "Sanitized",
         IProgress<SanitizationProgress>? progress = null,
         CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Create a GPT partition on the device and optionally format it.
+    /// Does NOT write zeros or verify — only creates partition structure.
+    /// </summary>
+    /// <param name="devicePath">Device path (e.g., /dev/sda on Linux, \\.\PhysicalDrive0 on Windows)</param>
+    /// <param name="volumeLabel">Label for the new volume</param>
+    /// <param name="format">Whether to format the partition (NTFS on Windows, ext4 on Linux)</param>
+    /// <param name="progress">Progress reporter</param>
+    /// <param name="cancellationToken">Cancellation token</param>
+    /// <returns>Result with partition creation status</returns>
+    Task<SanitizationResult> CreatePartitionAsync(
+        string devicePath,
+        string volumeLabel = "Tested",
+        bool format = true,
+        IProgress<SanitizationProgress>? progress = null,
+        CancellationToken cancellationToken = default);
 }
 
 /// <summary>
