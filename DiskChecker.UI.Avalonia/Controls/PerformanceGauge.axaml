@@ -1,0 +1,154 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             x:Class="DiskChecker.UI.Avalonia.Controls.PerformanceGauge"
+             x:Name="Root"
+             MinHeight="230">
+  <Border CornerRadius="16" Padding="14"
+          Background="{DynamicResource ThemeCardBackgroundBrush}"
+          BorderBrush="{DynamicResource ThemeBorderBrush}"
+          BorderThickness="1">
+    <Grid RowDefinitions="Auto,*,Auto" RowSpacing="10">
+      <!-- Header -->
+      <Grid Grid.Row="0" ColumnDefinitions="*,Auto" ColumnSpacing="10">
+        <StackPanel>
+          <TextBlock Text="{Binding Title, ElementName=Root}"
+                     FontSize="15" FontWeight="Bold"
+                     Foreground="{DynamicResource ThemeTextPrimaryBrush}"/>
+          <TextBlock Text="{Binding Subtitle, ElementName=Root}"
+                     FontSize="11"
+                     Foreground="{DynamicResource ThemeTextMutedBrush}"/>
+        </StackPanel>
+        <Border Grid.Column="1" CornerRadius="10" Padding="8,4"
+                Background="{DynamicResource ThemePrimaryLightBrush}">
+          <TextBlock Text="{Binding StatusText, ElementName=Root}"
+                     FontSize="11" FontWeight="SemiBold"
+                     Foreground="{DynamicResource ThemePrimaryBrush}"/>
+        </Border>
+      </Grid>
+
+      <!-- Wide rectangular gauge inspired by old car speedometers. -->
+      <Border Grid.Row="1" CornerRadius="14" Padding="12"
+              Background="{DynamicResource ThemeGraphBackgroundBrush}"
+              BorderBrush="{DynamicResource ThemeBorderBrush}"
+              BorderThickness="1">
+        <Grid RowDefinitions="Auto,*,Auto" RowSpacing="8">
+          <Grid Grid.Row="0" ColumnDefinitions="Auto,*,Auto">
+            <TextBlock Text="0" FontSize="10" FontFamily="Consolas"
+                       Foreground="{DynamicResource ThemeTextMutedBrush}"/>
+            <TextBlock Grid.Column="1" Text="ŠKODA-STYLE WIDE GAUGE" FontSize="9" FontWeight="SemiBold"
+                       HorizontalAlignment="Center" LetterSpacing="1.5"
+                       Foreground="{DynamicResource ThemeTextMutedBrush}"/>
+            <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="3">
+              <TextBlock Text="{Binding ScaleMaxValue, ElementName=Root, StringFormat='{}{0:F0}'}"
+                         FontSize="10" FontFamily="Consolas"
+                         Foreground="{DynamicResource ThemeTextMutedBrush}"/>
+              <TextBlock Text="{Binding Unit, ElementName=Root}" FontSize="10" FontFamily="Consolas"
+                         Foreground="{DynamicResource ThemeTextMutedBrush}"/>
+            </StackPanel>
+          </Grid>
+
+          <Grid Grid.Row="1" MinHeight="82">
+            <!-- Colored safe/warn/danger range strips. -->
+            <Grid ColumnDefinitions="6*,3*,1*" VerticalAlignment="Center" Height="32">
+              <Border Grid.Column="0" CornerRadius="10,0,0,10" Background="#8027AE60"/>
+              <Border Grid.Column="1" Background="#80F39C12"/>
+              <Border Grid.Column="2" CornerRadius="0,10,10,0" Background="#80E74C3C"/>
+            </Grid>
+
+            <!-- Current speed bar. -->
+            <ProgressBar Value="{Binding ProgressPercent, ElementName=Root}" Minimum="0" Maximum="100"
+                         Height="18" CornerRadius="9"
+                         VerticalAlignment="Center"
+                         Foreground="{DynamicResource ThemePrimaryBrush}"
+                         Background="#33000000"/>
+
+            <!-- Tick row. -->
+            <Grid RowDefinitions="*,Auto" IsHitTestVisible="False">
+              <Grid Grid.Row="0" ColumnDefinitions="*,*,*,*,*,*,*,*,*,*">
+                <Border Grid.Column="0" Width="1" Background="{DynamicResource ThemeTextMutedBrush}" Opacity="0.65" HorizontalAlignment="Left"/>
+                <Border Grid.Column="1" Width="1" Background="{DynamicResource ThemeTextMutedBrush}" Opacity="0.35" HorizontalAlignment="Left"/>
+                <Border Grid.Column="2" Width="1" Background="{DynamicResource ThemeTextMutedBrush}" Opacity="0.65" HorizontalAlignment="Left"/>
+                <Border Grid.Column="3" Width="1" Background="{DynamicResource ThemeTextMutedBrush}" Opacity="0.35" HorizontalAlignment="Left"/>
+                <Border Grid.Column="4" Width="1" Background="{DynamicResource ThemeTextMutedBrush}" Opacity="0.65" HorizontalAlignment="Left"/>
+                <Border Grid.Column="5" Width="1" Background="{DynamicResource ThemeTextMutedBrush}" Opacity="0.35" HorizontalAlignment="Left"/>
+                <Border Grid.Column="6" Width="1" Background="{DynamicResource ThemeTextMutedBrush}" Opacity="0.65" HorizontalAlignment="Left"/>
+                <Border Grid.Column="7" Width="1" Background="{DynamicResource ThemeTextMutedBrush}" Opacity="0.35" HorizontalAlignment="Left"/>
+                <Border Grid.Column="8" Width="1" Background="{DynamicResource ThemeTextMutedBrush}" Opacity="0.65" HorizontalAlignment="Left"/>
+                <Border Grid.Column="9" Width="1" Background="{DynamicResource ThemeTextMutedBrush}" Opacity="0.35" HorizontalAlignment="Left"/>
+              </Grid>
+              <Grid Grid.Row="1" ColumnDefinitions="*,*,*,*,*" Margin="0,8,0,0">
+                <TextBlock Grid.Column="0" Text="0" FontSize="9" FontFamily="Consolas" Foreground="{DynamicResource ThemeTextMutedBrush}" HorizontalAlignment="Left"/>
+                <TextBlock Grid.Column="1" Text="25%" FontSize="9" FontFamily="Consolas" Foreground="{DynamicResource ThemeTextMutedBrush}" HorizontalAlignment="Center"/>
+                <TextBlock Grid.Column="2" Text="50%" FontSize="9" FontFamily="Consolas" Foreground="{DynamicResource ThemeTextMutedBrush}" HorizontalAlignment="Center"/>
+                <TextBlock Grid.Column="3" Text="75%" FontSize="9" FontFamily="Consolas" Foreground="{DynamicResource ThemeTextMutedBrush}" HorizontalAlignment="Center"/>
+                <TextBlock Grid.Column="4" Text="MAX" FontSize="9" FontFamily="Consolas" Foreground="{DynamicResource ThemeTextMutedBrush}" HorizontalAlignment="Right"/>
+              </Grid>
+            </Grid>
+
+            <!-- Warning lamps above the gauge. -->
+            <StackPanel Orientation="Horizontal" Spacing="6" HorizontalAlignment="Center" VerticalAlignment="Top">
+              <Border CornerRadius="8" Padding="6,3" Background="#E74C3C" IsVisible="{Binding IsOverheated, ElementName=Root}">
+                <TextBlock Text="🌡 PŘEHŘÁTÍ" FontSize="10" FontWeight="Bold" Foreground="White"/>
+              </Border>
+              <Border CornerRadius="8" Padding="6,3" Background="#E74C3C" IsVisible="{Binding HasErrors, ElementName=Root}">
+                <TextBlock Text="⚠ CHYBY" FontSize="10" FontWeight="Bold" Foreground="White"/>
+              </Border>
+              <Border CornerRadius="8" Padding="6,3" Background="#F39C12" IsVisible="{Binding IsStalled, ElementName=Root}">
+                <TextBlock Text="⏳ STALL" FontSize="10" FontWeight="Bold" Foreground="#1A1A1A"/>
+              </Border>
+              <Border CornerRadius="8" Padding="6,3" Background="#F39C12" IsVisible="{Binding SmartWarning, ElementName=Root}">
+                <TextBlock Text="SMART" FontSize="10" FontWeight="Bold" Foreground="#1A1A1A"/>
+              </Border>
+              <Border CornerRadius="8" Padding="6,3" Background="#27AE60" IsVisible="{Binding BackupVerified, ElementName=Root}">
+                <TextBlock Text="💾 BACKUP OK" FontSize="10" FontWeight="Bold" Foreground="White"/>
+              </Border>
+              <Border CornerRadius="8" Padding="6,3" Background="#27AE60" IsVisible="{Binding RestoreVerified, ElementName=Root}">
+                <TextBlock Text="🛡 RESTORE OK" FontSize="10" FontWeight="Bold" Foreground="White"/>
+              </Border>
+            </StackPanel>
+          </Grid>
+
+          <Grid Grid.Row="2" ColumnDefinitions="*,Auto" ColumnSpacing="10">
+            <StackPanel Orientation="Horizontal" Spacing="4">
+              <TextBlock Text="AKTUÁLNĚ" FontSize="10" Foreground="{DynamicResource ThemeTextMutedBrush}"/>
+              <TextBlock Text="{Binding CurrentValue, ElementName=Root, StringFormat='{}{0:F1}'}"
+                         FontSize="18" FontWeight="Bold" FontFamily="Consolas"
+                         Foreground="{DynamicResource ThemePrimaryBrush}"/>
+              <TextBlock Text="{Binding Unit, ElementName=Root}" FontSize="11"
+                         Foreground="{DynamicResource ThemeTextSecondaryBrush}" VerticalAlignment="Bottom"/>
+            </StackPanel>
+            <TextBlock Grid.Column="1" Text="{Binding ProgressPercent, ElementName=Root, StringFormat='{}{0:F0}%'}"
+                       FontSize="16" FontWeight="Bold" FontFamily="Consolas"
+                       Foreground="{DynamicResource ThemeTextPrimaryBrush}"/>
+          </Grid>
+        </Grid>
+      </Border>
+
+      <!-- LCD-like dashboard. Intended to replace current statistic cards later. -->
+      <Border Grid.Row="2" CornerRadius="12" Padding="12"
+              Background="{DynamicResource ThemeSecondaryBackgroundBrush}"
+              BorderBrush="{DynamicResource ThemeBorderBrush}"
+              BorderThickness="1">
+        <Grid ColumnDefinitions="*,*,*,*,*,*" RowDefinitions="Auto,Auto" ColumnSpacing="10" RowSpacing="4">
+          <TextBlock Grid.Row="0" Grid.Column="0" Text="MIN" FontSize="10" FontWeight="Bold" Foreground="{DynamicResource ThemeTextMutedBrush}"/>
+          <TextBlock Grid.Row="1" Grid.Column="0" Text="{Binding MinValue, ElementName=Root, StringFormat='{}{0:F1}'}" FontSize="17" FontFamily="Consolas" FontWeight="Bold" Foreground="{DynamicResource ThemeTextPrimaryBrush}"/>
+
+          <TextBlock Grid.Row="0" Grid.Column="1" Text="AVG" FontSize="10" FontWeight="Bold" Foreground="{DynamicResource ThemeTextMutedBrush}"/>
+          <TextBlock Grid.Row="1" Grid.Column="1" Text="{Binding AverageValue, ElementName=Root, StringFormat='{}{0:F1}'}" FontSize="17" FontFamily="Consolas" FontWeight="Bold" Foreground="{DynamicResource ThemeTextPrimaryBrush}"/>
+
+          <TextBlock Grid.Row="0" Grid.Column="2" Text="MAX" FontSize="10" FontWeight="Bold" Foreground="{DynamicResource ThemeTextMutedBrush}"/>
+          <TextBlock Grid.Row="1" Grid.Column="2" Text="{Binding MaxValue, ElementName=Root, StringFormat='{}{0:F1}'}" FontSize="17" FontFamily="Consolas" FontWeight="Bold" Foreground="{DynamicResource ThemeTextPrimaryBrush}"/>
+
+          <TextBlock Grid.Row="0" Grid.Column="3" Text="CHYBY" FontSize="10" FontWeight="Bold" Foreground="{DynamicResource ThemeTextMutedBrush}"/>
+          <TextBlock Grid.Row="1" Grid.Column="3" Text="{Binding ErrorCount, ElementName=Root}" FontSize="17" FontFamily="Consolas" FontWeight="Bold" Foreground="{DynamicResource ThemeDangerBrush}"/>
+
+          <TextBlock Grid.Row="0" Grid.Column="4" Text="TEPLOTA" FontSize="10" FontWeight="Bold" Foreground="{DynamicResource ThemeTextMutedBrush}"/>
+          <TextBlock Grid.Row="1" Grid.Column="4" Text="{Binding TemperatureCelsius, ElementName=Root, StringFormat='{}{0:F0} °C'}" FontSize="17" FontFamily="Consolas" FontWeight="Bold" Foreground="{DynamicResource ThemeWarningBrush}"/>
+
+          <TextBlock Grid.Row="0" Grid.Column="5" Text="ETA" FontSize="10" FontWeight="Bold" Foreground="{DynamicResource ThemeTextMutedBrush}"/>
+          <TextBlock Grid.Row="1" Grid.Column="5" Text="{Binding EtaText, ElementName=Root}" FontSize="17" FontFamily="Consolas" FontWeight="Bold" Foreground="{DynamicResource ThemeTextPrimaryBrush}"/>
+        </Grid>
+      </Border>
+    </Grid>
+  </Border>
+</UserControl>
