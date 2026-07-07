@@ -33,6 +33,7 @@ public partial class SeekTestViewModel : ViewModelBase, INavigableViewModel, IDi
     private readonly SeekTestService _seekTestService;
     private readonly ICertificateGenerator _certificateGenerator;
     private readonly IDiskCardRepository _diskCardRepository;
+    private readonly DiskCardTestService _cardTestService;
 
     private CoreDriveInfo? _selectedDrive;
     private bool _isTesting;
@@ -143,7 +144,8 @@ public partial class SeekTestViewModel : ViewModelBase, INavigableViewModel, IDi
         IDiskCacheService diskCacheService,
         SeekTestService seekTestService,
         ICertificateGenerator certificateGenerator,
-        IDiskCardRepository diskCardRepository)
+        IDiskCardRepository diskCardRepository,
+        DiskCardTestService cardTestService)
     {
         _navigationService = navigationService;
         _selectedDiskService = selectedDiskService;
@@ -153,6 +155,7 @@ public partial class SeekTestViewModel : ViewModelBase, INavigableViewModel, IDi
         _seekTestService = seekTestService;
         _certificateGenerator = certificateGenerator;
         _diskCardRepository = diskCardRepository;
+        _cardTestService = cardTestService;
 
         // Build test type options
         TestTypeOptions.Add(new() { Type = SeekTestType.FullStroke, Key = "FullStroke", Name = "↔️ " + L.Get("SeekTest.FullStroke") + " (Full Stroke)", Description = L.Get("SeekTest.FullStrokeDescFull") });
@@ -795,25 +798,9 @@ public partial class SeekTestViewModel : ViewModelBase, INavigableViewModel, IDi
         {
             if (SelectedDrive == null) return;
 
-            // Use GetOrCreateCardAsync to ensure the card is properly persisted before
-            // we create a test session that references it. Creating a DiskCard in memory
-            // without saving it first causes card.Id to be 0, which makes
-            // CreateTestSessionAsync fail because DiskCardId is a required foreign key.
-            var card = await _diskCardRepository.GetByDevicePathAsync(SelectedDrive.Path);
-            if (card == null)
-            {
-                card = new DiskCard
-                {
-                    DevicePath = SelectedDrive.Path,
-                    ModelName = SelectedDrive.Name ?? "Unknown",
-                    SerialNumber = SelectedDrive.SerialNumber ?? "",
-                    Capacity = SelectedDrive.TotalSize,
-                    DiskType = "Unknown",
-                    CreatedAt = DateTime.UtcNow,
-                    LastTestedAt = DateTime.UtcNow
-                };
-                card = await _diskCardRepository.CreateAsync(card);
-            }
+            // Use GetOrCreateCardAsync for proper identity resolution (SMART serial,
+            // legacy key, path fallback with model/capacity matching).
+            var card = await _cardTestService.GetOrCreateCardAsync(SelectedDrive);
 
             var session = new TestSession
             {
@@ -1199,4 +1186,4 @@ public class SeekTestTypeOption
     public string Key { get; init; } = "";
     public string Name { get; init; } = "";
     public string Description { get; init; } = "";
-}
+}
