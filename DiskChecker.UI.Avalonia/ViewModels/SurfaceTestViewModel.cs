@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.ObjectModel;
 using System.IO;
 using System.Linq;
@@ -268,13 +268,38 @@ public partial class SurfaceTestViewModel : ViewModelBase, INavigableViewModel, 
    // Legacy collection for compatibility
    public ObservableCollection<SpeedDataPoint> SpeedHistory { get; }
 
-   public double WriteProgress { get => _writeProgress; set => SetProperty(ref _writeProgress, value); }
-   public double VerifyProgress { get => _verifyProgress; set => SetProperty(ref _verifyProgress, value); }
+   public double WriteProgress
+   {
+      get => _writeProgress;
+      set
+      {
+         if(SetProperty(ref _writeProgress, value))
+            NotifyGaugeChanged();
+      }
+   }
+
+   public double VerifyProgress
+   {
+      get => _verifyProgress;
+      set
+      {
+         if(SetProperty(ref _verifyProgress, value))
+            NotifyGaugeChanged();
+      }
+   }
    public string WriteTransferredText => FormatTransferredData("Zapsáno", _writeBytesProcessed, _writeTotalBytes);
    public string ReadTransferredText => FormatTransferredData("Přečteno", _readBytesProcessed, _readTotalBytes);
 
    // Combined statistics (current total speed)
-   public double CurrentSpeed { get => _currentSpeed; set => SetProperty(ref _currentSpeed, value); }
+   public double CurrentSpeed
+   {
+      get => _currentSpeed;
+      set
+      {
+         if(SetProperty(ref _currentSpeed, value))
+            NotifyGaugeChanged();
+      }
+   }
 
    public double MinSpeed => _minSpeed == double.MaxValue ? 0 : _minSpeed;
    public double MaxSpeed { get => _maxSpeed; set => SetProperty(ref _maxSpeed, value); }
@@ -284,7 +309,11 @@ public partial class SurfaceTestViewModel : ViewModelBase, INavigableViewModel, 
    public double WriteCurrentSpeed
    {
       get => _writeCurrentSpeed;
-      set => SetProperty(ref _writeCurrentSpeed, value);
+      set
+      {
+         if(SetProperty(ref _writeCurrentSpeed, value))
+            NotifyGaugeChanged();
+      }
    }
 
    public double WriteMinSpeed => _writeMinSpeed == double.MaxValue ? 0 : _writeMinSpeed;
@@ -292,20 +321,32 @@ public partial class SurfaceTestViewModel : ViewModelBase, INavigableViewModel, 
    public double WriteMaxSpeed
    {
       get => _writeMaxSpeed;
-      set => SetProperty(ref _writeMaxSpeed, value);
+      set
+      {
+         if(SetProperty(ref _writeMaxSpeed, value))
+            NotifyGaugeChanged();
+      }
    }
 
    public double WriteAvgSpeed
    {
       get => _writeAvgSpeed;
-      set => SetProperty(ref _writeAvgSpeed, value);
+      set
+      {
+         if(SetProperty(ref _writeAvgSpeed, value))
+            NotifyGaugeChanged();
+      }
    }
 
    // Read phase statistics
    public double ReadCurrentSpeed
    {
       get => _readCurrentSpeed;
-      set => SetProperty(ref _readCurrentSpeed, value);
+      set
+      {
+         if(SetProperty(ref _readCurrentSpeed, value))
+            NotifyGaugeChanged();
+      }
    }
 
    public double ReadMinSpeed => _readMinSpeed == double.MaxValue ? 0 : _readMinSpeed;
@@ -313,13 +354,21 @@ public partial class SurfaceTestViewModel : ViewModelBase, INavigableViewModel, 
    public double ReadMaxSpeed
    {
       get => _readMaxSpeed;
-      set => SetProperty(ref _readMaxSpeed, value);
+      set
+      {
+         if(SetProperty(ref _readMaxSpeed, value))
+            NotifyGaugeChanged();
+      }
    }
 
    public double ReadAvgSpeed
    {
       get => _readAvgSpeed;
-      set => SetProperty(ref _readAvgSpeed, value);
+      set
+      {
+         if(SetProperty(ref _readAvgSpeed, value))
+            NotifyGaugeChanged();
+      }
    }
 
    // Y positions for reference lines in graph (in pixels from top)
@@ -328,13 +377,59 @@ public partial class SurfaceTestViewModel : ViewModelBase, INavigableViewModel, 
 
    public double MinSpeedLineY => Math.Max(0, 160 - (MinSpeed / Math.Max(DisplayMaxSpeed, 1)) * 160);
    public double AvgSpeedLineY => Math.Max(0, 160 - (AvgSpeed / Math.Max(DisplayMaxSpeed, 1)) * 160);
-   public int CurrentTemperature { get => _currentTemperature; set => SetProperty(ref _currentTemperature, value); }
+   public int CurrentTemperature
+   {
+      get => _currentTemperature;
+      set
+      {
+         if(SetProperty(ref _currentTemperature, value))
+            NotifyGaugeChanged();
+      }
+   }
    public int MinTemperature => _minTemperature == int.MaxValue ? 0 : _minTemperature;
    public int MaxTemperature => _maxTemperature;
    public double DisplayMaxSpeed { get; private set; } = 50; // Dynamic: max measured speed +10%
    public double DisplayMaxTemperature { get; private set; } = 80; // Fixed at 80°C for consistent graph scale
-   public int ErrorCount { get => _errorCount; set => SetProperty(ref _errorCount, value); }
-   public string TimeRemaining { get => _timeRemaining; set => SetProperty(ref _timeRemaining, value); }
+   public int ErrorCount
+   {
+      get => _errorCount;
+      set
+      {
+         if(SetProperty(ref _errorCount, value))
+            NotifyGaugeChanged();
+      }
+   }
+
+   public string TimeRemaining
+   {
+      get => _timeRemaining;
+      set
+      {
+         if(SetProperty(ref _timeRemaining, value))
+            NotifyGaugeChanged();
+      }
+   }
+
+
+   // Live dashboard/gauge values for the status card.  The graph keeps every useful
+   // sample, while this panel intentionally exposes a compact, readable snapshot.
+   public string GaugeTitle => _currentPhase == 0 ? "Zápis na disk" : "Ověření čtením";
+   public string GaugeSubtitle => SelectedDrive == null
+      ? "Vyberte disk a spusťte test"
+      : $"{SelectedDrive.Name ?? SelectedDrive.Path} • živá telemetrie";
+   public double GaugeCurrentValue => _currentPhase == 0 ? WriteCurrentSpeed : ReadCurrentSpeed;
+   public double GaugeMinValue => _currentPhase == 0 ? WriteMinSpeed : ReadMinSpeed;
+   public double GaugeAverageValue => _currentPhase == 0 ? WriteAvgSpeed : ReadAvgSpeed;
+   public double GaugeMaxValue => _currentPhase == 0 ? WriteMaxSpeed : ReadMaxSpeed;
+   public double GaugeProgressPercent => _currentPhase == 0 ? WriteProgress : VerifyProgress;
+   public double GaugeScaleMaxValue => Math.Max(50, Math.Max(DisplayMaxSpeed, GaugeMaxValue * 1.15));
+   public string GaugeStatusText => IsTesting ? (_currentPhase == 0 ? "Zápis" : "Ověření") : "Připraveno";
+   public bool GaugeHasErrors => ErrorCount > 0 || IsStatusError;
+   public bool GaugeIsOverheated => CurrentTemperature >= 60;
+   public bool GaugeIsStalled => IsTesting
+      && GaugeProgressPercent > 1
+      && GaugeAverageValue > 0
+      && GaugeCurrentValue < Math.Max(1, GaugeAverageValue * 0.12);
 
    // Zoom properties for graph
    public int SelectedZoomIndex
@@ -537,6 +632,7 @@ public partial class SurfaceTestViewModel : ViewModelBase, INavigableViewModel, 
          {
             OnPropertyChanged(nameof(CanStartTest));
             OnPropertyChanged(nameof(CanChangeDisk));
+            NotifyGaugeChanged();
          }
       }
    }
@@ -608,6 +704,23 @@ public partial class SurfaceTestViewModel : ViewModelBase, INavigableViewModel, 
    }
 
    public string LockWarningText => IsLocked ? "⚠ Disk je zamknut" : "";
+
+
+   private void NotifyGaugeChanged()
+   {
+      OnPropertyChanged(nameof(GaugeTitle));
+      OnPropertyChanged(nameof(GaugeSubtitle));
+      OnPropertyChanged(nameof(GaugeCurrentValue));
+      OnPropertyChanged(nameof(GaugeMinValue));
+      OnPropertyChanged(nameof(GaugeAverageValue));
+      OnPropertyChanged(nameof(GaugeMaxValue));
+      OnPropertyChanged(nameof(GaugeProgressPercent));
+      OnPropertyChanged(nameof(GaugeScaleMaxValue));
+      OnPropertyChanged(nameof(GaugeStatusText));
+      OnPropertyChanged(nameof(GaugeHasErrors));
+      OnPropertyChanged(nameof(GaugeIsOverheated));
+      OnPropertyChanged(nameof(GaugeIsStalled));
+   }
 
    public void OnNavigatedTo()
    {
@@ -1018,6 +1131,7 @@ public partial class SurfaceTestViewModel : ViewModelBase, INavigableViewModel, 
       CurrentDataPercent = 0;
       DisplayMaxSpeed = 50;
       _currentPhase = 0;
+      NotifyGaugeChanged();
       _currentPhaseTotalBytes = Math.Max(SelectedDrive?.TotalSize ?? 0L, 1L);
       _testStartTime = DateTime.UtcNow;
       _phaseStartedAtUtc = _testStartTime;

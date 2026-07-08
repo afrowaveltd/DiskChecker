@@ -1,4 +1,4 @@
-using System.Collections.Generic;
+﻿using System.Collections.Generic;
 using System.Linq;
 using DiskChecker.Core.Interfaces;
 using DiskChecker.Core.Models;
@@ -186,11 +186,11 @@ public class QualityCalculator : IQualityCalculator
         {
             MediaCategory.Hdd => temp switch
             {
-                <= 40 => 0,
-                <= 45 => (temp - 40) * 1.0,
-                <= 50 => 5 + ((temp - 45) * 1.8),
-                <= 55 => 14 + ((temp - 50) * 2.4),
-                _ => 26 + ((temp - 55) * 2.8)
+                <= 42 => 0,
+                <= 50 => (temp - 42) * 0.6,
+                <= 55 => 5 + ((temp - 50) * 1.2),
+                <= 60 => 11 + ((temp - 55) * 1.8),
+                _ => 20 + ((temp - 60) * 2.2)
             },
             MediaCategory.SataSsd => temp switch
             {
@@ -209,7 +209,9 @@ public class QualityCalculator : IQualityCalculator
             }
         };
 
-        penalty = Math.Min(36, penalty);
+        // Current temperature is important, but do not let one historical/high reading alone
+        // turn an otherwise usable disk into an "imminent failure" result.
+        penalty = Math.Min(24, penalty);
         score -= penalty;
         if (penalty > 0)
         {
@@ -369,7 +371,7 @@ public class QualityCalculator : IQualityCalculator
         {
             if (smartaData.ReallocatedSectorCount is > 0)
             {
-                grade = MaxGrade(grade, QualityGrade.C);
+                grade = MaxGrade(grade, smartaData.ReallocatedSectorCount <= 10 ? QualityGrade.C : QualityGrade.D);
             }
             if (smartaData.PowerOnHours is > 45_000)
             {
@@ -397,11 +399,12 @@ public class QualityCalculator : IQualityCalculator
 
     private static bool HasCriticalSmartFailure(SmartaData smartaData)
     {
-        return smartaData.Attributes.Any(a => !a.IsOk && !string.IsNullOrWhiteSpace(a.WhenFailed)) ||
-               smartaData.PendingSectorCount is > 8 ||
-               smartaData.UncorrectableErrorCount is > 8 ||
-               smartaData.MediaErrors is > 8 ||
-               smartaData.ReallocatedSectorCount is > 200 ||
+        return smartaData.IsFailing ||
+               smartaData.Attributes.Any(a => !a.IsOk && !string.IsNullOrWhiteSpace(a.WhenFailed)) ||
+               smartaData.PendingSectorCount is > 0 ||
+               smartaData.UncorrectableErrorCount is > 0 ||
+               smartaData.MediaErrors is > 0 ||
+               smartaData.ReallocatedSectorCount is > 50 ||
                smartaData.PercentageUsed is >= 100 ||
                smartaData.AvailableSpare is <= 1;
     }

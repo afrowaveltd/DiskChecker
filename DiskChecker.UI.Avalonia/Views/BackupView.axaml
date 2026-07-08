@@ -1,4 +1,4 @@
-<UserControl xmlns="https://github.com/avaloniaui"
+﻿<UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:vm="using:DiskChecker.UI.Avalonia.ViewModels"
              xmlns:converters="using:DiskChecker.UI.Avalonia.Converters"
@@ -366,7 +366,7 @@
 
         <!-- ========== ACTION BAR ========== -->
         <Border Grid.Row="3" Classes="StatusBar">
-            <Grid ColumnDefinitions="*,Auto,Auto" ColumnSpacing="8">
+            <Grid ColumnDefinitions="*,Auto,Auto,Auto" ColumnSpacing="8">
                 <TextBlock Grid.Column="0" Text="{Binding StatusMessage}"
                            Foreground="{DynamicResource ThemeTextSecondaryBrush}"
                            VerticalAlignment="Center" FontSize="11"/>
@@ -395,7 +395,17 @@
                         Padding="20,10" CornerRadius="8"
                         Cursor="Hand"/>
 
-                <Button Grid.Column="2" Content="{Binding L[Backup.RestoreButton]}"
+                <Button Grid.Column="2" Content="RAW → VHDx"
+                        Command="{Binding ConvertRawToVhdxCommand}"
+                        IsVisible="{Binding Phase, Converter={StaticResource EnumToBooleanConverter}, ConverterParameter=Completed}"
+                        IsEnabled="{Binding CanConvertRawToVhdx}"
+                        Background="{DynamicResource ThemeInfoBrush}"
+                        Foreground="White"
+                        FontWeight="Bold" FontSize="12"
+                        Padding="20,10" CornerRadius="8"
+                        Cursor="Hand"/>
+
+                <Button Grid.Column="3" Content="{Binding L[Backup.RestoreButton]}"
                         Command="{Binding NavigateToRestoreCommand}"
                         IsVisible="{Binding Phase, Converter={StaticResource EnumToBooleanConverter}, ConverterParameter=Completed}"
                         Background="{DynamicResource ThemePrimaryBrush}"

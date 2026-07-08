@@ -1,4 +1,4 @@
-<UserControl xmlns="https://github.com/avaloniaui"
+﻿<UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:vm="using:DiskChecker.UI.Avalonia.ViewModels"
              xmlns:dg="clr-namespace:Avalonia.Controls;assembly:Avalonia.Controls.DataGrid"
@@ -361,6 +361,18 @@
                         <Grid ColumnDefinitions="130,*" Margin="0,2">
                             <TextBlock Grid.Column="0" Text="{Binding L[SmartCheck.UncorrectableErrors]}" FontSize="9" Foreground="{DynamicResource ThemeTextMutedBrush}"/>
                             <TextBlock Grid.Column="1" Text="{Binding UncorrectableErrors}" FontSize="9" FontWeight="SemiBold"/>
+                        </Grid>
+                        <Grid ColumnDefinitions="130,*" Margin="0,2">
+                            <TextBlock Grid.Column="0" Text="SSD/NVMe opotřebení" FontSize="9" Foreground="{DynamicResource ThemeTextMutedBrush}"/>
+                            <TextBlock Grid.Column="1" Text="{Binding NvMePercentageUsed}" FontSize="9" FontWeight="SemiBold"/>
+                        </Grid>
+                        <Grid ColumnDefinitions="130,*" Margin="0,2">
+                            <TextBlock Grid.Column="0" Text="NVMe rezerva" FontSize="9" Foreground="{DynamicResource ThemeTextMutedBrush}"/>
+                            <TextBlock Grid.Column="1" Text="{Binding NvMeAvailableSpare}" FontSize="9" FontWeight="SemiBold"/>
+                        </Grid>
+                        <Grid ColumnDefinitions="130,*" Margin="0,2">
+                            <TextBlock Grid.Column="0" Text="NVMe media chyby" FontSize="9" Foreground="{DynamicResource ThemeTextMutedBrush}"/>
+                            <TextBlock Grid.Column="1" Text="{Binding NvMeMediaErrors}" FontSize="9" FontWeight="SemiBold"/>
                         </Grid>
                     </StackPanel>
                 </Border>

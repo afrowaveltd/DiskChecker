@@ -1,8 +1,9 @@
-<UserControl xmlns="https://github.com/avaloniaui"
+﻿<UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:vm="using:DiskChecker.UI.Avalonia.ViewModels"
              xmlns:converters="using:DiskChecker.UI.Avalonia.Converters"
              xmlns:lvc="clr-namespace:LiveChartsCore.SkiaSharpView.Avalonia;assembly=LiveChartsCore.SkiaSharpView.Avalonia"
+             xmlns:controls="clr-namespace:DiskChecker.UI.Avalonia.Controls"
              x:Class="DiskChecker.UI.Avalonia.Views.SurfaceTestView"
              Background="{DynamicResource ThemeBackgroundBrush}">
     <Grid>
@@ -400,9 +401,28 @@
                         CornerRadius="8" 
                         Margin="8,0,0,0"
                         Padding="14">
-                    <Grid RowDefinitions="Auto,*,Auto">
+                    <Grid RowDefinitions="Auto,Auto,*,Auto" RowSpacing="10">
+                        <controls:PerformanceGauge Grid.Row="0"
+                                                   Title="{Binding GaugeTitle}"
+                                                   Subtitle="{Binding GaugeSubtitle}"
+                                                   Unit="MB/s"
+                                                   CurrentValue="{Binding GaugeCurrentValue}"
+                                                   MinValue="{Binding GaugeMinValue}"
+                                                   AverageValue="{Binding GaugeAverageValue}"
+                                                   MaxValue="{Binding GaugeMaxValue}"
+                                                   ScaleMaxValue="{Binding GaugeScaleMaxValue}"
+                                                   ProgressPercent="{Binding GaugeProgressPercent}"
+                                                   ErrorCount="{Binding ErrorCount}"
+                                                   TemperatureCelsius="{Binding CurrentTemperature}"
+                                                   EtaText="{Binding TimeRemaining}"
+                                                   StatusText="{Binding GaugeStatusText}"
+                                                   IsOverheated="{Binding GaugeIsOverheated}"
+                                                   HasErrors="{Binding GaugeHasErrors}"
+                                                   IsStalled="{Binding GaugeIsStalled}"
+                                                   Margin="0,0,0,2"/>
+
                         <!-- Test Profiles -->
-                        <StackPanel Grid.Row="0">
+                        <StackPanel Grid.Row="1">
                             <TextBlock Text="{Binding L[SurfaceTest.TestProfiles]}" FontSize="12" FontWeight="Bold" 
                                       Foreground="{DynamicResource ThemeTextPrimaryBrush}" Margin="0,0,0,10"/>
                             <ItemsControl ItemsSource="{Binding TestProfiles}">
@@ -445,7 +465,7 @@
                         </StackPanel>
 
                         <!-- Statistics -->
-                        <Border Grid.Row="1" 
+                        <Border Grid.Row="2" 
                                Background="{DynamicResource ThemePanelBackgroundBrush}"
                                CornerRadius="6" 
                                Padding="10" 
@@ -511,7 +531,7 @@
                         </Border>
 
                         <!-- Action Buttons -->
-                        <StackPanel Grid.Row="2" Spacing="6" Margin="0,14,0,0">
+                        <StackPanel Grid.Row="3" Spacing="6" Margin="0,14,0,0">
                             <Button Content="▶ Spustit Test"
                                    Command="{Binding StartTestCommand}"
                                    IsEnabled="{Binding CanStartTest}"
