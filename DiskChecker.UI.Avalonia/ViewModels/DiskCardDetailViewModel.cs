@@ -364,11 +364,11 @@ public partial class DiskCardDetailViewModel : ViewModelBase, INavigableViewMode
             IsLoading = true;
             StatusMessage = L.Get("DiskCardDetail.Status.GeneratingCert");
 
-            // Get latest test session ID
+            // Use selected session if available, otherwise fall back to latest
             var sessions = await _diskCardRepository.GetTestSessionsAsync(CurrentCard.Id);
-            var latestSession = sessions.FirstOrDefault();
+            var targetSession = SelectedSession ?? sessions.FirstOrDefault();
 
-            if (latestSession == null)
+            if (targetSession == null)
             {
                 await _dialogService.ShowErrorAsync(L.Get("Common.Error"), L.Get("DiskCardDetail.Status.NoTestForCert"));
                 return;
@@ -381,7 +381,7 @@ public partial class DiskCardDetailViewModel : ViewModelBase, INavigableViewMode
             });
 
             var result = await _certificateExportService.ExportCertificateAsync(
-                latestSession.Id,
+                targetSession.Id,
                 progress);
 
             if (!result.IsSuccess)

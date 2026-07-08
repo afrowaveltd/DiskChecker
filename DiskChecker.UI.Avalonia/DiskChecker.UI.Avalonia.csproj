@@ -43,7 +43,7 @@
     <PackageReference Include="SkiaSharp" Version="3.119.4" />
     <PackageReference Include="SkiaSharp.NativeAssets.Linux" Version="3.119.4" />
     <PackageReference Include="CommunityToolkit.Mvvm" Version="8.4.2" />
-    <PackageReference Include="OxyPlot.Avalonia" Version="2.1.0" />
+    <PackageReference Include="Oxyplot.Avalonia_11_1" Version="2.2.0" />
   </ItemGroup>
 
   <PropertyGroup>
@@ -74,4 +74,4 @@
     <Compile Remove="Tests\**" />
     <AvaloniaResource Remove="Tests\**" />
   </ItemGroup>
-</Project>
+</Project>
