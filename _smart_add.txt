@@ -1,0 +1,7 @@
+﻿           {
+                        certificate.SmartAttributes.Add(new SmartAttributeSummary
+                        {
+                            AttributeId = attr.Id,
+                            Name = attr.Name,
+                            Value = attr.RawValue.ToString(),
+              

@@ -1,0 +1,12 @@
+﻿SmartAttributes: 12443
+AttributeId: 12545
+Id = attr: 12554
+certificate.Smart: 12431
+--- SmartAttributes context ---
+           {
+                        certificate.SmartAttributes.Add(new SmartAttributeSummary
+                        {
+                            AttributeId = attr.Id,
+                            Name = attr.Name,
+                            Value = attr.RawValue.ToString(),
+              
