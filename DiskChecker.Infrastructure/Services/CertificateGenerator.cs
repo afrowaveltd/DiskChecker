@@ -274,7 +274,6 @@ public class CertificateGenerator : ICertificateGenerator
                     {
                         certificate.SmartAttributes.Add(new SmartAttributeSummary
                         {
-                            Id = attr.Id,
                             Name = attr.Name,
                             Value = attr.RawValue.ToString(),
                             Status = attr.IsOk ? "OK" : "Warning",

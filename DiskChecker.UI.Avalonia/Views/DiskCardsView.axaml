@@ -149,7 +149,7 @@
                                         <Button Content="{Binding $parent[DataGrid].DataContext.L[DiskCardsView.Detail]}"
                                                 Command="{Binding $parent[DataGrid].DataContext.ViewCardDetailsCommand}"
                                                 CommandParameter="{Binding}"
-                                                Background="{DynamicResource ThemeInfoBrush}" Foreground="White"
+                                                Background="{DynamicResource ThemePrimaryBrush}" Foreground="White"
                                                 FontSize="10" Padding="8,4" Cursor="Hand"/>
                                         <Button Content="{Binding $parent[DataGrid].DataContext.L[DiskCardsView.Cert]}"
                                                 Command="{Binding $parent[DataGrid].DataContext.GenerateCertificateCommand}"
