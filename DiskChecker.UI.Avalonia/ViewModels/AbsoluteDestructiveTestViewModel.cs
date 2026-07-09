@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Linq;
@@ -1797,11 +1797,26 @@ public partial class AbsoluteDestructiveTestViewModel : ViewModelBase, INavigabl
             if (p95 > 40) score -= (p95 - 40) * 0.3;
         }
 
-        // SMART issues
-        if (_smartFinal != null)
+        // SMART issues - existing critical counters must affect the certificate, not only deltas.
+        var smart = _smartFinal ?? _smartBaseline;
+        if (smart != null)
         {
-            if (_smartFinal.ReallocatedSectorCount > 0) score -= (double)(_smartFinal.ReallocatedSectorCount * 3);
-            if (_smartFinal.PendingSectorCount > 0) score -= (double)(_smartFinal.PendingSectorCount * 5);
+            var realloc = smart.ReallocatedSectorCount ?? 0;
+            var pending = smart.PendingSectorCount ?? 0;
+            var uncorr = smart.UncorrectableErrorCount ?? 0;
+            var media = smart.MediaErrors ?? 0;
+
+            score -= Math.Min(40, realloc * 3.0);
+            score -= Math.Min(55, pending * 18.0);
+            score -= Math.Min(55, uncorr * 15.0);
+            score -= Math.Min(55, media * 15.0);
+
+            if (pending > 0 || uncorr > 0 || media > 0 || smart.IsFailing)
+                score = Math.Min(score, 34);
+            else if (realloc > 50)
+                score = Math.Min(score, 49);
+            else if (realloc > 0)
+                score = Math.Min(score, 79);
         }
 
         // Anomaly-based penalty (adaptive sampling)
@@ -1842,7 +1857,9 @@ public partial class AbsoluteDestructiveTestViewModel : ViewModelBase, INavigabl
         var score = CalculateScore();
         var realloc = _smartFinal?.ReallocatedSectorCount ?? _smartBaseline?.ReallocatedSectorCount ?? 0;
         var pending = _smartFinal?.PendingSectorCount ?? _smartBaseline?.PendingSectorCount ?? 0;
-        return score >= 70 && realloc == 0 && pending == 0;
+        var uncorr = _smartFinal?.UncorrectableErrorCount ?? _smartBaseline?.UncorrectableErrorCount ?? 0;
+        var media = _smartFinal?.MediaErrors ?? _smartBaseline?.MediaErrors ?? 0;
+        return score >= 70 && realloc == 0 && pending == 0 && uncorr == 0 && media == 0;
     }
 
     private string BuildRecommendationNotes()
@@ -1859,6 +1876,8 @@ public partial class AbsoluteDestructiveTestViewModel : ViewModelBase, INavigabl
         if (errors > 0) notes.Add($"Detekovány chyby během sanitizace: {errors}");
         if (_smartFinal?.ReallocatedSectorCount > 0) notes.Add($"Realokované sektory: {_smartFinal.ReallocatedSectorCount}");
         if (_smartFinal?.PendingSectorCount > 0) notes.Add($"Pending sektory: {_smartFinal.PendingSectorCount}");
+        if (_smartFinal?.UncorrectableErrorCount > 0) notes.Add($"Neopravitelné chyby: {_smartFinal.UncorrectableErrorCount}");
+        if (_smartFinal?.MediaErrors > 0) notes.Add($"NVMe media/data integrity chyby: {_smartFinal.MediaErrors}");
 
         // Include anomaly report if available
         if (!string.IsNullOrWhiteSpace(_anomalyReport))

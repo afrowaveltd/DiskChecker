@@ -1,4 +1,4 @@
-<UserControl xmlns="https://github.com/avaloniaui"
+﻿<UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:vm="clr-namespace:DiskChecker.UI.Avalonia.ViewModels"
              xmlns:lvc="clr-namespace:LiveChartsCore.SkiaSharpView.Avalonia;assembly=LiveChartsCore.SkiaSharpView.Avalonia"
@@ -63,7 +63,7 @@
                     <StackPanel Spacing="8">
                         <TextBlock Text="Režim testu" FontSize="14" FontWeight="Bold"
                                    Foreground="{DynamicResource ThemeTextPrimaryBrush}"/>
-                        <Grid ColumnDefinitions="*,*" ColumnSpacing="8">
+                        <Grid ColumnDefinitions="*,*,*" ColumnSpacing="8">
                             <Button Grid.Column="0"
                                     Command="{Binding SwitchToBackupAndRestoreCommand}"
                                     Background="{Binding SelectedMode, Converter={StaticResource EnumEqConverter}, ConverterParameter='BackupAndRestore', Converter={StaticResource BooleanToBrushConverter}, ConverterParameter='Selected:ThemePrimaryBrush;Normal:ThemeCardBackgroundBrush'}"
@@ -85,6 +85,18 @@
                                     <TextBlock Text="💾 VHDx pouze" FontSize="13" FontWeight="Bold"
                                                Foreground="{DynamicResource ThemeTextPrimaryBrush}"/>
                                     <TextBlock Text="Vytvoří a ověří VHDx obraz, provede testy a automaticky obnoví data zpět." FontSize="10"
+                                               Foreground="{DynamicResource ThemeTextSecondaryBrush}" TextWrapping="Wrap"/>
+                                </StackPanel>
+                            </Button>
+                            <Button Grid.Column="2"
+                                    Command="{Binding SwitchToImageRoundTripCommand}"
+                                    Background="{Binding SelectedMode, Converter={StaticResource EnumEqConverter}, ConverterParameter='ImageRoundTrip', Converter={StaticResource BooleanToBrushConverter}, ConverterParameter='Selected:ThemePrimaryBrush;Normal:ThemeCardBackgroundBrush'}"
+                                    CornerRadius="8" Padding="12" Cursor="Hand"
+                                    BorderBrush="{DynamicResource ThemeBorderBrush}" BorderThickness="1">
+                                <StackPanel Spacing="4">
+                                    <TextBlock Text="Šetrný image round-trip" FontSize="13" FontWeight="Bold"
+                                               Foreground="{DynamicResource ThemeTextPrimaryBrush}"/>
+                                    <TextBlock Text="RAW image, ověření, vrácení zpět a ověření bez opakovaných sanitizačních přepisů." FontSize="10"
                                                Foreground="{DynamicResource ThemeTextSecondaryBrush}" TextWrapping="Wrap"/>
                                 </StackPanel>
                             </Button>

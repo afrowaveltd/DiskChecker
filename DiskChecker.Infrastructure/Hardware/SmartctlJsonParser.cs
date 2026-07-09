@@ -1,4 +1,4 @@
-using DiskChecker.Core.Extensions;
+﻿using DiskChecker.Core.Extensions;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -522,24 +522,38 @@ public static class SmartctlJsonParser
         if (nvme.TryGetProperty("power_cycles", out var cycles))
             result.PowerCycleCount = cycles.GetInt32();
         
-        // Percentage used
+        // NVMe health counters
+        if (nvme.TryGetProperty("available_spare", out var spare))
+            result.AvailableSparePercent = spare.GetInt32();
+
+        // Percentage used (NVMe endurance consumed)
         if (nvme.TryGetProperty("percentage_used", out var pctUsed))
         {
             result.EnduranceUsedPercent = pctUsed.GetInt32();
-            result.WearLevelingCount = 100 - pctUsed.GetInt32();
+            result.WearLevelingCount = Math.Max(0, 100 - pctUsed.GetInt32());
         }
         
-        // Media errors
+        // Media/Data Integrity errors
         if (nvme.TryGetProperty("media_errors", out var errors))
-            result.UncorrectableErrorCount = (int)errors.GetInt64();
+        {
+            var value = (int)Math.Min(int.MaxValue, errors.GetInt64());
+            result.MediaErrors = value;
+            // Keep compatibility with legacy UI/certificate fields.
+            result.UncorrectableErrorCount = value;
+        }
+
+        if (nvme.TryGetProperty("unsafe_shutdowns", out var unsafeShutdowns))
+            result.UnsafeShutdowns = (int)Math.Min(int.MaxValue, unsafeShutdowns.GetInt64());
         
-        // Build attributes
+        // Build pseudo attributes for NVMe so the critical-attributes grid has the same data source.
         var attrs = new List<SmartaAttributeItem>();
-        AddAttr(attrs, 194, "Temperature", GetInt(nvme, "temperature"));
-        AddAttr(attrs, 9, "Power On Hours", GetInt(nvme, "power_on_hours"));
-        AddAttr(attrs, 12, "Power Cycles", GetInt(nvme, "power_cycles"));
-        AddAttr(attrs, 177, "Wear Leveling", GetInt(nvme, "percentage_used"));
-        AddAttr(attrs, 198, "Media Errors", GetInt(nvme, "media_errors"));
+        AddAttr(attrs, 194, "Temperature", result.Temperature);
+        AddAttr(attrs, 9, "Power On Hours", result.PowerOnHours);
+        AddAttr(attrs, 12, "Power Cycles", result.PowerCycleCount);
+        AddAttr(attrs, 170, "Available Spare", result.AvailableSparePercent);
+        AddAttr(attrs, 177, "Percentage Used", result.EnduranceUsedPercent);
+        AddAttr(attrs, 198, "Media/Data Integrity Errors", result.MediaErrors);
+        AddAttr(attrs, 174, "Unsafe Shutdowns", result.UnsafeShutdowns);
         result.Attributes = attrs;
         
         result.SelfTests = ParseNvmeSelfTestLog(root);
@@ -978,6 +992,10 @@ public static class SmartctlJsonParser
             PendingSectorCount = result.PendingSectorCount,
             UncorrectableErrorCount = result.UncorrectableErrorCount,
             WearLevelingCount = result.WearLevelingCount,
+            AvailableSpare = result.AvailableSparePercent,
+            PercentageUsed = result.EnduranceUsedPercent,
+            MediaErrors = result.MediaErrors,
+            UnsafeShutdowns = result.UnsafeShutdowns,
             Attributes = result.Attributes ?? new List<SmartaAttributeItem>(),
             SelfTests = result.SelfTests ?? new List<SmartaSelfTestEntry>()
         };

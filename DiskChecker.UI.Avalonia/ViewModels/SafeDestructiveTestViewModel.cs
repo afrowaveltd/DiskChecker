@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Diagnostics;
@@ -47,7 +47,9 @@ public enum SafeDestructiveMode
     /// <summary>Full backup → test → restore (original behavior).</summary>
     BackupAndRestore,
     /// <summary>VHDx backup → verify → test → restore from VHDx.</summary>
-    VhdxOnly
+    VhdxOnly,
+    /// <summary>Gentle RAW image → verify → restore → verify round-trip without extra destructive overwrite passes.</summary>
+    ImageRoundTrip
 }
 
 public partial class SafeDestructiveTestViewModel : ViewModelBase, INavigableViewModel, IDisposable
@@ -270,6 +272,7 @@ public partial class SafeDestructiveTestViewModel : ViewModelBase, INavigableVie
     public IRelayCommand<string> ToggleSanitizeSeriesCommand { get; }
     public IRelayCommand SwitchToBackupAndRestoreCommand { get; }
     public IRelayCommand SwitchToVhdxOnlyCommand { get; }
+    public IRelayCommand SwitchToImageRoundTripCommand { get; }
 
     private static readonly JsonSerializerOptions _jsonOptions = new() { WriteIndented = true };
 
@@ -315,6 +318,7 @@ public partial class SafeDestructiveTestViewModel : ViewModelBase, INavigableVie
         ToggleSanitizeSeriesCommand = new RelayCommand<string>(ToggleSanitizeSeries);
         SwitchToBackupAndRestoreCommand = new RelayCommand(() => SelectedMode = SafeDestructiveMode.BackupAndRestore);
         SwitchToVhdxOnlyCommand = new RelayCommand(() => SelectedMode = SafeDestructiveMode.VhdxOnly);
+        SwitchToImageRoundTripCommand = new RelayCommand(() => SelectedMode = SafeDestructiveMode.ImageRoundTrip);
 
         InitializeChartDefaults();
     }
@@ -1466,7 +1470,7 @@ public partial class SafeDestructiveTestViewModel : ViewModelBase, INavigableVie
     private async Task BuildResultsAsync()
     {
         var sb = new System.Text.StringBuilder();
-        sb.AppendLine($"═══ BEZPEČNÝ DESTRUKTIVNÍ TEST — VÝSLEDKY ({(SelectedMode == SafeDestructiveMode.VhdxOnly ? "VHDx" : "Záloha+Obnova")}) ═══");
+        sb.AppendLine($"═══ BEZPEČNÝ DESTRUKTIVNÍ TEST — VÝSLEDKY ({(SelectedMode == SafeDestructiveMode.VhdxOnly ? "VHDx" : SelectedMode == SafeDestructiveMode.ImageRoundTrip ? "Šetrný image round-trip" : "Záloha+Obnova")}) ═══");
         sb.AppendLine($"Disk: {DiskDisplayName}");
         sb.AppendLine($"Cesta: {DiskPath}");
         sb.AppendLine($"Velikost: {DiskTotalSizeText}");
@@ -1554,7 +1558,9 @@ public partial class SafeDestructiveTestViewModel : ViewModelBase, INavigableVie
             DiskType = _smartBefore?.DeviceType ?? "HDD",
             TestType = SelectedMode == SafeDestructiveMode.VhdxOnly
                 ? "Bezpečný destruktivní test (VHDx záloha → test → obnova)"
-                : "Bezpečný destruktivní test (záloha → test → obnova)",
+                : SelectedMode == SafeDestructiveMode.ImageRoundTrip
+                    ? "Šetrný image round-trip test (RAW záloha → obnova → ověření)"
+                    : "Bezpečný destruktivní test (záloha → test → obnova)",
             TestDuration = DateTime.UtcNow - _phaseStartTime,
             Grade = CalculateSafeGrade(),
             Score = CalculateSafeScore(),
@@ -1562,8 +1568,10 @@ public partial class SafeDestructiveTestViewModel : ViewModelBase, INavigableVie
             Status = CertificateStatus.Active,
             Recommended = true,
             Notes = SelectedMode == SafeDestructiveMode.VhdxOnly
-                ? $"Bezpečný destruktivní test: VHDx záloha → test → oddíl (data lze obnovit ručně z {VhdxBackupPath}).\n{ResultsSummary}"
-                : $"Bezpečný destruktivní test: záloha → test → obnova.\n{ResultsSummary}",
+                ? $"Bezpečný destruktivní test: VHDx záloha → test → obnova.\n{ResultsSummary}"
+                : SelectedMode == SafeDestructiveMode.ImageRoundTrip
+                    ? $"Šetrný image round-trip: RAW záloha → ověření → obnova → ověření bez opakované sanitizace.\n{ResultsSummary}"
+                    : $"Bezpečný destruktivní test: záloha → test → obnova.\n{ResultsSummary}",
             SmartPassed = _smartAfter?.ReallocatedSectorCount == 0 && _smartAfter?.PendingSectorCount == 0,
             PowerOnHours = _smartAfter?.PowerOnHours ?? _smartBefore?.PowerOnHours ?? 0,
             ReallocatedSectors = _smartAfter?.ReallocatedSectorCount ?? _smartBefore?.ReallocatedSectorCount ?? 0,
@@ -1668,15 +1676,14 @@ public partial class SafeDestructiveTestViewModel : ViewModelBase, INavigableVie
 
     private string CalculateSafeGrade()
     {
-        double avgWrite = 0;
-        if (SanitizePass1WritePoints.Count > 0) avgWrite = SanitizePass1WritePoints.Average(p => p.Y ?? 0);
-        return avgWrite switch
+        var score = CalculateSafeScore();
+        return score switch
         {
-            >= 200 => "A",
-            >= 150 => "B",
-            >= 100 => "C",
-            >= 60 => "D",
-            >= 30 => "E",
+            >= 90 => "A",
+            >= 80 => "B",
+            >= 70 => "C",
+            >= 55 => "D",
+            >= 40 => "E",
             _ => "F"
         };
     }
@@ -1685,7 +1692,7 @@ public partial class SafeDestructiveTestViewModel : ViewModelBase, INavigableVie
     {
         double avgWrite = 0;
         if (SanitizePass1WritePoints.Count > 0) avgWrite = SanitizePass1WritePoints.Average(p => p.Y ?? 0);
-        return avgWrite switch
+        double score = avgWrite switch
         {
             >= 250 => 95,
             >= 200 => 85,
@@ -1695,11 +1702,37 @@ public partial class SafeDestructiveTestViewModel : ViewModelBase, INavigableVie
             >= 30 => 25,
             _ => 10
         };
+
+        var smart = _smartAfter ?? _smartBefore;
+        if (smart != null)
+        {
+            var realloc = smart.ReallocatedSectorCount ?? 0;
+            var pending = smart.PendingSectorCount ?? 0;
+            var uncorr = smart.UncorrectableErrorCount ?? 0;
+            var media = smart.MediaErrors ?? 0;
+            score -= Math.Min(40, realloc * 3.0);
+            score -= Math.Min(55, pending * 18.0);
+            score -= Math.Min(55, uncorr * 15.0);
+            score -= Math.Min(55, media * 15.0);
+            if (pending > 0 || uncorr > 0 || media > 0 || smart.IsFailing) score = Math.Min(score, 34);
+            else if (realloc > 50) score = Math.Min(score, 49);
+            else if (realloc > 0) score = Math.Min(score, 79);
+        }
+
+        return (int)Math.Clamp(score, 0, 100);
     }
 
-    private static string DetermineSafeHealthStatus()
+    private string DetermineSafeHealthStatus()
     {
-        return "Healthy — test completed successfully with backup/restore";
+        var smart = _smartAfter ?? _smartBefore;
+        if (smart == null) return "Healthy - test completed successfully with backup/restore";
+        var realloc = smart.ReallocatedSectorCount ?? 0;
+        var pending = smart.PendingSectorCount ?? 0;
+        var uncorr = smart.UncorrectableErrorCount ?? 0;
+        var media = smart.MediaErrors ?? 0;
+        if (smart.IsFailing || pending > 0 || uncorr > 0 || media > 0 || realloc > 50) return "Critical - SMART critical counters present";
+        if (realloc > 0) return "Warning - SMART reallocated sectors present";
+        return "Healthy - test completed successfully with backup/restore";
     }
 
     private static HealthAssessment MapHealthAssessment(string? healthStatus)
@@ -1807,9 +1840,9 @@ public partial class SafeDestructiveTestViewModel : ViewModelBase, INavigableVie
     //  Helpers
     // ──────────────────────────────────────────────
 
-    private double GetBackupWeight() => SelectedMode == SafeDestructiveMode.VhdxOnly ? VhdxBackupWeight : BackupAndRestoreBackupWeight;
-    private double GetTestWeight() => SelectedMode == SafeDestructiveMode.VhdxOnly ? VhdxTestWeight : BackupAndRestoreTestWeight;
-    private double GetRestoreWeight() => SelectedMode == SafeDestructiveMode.VhdxOnly ? VhdxRestoreWeight : BackupAndRestoreRestoreWeight;
+    private double GetBackupWeight() => SelectedMode == SafeDestructiveMode.VhdxOnly ? VhdxBackupWeight : SelectedMode == SafeDestructiveMode.ImageRoundTrip ? 50d : BackupAndRestoreBackupWeight;
+    private double GetTestWeight() => SelectedMode == SafeDestructiveMode.VhdxOnly ? VhdxTestWeight : SelectedMode == SafeDestructiveMode.ImageRoundTrip ? 0d : BackupAndRestoreTestWeight;
+    private double GetRestoreWeight() => SelectedMode == SafeDestructiveMode.VhdxOnly ? VhdxRestoreWeight : SelectedMode == SafeDestructiveMode.ImageRoundTrip ? 50d : BackupAndRestoreRestoreWeight;
 
     private static double ScaleWorkflowProgress(double startPercent, double weightPercent, double phaseProgressPercent)
         => startPercent + Math.Clamp(phaseProgressPercent, 0, 100) / 100d * weightPercent;

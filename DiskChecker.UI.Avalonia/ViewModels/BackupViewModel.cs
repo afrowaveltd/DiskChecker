@@ -1,10 +1,11 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Runtime.InteropServices;
+using System.Security.Cryptography;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
@@ -95,6 +96,7 @@ public partial class BackupViewModel : ViewModelBase, INavigableViewModel, IDisp
     private long _totalBytesToBackup;
     private long _totalBytesBackedUp;
     private string _currentFilePath = string.Empty;
+    private string? _lastBackupManifestPath;
     private readonly List<string> _backupLog = new();
 
     // Cached JsonSerializerOptions
@@ -133,6 +135,7 @@ public partial class BackupViewModel : ViewModelBase, INavigableViewModel, IDisp
     [ObservableProperty] private string _spaceSummary = string.Empty;
 
     [ObservableProperty] private string _backupLogText = string.Empty;
+    [ObservableProperty] private bool _canConvertRawToVhdx;
 
     public ObservableCollection<BackupTargetItem> TargetDrives { get; } = new();
     public ObservableCollection<BackupFolderItem> SourceFolders { get; } = new();
@@ -151,6 +154,7 @@ public partial class BackupViewModel : ViewModelBase, INavigableViewModel, IDisp
     public IRelayCommand SwitchToVhdxModeCommand { get; }
     public IRelayCommand SwitchToFileModeCommand { get; }
     public IRelayCommand NavigateToRestoreCommand { get; }
+    public IAsyncRelayCommand ConvertRawToVhdxCommand { get; }
 
     public BackupViewModel(
         INavigationService navigationService,
@@ -177,6 +181,7 @@ public partial class BackupViewModel : ViewModelBase, INavigableViewModel, IDisp
         SwitchToVhdxModeCommand = new RelayCommand(() => SelectedMode = BackupMode.VhdxImage);
         SwitchToFileModeCommand = new RelayCommand(() => SelectedMode = BackupMode.FileLevel);
         NavigateToRestoreCommand = new RelayCommand(NavigateToRestore);
+        ConvertRawToVhdxCommand = new AsyncRelayCommand(ConvertLastRawBackupToVhdxAsync, () => CanConvertRawToVhdx && Phase != BackupPhase.Running);
 
         // Subscribe to collection item changes so space calculations update reactively
         SubscribeToCollectionChanges();
@@ -204,6 +209,7 @@ public partial class BackupViewModel : ViewModelBase, INavigableViewModel, IDisp
         OnPropertyChanged(nameof(IsVhdxImageMode));
         CalculateSpaceRequirements();
         StartBackupCommand.NotifyCanExecuteChanged();
+        ConvertRawToVhdxCommand?.NotifyCanExecuteChanged();
     }
 
     partial void OnPhaseChanged(BackupPhase value)
@@ -893,7 +899,11 @@ public partial class BackupViewModel : ViewModelBase, INavigableViewModel, IDisp
 
     private void CalculateSpaceRequirements()
     {
-        if (SelectedMode == BackupMode.RawImage || SelectedMode == BackupMode.VhdxImage)
+        if (SelectedMode == BackupMode.VhdxImage)
+        {
+            TotalRequiredBytes = SourceDrive?.TotalSize > 0 ? CalculateRequiredVhdxBytes(SourceDrive.TotalSize) : 0;
+        }
+        else if (SelectedMode == BackupMode.RawImage)
         {
             TotalRequiredBytes = SourceDrive?.TotalSize ?? 0;
         }
@@ -910,23 +920,72 @@ public partial class BackupViewModel : ViewModelBase, INavigableViewModel, IDisp
         var usableBytes = Math.Max(0, TotalAvailableBytes - SystemReserveBytes);
         TotalAvailableText = FormatBytesLong(usableBytes);
 
-        HasEnoughSpace = usableBytes >= TotalRequiredBytes;
-
-        if (HasEnoughSpace)
+        if (SelectedMode == BackupMode.VhdxImage)
         {
-            SpaceSummary = $"✅ Dostatek místa: potřeba {TotalRequiredText}, k dispozici {TotalAvailableText} (rezerva {SystemReserveText})";
+            // VHDx is one mountable file and cannot be safely split across targets.
+            // The old check used only the source disk size and allocated only that amount,
+            // then the writer correctly required VHDx metadata/BAT overhead and failed by a few MB.
+            HasEnoughSpace = TargetDrives.Any(t => GetUsableTargetBytes(t) >= TotalRequiredBytes);
         }
         else
         {
-            var deficit = TotalRequiredBytes - usableBytes;
-            SpaceSummary = $"❌ Nedostatek místa: potřeba {TotalRequiredText}, k dispozici {TotalAvailableText}, chybí {FormatBytesLong(deficit)}";
+            HasEnoughSpace = usableBytes >= TotalRequiredBytes;
+        }
+
+        if (HasEnoughSpace)
+        {
+            SpaceSummary = SelectedMode == BackupMode.VhdxImage
+                ? $"✓ Dostatek místa pro VHDx: potřeba {TotalRequiredText} v jednom souboru, k dispozici {TotalAvailableText} (rezerva {SystemReserveText})"
+                : $"✓ Dostatek místa: potřeba {TotalRequiredText}, k dispozici {TotalAvailableText} (rezerva {SystemReserveText})";
+        }
+        else
+        {
+            var availableForMode = SelectedMode == BackupMode.VhdxImage
+                ? TargetDrives.Select(GetUsableTargetBytes).DefaultIfEmpty(0).Max()
+                : usableBytes;
+            var deficit = Math.Max(0, TotalRequiredBytes - availableForMode);
+            SpaceSummary = SelectedMode == BackupMode.VhdxImage
+                ? $"⚠ Nedostatek místa pro VHDx: potřeba {TotalRequiredText} na jednom cíli, chybí {FormatBytesLong(deficit)}"
+                : $"⚠ Nedostatek místa: potřeba {TotalRequiredText}, k dispozici {TotalAvailableText}, chybí {FormatBytesLong(deficit)}";
         }
 
         DistributeAllocation();
     }
 
+    private long GetUsableTargetBytes(BackupTargetItem target)
+    {
+        var selectedCount = Math.Max(1, TargetDrives.Count(t => t.IsSelected));
+        return Math.Max(0, target.TotalFreeSpace - (SystemReserveBytes / selectedCount));
+    }
+
+    private static long CalculateRequiredVhdxBytes(long diskSizeBytes)
+    {
+        const int blockSize = 1024 * 1024;
+        return CalculateVhdxDataStartOffset(diskSizeBytes) + RoundUp(diskSizeBytes, blockSize);
+    }
+
     private void DistributeAllocation()
     {
+        foreach (var target in TargetDrives)
+            target.AllocatedBytes = 0;
+
+        if (SelectedMode == BackupMode.VhdxImage)
+        {
+            var best = TargetDrives
+                .Where(t => GetUsableTargetBytes(t) >= TotalRequiredBytes)
+                .OrderByDescending(t => GetUsableTargetBytes(t))
+                .FirstOrDefault()
+                ?? TargetDrives.OrderByDescending(GetUsableTargetBytes).FirstOrDefault();
+
+            if (best != null)
+            {
+                foreach (var target in TargetDrives)
+                    target.IsSelected = target == best;
+                best.AllocatedBytes = Math.Min(TotalRequiredBytes, GetUsableTargetBytes(best));
+            }
+            return;
+        }
+
         var selectedTargets = TargetDrives.Where(t => t.IsSelected).ToList();
         if (selectedTargets.Count == 0)
         {
@@ -1338,6 +1397,9 @@ public partial class BackupViewModel : ViewModelBase, INavigableViewModel, IDisp
         };
         using var manifestStream = System.IO.File.OpenWrite(manifestPath);
         JsonSerializer.Serialize(manifestStream, manifest, _jsonOptions);
+        _lastBackupManifestPath = manifestPath;
+        CanConvertRawToVhdx = true;
+        ConvertRawToVhdxCommand.NotifyCanExecuteChanged();
         _backupLog.Add($"[{DateTime.Now:HH:mm:ss}] Raw záloha dokončena: {FormatBytesLong(bytesRead)} v {targetIndex + 1} části(ch)");
     }
 
@@ -1366,9 +1428,11 @@ public partial class BackupViewModel : ViewModelBase, INavigableViewModel, IDisp
         var buffer = new byte[blockSize];
 
         var dataStartOffset = CalculateVhdxDataStartOffset(totalSize);
-        var requiredBytes = dataStartOffset + RoundUp(totalSize, blockSize);
-        if (targetDrives[0].AllocatedBytes < requiredBytes)
-            throw new IOException($"Cílový disk nemá dost místa pro jeden platný VHDx soubor. Potřeba {FormatBytesLong(requiredBytes)}, dostupné {FormatBytesLong(targetDrives[0].AllocatedBytes)}. VHDx zálohu nelze bezpečně dělit na více částí; vyberte větší cílový disk nebo použijte raw režim.");
+        var requiredBytes = CalculateRequiredVhdxBytes(totalSize);
+        var targetUsableBytes = GetUsableTargetBytes(targetDrives[0]);
+        if (targetUsableBytes < requiredBytes)
+            throw new IOException($"Cílový disk nemá dost místa pro jeden platný VHDx soubor. Potřeba {FormatBytesLong(requiredBytes)}, dostupné {FormatBytesLong(targetUsableBytes)}. VHDx zálohu nelze bezpečně dělit na více částí; vyberte větší cílový disk nebo použijte raw režim.");
+        targetDrives[0].AllocatedBytes = requiredBytes;
 
         // Write VHDx header + BAT — fixed VHDx, all blocks pre-allocated
         await WriteVhdxHeaderAsync(vhdxPath, totalSize, ct);
@@ -1735,6 +1799,122 @@ private static long RoundUp(long value, long alignment) => ((value + alignment -
             return;
         }
         _navigationService.NavigateTo<SmartCheckViewModel>();
+    }
+
+
+    private async Task ConvertLastRawBackupToVhdxAsync()
+    {
+        if (string.IsNullOrWhiteSpace(_lastBackupManifestPath) || !File.Exists(_lastBackupManifestPath))
+        {
+            await _dialogService.ShowErrorAsync("RAW záloha nenalezena", "Nejdříve vytvořte RAW zálohu.");
+            return;
+        }
+
+        try
+        {
+            StatusMessage = "Převádím RAW zálohu na VHDx...";
+            await ConvertRawManifestToVhdxAsync(_lastBackupManifestPath, _backupCancellation?.Token ?? CancellationToken.None);
+            BackupLogText = string.Join("\n", _backupLog);
+            StatusMessage = "RAW záloha byla převedena na VHDx.";
+        }
+        catch (Exception ex)
+        {
+            await _dialogService.ShowErrorAsync("Převod RAW → VHDx selhal", ex.Message);
+            _backupLog.Add($"[{DateTime.Now:HH:mm:ss}] Převod RAW → VHDx selhal: {ex.Message}");
+            BackupLogText = string.Join("\n", _backupLog);
+        }
+        finally
+        {
+            ConvertRawToVhdxCommand.NotifyCanExecuteChanged();
+        }
+    }
+
+    private async Task ConvertRawManifestToVhdxAsync(string manifestPath, CancellationToken ct)
+    {
+        using var doc = JsonDocument.Parse(await File.ReadAllTextAsync(manifestPath, ct));
+        var root = doc.RootElement;
+        var mode = root.TryGetProperty("Mode", out var modeEl) ? modeEl.GetString() : null;
+        if (!string.Equals(mode, "RawImage", StringComparison.OrdinalIgnoreCase))
+            throw new InvalidOperationException("Vybraná záloha není RAW image.");
+
+        var totalBytes = root.TryGetProperty("TotalBytes", out var tbEl) ? tbEl.GetInt64() : 0;
+        if (totalBytes <= 0) throw new InvalidOperationException("Manifest RAW zálohy neobsahuje platnou velikost.");
+
+        var rawParts = new List<string>();
+        if (root.TryGetProperty("PartPaths", out var partsEl) && partsEl.ValueKind == JsonValueKind.Array)
+        {
+            foreach (var part in partsEl.EnumerateArray())
+            {
+                var path = part.GetString();
+                if (!string.IsNullOrWhiteSpace(path) && File.Exists(path)) rawParts.Add(path);
+            }
+        }
+        if (rawParts.Count == 0 && root.TryGetProperty("MountableImage", out var mountEl))
+        {
+            var path = mountEl.GetString();
+            if (!string.IsNullOrWhiteSpace(path) && File.Exists(path)) rawParts.Add(path);
+        }
+        if (rawParts.Count == 0)
+        {
+            var rootDir = Path.GetDirectoryName(manifestPath)!;
+            rawParts.AddRange(Directory.GetFiles(rootDir, "disk_image.img*", SearchOption.TopDirectoryOnly).OrderBy(p => p, StringComparer.OrdinalIgnoreCase));
+            rawParts.AddRange(Directory.GetFiles(rootDir, "disk_image.raw", SearchOption.TopDirectoryOnly));
+        }
+        if (rawParts.Count == 0) throw new FileNotFoundException("RAW image/části nebyly nalezeny.");
+
+        var backupRoot = Path.GetDirectoryName(manifestPath)!;
+        var vhdxPath = Path.Combine(backupRoot, "disk_image_converted.vhdx");
+        var dataStartOffset = CalculateVhdxDataStartOffset(totalBytes);
+        await WriteVhdxHeaderAsync(vhdxPath, totalBytes, ct);
+
+        const int blockSize = 1024 * 1024;
+        var buffer = new byte[blockSize];
+        long copied = 0;
+        using var hash = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
+        await using var vhdxStream = new FileStream(vhdxPath, FileMode.Open, FileAccess.Write, FileShare.Read, blockSize, FileOptions.SequentialScan);
+
+        foreach (var partPath in rawParts)
+        {
+            await using var rawStream = new FileStream(partPath, FileMode.Open, FileAccess.Read, FileShare.Read, blockSize, FileOptions.SequentialScan);
+            while (copied < totalBytes)
+            {
+                ct.ThrowIfCancellationRequested();
+                var toRead = (int)Math.Min(buffer.Length, totalBytes - copied);
+                var read = await rawStream.ReadAsync(buffer.AsMemory(0, toRead), ct);
+                if (read == 0) break;
+                vhdxStream.Position = dataStartOffset + copied;
+                await vhdxStream.WriteAsync(buffer.AsMemory(0, read), ct);
+                hash.AppendData(buffer, 0, read);
+                copied += read;
+                _totalBytesBackedUp = copied;
+                OverallProgress = totalBytes > 0 ? (double)copied / totalBytes * 100 : 0;
+                CurrentFileName = $"RAW → VHDx {FormatBytesLong(copied)} / {FormatBytesLong(totalBytes)}";
+                UpdateSpeedAndEta();
+                await Dispatcher.UIThread.InvokeAsync(() => { }, DispatcherPriority.Background, ct);
+            }
+        }
+        await vhdxStream.FlushAsync(ct);
+        if (copied != totalBytes) throw new IOException($"Převedeno jen {FormatBytesLong(copied)} z {FormatBytesLong(totalBytes)}.");
+
+        var sha = Convert.ToHexString(hash.GetHashAndReset());
+        File.SetAttributes(vhdxPath, File.GetAttributes(vhdxPath) | FileAttributes.ReadOnly);
+        var convertedManifest = new
+        {
+            SourceManifest = manifestPath,
+            BackupDate = DateTime.Now.ToString("O"),
+            Mode = "VhdxImage",
+            ImageFormat = "VHDx Fixed converted from RAW",
+            MountableImage = vhdxPath,
+            TotalBytes = totalBytes,
+            DataStartOffset = dataStartOffset,
+            Sha256 = sha,
+            ReadOnly = true,
+            Note = "VHDx vytvořený z RAW zálohy. Soubor byl označen jako read-only; připojujte ideálně pouze pro čtení."
+        };
+        var convertedManifestPath = Path.Combine(backupRoot, "backup_manifest_converted_vhdx.json");
+        await using var manifestStream = File.Open(convertedManifestPath, FileMode.Create, FileAccess.Write, FileShare.Read);
+        await JsonSerializer.SerializeAsync(manifestStream, convertedManifest, _jsonOptions, ct);
+        _backupLog.Add($"[{DateTime.Now:HH:mm:ss}] RAW → VHDx hotovo: {vhdxPath} ({FormatBytesLong(totalBytes)})");
     }
 
     private void NavigateToRestore()

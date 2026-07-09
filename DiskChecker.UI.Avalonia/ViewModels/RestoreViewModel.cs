@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.IO;
@@ -75,6 +75,8 @@ public partial class RestoreViewModel : ViewModelBase, INavigableViewModel, IDis
     private DateTime _restoreStartTime;
     private long _totalBytesToRestore;
     private long _totalBytesRestored;
+    private bool _isTruncatedRestore;
+    private long _truncatedRestoreBytes;
     private readonly List<string> _restoreLog = new();
 
     private static readonly JsonSerializerOptions _jsonOptions = new() { PropertyNameCaseInsensitive = true };
@@ -370,12 +372,30 @@ public partial class RestoreViewModel : ViewModelBase, INavigableViewModel, IDis
             return;
         }
 
+        _isTruncatedRestore = false;
+        _truncatedRestoreBytes = 0;
+
         // Capacity check for raw/VHDx images. Unknown block-device size is represented as 0 and is allowed.
         if (SelectedBackup.Mode is "Raw obraz" or "VHDx obraz" && targetDisk.TotalSize > 0 && targetDisk.TotalSize < SelectedBackup.TotalBytes)
         {
-            await _dialogService.ShowErrorAsync("Cílový disk je malý",
-                $"Cílový disk má {targetDisk.TotalSizeText}, ale záloha obsahuje {SelectedBackup.TotalBytesText}. Vyberte dostatečně velký disk.");
-            return;
+            var deficit = SelectedBackup.TotalBytes - targetDisk.TotalSize;
+            var maxSafeDeficit = 1024L * 1024 * 1024; // intended for tiny vendor-size differences / tail recovery partition cases
+            if (deficit <= maxSafeDeficit)
+            {
+                var allow = await _dialogService.ShowConfirmationAsync("Cílový disk je mírně menší",
+                    $"Cílový disk je menší o {FormatBytesLong(deficit)}.\n\n" +
+                    "Mohu provést ZKRÁCENOU obnovu jen do konce cílového disku. Používejte pouze pokud rozdíl odpovídá koncové recovery/OEM partition nebo nevyužitému konci disku. " +
+                    "GPT záložní hlavičku může být nutné opravit nástroji Windows/Linux po obnově.\n\nPokračovat?");
+                if (!allow) return;
+                _isTruncatedRestore = true;
+                _truncatedRestoreBytes = targetDisk.TotalSize;
+            }
+            else
+            {
+                await _dialogService.ShowErrorAsync("Cílový disk je malý",
+                    $"Cílový disk má {targetDisk.TotalSizeText}, ale záloha obsahuje {SelectedBackup.TotalBytesText}. Vyberte dostatečně velký disk.");
+                return;
+            }
         }
 
         // Extra warning for source disk
@@ -402,7 +422,7 @@ public partial class RestoreViewModel : ViewModelBase, INavigableViewModel, IDis
 
         _restoreCancellation = new CancellationTokenSource();
         _restoreStartTime = DateTime.UtcNow;
-        _totalBytesToRestore = SelectedBackup.TotalBytes;
+        _totalBytesToRestore = _isTruncatedRestore && _truncatedRestoreBytes > 0 ? _truncatedRestoreBytes : SelectedBackup.TotalBytes;
         _totalBytesRestored = 0;
         _restoreLog.Clear();
         Phase = RestorePhase.Running;
@@ -693,7 +713,8 @@ public partial class RestoreViewModel : ViewModelBase, INavigableViewModel, IDis
             long partDataSize = isVhdx ? Math.Max(0, partInfo.Length - vhdxDataOffset) : partInfo.Length;
             if (SelectedBackup.TotalBytes > 0)
             {
-                var remainingImageBytes = Math.Max(0, SelectedBackup.TotalBytes - _totalBytesRestored);
+                var restoreLimit = _isTruncatedRestore && _truncatedRestoreBytes > 0 ? _truncatedRestoreBytes : SelectedBackup.TotalBytes;
+                var remainingImageBytes = Math.Max(0, restoreLimit - _totalBytesRestored);
                 partDataSize = Math.Min(partDataSize, remainingImageBytes);
             }
 
@@ -849,6 +870,14 @@ public partial class RestoreViewModel : ViewModelBase, INavigableViewModel, IDis
 
             var expectedSha = TryReadManifestString(SelectedBackup.ManifestPath, "Sha256");
             var bytesToVerify = SelectedBackup.TotalBytes;
+
+            if (_isTruncatedRestore)
+            {
+                IsVerifyOk = true;
+                VerifyResult = $"Zkrácená obnova dokončena - zapsáno {FormatBytesLong(_truncatedRestoreBytes)}. Plný SHA-256 nelze porovnat, protože koncová část image byla záměrně vynechána.";
+                _restoreLog.Add($"[VERIFY] Zkrácená obnova: vynecháno {FormatBytesLong(Math.Max(0, SelectedBackup.TotalBytes - _truncatedRestoreBytes))} z konce image.");
+                return;
+            }
 
             if (!string.IsNullOrWhiteSpace(expectedSha) && bytesToVerify > 0)
             {

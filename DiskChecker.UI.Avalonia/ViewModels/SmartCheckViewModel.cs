@@ -1,4 +1,4 @@
-using CommunityToolkit.Mvvm.ComponentModel;
+﻿using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using DiskChecker.Application.Services;
 using DiskChecker.Core.Interfaces;
@@ -353,12 +353,16 @@ public string SelectedTestType
     
     // NVMe specific
     public bool IsNvMe => CurrentSmartData?.DeviceType?.Contains("NVMe", StringComparison.OrdinalIgnoreCase) == true;
-    public string NvMePercentageUsed => CurrentSmartData?.PercentageUsed > 0 
+    public string NvMePercentageUsed => CurrentSmartData?.PercentageUsed != null 
         ? $"{CurrentSmartData.PercentageUsed}%" : "-";
+    public string NvMeAvailableSpare => CurrentSmartData?.AvailableSpare != null
+        ? $"{CurrentSmartData.AvailableSpare}%" : "-";
+    public string SsdWearIndicator => CurrentSmartData?.WearLevelingCount != null
+        ? $"{CurrentSmartData.WearLevelingCount}%" : "-";
     public string NvMeMediaErrors => CurrentSmartData?.MediaErrors > 0 
-        ? $"{CurrentSmartData.MediaErrors:N0}" : "0 ✓";
+        ? $"{CurrentSmartData.MediaErrors:N0}" : "0";
     public string NvMeUnsafeShutdowns => CurrentSmartData?.UnsafeShutdowns > 0 
-        ? $"{CurrentSmartData.UnsafeShutdowns:N0}" : "-";
+        ? $"{CurrentSmartData.UnsafeShutdowns:N0}" : "0";
     
     // Quality display
     public string Grade => CurrentQuality?.Grade.ToString() ?? "-";
@@ -787,15 +791,10 @@ public string SelectedTestType
                         }
                         Console.WriteLine($"[SMART] SmartAttributes now has {SmartAttributes.Count} items");
                         
-                        var criticalIds = new[] { 5, 177, 179, 181, 182, 187, 188, 190, 194, 195, 196, 197, 198, 199, 231, 233 };
                         CriticalAttributes.Clear();
-                        if (attributes != null)
+                        foreach (var attr in BuildCriticalAttributes(smartData!, attributes))
                         {
-                            foreach (var attr in attributes.Where(a => criticalIds.Contains(a.Id))
-                                .OrderBy(a => Array.IndexOf(criticalIds, a.Id)))
-                            {
-                                CriticalAttributes.Add(attr);
-                            }
+                            CriticalAttributes.Add(attr);
                         }
                         Console.WriteLine($"[SMART] CriticalAttributes now has {CriticalAttributes.Count} items");
                     });
@@ -1355,6 +1354,42 @@ private async Task AbortTestAsync()
         }
     }
 
+
+    private static IEnumerable<SmartaAttributeItem> BuildCriticalAttributes(SmartaData smartData, IReadOnlyList<SmartaAttributeItem>? providerAttributes)
+    {
+        var criticalIds = new[] { 5, 197, 198, 187, 188, 196, 199, 170, 174, 177, 179, 181, 182, 190, 194, 195, 231, 233 };
+        var attrs = (providerAttributes?.Count > 0 ? providerAttributes : smartData.Attributes) ?? new List<SmartaAttributeItem>();
+        var result = attrs
+            .Where(a => criticalIds.Contains(a.Id) || IsCriticalAttributeName(a.Name))
+            .GroupBy(a => a.Id)
+            .Select(g => g.First())
+            .OrderBy(a => Array.IndexOf(criticalIds, a.Id) < 0 ? int.MaxValue : Array.IndexOf(criticalIds, a.Id))
+            .ToList();
+
+        AddSyntheticIfMissing(result, 5, "Reallocated Sectors", smartData.ReallocatedSectorCount);
+        AddSyntheticIfMissing(result, 197, "Current Pending Sectors", smartData.PendingSectorCount);
+        AddSyntheticIfMissing(result, 198, smartData.DeviceType.Contains("NVMe", StringComparison.OrdinalIgnoreCase) ? "Media/Data Integrity Errors" : "Offline Uncorrectable", smartData.MediaErrors ?? smartData.UncorrectableErrorCount);
+        AddSyntheticIfMissing(result, 170, "Available Spare", smartData.AvailableSpare);
+        AddSyntheticIfMissing(result, 177, "SSD/NVMe Life Used", smartData.PercentageUsed);
+        AddSyntheticIfMissing(result, 174, "Unsafe Shutdowns", smartData.UnsafeShutdowns);
+        return result;
+    }
+
+    private static bool IsCriticalAttributeName(string name) =>
+        name.Contains("Reallocated", StringComparison.OrdinalIgnoreCase) ||
+        name.Contains("Pending", StringComparison.OrdinalIgnoreCase) ||
+        name.Contains("Uncorrect", StringComparison.OrdinalIgnoreCase) ||
+        name.Contains("Media", StringComparison.OrdinalIgnoreCase) ||
+        name.Contains("Spare", StringComparison.OrdinalIgnoreCase) ||
+        name.Contains("Wear", StringComparison.OrdinalIgnoreCase) ||
+        name.Contains("Percentage", StringComparison.OrdinalIgnoreCase);
+
+    private static void AddSyntheticIfMissing(List<SmartaAttributeItem> items, int id, string name, int? value)
+    {
+        if (!value.HasValue || items.Any(a => a.Id == id)) return;
+        items.Add(new SmartaAttributeItem { Id = id, Name = name, RawValue = (uint)Math.Max(0, value.Value), Value = 100, Worst = 100, Threshold = 0, IsOk = value.Value == 0 });
+    }
+
 private void UpdateComputedProperties()
     {
         OnPropertyChanged(nameof(DeviceModel));
@@ -1383,6 +1418,8 @@ private void UpdateComputedProperties()
         OnPropertyChanged(nameof(FailingAttributesSummary));
         OnPropertyChanged(nameof(SelfTestTypeText));
         OnPropertyChanged(nameof(NvMePercentageUsed));
+        OnPropertyChanged(nameof(NvMeAvailableSpare));
+        OnPropertyChanged(nameof(SsdWearIndicator));
         OnPropertyChanged(nameof(NvMeMediaErrors));
         OnPropertyChanged(nameof(NvMeUnsafeShutdowns));
     }
