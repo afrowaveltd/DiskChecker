@@ -80,6 +80,12 @@ public partial class SurfaceTestViewModel : ViewModelBase, INavigableViewModel, 
    private double _readAvgSpeed;
    private double _readSpeedSum;
    private int _readSpeedSamples;
+
+   // Leading-zero skip flags for min speed (ignore initial zeros, but capture later drops to zero)
+   private bool _hasSeenNonZeroWrite;
+   private bool _hasSeenNonZeroRead;
+   private bool _hasSeenNonZeroCombined;
+
    private int _currentTemperature = 35;
    private int _minTemperature = int.MaxValue;
    private int _maxTemperature;
@@ -1004,7 +1010,11 @@ public partial class SurfaceTestViewModel : ViewModelBase, INavigableViewModel, 
       CurrentSpeed = speed;
       _combinedSpeedSum += speed;
       _combinedSpeedSamples++;
-      _minSpeed = Math.Min(_minSpeed, speed);
+      if (speed > 0 || _hasSeenNonZeroCombined)
+      {
+         _minSpeed = Math.Min(_minSpeed, speed);
+         _hasSeenNonZeroCombined = true;
+      }
       MaxSpeed = Math.Max(_maxSpeed, speed);
       AvgSpeed = _combinedSpeedSamples == 0 ? 0 : _combinedSpeedSum / _combinedSpeedSamples;
 
@@ -1013,7 +1023,11 @@ public partial class SurfaceTestViewModel : ViewModelBase, INavigableViewModel, 
          WriteCurrentSpeed = speed;
          _writeSpeedSum += speed;
          _writeSpeedSamples++;
-         _writeMinSpeed = Math.Min(_writeMinSpeed, speed);
+         if (speed > 0 || _hasSeenNonZeroWrite)
+         {
+            _writeMinSpeed = Math.Min(_writeMinSpeed, speed);
+            _hasSeenNonZeroWrite = true;
+         }
          WriteMaxSpeed = Math.Max(_writeMaxSpeed, speed);
          WriteAvgSpeed = _writeSpeedSamples == 0 ? 0 : _writeSpeedSum / _writeSpeedSamples;
          OnPropertyChanged(nameof(WriteMinSpeed));
@@ -1023,7 +1037,11 @@ public partial class SurfaceTestViewModel : ViewModelBase, INavigableViewModel, 
          ReadCurrentSpeed = speed;
          _readSpeedSum += speed;
          _readSpeedSamples++;
-         _readMinSpeed = Math.Min(_readMinSpeed, speed);
+         if (speed > 0 || _hasSeenNonZeroRead)
+         {
+            _readMinSpeed = Math.Min(_readMinSpeed, speed);
+            _hasSeenNonZeroRead = true;
+         }
          ReadMaxSpeed = Math.Max(_readMaxSpeed, speed);
          ReadAvgSpeed = _readSpeedSamples == 0 ? 0 : _readSpeedSum / _readSpeedSamples;
          OnPropertyChanged(nameof(ReadMinSpeed));
@@ -1122,6 +1140,10 @@ public partial class SurfaceTestViewModel : ViewModelBase, INavigableViewModel, 
       _readAvgSpeed = 0;
       _readSpeedSum = 0;
       _readSpeedSamples = 0;
+
+      _hasSeenNonZeroWrite = false;
+      _hasSeenNonZeroRead = false;
+      _hasSeenNonZeroCombined = false;
 
       CurrentTemperature = 35;
       _minTemperature = int.MaxValue;
@@ -1555,7 +1577,7 @@ public partial class SurfaceTestViewModel : ViewModelBase, INavigableViewModel, 
          AddSpeedPoint(speed, progress);
 
          writeSamples.Add((speed, CurrentTemperature, DateTime.UtcNow));
-         if(speed < minWriteSpeed) minWriteSpeed = speed;
+         if ((speed > 0 || minWriteSpeed != double.MaxValue) && speed < minWriteSpeed) minWriteSpeed = speed;
          if(speed > maxWriteSpeed) maxWriteSpeed = speed;
 
          var remainingMs = testDurationMs - i - writePhaseDuration;
@@ -1587,7 +1609,7 @@ public partial class SurfaceTestViewModel : ViewModelBase, INavigableViewModel, 
          AddSpeedPoint(speed, progress);
 
          readSamples.Add((speed, CurrentTemperature, DateTime.UtcNow));
-         if(speed < minReadSpeed) minReadSpeed = speed;
+         if ((speed > 0 || minReadSpeed != double.MaxValue) && speed < minReadSpeed) minReadSpeed = speed;
          if(speed > maxReadSpeed) maxReadSpeed = speed;
 
          var remaining = readPhaseDuration - i;
