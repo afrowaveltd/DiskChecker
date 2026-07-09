@@ -677,9 +677,9 @@ public class DiskCardRepository : IDiskCardRepository
                 Phase = phase,
                 SequenceIndex = index + 1,
                 TimestampUtc = sample.Timestamp == default ? DateTime.UtcNow : sample.Timestamp,
-                ElapsedMs = firstTimestamp.HasValue && sample.Timestamp != default
+                ElapsedMs = sample.Elapsed?.TotalMilliseconds ?? (firstTimestamp.HasValue && sample.Timestamp != default
                     ? (sample.Timestamp - firstTimestamp.Value).TotalMilliseconds
-                    : null,
+                    : null),
                 ProgressPercent = sample.ProgressPercent,
                 BytesProcessed = sample.BytesProcessed,
                 SpeedMBps = sample.SpeedMBps,

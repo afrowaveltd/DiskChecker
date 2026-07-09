@@ -1614,7 +1614,11 @@ public partial class AbsoluteDestructiveTestViewModel : ViewModelBase, INavigabl
             cert.SeekMinLatencyMs = latencies.Min();
             cert.SeekMaxLatencyMs = latencies.Max();
             cert.SeekStdDevLatencyMs = Math.Sqrt(latencies.Average(l => Math.Pow(l - cert.SeekAvgLatencyMs.Value, 2)));
+            cert.SeekMedianLatencyMs = Percentile(latencies, 0.50);
             cert.SeekP95LatencyMs = Percentile(latencies, 0.95);
+            cert.SeekP99LatencyMs = Percentile(latencies, 0.99);
+            cert.SeekTotalCount = allSeekSamples.Count;
+            cert.SeekErrorCount = allSeekSamples.Count(s => s.HasError);
             cert.SeekTestSummary =
                 $"FS: {_seekFullStrokeResult?.AverageLatencyMs:F2}ms | " +
                 $"RND: {_seekRandomResult?.AverageLatencyMs:F2}ms | " +
@@ -1783,18 +1787,54 @@ public partial class AbsoluteDestructiveTestViewModel : ViewModelBase, INavigabl
             if (writeDegradation > 5) score -= (writeDegradation - 5) * 2;
         }
 
-        // Seek latency (high = bad)
-        var allLatencies = new List<double>();
-        if (_seekFullStrokeResult?.Samples != null) allLatencies.AddRange(_seekFullStrokeResult.Samples.Select(s => s.LatencyMs));
-        if (_seekRandomResult?.Samples != null) allLatencies.AddRange(_seekRandomResult.Samples.Select(s => s.LatencyMs));
-        if (_seekSkipResult?.Samples != null) allLatencies.AddRange(_seekSkipResult.Samples.Select(s => s.LatencyMs));
+        // Seek consistency (reliability-focused, not absolute speed)
+        var allSeekSamples = new List<SeekLatencySample>();
+        if (_seekFullStrokeResult?.Samples != null) allSeekSamples.AddRange(_seekFullStrokeResult.Samples.Where(s => !s.HasError && s.LatencyMs > 0));
+        if (_seekRandomResult?.Samples != null) allSeekSamples.AddRange(_seekRandomResult.Samples.Where(s => !s.HasError && s.LatencyMs > 0));
+        if (_seekSkipResult?.Samples != null) allSeekSamples.AddRange(_seekSkipResult.Samples.Where(s => !s.HasError && s.LatencyMs > 0));
 
-        if (allLatencies.Count > 0)
+        if (allSeekSamples.Count > 0)
         {
-            var avgLatency = allLatencies.Average();
-            if (avgLatency > 20) score -= (avgLatency - 20) * 0.5;
-            var p95 = Percentile(allLatencies.OrderBy(l => l).ToList(), 0.95);
-            if (p95 > 40) score -= (p95 - 40) * 0.3;
+            var latencies = allSeekSamples.Select(s => s.LatencyMs).ToList();
+            var avgLatency = latencies.Average();
+            var stdDev = Math.Sqrt(latencies.Average(l => Math.Pow(l - avgLatency, 2)));
+
+            // 1. Error rate across all seek tests
+            var totalSeekErrors = (_seekFullStrokeResult?.ErrorCount ?? 0) + (_seekRandomResult?.ErrorCount ?? 0) + (_seekSkipResult?.ErrorCount ?? 0);
+            var totalSeekCount = (_seekFullStrokeResult?.SeekCount ?? 0) + (_seekRandomResult?.SeekCount ?? 0) + (_seekSkipResult?.SeekCount ?? 0);
+            if (totalSeekCount > 0)
+            {
+                var errorRate = (double)totalSeekErrors / totalSeekCount;
+                if (errorRate > 0.10) score -= 30;
+                else if (errorRate > 0.05) score -= 20;
+                else if (errorRate > 0.02) score -= 10;
+                else if (errorRate > 0) score -= 3;
+            }
+
+            // 2. CV (coefficient of variation) - consistency metric
+            if (avgLatency > 0 && stdDev > 0)
+            {
+                var cv = stdDev / avgLatency;
+                if (cv > 0.50) score -= 25;
+                else if (cv > 0.30) score -= 15;
+                else if (cv > 0.20) score -= 8;
+                else if (cv > 0.10) score -= 2;
+            }
+
+            // 3. Outlier rate (samples > avg + 2*stdDev)
+            if (stdDev > 0)
+            {
+                var outlierThreshold = avgLatency + 2 * stdDev;
+                var outlierCount = latencies.Count(l => l > outlierThreshold);
+                var outlierRate = (double)outlierCount / latencies.Count;
+                if (outlierRate > 0.10) score -= 15;
+                else if (outlierRate > 0.05) score -= 8;
+                else if (outlierRate > 0.02) score -= 3;
+            }
+
+            // 4. Absolute latency sanity check (only extreme cases)
+            if (avgLatency > 100) score -= 10;
+            else if (avgLatency > 60) score -= 3;
         }
 
         // SMART issues - existing critical counters must affect the certificate, not only deltas.

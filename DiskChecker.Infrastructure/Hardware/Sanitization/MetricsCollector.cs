@@ -225,38 +225,52 @@ public class MetricsCollector : IMetricsCollector
 
     private static List<SpeedSample> GetActiveSpeedSamples(List<SpeedSample> samples)
     {
-        return samples
-            .Where(s => s.SpeedMBps > 0 || s.IsStalled)
-            .ToList();
+        var active = new List<SpeedSample>();
+        var hasSeenRealSpeed = false;
+
+        foreach (var sample in samples)
+        {
+            if (!hasSeenRealSpeed)
+            {
+                if (sample.SpeedMBps > 0)
+                {
+                    hasSeenRealSpeed = true;
+                }
+                else
+                {
+                    continue;
+                }
+            }
+
+            active.Add(sample);
+        }
+
+        return active;
     }
 
     private static double CalculateAverage(List<SpeedSample> samples)
     {
-        var speeds = samples.Where(s => s.SpeedMBps > 0).Select(s => s.SpeedMBps).ToList();
-        if (speeds.Count == 0) return 0;
-        return speeds.Average();
+        if (samples.Count == 0) return 0;
+        return samples.Average(s => s.SpeedMBps);
     }
 
     private static double CalculateMax(List<SpeedSample> samples)
     {
-        var speeds = samples.Where(s => s.SpeedMBps > 0).Select(s => s.SpeedMBps).ToList();
-        if (speeds.Count == 0) return 0;
-        return speeds.Max();
+        if (samples.Count == 0) return 0;
+        return samples.Max(s => s.SpeedMBps);
     }
 
     private static double CalculateMin(List<SpeedSample> samples)
     {
-        var speeds = samples.Where(s => s.SpeedMBps > 0).Select(s => s.SpeedMBps).ToList();
-        if (speeds.Count == 0) return 0;
-        return speeds.Min();
+        if (samples.Count == 0) return 0;
+        return samples.Min(s => s.SpeedMBps);
     }
 
     private static double CalculateStdDev(List<SpeedSample> samples, double average)
     {
-        var speeds = samples.Where(s => s.SpeedMBps > 0).Select(s => s.SpeedMBps).ToList();
-        if (speeds.Count < 2) return 0;
-        var sumSquaredDiffs = speeds.Sum(speed => Math.Pow(speed - average, 2));
-        return Math.Sqrt(sumSquaredDiffs / speeds.Count);
+        if (samples.Count < 2) return 0;
+        var sumSquaredDiffs = samples.Sum(sample => Math.Pow(sample.SpeedMBps - average, 2));
+        return Math.Sqrt(sumSquaredDiffs / samples.Count);
     }
 
     private static (string grade, double score) CalculateGradeAndScore(TestSession session)

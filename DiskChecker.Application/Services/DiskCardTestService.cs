@@ -365,10 +365,7 @@ public class DiskCardTestService
          result.Notes = string.Join("; ", breakdown.Findings);
       }
 
-      var orderedSamples = result.Samples
-          .Where(s => s.ThroughputMbps > 0)
-          .OrderBy(s => s.TimestampUtc)
-          .ToList();
+      var orderedSamples = TrimLeadingZeroSpeedSamples(result.Samples.OrderBy(s => s.TimestampUtc).ToList(), s => s.ThroughputMbps);
 
       List<SpeedSample> writeSamples;
       List<SpeedSample> readSamples;
@@ -381,7 +378,9 @@ public class DiskCardTestService
                 Timestamp = s.TimestampUtc,
                 ProgressPercent = s.ProgressPercent,
                 SpeedMBps = s.ThroughputMbps,
-                BytesProcessed = s.OffsetBytes
+                BytesProcessed = s.OffsetBytes,
+                Elapsed = s.Elapsed,
+                Phase = s.Phase ?? "Read"
              })
              .ToList();
       }
@@ -395,7 +394,9 @@ public class DiskCardTestService
                 Timestamp = s.TimestampUtc,
                 ProgressPercent = s.ProgressPercent,
                 SpeedMBps = s.ThroughputMbps,
-                BytesProcessed = s.OffsetBytes
+                BytesProcessed = s.OffsetBytes,
+                Elapsed = s.Elapsed,
+                Phase = s.Phase ?? "Write"
              })
              .ToList();
          readSamples = orderedSamples
@@ -405,7 +406,9 @@ public class DiskCardTestService
                 Timestamp = s.TimestampUtc,
                 ProgressPercent = s.ProgressPercent,
                 SpeedMBps = s.ThroughputMbps,
-                BytesProcessed = s.OffsetBytes
+                BytesProcessed = s.OffsetBytes,
+                Elapsed = s.Elapsed,
+                Phase = s.Phase ?? "Read"
              })
              .ToList();
       }
@@ -535,6 +538,8 @@ public class DiskCardTestService
       var readStdDev = persistedReadSamples.Count > 1
           ? CalculateStandardDeviation(persistedReadSamples.Select(s => s.SpeedMBps).ToArray())
           : 0d;
+      var writeDuration = result.WriteDuration > TimeSpan.Zero ? result.WriteDuration : result.Duration;
+      var readDuration = result.ReadDuration > TimeSpan.Zero ? result.ReadDuration : result.Duration;
 
       var session = new TestSession
       {
@@ -556,8 +561,8 @@ public class DiskCardTestService
          MinReadSpeedMBps = minReadSpeed,
          WriteSpeedStdDev = writeStdDev,
          ReadSpeedStdDev = readStdDev,
-         WriteDuration = result.Duration,
-         ReadDuration = result.Duration,
+         WriteDuration = writeDuration,
+         ReadDuration = readDuration,
          WriteErrors = result.ErrorsDetected,
          ReadErrors = 0,
          VerificationErrors = 0,
@@ -972,20 +977,49 @@ public class DiskCardTestService
 
    private static List<SpeedSample> PrepareSpeedSamplesForPersistence(IEnumerable<SpeedSample>? samples)
    {
-      return (samples ?? Enumerable.Empty<SpeedSample>())
-          // Drop the initial synthetic 0 MB/s sample, but keep explicit stall markers.
-          .Where(s => s.SpeedMBps > 0 || s.IsStalled)
+      var ordered = (samples ?? Enumerable.Empty<SpeedSample>())
           .OrderBy(s => s.Timestamp == default ? DateTime.MaxValue : s.Timestamp)
           .ThenBy(s => s.ProgressPercent)
+          .ToList();
+
+      return TrimLeadingZeroSpeedSamples(ordered, s => s.SpeedMBps)
           .Select(s => new SpeedSample
           {
              Timestamp = s.Timestamp == default ? DateTime.UtcNow : s.Timestamp,
              ProgressPercent = s.ProgressPercent,
              SpeedMBps = s.SpeedMBps,
              BytesProcessed = s.BytesProcessed,
+             Elapsed = s.Elapsed,
+             Phase = s.Phase,
              IsStalled = s.IsStalled
           })
           .ToList();
+   }
+
+   private static List<T> TrimLeadingZeroSpeedSamples<T>(IEnumerable<T> samples, Func<T, double> speedSelector)
+   {
+      var result = new List<T>();
+      var hasSeenRealSpeed = false;
+
+      foreach(var sample in samples)
+      {
+         var speed = speedSelector(sample);
+         if(!hasSeenRealSpeed)
+         {
+            if(speed > 0)
+            {
+               hasSeenRealSpeed = true;
+            }
+            else
+            {
+               continue;
+            }
+         }
+
+         result.Add(sample);
+      }
+
+      return result;
    }
 
    private static double CalculateStandardDeviation(IReadOnlyCollection<double> values)

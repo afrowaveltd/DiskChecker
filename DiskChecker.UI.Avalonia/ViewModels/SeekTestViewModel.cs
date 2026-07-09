@@ -830,9 +830,12 @@ public partial class SeekTestViewModel : ViewModelBase, INavigableViewModel, IDi
             cert.SeekMinLatencyMs = result.MinLatencyMs;
             cert.SeekMaxLatencyMs = result.MaxLatencyMs;
             cert.SeekStdDevLatencyMs = result.LatencyStdDevMs;
+            cert.SeekMedianLatencyMs = result.MedianLatencyMs;
             cert.SeekP95LatencyMs = result.P95LatencyMs;
-            cert.SeekTestSummary = $"{SelectedTestType}: {result.SeekCount} seeků, avg {result.AverageLatencyMs:F2} ms, p95 {result.P95LatencyMs:F2} ms";
-            cert.Notes = session.Notes;
+            cert.SeekP99LatencyMs = result.P99LatencyMs;
+            cert.SeekTotalCount = result.SeekCount;
+            cert.SeekErrorCount = result.ErrorCount;
+            cert.SeekTestSummary = $"{SelectedTestType}: {result.SeekCount} seekĹŻ, avg {result.AverageLatencyMs:F2} ms, p95 {result.P95LatencyMs:F2} ms";cert.Notes = session.Notes;
             await _diskCardRepository.CreateCertificateAsync(cert);
 
             StatusMessage = $"✅ Test dokončen – certifikát {cert.CertificateNumber} uložen";
@@ -843,33 +846,111 @@ public partial class SeekTestViewModel : ViewModelBase, INavigableViewModel, IDi
         }
     }
 
+    /// <summary>
+    /// Calculates seek test grade based on consistency and reliability,
+    /// NOT absolute latency. A 5400 RPM disk with stable 35ms seeks
+    /// deserves an A just as much as a 7200 RPM disk with stable 12ms seeks.
+    /// </summary>
     private static string CalculateSeekGrade(SeekTestResult result)
     {
-        var avg = result.AverageLatencyMs;
-        return avg switch
+        var score = CalculateSeekScore(result);
+        return score switch
         {
-            < 8 => "A",
-            < 12 => "B",
-            < 18 => "C",
-            < 25 => "D",
-            < 35 => "E",
+            >= 90 => "A",
+            >= 80 => "B",
+            >= 70 => "C",
+            >= 55 => "D",
+            >= 40 => "E",
             _ => "F"
         };
     }
 
+    /// <summary>
+    /// Calculates seek test score (0-100) based on consistency metrics:
+    /// CV (coefficient of variation), tail ratio (P99/median),
+    /// outlier rate, and error rate. Absolute latency only penalizes
+    /// extreme cases (>100ms avg).
+    /// </summary>
     private static int CalculateSeekScore(SeekTestResult result)
     {
-        var avg = result.AverageLatencyMs;
-        return avg switch
+        var successful = result.Samples.Where(s => !s.HasError && s.LatencyMs > 0).ToList();
+        if (successful.Count == 0)
+            return result.ErrorCount > 0 ? 0 : 50; // no data = neutral
+
+        var latencies = successful.Select(s => s.LatencyMs).ToList();
+        var avg = latencies.Average();
+        var stdDev = result.LatencyStdDevMs;
+        if (stdDev <= 0 && latencies.Count > 1)
+            stdDev = Math.Sqrt(latencies.Sum(l => (l - avg) * (l - avg)) / latencies.Count);
+
+        double score = 100;
+
+        // 1. Error rate penalty (most important for reliability)
+        var errorRate = (double)result.ErrorCount / Math.Max(1, result.SeekCount);
+        if (errorRate > 0.10) score -= 40;       // >10% errors = critical
+        else if (errorRate > 0.05) score -= 25;   // >5% errors = serious
+        else if (errorRate > 0.02) score -= 15;   // >2% errors = concerning
+        else if (errorRate > 0) score -= 5;        // any errors = minor
+
+        // 2. Coefficient of Variation (CV = stdDev/avg) - measures consistency
+        if (avg > 0 && stdDev > 0)
         {
-            < 5 => 95,
-            < 8 => 85,
-            < 12 => 70,
-            < 18 => 55,
-            < 25 => 40,
-            < 35 => 25,
-            _ => 10
-        };
+            var cv = stdDev / avg;
+            if (cv > 0.50) score -= 30;       // very inconsistent
+            else if (cv > 0.30) score -= 20;  // inconsistent
+            else if (cv > 0.20) score -= 10;  // somewhat inconsistent
+            else if (cv > 0.10) score -= 3;   // slightly inconsistent
+            // cv <= 0.10 = excellent consistency, no penalty
+        }
+
+        // 3. Tail ratio (P99/Median) - measures outlier severity
+        var median = result.MedianLatencyMs > 0 ? result.MedianLatencyMs
+            : (latencies.Count > 0 ? SortedPercentile(latencies.OrderBy(l => l).ToList(), 0.50) : avg);
+        var p99 = result.P99LatencyMs > 0 ? result.P99LatencyMs
+            : (latencies.Count > 0 ? SortedPercentile(latencies.OrderBy(l => l).ToList(), 0.99) : avg);
+        if (median > 0 && p99 > 0)
+        {
+            var tailRatio = p99 / median;
+            if (tailRatio > 5.0) score -= 25;     // extreme outliers
+            else if (tailRatio > 3.0) score -= 15; // significant outliers
+            else if (tailRatio > 2.0) score -= 8;  // moderate outliers
+            else if (tailRatio > 1.5) score -= 3;  // minor outliers
+            // tailRatio <= 1.5 = tight distribution, no penalty
+        }
+
+        // 4. Outlier rate (samples > avg + 2*stdDev)
+        if (stdDev > 0)
+        {
+            var outlierThreshold = avg + 2 * stdDev;
+            var outlierCount = latencies.Count(l => l > outlierThreshold);
+            var outlierRate = (double)outlierCount / latencies.Count;
+            if (outlierRate > 0.10) score -= 20;
+            else if (outlierRate > 0.05) score -= 10;
+            else if (outlierRate > 0.02) score -= 5;
+        }
+
+        // 5. Absolute latency sanity check (only penalize extreme cases)
+        // A 5400 RPM disk with 35ms avg is NORMAL, not a problem.
+        if (avg > 100) score -= 15;    // very slow, possibly failing
+        else if (avg > 60) score -= 5; // slow but could be old 4200 RPM
+
+        return Math.Max(0, (int)Math.Clamp(score, 0, 100));
+    }
+
+    /// <summary>
+    /// Computes a percentile from a sorted list using linear interpolation.
+    /// (Local copy to avoid dependency on SeekTestExecutor internals.)
+    /// </summary>
+    private static double SortedPercentile(List<double> sorted, double percentile)
+    {
+        if (sorted.Count == 0) return 0;
+        if (sorted.Count == 1) return sorted[0];
+        double index = percentile * (sorted.Count - 1);
+        int lower = (int)Math.Floor(index);
+        int upper = (int)Math.Ceiling(index);
+        if (lower == upper) return sorted[lower];
+        double fraction = index - lower;
+        return sorted[lower] + fraction * (sorted[upper] - sorted[lower]);
     }
 
     /// <summary>

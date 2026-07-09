@@ -157,6 +157,16 @@ public class SurfaceTestSample
    public DateTime TimestampUtc { get; set; }
 
    /// <summary>
+   /// Gets or sets elapsed time from the beginning of the test when the sample was recorded.
+   /// </summary>
+   public TimeSpan? Elapsed { get; set; }
+
+   /// <summary>
+   /// Gets or sets the logical test phase for this sample.
+   /// </summary>
+   public string? Phase { get; set; }
+
+   /// <summary>
    /// Gets or sets the number of errors recorded in the sample window.
    /// </summary>
    public int ErrorCount { get; set; }
@@ -188,6 +198,21 @@ public class SurfaceTestProgress
    public double CurrentThroughputMbps { get; set; }
 
    /// <summary>
+   /// Gets or sets elapsed time from the beginning of the whole test.
+   /// </summary>
+   public TimeSpan? TotalElapsed { get; set; }
+
+   /// <summary>
+   /// Gets or sets elapsed time from the beginning of the current phase.
+   /// </summary>
+   public TimeSpan? PhaseElapsed { get; set; }
+
+   /// <summary>
+   /// Gets or sets the current logical phase of the test.
+   /// </summary>
+   public string? Phase { get; set; }
+
+   /// <summary>
    /// Gets or sets the timestamp of the progress update.
    /// </summary>
    public DateTime TimestampUtc { get; set; }
@@ -212,6 +237,13 @@ public class SurfaceTestResult
    /// When test completed.
    /// </summary>
    public DateTime CompletedAtUtc { get; set; }
+
+   /// <summary>
+   /// Total elapsed time of the test.
+   /// </summary>
+   public TimeSpan Duration => CompletedAtUtc != default && StartedAtUtc != default
+      ? CompletedAtUtc - StartedAtUtc
+      : TimeSpan.Zero;
 
    // === Drive Information ===
 

@@ -115,6 +115,7 @@ public class WindowsDiskSanitizationService : IDiskSanitizationService
             
             result.BytesWritten = writeResult.BytesWritten;
             result.WriteSpeedMBps = writeResult.SpeedMBps;
+            result.WriteDuration = writeResult.Duration;
             result.ErrorsDetected += writeResult.Errors;
 
             // Phase 3: Read and verify
@@ -136,6 +137,7 @@ public class WindowsDiskSanitizationService : IDiskSanitizationService
 
             result.BytesRead = readResult.BytesRead;
             result.ReadSpeedMBps = readResult.SpeedMBps;
+            result.ReadDuration = readResult.Duration;
             result.ErrorsDetected += readResult.Errors;
 
             // Phase 4: Create GPT partition
@@ -535,6 +537,7 @@ offline disk";
 
             result.Success = true;
             result.BytesWritten = bytesWritten;
+            result.Duration = stopwatch.Elapsed;
             result.SpeedMBps = stopwatch.Elapsed.TotalSeconds > 0 
                 ? bytesWritten / (1024.0 * 1024.0) / stopwatch.Elapsed.TotalSeconds 
                 : 0;
@@ -708,6 +711,7 @@ offline disk";
 
             result.Success = true;
             result.BytesRead = bytesRead;
+            result.Duration = stopwatch.Elapsed;
             result.SpeedMBps = stopwatch.Elapsed.TotalSeconds > 0 
                 ? bytesRead / (1024.0 * 1024.0) / stopwatch.Elapsed.TotalSeconds 
                 : 0;
@@ -1488,6 +1492,7 @@ if ($disk -and $disk.PartitionStyle -eq 'GPT') {{
         public long BytesWritten { get; set; }
         public long BytesRead { get; set; }
         public double SpeedMBps { get; set; }
+        public TimeSpan Duration { get; set; }
         public int Errors { get; set; }
         public bool PartitionFormatted { get; set; } // Whether partition was created AND formatted
         public List<SanitizationErrorDetail> ErrorDetails { get; } = new();

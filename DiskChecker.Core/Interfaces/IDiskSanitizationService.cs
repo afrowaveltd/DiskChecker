@@ -58,6 +58,17 @@ public class SanitizationResult
     public double ReadSpeedMBps { get; set; }
     public int ErrorsDetected { get; set; }
     public TimeSpan Duration { get; set; }
+
+    /// <summary>
+    /// Time spent in the zero-fill write phase, excluding partitioning/formatting.
+    /// </summary>
+    public TimeSpan WriteDuration { get; set; }
+
+    /// <summary>
+    /// Time spent in the read/verify phase, excluding partitioning/formatting.
+    /// </summary>
+    public TimeSpan ReadDuration { get; set; }
+
     public bool PartitionCreated { get; set; }
     public bool Formatted { get; set; }
 
@@ -129,6 +140,16 @@ public class SanitizationProgress
     public double CurrentSpeedMBps { get; set; }
     public int Errors { get; set; }
     public TimeSpan? EstimatedTimeRemaining { get; set; }
+
+    /// <summary>
+    /// Elapsed time from the beginning of the whole sanitization/test run.
+    /// </summary>
+    public TimeSpan? TotalElapsed { get; set; }
+
+    /// <summary>
+    /// Elapsed time from the beginning of the current write/read phase.
+    /// </summary>
+    public TimeSpan? PhaseElapsed { get; set; }
 
     /// <summary>
     /// True while the current write/read request is still waiting for the device after the stall threshold.

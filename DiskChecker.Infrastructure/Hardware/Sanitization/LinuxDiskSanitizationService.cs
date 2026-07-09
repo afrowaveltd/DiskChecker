@@ -90,6 +90,7 @@ public class LinuxDiskSanitizationService : IDiskSanitizationService
 
             result.BytesWritten = writeResult.BytesWritten;
             result.WriteSpeedMBps = writeResult.SpeedMBps;
+            result.WriteDuration = writeResult.Duration;
             result.ErrorsDetected += writeResult.Errors;
 
             await FlushDeviceAndDropCachesAsync(normalizedPath, cancellationToken);
@@ -113,6 +114,7 @@ public class LinuxDiskSanitizationService : IDiskSanitizationService
 
             result.BytesRead = readResult.BytesRead;
             result.ReadSpeedMBps = readResult.SpeedMBps;
+            result.ReadDuration = readResult.Duration;
             result.ErrorsDetected += readResult.Errors;
 
             // Phase 4: Create GPT partition
@@ -427,6 +429,7 @@ public class LinuxDiskSanitizationService : IDiskSanitizationService
 
             result.Success = true;
             result.BytesWritten = bytesWritten;
+            result.Duration = stopwatch.Elapsed;
             result.SpeedMBps = stopwatch.Elapsed.TotalSeconds > 0
                 ? bytesWritten / (1024.0 * 1024.0) / stopwatch.Elapsed.TotalSeconds
                 : 0;
@@ -602,6 +605,7 @@ public class LinuxDiskSanitizationService : IDiskSanitizationService
 
             result.Success = true;
             result.BytesRead = bytesRead;
+            result.Duration = stopwatch.Elapsed;
             result.SpeedMBps = stopwatch.Elapsed.TotalSeconds > 0
                 ? bytesRead / (1024.0 * 1024.0) / stopwatch.Elapsed.TotalSeconds
                 : 0;
@@ -1180,6 +1184,7 @@ public class LinuxDiskSanitizationService : IDiskSanitizationService
         public long BytesWritten { get; set; }
         public long BytesRead { get; set; }
         public double SpeedMBps { get; set; }
+        public TimeSpan Duration { get; set; }
         public int Errors { get; set; }
         public List<SanitizationErrorDetail> ErrorDetails { get; } = new();
     }

@@ -820,23 +820,23 @@ public partial class SurfaceTestViewModel : ViewModelBase, INavigableViewModel, 
       return int.TryParse(digits, out var num) ? num : null;
    }
 
-   private void AddSpeedPoint(double speed, double dataPercent)
+   private void AddSpeedPoint(double speed, double dataPercent, TimeSpan? totalElapsed = null)
    {
       var phase = _currentPhase;
 
       if(Dispatcher.UIThread.CheckAccess())
       {
-         AddSpeedPointCore(speed, dataPercent, phase);
+         AddSpeedPointCore(speed, dataPercent, phase, totalElapsed);
          return;
       }
 
-      Dispatcher.UIThread.Post(() => AddSpeedPointCore(speed, dataPercent, phase));
+      Dispatcher.UIThread.Post(() => AddSpeedPointCore(speed, dataPercent, phase, totalElapsed));
    }
 
-   private void AddSpeedPointCore(double speed, double dataPercent, int phase)
+   private void AddSpeedPointCore(double speed, double dataPercent, int phase, TimeSpan? totalElapsed = null)
    {
       var now = DateTime.UtcNow;
-      var elapsed = now - _testStartTime;
+      var elapsed = totalElapsed ?? (now - _testStartTime);
       var xPosition = Math.Clamp(dataPercent, 0d, 100d);
       CurrentDataPercent = xPosition;
 
@@ -1300,7 +1300,7 @@ public partial class SurfaceTestViewModel : ViewModelBase, INavigableViewModel, 
                var phaseProgress = p.ProgressPercent;
                CurrentSpeed = p.CurrentSpeedMBps;
                ErrorCount = p.Errors;
-               AddSpeedPoint(p.CurrentSpeedMBps, phaseProgress);
+               AddSpeedPoint(p.CurrentSpeedMBps, phaseProgress, p.TotalElapsed);
                if(p.EstimatedTimeRemaining.HasValue)
                {
                   TimeRemaining = p.EstimatedTimeRemaining.Value.ToString(@"hh\:mm\:ss");
@@ -2027,3 +2027,4 @@ public partial class SurfaceTestViewModel : ViewModelBase, INavigableViewModel, 
       }
    }
 }
+

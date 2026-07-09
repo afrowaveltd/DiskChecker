@@ -200,6 +200,16 @@ public class SeekTestProgress
     public double CurrentAverageLatencyMs { get; set; }
 
     /// <summary>
+    /// Elapsed time from the beginning of the seek test.
+    /// </summary>
+    public TimeSpan? Elapsed { get; set; }
+
+    /// <summary>
+    /// Current test phase/name for UI and telemetry.
+    /// </summary>
+    public string Phase { get; set; } = "Seek";
+
+    /// <summary>
     /// The most recent latency sample (for real-time UI updates).
     /// </summary>
     public SeekLatencySample? LatestSample { get; set; }
