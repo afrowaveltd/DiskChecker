@@ -1,7 +1,0 @@
-utes)
-                {
-                    if (IsCriticalAttribute(attr.Id))
-                    {
-                        certificate.SmartAttributes.Add(new SmartAttributeSummary
-                        {
-                            Id = att
