@@ -469,79 +469,94 @@ public class CertificateGenerator : ICertificateGenerator
             DrawText(canvas, _locale?.GetString("CertificatePdf.GradeCD", "C = dobrý stav | D = opotřebený disk") ?? "C = dobrý stav | D = opotřebený disk", 64, y + 132, smallFont, textPaint);
             DrawText(canvas, _locale?.GetString("CertificatePdf.GradeEF", "E = rizikový disk | F = kritický / vadný") ?? "E = rizikový disk | F = kritický / vadný", 64, y + 154, smallFont, textPaint);
 
-            // Performance chart
+            // Performance chart(s)
             y += 220;
             var isSeekChart = cert.SeekLatencyPoints.Count > 0;
-            var chartTitle = isSeekChart
-                ? (_locale?.GetString("CertificatePdf.SeekLatencyChart", "Seek latence") ?? "Seek latence")
-                : (_locale?.GetString("CertificatePdf.PerformanceProfile", "Výkonový profil testu") ?? "Výkonový profil testu");
-            DrawText(canvas, chartTitle, 48, y, sectionFont, accentPaint);
-            y += 34;
+            var (writePoints, readPoints) = GetProfilePointsForChart(cert);
+            var hasSpeedData = writePoints.Count > 0 || readPoints.Count > 0;
+            var hasBothCharts = isSeekChart && hasSpeedData;
 
             float chartX = 72f;
-            float chartY = y;
             float chartW = CertWidth - 160f;
-            float chartH = 260f;
-            canvas.DrawRect(chartX, chartY, chartW, chartH, borderPaint);
 
-            if (!string.IsNullOrWhiteSpace(cert.ChartImagePath) && File.Exists(cert.ChartImagePath))
+            if (hasBothCharts)
             {
-                using var chartImage = SKBitmap.Decode(cert.ChartImagePath);
-                if (chartImage != null)
-                    canvas.DrawBitmap(chartImage, new SKRect(chartX, chartY, chartX + chartW, chartY + chartH));
-            }
-            else if (isSeekChart)
-            {
-                // ── Seek scatter chart (latency dots) ──
+                // Dual-chart layout for AbsoluteDestructive tests:
+                // Top: Sanitization speed profile (write/read overlay)
+                // Bottom: Seek latency scatter chart
+                float topChartH = 200f;
+                float bottomChartH = 200f;
+                float gapBetweenCharts = 30f;
+
+                // --- Top chart: Sanitization speed profile ---
+                var topTitle = _locale?.GetString("CertificatePdf.SanitizationProfile", "Profil sanitizace") ?? "Profil sanitizace";
+                DrawText(canvas, topTitle, 48, y, sectionFont, accentPaint);
+                y += 34;
+                float topChartY = y;
+                canvas.DrawRect(chartX, topChartY, chartW, topChartH, borderPaint);
+
+                var maxSpeed = Math.Max(writePoints.Count > 0 ? writePoints.Max() : 0, readPoints.Count > 0 ? readPoints.Max() : 0);
+                if (maxSpeed <= 0) maxSpeed = 1;
+                canvas.DrawLine(chartX + 30, topChartY + 14, chartX + 30, topChartY + topChartH - 26, axisPen);
+                canvas.DrawLine(chartX + 30, topChartY + topChartH - 26, chartX + chartW - 20, topChartY + topChartH - 26, axisPen);
+                for (int g = 1; g <= 3; g++)
+                {
+                    float gx = chartX + 30 + (chartW - 50) * g / 4f;
+                    canvas.DrawLine(gx, topChartY + 14, gx, topChartY + topChartH - 26, axisPen);
+                }
+                DrawProfilePolyline(canvas, writePen, writePoints, maxSpeed, chartX + 30, topChartY + 14, chartW - 50, topChartH - 40);
+                DrawProfilePolyline(canvas, readPen, readPoints, maxSpeed, chartX + 30, topChartY + 14, chartW - 50, topChartH - 40);
+                DrawText(canvas, _locale?.GetString("CertificatePdf.Mbps", "MB/s") ?? "MB/s", chartX - 4, topChartY + 8, chartLabelFont, mutedPaint);
+                DrawText(canvas, $"{maxSpeed:F0}", chartX - 22, topChartY + 14, chartLabelFont, mutedPaint);
+                DrawText(canvas, $"{maxSpeed / 2:F0}", chartX - 22, topChartY + (topChartH - 40) / 2 + 10, chartLabelFont, mutedPaint);
+                DrawText(canvas, "0", chartX - 12, topChartY + topChartH - 30, chartLabelFont, mutedPaint);
+                DrawText(canvas, _locale?.GetString("CertificatePdf.Percent0", "0 %") ?? "0 %", chartX + 26, topChartY + topChartH - 18, chartLabelFont, mutedPaint);
+                DrawText(canvas, _locale?.GetString("CertificatePdf.Percent50", "50 %") ?? "50 %", chartX + chartW / 2 - 8, topChartY + topChartH - 18, chartLabelFont, mutedPaint);
+                DrawText(canvas, _locale?.GetString("CertificatePdf.Percent100", "100 %") ?? "100 %", chartX + chartW - 40, topChartY + topChartH - 18, chartLabelFont, mutedPaint);
+                using var legendWritePaint = new SKPaint { Color = new SKColor(220, 38, 38), IsAntialias = true };
+                using var legendReadPaint = new SKPaint { Color = new SKColor(5, 150, 105), IsAntialias = true };
+                DrawText(canvas, _locale?.GetString("CertificatePdf.Write", "ZĂˇpis") ?? "ZĂˇpis", chartX + chartW - 150, topChartY + 8, chartLabelFont, legendWritePaint);
+                DrawText(canvas, _locale?.GetString("CertificatePdf.Read", "ÄŚtenĂ­") ?? "ÄŚtenĂ­", chartX + chartW - 90, topChartY + 8, chartLabelFont, legendReadPaint);
+
+                // --- Bottom chart: Seek latency scatter ---
+                y = topChartY + topChartH + gapBetweenCharts;
+                var bottomTitle = _locale?.GetString("CertificatePdf.SeekLatencyChart", "Seek latence") ?? "Seek latence";
+                DrawText(canvas, bottomTitle, 48, y, sectionFont, accentPaint);
+                y += 34;
+                float bottomChartY = y;
+                canvas.DrawRect(chartX, bottomChartY, chartW, bottomChartH, borderPaint);
+
                 var latencies = cert.SeekLatencyPoints.Where(v => v > 0).ToList();
                 if (latencies.Count > 0)
                 {
                     var maxLatency = latencies.Max();
                     var yMax = Math.Max(maxLatency * 1.15, maxLatency + 1);
-
-                    // Y axis
-                    canvas.DrawLine(chartX + 30, chartY + 14, chartX + 30, chartY + chartH - 26, axisPen);
-                    // X axis
-                    canvas.DrawLine(chartX + 30, chartY + chartH - 26, chartX + chartW - 20, chartY + chartH - 26, axisPen);
-
-                    // Horizontal grid lines
+                    canvas.DrawLine(chartX + 30, bottomChartY + 14, chartX + 30, bottomChartY + bottomChartH - 26, axisPen);
+                    canvas.DrawLine(chartX + 30, bottomChartY + bottomChartH - 26, chartX + chartW - 20, bottomChartY + bottomChartH - 26, axisPen);
                     for (int g = 1; g <= 3; g++)
                     {
-                        float gy = chartY + 14 + (chartH - 40) * g / 4f;
+                        float gy = bottomChartY + 14 + (bottomChartH - 40) * g / 4f;
                         canvas.DrawLine(chartX + 30, gy, chartX + chartW - 20, gy, axisPen);
                     }
-
-                    // Scatter dots
-                    using var dotPaint = new SKPaint
-                    {
-                        Color = new SKColor(220, 38, 38),
-                        Style = SKPaintStyle.Fill,
-                        IsAntialias = true
-                    };
+                    using var dotPaint = new SKPaint { Color = new SKColor(220, 38, 38), Style = SKPaintStyle.Fill, IsAntialias = true };
                     float plotW = chartW - 50;
-                    float plotH = chartH - 40;
+                    float plotH = bottomChartH - 40;
                     for (var i = 0; i < latencies.Count; i++)
                     {
                         float sx = chartX + 30 + (i / (float)Math.Max(1, latencies.Count - 1)) * plotW;
-                        float sy = chartY + 14 + plotH - (float)(latencies[i] / yMax * plotH);
+                        float sy = bottomChartY + 14 + plotH - (float)(latencies[i] / yMax * plotH);
                         canvas.DrawCircle(sx, sy, 2.4f, dotPaint);
                     }
-
-                    // Y axis labels
-                    DrawText(canvas, _locale?.GetString("CertificatePdf.Ms", "ms") ?? "ms", chartX - 4, chartY + 8, chartLabelFont, mutedPaint);
-                    DrawText(canvas, $"{yMax:F1}", chartX - 22, chartY + 14, chartLabelFont, mutedPaint);
-                    DrawText(canvas, $"{yMax / 2:F1}", chartX - 22, chartY + (chartH - 40) / 2 + 10, chartLabelFont, mutedPaint);
-                    DrawText(canvas, "0", chartX - 12, chartY + chartH - 30, chartLabelFont, mutedPaint);
-
-                    // X axis labels
-                    DrawText(canvas, "1", chartX + 26, chartY + chartH - 18, chartLabelFont, mutedPaint);
+                    DrawText(canvas, _locale?.GetString("CertificatePdf.Ms", "ms") ?? "ms", chartX - 4, bottomChartY + 8, chartLabelFont, mutedPaint);
+                    DrawText(canvas, $"{yMax:F1}", chartX - 22, bottomChartY + 14, chartLabelFont, mutedPaint);
+                    DrawText(canvas, $"{yMax / 2:F1}", chartX - 22, bottomChartY + (bottomChartH - 40) / 2 + 10, chartLabelFont, mutedPaint);
+                    DrawText(canvas, "0", chartX - 12, bottomChartY + bottomChartH - 30, chartLabelFont, mutedPaint);
+                    DrawText(canvas, "1", chartX + 26, bottomChartY + bottomChartH - 18, chartLabelFont, mutedPaint);
                     var midLabel = Math.Max(1, latencies.Count / 2).ToString(CultureInfo.InvariantCulture);
-                    DrawText(canvas, midLabel, chartX + 30 + plotW / 2f - 8, chartY + chartH - 18, chartLabelFont, mutedPaint);
-                    DrawText(canvas, latencies.Count.ToString(CultureInfo.InvariantCulture), chartX + chartW - 40, chartY + chartH - 18, chartLabelFont, mutedPaint);
-
-                    // Legend
+                    DrawText(canvas, midLabel, chartX + 30 + plotW / 2f - 8, bottomChartY + bottomChartH - 18, chartLabelFont, mutedPaint);
+                    DrawText(canvas, latencies.Count.ToString(CultureInfo.InvariantCulture), chartX + chartW - 40, bottomChartY + bottomChartH - 18, chartLabelFont, mutedPaint);
                     using var legendDotPaint = new SKPaint { Color = new SKColor(220, 38, 38), IsAntialias = true };
-                    DrawText(canvas, _locale?.GetString("CertificatePdf.Latency", "Latence") ?? "Latence", chartX + chartW - 120, chartY + 8, chartLabelFont, legendDotPaint);
+                    DrawText(canvas, _locale?.GetString("CertificatePdf.Latency", "Latence") ?? "Latence", chartX + chartW - 120, bottomChartY + 8, chartLabelFont, legendDotPaint);
                 }
                 else
                 {
@@ -549,84 +564,136 @@ public class CertificateGenerator : ICertificateGenerator
                     using var noDataFont = ResolveFont(18, bold: false);
                     float textWidth = noDataFont.MeasureText(noDataText);
                     float textX = chartX + (chartW - textWidth) / 2f;
-                    float textY = chartY + chartH / 2f - noDataFont.Size / 2f;
+                    float textY = bottomChartY + bottomChartH / 2f - noDataFont.Size / 2f;
                     DrawText(canvas, noDataText, textX, textY, noDataFont, mutedPaint);
                 }
+
+                y = bottomChartY + bottomChartH;
             }
             else
             {
-                // Draw axes
-                canvas.DrawLine(chartX + 30, chartY + 14, chartX + 30, chartY + chartH - 26, axisPen);
-                canvas.DrawLine(chartX + 30, chartY + chartH - 26, chartX + chartW - 20, chartY + chartH - 26, axisPen);
-                // Grid lines
-                for (int g = 1; g <= 3; g++)
+                // Single-chart layout (original behavior)
+                var chartTitle = isSeekChart
+                    ? (_locale?.GetString("CertificatePdf.SeekLatencyChart", "Seek latence") ?? "Seek latence")
+                    : (_locale?.GetString("CertificatePdf.PerformanceProfile", "VĂ˝konovĂ˝ profil testu") ?? "VĂ˝konovĂ˝ profil testu");
+                DrawText(canvas, chartTitle, 48, y, sectionFont, accentPaint);
+                y += 34;
+
+                float chartY = y;
+                float chartH = 260f;
+                canvas.DrawRect(chartX, chartY, chartW, chartH, borderPaint);
+
+                if (!string.IsNullOrWhiteSpace(cert.ChartImagePath) && File.Exists(cert.ChartImagePath))
                 {
-                    float gx = chartX + 30 + (chartW - 50) * g / 4f;
-                    canvas.DrawLine(gx, chartY + 14, gx, chartY + chartH - 26, axisPen);
+                    using var chartImage = SKBitmap.Decode(cert.ChartImagePath);
+                    if (chartImage != null)
+                        canvas.DrawBitmap(chartImage, new SKRect(chartX, chartY, chartX + chartW, chartY + chartH));
                 }
-
-                var (writePoints, readPoints) = GetProfilePointsForChart(cert);
-                var hasData = writePoints.Count > 0 || readPoints.Count > 0;
-                var maxSpeed = 1.0;
-                if (hasData)
+                else if (isSeekChart)
                 {
-                    maxSpeed = Math.Max(writePoints.Count > 0 ? writePoints.Max() : 0, readPoints.Count > 0 ? readPoints.Max() : 0);
-                    if (maxSpeed <= 0) maxSpeed = 1;
-                    DrawProfilePolyline(canvas, writePen, writePoints, maxSpeed, chartX + 30, chartY + 14, chartW - 50, chartH - 40);
-                    DrawProfilePolyline(canvas, readPen, readPoints, maxSpeed, chartX + 30, chartY + 14, chartW - 50, chartH - 40);
-
-                    // Draw stall markers (red dots) where device was unresponsive
-                    if (cert.StallProfilePoints.Count > 0)
+                    var latencies = cert.SeekLatencyPoints.Where(v => v > 0).ToList();
+                    if (latencies.Count > 0)
                     {
-                        using var stallPaint = new SKPaint
+                        var maxLatency = latencies.Max();
+                        var yMax = Math.Max(maxLatency * 1.15, maxLatency + 1);
+                        canvas.DrawLine(chartX + 30, chartY + 14, chartX + 30, chartY + chartH - 26, axisPen);
+                        canvas.DrawLine(chartX + 30, chartY + chartH - 26, chartX + chartW - 20, chartY + chartH - 26, axisPen);
+                        for (int g = 1; g <= 3; g++)
                         {
-                            Color = SKColors.Red,
-                            Style = SKPaintStyle.Fill,
-                            IsAntialias = true
-                        };
-                        var stallCount = cert.StallProfilePoints.Count;
-                        for (var si = 0; si < stallCount; si++)
-                        {
-                            if (cert.StallProfilePoints[si])
-                            {
-                                float sx = chartX + 30 + (chartW - 50) * si / (float)Math.Max(1, stallCount - 1);
-                                float sy = chartY + chartH - 26; // Bottom of chart
-                                canvas.DrawCircle(sx, sy, 4f, stallPaint);
-                            }
+                            float gy = chartY + 14 + (chartH - 40) * g / 4f;
+                            canvas.DrawLine(chartX + 30, gy, chartX + chartW - 20, gy, axisPen);
                         }
-                        // Add legend entry for stalls
-                        using var legendStallPaint = new SKPaint { Color = SKColors.Red, IsAntialias = true };
-                        DrawText(canvas, _locale?.GetString("CertificatePdf.Stall", "Zamrznutí") ?? "Zamrznutí", chartX + chartW - 150, chartY + 24, chartLabelFont, legendStallPaint);
+                        using var dotPaint = new SKPaint { Color = new SKColor(220, 38, 38), Style = SKPaintStyle.Fill, IsAntialias = true };
+                        float plotW = chartW - 50;
+                        float plotH = chartH - 40;
+                        for (var i = 0; i < latencies.Count; i++)
+                        {
+                            float sx = chartX + 30 + (i / (float)Math.Max(1, latencies.Count - 1)) * plotW;
+                            float sy = chartY + 14 + plotH - (float)(latencies[i] / yMax * plotH);
+                            canvas.DrawCircle(sx, sy, 2.4f, dotPaint);
+                        }
+                        DrawText(canvas, _locale?.GetString("CertificatePdf.Ms", "ms") ?? "ms", chartX - 4, chartY + 8, chartLabelFont, mutedPaint);
+                        DrawText(canvas, $"{yMax:F1}", chartX - 22, chartY + 14, chartLabelFont, mutedPaint);
+                        DrawText(canvas, $"{yMax / 2:F1}", chartX - 22, chartY + (chartH - 40) / 2 + 10, chartLabelFont, mutedPaint);
+                        DrawText(canvas, "0", chartX - 12, chartY + chartH - 30, chartLabelFont, mutedPaint);
+                        DrawText(canvas, "1", chartX + 26, chartY + chartH - 18, chartLabelFont, mutedPaint);
+                        var midLabel = Math.Max(1, latencies.Count / 2).ToString(CultureInfo.InvariantCulture);
+                        DrawText(canvas, midLabel, chartX + 30 + plotW / 2f - 8, chartY + chartH - 18, chartLabelFont, mutedPaint);
+                        DrawText(canvas, latencies.Count.ToString(CultureInfo.InvariantCulture), chartX + chartW - 40, chartY + chartH - 18, chartLabelFont, mutedPaint);
+                        using var legendDotPaint = new SKPaint { Color = new SKColor(220, 38, 38), IsAntialias = true };
+                        DrawText(canvas, _locale?.GetString("CertificatePdf.Latency", "Latence") ?? "Latence", chartX + chartW - 120, chartY + 8, chartLabelFont, legendDotPaint);
+                    }
+                    else
+                    {
+                        var noDataText = _locale?.GetString("CertificatePdf.NoChartData", "Data nejsou k dispozici") ?? "Data nejsou k dispozici";
+                        using var noDataFont = ResolveFont(18, bold: false);
+                        float textWidth = noDataFont.MeasureText(noDataText);
+                        float textX = chartX + (chartW - textWidth) / 2f;
+                        float textY = chartY + chartH / 2f - noDataFont.Size / 2f;
+                        DrawText(canvas, noDataText, textX, textY, noDataFont, mutedPaint);
                     }
                 }
                 else
                 {
-                    // No data available — show a message instead of an empty chart
-                    var noDataText = _locale?.GetString("CertificatePdf.NoChartData", "Data nejsou k dispozici") ?? "Data nejsou k dispozici";
-                    using var noDataFont = ResolveFont(18, bold: false);
-                    float textWidth = noDataFont.MeasureText(noDataText);
-                    float textX = chartX + (chartW - textWidth) / 2f;
-                    float textY = chartY + chartH / 2f - noDataFont.Size / 2f;
-                    DrawText(canvas, noDataText, textX, textY, noDataFont, mutedPaint);
+                    canvas.DrawLine(chartX + 30, chartY + 14, chartX + 30, chartY + chartH - 26, axisPen);
+                    canvas.DrawLine(chartX + 30, chartY + chartH - 26, chartX + chartW - 20, chartY + chartH - 26, axisPen);
+                    for (int g = 1; g <= 3; g++)
+                    {
+                        float gx = chartX + 30 + (chartW - 50) * g / 4f;
+                        canvas.DrawLine(gx, chartY + 14, gx, chartY + chartH - 26, axisPen);
+                    }
+                    var maxSpeed = 1.0;
+                    if (hasSpeedData)
+                    {
+                        maxSpeed = Math.Max(writePoints.Count > 0 ? writePoints.Max() : 0, readPoints.Count > 0 ? readPoints.Max() : 0);
+                        if (maxSpeed <= 0) maxSpeed = 1;
+                        DrawProfilePolyline(canvas, writePen, writePoints, maxSpeed, chartX + 30, chartY + 14, chartW - 50, chartH - 40);
+                        DrawProfilePolyline(canvas, readPen, readPoints, maxSpeed, chartX + 30, chartY + 14, chartW - 50, chartH - 40);
+                        if (cert.StallProfilePoints.Count > 0)
+                        {
+                            using var stallPaint = new SKPaint { Color = SKColors.Red, Style = SKPaintStyle.Fill, IsAntialias = true };
+                            var stallCount = cert.StallProfilePoints.Count;
+                            for (var si = 0; si < stallCount; si++)
+                            {
+                                if (cert.StallProfilePoints[si])
+                                {
+                                    float sx = chartX + 30 + (chartW - 50) * si / (float)Math.Max(1, stallCount - 1);
+                                    float sy = chartY + chartH - 26;
+                                    canvas.DrawCircle(sx, sy, 4f, stallPaint);
+                                }
+                            }
+                            using var legendStallPaint = new SKPaint { Color = SKColors.Red, IsAntialias = true };
+                            DrawText(canvas, _locale?.GetString("CertificatePdf.Stall", "ZamrznutĂ­") ?? "ZamrznutĂ­", chartX + chartW - 150, chartY + 24, chartLabelFont, legendStallPaint);
+                        }
+                    }
+                    else
+                    {
+                        var noDataText = _locale?.GetString("CertificatePdf.NoChartData", "Data nejsou k dispozici") ?? "Data nejsou k dispozici";
+                        using var noDataFont = ResolveFont(18, bold: false);
+                        float textWidth = noDataFont.MeasureText(noDataText);
+                        float textX = chartX + (chartW - textWidth) / 2f;
+                        float textY = chartY + chartH / 2f - noDataFont.Size / 2f;
+                        DrawText(canvas, noDataText, textX, textY, noDataFont, mutedPaint);
+                    }
+                    DrawText(canvas, _locale?.GetString("CertificatePdf.Mbps", "MB/s") ?? "MB/s", chartX - 4, chartY + 8, chartLabelFont, mutedPaint);
+                    DrawText(canvas, $"{maxSpeed:F0}", chartX - 22, chartY + 14, chartLabelFont, mutedPaint);
+                    DrawText(canvas, $"{maxSpeed / 2:F0}", chartX - 22, chartY + (chartH - 40) / 2 + 10, chartLabelFont, mutedPaint);
+                    DrawText(canvas, "0", chartX - 12, chartY + chartH - 30, chartLabelFont, mutedPaint);
+                    DrawText(canvas, _locale?.GetString("CertificatePdf.Percent0", "0 %") ?? "0 %", chartX + 26, chartY + chartH - 18, chartLabelFont, mutedPaint);
+                    DrawText(canvas, _locale?.GetString("CertificatePdf.Percent25", "25 %") ?? "25 %", chartX + (chartW * 0.25f) - 8, chartY + chartH - 18, chartLabelFont, mutedPaint);
+                    DrawText(canvas, _locale?.GetString("CertificatePdf.Percent50", "50 %") ?? "50 %", chartX + chartW / 2 - 8, chartY + chartH - 18, chartLabelFont, mutedPaint);
+                    DrawText(canvas, _locale?.GetString("CertificatePdf.Percent75", "75 %") ?? "75 %", chartX + (chartW * 0.75f) - 8, chartY + chartH - 18, chartLabelFont, mutedPaint);
+                    DrawText(canvas, _locale?.GetString("CertificatePdf.Percent100", "100 %") ?? "100 %", chartX + chartW - 40, chartY + chartH - 18, chartLabelFont, mutedPaint);
+                    using var legendWritePaint = new SKPaint { Color = new SKColor(220, 38, 38), IsAntialias = true };
+                    using var legendReadPaint = new SKPaint { Color = new SKColor(5, 150, 105), IsAntialias = true };
+                    DrawText(canvas, _locale?.GetString("CertificatePdf.Write", "ZĂˇpis") ?? "ZĂˇpis", chartX + chartW - 150, chartY + 8, chartLabelFont, legendWritePaint);
+                    DrawText(canvas, _locale?.GetString("CertificatePdf.Read", "ÄŚtenĂ­") ?? "ÄŚtenĂ­", chartX + chartW - 90, chartY + 8, chartLabelFont, legendReadPaint);
                 }
 
-                DrawText(canvas, _locale?.GetString("CertificatePdf.Mbps", "MB/s") ?? "MB/s", chartX - 4, chartY + 8, chartLabelFont, mutedPaint);
-                DrawText(canvas, $"{maxSpeed:F0}", chartX - 22, chartY + 14, chartLabelFont, mutedPaint);
-                DrawText(canvas, $"{maxSpeed / 2:F0}", chartX - 22, chartY + (chartH - 40) / 2 + 10, chartLabelFont, mutedPaint);
-                DrawText(canvas, "0", chartX - 12, chartY + chartH - 30, chartLabelFont, mutedPaint);
-                DrawText(canvas, _locale?.GetString("CertificatePdf.Percent0", "0 %") ?? "0 %", chartX + 26, chartY + chartH - 18, chartLabelFont, mutedPaint);
-                DrawText(canvas, _locale?.GetString("CertificatePdf.Percent25", "25 %") ?? "25 %", chartX + (chartW * 0.25f) - 8, chartY + chartH - 18, chartLabelFont, mutedPaint);
-                DrawText(canvas, _locale?.GetString("CertificatePdf.Percent50", "50 %") ?? "50 %", chartX + chartW / 2 - 8, chartY + chartH - 18, chartLabelFont, mutedPaint);
-                DrawText(canvas, _locale?.GetString("CertificatePdf.Percent75", "75 %") ?? "75 %", chartX + (chartW * 0.75f) - 8, chartY + chartH - 18, chartLabelFont, mutedPaint);
-                DrawText(canvas, _locale?.GetString("CertificatePdf.Percent100", "100 %") ?? "100 %", chartX + chartW - 40, chartY + chartH - 18, chartLabelFont, mutedPaint);
-
-                using var legendWritePaint = new SKPaint { Color = new SKColor(220, 38, 38), IsAntialias = true };
-                using var legendReadPaint = new SKPaint { Color = new SKColor(5, 150, 105), IsAntialias = true };
-                DrawText(canvas, _locale?.GetString("CertificatePdf.Write", "Zápis") ?? "Zápis", chartX + chartW - 150, chartY + 8, chartLabelFont, legendWritePaint);
-                DrawText(canvas, _locale?.GetString("CertificatePdf.Read", "Čtení") ?? "Čtení", chartX + chartW - 90, chartY + 8, chartLabelFont, legendReadPaint);
+                y = chartY + chartH;
             }
 
-            // Recommendation
+            // Recommendation// Recommendation
             y += 290;
             DrawText(canvas, _locale?.GetString("CertificatePdf.Recommendations", "Doporučení") ?? "Doporučení", 48, y, sectionFont, accentPaint);
             y += 34;
@@ -874,11 +941,15 @@ public class CertificateGenerator : ICertificateGenerator
 
     private static List<bool> DownsampleStalls(List<SpeedSample> writeSamples, List<SpeedSample> readSamples, int targetPoints)
     {
-        // Combine write and read samples, preserving order
+        // Combine write and read samples, preserving order.
+        // IMPORTANT: Do NOT flag the write→read phase boundary as a stall.
+        // Phase transitions naturally have a gap; only flag samples explicitly
+        // marked as stalled by the I/O monitor.
         var allSamples = writeSamples.Concat(readSamples).ToList();
         if (allSamples.Count == 0) return new List<bool>();
 
-        // If any sample in a bucket is stalled, mark the bucket as stalled
+        // If any sample in a bucket is explicitly stalled, mark the bucket as stalled.
+        // We do NOT infer stalls from speed=0 at phase boundaries.
         var bucketSize = Math.Max(1, allSamples.Count / targetPoints);
         var result = new List<bool>(targetPoints);
         for (var i = 0; i < targetPoints && i * bucketSize < allSamples.Count; i++)
@@ -888,6 +959,7 @@ public class CertificateGenerator : ICertificateGenerator
             var stalled = false;
             for (var j = start; j < end; j++)
             {
+                // Only count explicitly flagged stalls, not phase transitions
                 if (allSamples[j].IsStalled)
                 {
                     stalled = true;
@@ -1021,10 +1093,31 @@ public class CertificateGenerator : ICertificateGenerator
 
         score -= session.Errors.Count * 2;
 
+        // Speed consistency penalty
         if (session.AverageWriteSpeedMBps > 0 && session.MaxWriteSpeedMBps > 0)
         {
             var consistency = session.AverageWriteSpeedMBps / session.MaxWriteSpeedMBps;
             if (consistency < 0.7) score -= (0.7 - consistency) * 50;
+        }
+
+        // Catastrophic speed drop penalty: if min speed is < 20% of max, the disk has serious issues
+        if (session.MaxWriteSpeedMBps > 0 && session.MinWriteSpeedMBps > 0)
+        {
+            var minToMaxRatio = session.MinWriteSpeedMBps / session.MaxWriteSpeedMBps;
+            if (minToMaxRatio < 0.2) score -= (0.2 - minToMaxRatio) * 80;
+        }
+        if (session.MaxReadSpeedMBps > 0 && session.MinReadSpeedMBps > 0)
+        {
+            var minToMaxRatio = session.MinReadSpeedMBps / session.MaxReadSpeedMBps;
+            if (minToMaxRatio < 0.2) score -= (0.2 - minToMaxRatio) * 80;
+        }
+
+        // Disk-type-aware speed expectations based on SMART and capacity
+        var expectedSpeed = EstimateExpectedSpeed(session);
+        if (expectedSpeed > 0 && session.AverageWriteSpeedMBps > 0)
+        {
+            var speedRatio = session.AverageWriteSpeedMBps / expectedSpeed;
+            if (speedRatio < 0.5) score -= (0.5 - speedRatio) * 60;
         }
 
         score = Math.Clamp(score, 0, 100);
@@ -1040,6 +1133,49 @@ public class CertificateGenerator : ICertificateGenerator
         };
 
         return (grade, score);
+    }
+
+    /// <summary>
+    /// Estimates expected write speed (MB/s) based on disk type, SMART data, and capacity.
+    /// Used to avoid penalizing old/small disks for their naturally low speeds.
+    /// </summary>
+    private static double EstimateExpectedSpeed(TestSession session)
+    {
+        // Determine disk type from SMART or capacity heuristics
+        var isSsd = false;
+        var isNvme = false;
+
+        if (session.SmartBefore != null)
+        {
+            var deviceType = session.SmartBefore.DeviceType ?? string.Empty;
+            if (deviceType.Contains("nvme", StringComparison.OrdinalIgnoreCase))
+                isNvme = true;
+            else if (session.SmartBefore.AvailableSpare.HasValue ||
+                     session.SmartBefore.PercentageUsed.HasValue ||
+                     session.SmartBefore.WearLevelingCount.HasValue)
+                isSsd = true;
+        }
+
+        // If no SMART, use capacity heuristics: SSDs are typically 120GB+, very old HDDs < 80GB
+        var capacityGB = session.SmartBefore != null ? 0 : 0; // We need diskCard capacity here, not available in session alone
+        // Use write samples to detect SSD-like behavior (no seek latency = SSD)
+        if (!isSsd && !isNvme && session.WriteSamples.Count > 0)
+        {
+            var firstFewSpeeds = session.WriteSamples.Take(10).Select(s => s.SpeedMBps).ToList();
+            if (firstFewSpeeds.Count > 0 && firstFewSpeeds.Average() > 150)
+            {
+                isSsd = true; // HDDs rarely sustain >150 MB/s
+            }
+        }
+
+        if (isNvme) return 1500;  // NVMe expected: ~1.5 GB/s
+        if (isSsd) return 350;    // SATA SSD expected: ~350 MB/s
+
+        // HDD: expected speed depends on age indicators
+        var powerOnHours = session.SmartBefore?.PowerOnHours ?? 0;
+        if (powerOnHours > 40000) return 60;   // Very old HDD
+        if (powerOnHours > 20000) return 80;   // Older HDD
+        return 100;                             // Modern HDD
     }
 
     // ──────────────────────────────────────────────

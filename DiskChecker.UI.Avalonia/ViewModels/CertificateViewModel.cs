@@ -539,7 +539,25 @@ public partial class CertificateViewModel : ViewModelBase, INavigableViewModel
          IsLoading = true;
          StatusMessage = L.Get("CertificateView.Status.Generating");
 
-         var card = await _diskCardRepository.GetByDevicePathAsync(_selectedDiskService.SelectedDisk.Path);
+         // Prefer finding the card by session ID (reliable) over device path (can be reused)
+         DiskCard? card = null;
+         TestSession? targetSession = null;
+
+         if (_selectedDiskService.SelectedTestSessionId.HasValue)
+         {
+            targetSession = await _diskCardRepository.GetTestSessionWithoutSamplesAsync(
+                _selectedDiskService.SelectedTestSessionId.Value);
+            if (targetSession != null)
+            {
+               card = await _diskCardRepository.GetByIdAsync(targetSession.DiskCardId);
+            }
+         }
+
+         // Fallback: use device path (less reliable but works for fresh tests)
+         if (card == null)
+         {
+            card = await _diskCardRepository.GetByDevicePathAsync(_selectedDiskService.SelectedDisk.Path);
+         }
 
          if(card == null)
          {
@@ -548,17 +566,21 @@ public partial class CertificateViewModel : ViewModelBase, INavigableViewModel
             return;
          }
 
-         var sessions = await _diskCardRepository.GetTestSessionsAsync(card.Id);
-         var latestSession = sessions.FirstOrDefault();
+         // Use the session we already found, or get the latest
+         if (targetSession == null)
+         {
+            var sessions = await _diskCardRepository.GetTestSessionsAsync(card.Id);
+            targetSession = sessions.FirstOrDefault();
+         }
 
-         if(latestSession == null)
+         if(targetSession == null)
          {
             StatusMessage = L.Get("CertificateView.Status.NoTest");
             await _dialogService.ShowErrorAsync(L.Get("Common.Error"), L.Get("CertificateView.Error.NoTest"));
             return;
          }
 
-         _selectedSession = await _diskCardRepository.GetTestSessionAsync(latestSession.Id);
+         _selectedSession = await _diskCardRepository.GetTestSessionAsync(targetSession.Id);
          if(_selectedSession == null)
          {
             StatusMessage = L.Get("CertificateView.Status.TestDetailError");
