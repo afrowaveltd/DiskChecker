@@ -426,6 +426,24 @@ public static class SchemaCompatibilityPatcher
             case "Status":
                 dbContext.Database.ExecuteSqlRaw("ALTER TABLE DiskCertificates ADD COLUMN Status INTEGER NOT NULL DEFAULT 0;");
                 return;
+            case "SanitizationMethod":
+                dbContext.Database.ExecuteSqlRaw("ALTER TABLE DiskCertificates ADD COLUMN SanitizationMethod TEXT NULL;");
+                return;
+            case "PartitionScheme":
+                dbContext.Database.ExecuteSqlRaw("ALTER TABLE DiskCertificates ADD COLUMN PartitionScheme TEXT NULL;");
+                return;
+            case "FileSystem":
+                dbContext.Database.ExecuteSqlRaw("ALTER TABLE DiskCertificates ADD COLUMN FileSystem TEXT NULL;");
+                return;
+            case "VolumeLabel":
+                dbContext.Database.ExecuteSqlRaw("ALTER TABLE DiskCertificates ADD COLUMN VolumeLabel TEXT NULL;");
+                return;
+            case "PdfPath":
+                dbContext.Database.ExecuteSqlRaw("ALTER TABLE DiskCertificates ADD COLUMN PdfPath TEXT NULL;");
+                return;
+            case "Notes":
+                dbContext.Database.ExecuteSqlRaw("ALTER TABLE DiskCertificates ADD COLUMN Notes TEXT NULL;");
+                return;
             default:
                 return;
         }
