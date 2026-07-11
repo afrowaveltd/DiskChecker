@@ -1,4 +1,4 @@
-﻿{
+{
   "App.Title": "DiskChecker",
   "App.Subtitle": "Profesionální nástroj pro diagnostiku disků",
   "App.Tagline": "Profesionální Diagnóza Disků",
@@ -1604,7 +1604,6 @@
   "RestoreView.ScanButton": "🔄 Skenovat zálohy",
   "SurfaceTest.AvgLabel": "Průměr:",
   "SurfaceTest.RemainingTime": "Zbývající čas:",
-  "SurfaceTest.StartTest": "▶ Spustit Test",
   "SurfaceTest.CancelTest": "■ Zrušit Test",
   "SmartCheck.CacheSettings": "⚙️ Nastavení cache",
   "SmartCheck.ClearAll": "🧰 Vymazat vše",

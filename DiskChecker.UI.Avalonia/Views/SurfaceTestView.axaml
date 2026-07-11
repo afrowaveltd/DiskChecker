@@ -241,15 +241,15 @@
                                             <TextBlock Text="{Binding L[ReadShort]}" FontSize="10" FontWeight="Bold" Foreground="{DynamicResource ThemeChartReadBrush}" VerticalAlignment="Center"/>
                                         </StackPanel>
                                         <StackPanel Grid.Column="1" HorizontalAlignment="Center">
-                                            <TextBlock Text="Akt" FontSize="8" Foreground="{DynamicResource ThemeTextMutedBrush}" HorizontalAlignment="Center"/>
+                                            <TextBlock Text="{Binding L[SurfaceTest.Current]}" FontSize="8" Foreground="{DynamicResource ThemeTextMutedBrush}" HorizontalAlignment="Center"/>
                                             <TextBlock Text="{Binding ReadCurrentSpeed, StringFormat='{}{0:F0}'}" FontSize="14" FontWeight="Bold" Foreground="{DynamicResource ThemeChartReadBrush}" HorizontalAlignment="Center"/>
                                         </StackPanel>
                                         <StackPanel Grid.Column="2" HorizontalAlignment="Center">
-                                            <TextBlock Text="Min" FontSize="8" Foreground="{DynamicResource ThemeTextMutedBrush}" HorizontalAlignment="Center"/>
+                                            <TextBlock Text="{Binding L[SurfaceTest.Min]}" FontSize="8" Foreground="{DynamicResource ThemeTextMutedBrush}" HorizontalAlignment="Center"/>
                                             <TextBlock Text="{Binding ReadMinSpeed, StringFormat='{}{0:F0}'}" FontSize="14" FontWeight="Bold" Foreground="{DynamicResource ThemeChartReadLightBrush}" HorizontalAlignment="Center"/>
                                         </StackPanel>
                                         <StackPanel Grid.Column="3" HorizontalAlignment="Center">
-                                            <TextBlock Text="Max" FontSize="8" Foreground="{DynamicResource ThemeTextMutedBrush}" HorizontalAlignment="Center"/>
+                                            <TextBlock Text="{Binding L[SurfaceTest.Max]}" FontSize="8" Foreground="{DynamicResource ThemeTextMutedBrush}" HorizontalAlignment="Center"/>
                                             <TextBlock Text="{Binding ReadMaxSpeed, StringFormat='{}{0:F0}'}" FontSize="14" FontWeight="Bold" Foreground="{DynamicResource ThemeChartReadDarkBrush}" HorizontalAlignment="Center"/>
                                         </StackPanel>
                                         <StackPanel Grid.Column="4" HorizontalAlignment="Center">
@@ -532,7 +532,7 @@
 
                         <!-- Action Buttons -->
                         <StackPanel Grid.Row="3" Spacing="6" Margin="0,14,0,0">
-                            <Button Content="▶ Spustit Test"
+                            <Button Content="{Binding L[SurfaceTest.StartTest]}"
                                    Command="{Binding StartTestCommand}"
                                    IsEnabled="{Binding CanStartTest}"
                                    Background="{DynamicResource ThemeSuccessBrush}"
