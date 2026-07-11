@@ -2253,7 +2253,7 @@ private void Log(string message)
     {
         if (Phase == SafeDestructivePhase.Backup || Phase == SafeDestructivePhase.Test || Phase == SafeDestructivePhase.Restore || Phase == SafeDestructivePhase.Partition)
         {
-            _ = _dialogService.ShowErrorAsync("Operace běží", "Nelze opustit během běžící operace. Nejprve operaci přerušte.");
+            _ = _dialogService.ShowErrorAsync(L.Get("Common.OperationRunning"), L.Get("Common.CannotLeaveDuringOperation"));
             return;
         }
         _navigationService.NavigateTo<AbsoluteDestructiveTestViewModel>();

@@ -1042,12 +1042,12 @@ public partial class BackupViewModel : ViewModelBase, INavigableViewModel, IDisp
         if (Phase != BackupPhase.Ready || !HasEnoughSpace) return;
 
         var confirmed = await _dialogService.ShowConfirmationAsync(
-            "💾 Spustit zálohování",
-            $"Záloha bude provedena na vybrané cílové disky.\n\n" +
-            $"Zdroj: {SourceDrive?.Name} ({SourceDrive?.Path})\n" +
-            $"Režim: {(SelectedMode == BackupMode.RawImage ? "Raw obraz" : SelectedMode == BackupMode.VhdxImage ? "VHDx obraz" : "File-level")}\n" +
-            $"Data: {TotalRequiredText}\n\n" +
-            $"OPRAVDU SPUSTIT ZÁLOHU?");
+            L.Get("Backup.ConfirmTitle"),
+            string.Format(L.Get("Backup.ConfirmMessage"),
+                SourceDrive?.Name ?? "?", SourceDrive?.Path ?? "?",
+                SelectedMode == BackupMode.RawImage ? L.Get("Backup.Mode.Raw") : SelectedMode == BackupMode.VhdxImage ? L.Get("Backup.Mode.Vhdx") : L.Get("Backup.Mode.FileLevel"),
+                TotalRequiredText));
+
 
         if (!confirmed) return;
 
@@ -1795,7 +1795,7 @@ private static long RoundUp(long value, long alignment) => ((value + alignment -
     {
         if (Phase == BackupPhase.Running)
         {
-            _ = _dialogService.ShowErrorAsync("Záloha běží", "Nelze opustit během zálohování. Nejprve zálohu přerušte.");
+            _ = _dialogService.ShowErrorAsync(L.Get("Common.BackupRunning"), L.Get("Common.CannotLeaveDuringBackup"));
             return;
         }
         _navigationService.NavigateTo<SmartCheckViewModel>();
@@ -1806,7 +1806,7 @@ private static long RoundUp(long value, long alignment) => ((value + alignment -
     {
         if (string.IsNullOrWhiteSpace(_lastBackupManifestPath) || !File.Exists(_lastBackupManifestPath))
         {
-            await _dialogService.ShowErrorAsync("RAW záloha nenalezena", "Nejdříve vytvořte RAW zálohu.");
+            await _dialogService.ShowErrorAsync(L.Get("Common.RawBackupNotFound"), L.Get("Common.RawBackupNotFoundMsg"));
             return;
         }
 
@@ -1819,7 +1819,7 @@ private static long RoundUp(long value, long alignment) => ((value + alignment -
         }
         catch (Exception ex)
         {
-            await _dialogService.ShowErrorAsync("Převod RAW → VHDx selhal", ex.Message);
+            await _dialogService.ShowErrorAsync(L.Get("Common.RawToVhdxFailed"), ex.Message);
             _backupLog.Add($"[{DateTime.Now:HH:mm:ss}] Převod RAW → VHDx selhal: {ex.Message}");
             BackupLogText = string.Join("\n", _backupLog);
         }
@@ -1921,7 +1921,7 @@ private static long RoundUp(long value, long alignment) => ((value + alignment -
     {
         if (Phase == BackupPhase.Running)
         {
-            _ = _dialogService.ShowErrorAsync("Záloha běží", "Nelze opustit během zálohování. Nejprve zálohu přerušte.");
+            _ = _dialogService.ShowErrorAsync(L.Get("Common.BackupRunning"), L.Get("Common.CannotLeaveDuringBackup"));
             return;
         }
         _navigationService.NavigateTo<RestoreViewModel>();

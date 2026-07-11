@@ -31,7 +31,7 @@ public partial class DiskCardsViewModel : ViewModelBase, INavigableViewModel
     private bool _showLockedOnly;
     private bool _showArchivedOnly;
     private bool _isLoading;
-    private string _statusMessage = "Načítám karty disků...";
+    private string _statusMessage = L.Get("DiskCards.Status.Loading");
     private bool _isOpeningDetails;
 
     public DiskCardsViewModel(
@@ -286,7 +286,7 @@ public partial class DiskCardsViewModel : ViewModelBase, INavigableViewModel
             var activeCount = DiskCards.Count(c => !c.IsArchived);
             var archivedCount = DiskCards.Count(c => c.IsArchived);
             StatusMessage = merged > 0
-                ? L.Get("DiskCards.Status.Total", DiskCards.Count.ToString(), activeCount.ToString(), archivedCount.ToString()) + $" (sloučeno duplicit: {merged})"
+                ? L.Get("DiskCards.Status.Merged", DiskCards.Count.ToString(), activeCount.ToString(), archivedCount.ToString(), merged.ToString())
                 : L.Get("DiskCards.Status.Total", DiskCards.Count.ToString(), activeCount.ToString(), archivedCount.ToString());
             OnPropertyChanged(nameof(CardCount));
             OnPropertyChanged(nameof(FilteredCount));
@@ -350,24 +350,23 @@ public partial class DiskCardsViewModel : ViewModelBase, INavigableViewModel
         if (card == null) return;
 
         var confirmed = await _dialogService.ShowConfirmationAsync(
-            "Archivovat disk",
-            $"Opravdu chcete archivovat disk:\n\n{card.ModelName}\nS/N: {card.SerialNumber}\n\n" +
-            "Archivovaný disk bude přesunut do archivu a nebude se zobrazovat mezi aktivními disky.");
+            L.Get("DiskCards.Archive.Title"),
+            L.Get("DiskCards.Archive.ConfirmMessage", card.ModelName, card.SerialNumber));
 
         if (!confirmed) return;
 
         var reason = await _dialogService.ShowInputDialogAsync(
-            "Důvod archivace",
-            "Zadejte důvod archivace:",
-            "Vyřazen z provozu");
+            L.Get("DiskCards.Archive.ReasonTitle"),
+            L.Get("DiskCards.Archive.ReasonPrompt"),
+            L.Get("DiskCards.Archive.DefaultReason"));
 
         var archiveReason = reason switch
         {
-            "Vyřazen z provozu" => ArchiveReason.Failed,
-            "Prodán" => ArchiveReason.Sold,
-            "Darován" => ArchiveReason.Donated,
-            "Recyklace" => ArchiveReason.Recycled,
-            "Nahrazen" => ArchiveReason.Replaced,
+            _ when reason == L.Get("DiskCards.Archive.Reason.Failed") => ArchiveReason.Failed,
+            _ when reason == L.Get("DiskCards.Archive.Reason.Sold") => ArchiveReason.Sold,
+            _ when reason == L.Get("DiskCards.Archive.Reason.Donated") => ArchiveReason.Donated,
+            _ when reason == L.Get("DiskCards.Archive.Reason.Recycled") => ArchiveReason.Recycled,
+            _ when reason == L.Get("DiskCards.Archive.Reason.Replaced") => ArchiveReason.Replaced,
             _ => ArchiveReason.Other
         };
 
@@ -379,7 +378,7 @@ public partial class DiskCardsViewModel : ViewModelBase, INavigableViewModel
         }
         catch (Exception ex)
         {
-            await _dialogService.ShowErrorAsync("Chyba", $"Nepodařilo se archivovat disk: {ex.Message}");
+            await _dialogService.ShowErrorAsync(L.Get("Common.Error"), L.Get("DiskCards.Error.ArchiveFailed", ex.Message));
         }
     }
 
@@ -389,8 +388,8 @@ public partial class DiskCardsViewModel : ViewModelBase, INavigableViewModel
         if (card == null) return;
 
         var confirmed = await _dialogService.ShowConfirmationAsync(
-            "Obnovit disk",
-            $"Opravdu chcete obnovit disk z archivu?\n\n{card.ModelName}\nS/N: {card.SerialNumber}");
+            L.Get("DiskCards.Restore.Title"),
+            L.Get("DiskCards.Restore.ConfirmMessage", card.ModelName, card.SerialNumber));
 
         if (!confirmed) return;
 
@@ -402,7 +401,7 @@ public partial class DiskCardsViewModel : ViewModelBase, INavigableViewModel
         }
         catch (Exception ex)
         {
-            await _dialogService.ShowErrorAsync("Chyba", $"Nepodařilo se obnovit disk: {ex.Message}");
+            await _dialogService.ShowErrorAsync(L.Get("Common.Error"), L.Get("DiskCards.Error.RestoreFailed", ex.Message));
         }
     }
 
@@ -412,10 +411,8 @@ public partial class DiskCardsViewModel : ViewModelBase, INavigableViewModel
         if (card == null) return;
 
         var confirmed = await _dialogService.ShowConfirmationAsync(
-            "⚠️ Smazat kartu",
-            $"Opravdu chcete PERMANENTNĚ smazat kartu disku?\n\n{card.ModelName}\nS/N: {card.SerialNumber}\n\n" +
-            "Tato akce je NEVRATNÁ a smaže veškerou historii testů!\n\n" +
-            "Zadejte 'SMAZAT' pro potvrzení:");
+            L.Get("DiskCards.Delete.Title"),
+            L.Get("DiskCards.Delete.ConfirmMessage", card.ModelName, card.SerialNumber));
 
         if (confirmed)
         {
@@ -427,7 +424,7 @@ public partial class DiskCardsViewModel : ViewModelBase, INavigableViewModel
             }
             catch (Exception ex)
             {
-                await _dialogService.ShowErrorAsync("Chyba", $"Nepodařilo se smazat kartu: {ex.Message}");
+                await _dialogService.ShowErrorAsync(L.Get("Common.Error"), L.Get("DiskCards.Error.DeleteFailed", ex.Message));
             }
         }
     }

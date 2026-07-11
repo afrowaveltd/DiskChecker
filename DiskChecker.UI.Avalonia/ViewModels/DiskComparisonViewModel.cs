@@ -135,7 +135,7 @@ public partial class DiskComparisonViewModel : ViewModelBase, INavigableViewMode
         catch (Exception ex)
         {
             StatusMessage = $"Chyba: {ex.Message}";
-            await _dialogService.ShowErrorAsync("Chyba", $"Nepodařilo se načíst disky: {ex.Message}");
+            await _dialogService.ShowErrorAsync(L.Get("Common.Error"), $"Nepodařilo se načíst disky: {ex.Message}");
         }
         finally
         {
@@ -199,7 +199,7 @@ public partial class DiskComparisonViewModel : ViewModelBase, INavigableViewMode
         catch (Exception ex)
         {
             StatusMessage = $"Chyba: {ex.Message}";
-            await _dialogService.ShowErrorAsync("Chyba", $"Nepodařilo se porovnat disky: {ex.Message}");
+            await _dialogService.ShowErrorAsync(L.Get("Common.Error"), $"Nepodařilo se porovnat disky: {ex.Message}");
         }
         finally
         {
@@ -271,7 +271,7 @@ public partial class DiskComparisonViewModel : ViewModelBase, INavigableViewMode
                          $"Doporučení: {comparison.RecommendedDisk}\n\n" +
                          $"{comparison.Summary}";
 
-            await _dialogService.ShowMessageAsync("Porovnání výkonu", message);
+            await _dialogService.ShowMessageAsync(L.Get("Common.Comparison"), message);
         }
         catch (Exception ex)
         {

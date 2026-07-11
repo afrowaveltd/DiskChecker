@@ -663,7 +663,7 @@ public partial class DiskSelectionViewModel : ViewModelBase, INavigableViewModel
         var diskCard = await FindDiskCardAsync(card.Drive);
         if (diskCard == null)
         {
-            await _dialogService.ShowInfoAsync("Žádná historie", "Tento disk ještě nemá uloženou kartu.");
+            await _dialogService.ShowInfoAsync(L.Get("Common.NoHistory"), L.Get("Common.DiskNoCard"));
             return;
         }
 
@@ -673,7 +673,7 @@ public partial class DiskSelectionViewModel : ViewModelBase, INavigableViewModel
 
         if (sessions.Count == 0)
         {
-            await _dialogService.ShowInfoAsync("Žádná historie", "Tento disk ještě nebyl testován.");
+            await _dialogService.ShowInfoAsync(L.Get("Common.NoHistory"), L.Get("Common.DiskNotTested"));
             return;
         }
 
@@ -722,7 +722,7 @@ public partial class DiskSelectionViewModel : ViewModelBase, INavigableViewModel
             $"{Environment.NewLine}Poslední 3 testy:{Environment.NewLine}{timeline}{Environment.NewLine}{Environment.NewLine}" +
             "Chcete otevřít kompletní kartu disku?";
 
-        var viewCard = await _dialogService.ShowConfirmationAsync($"Historie testu - {card.DisplayName}", message);
+        var viewCard = await _dialogService.ShowConfirmationAsync(string.Format(L.Get("DiskSelection.HistoryTitle"), card.DisplayName), message);
 
         if (viewCard)
         {

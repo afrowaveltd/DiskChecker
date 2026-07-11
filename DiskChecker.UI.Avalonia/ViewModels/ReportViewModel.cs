@@ -190,8 +190,8 @@ namespace DiskChecker.UI.Avalonia.ViewModels
             try
             {
                 var confirmation = await _dialogService.ShowConfirmationAsync(
-                    "Potvrzení", 
-                    $"Opravdu chcete smazat test \"{SelectedReport.Title}\" z {SelectedReport.TestDate:dd.MM.yyyy HH:mm}?");
+                    L.Get("Common.Confirmation"), 
+                    string.Format(L.Get("Report.DeleteConfirmMessage"), SelectedReport.Title, SelectedReport.TestDate.ToString("dd.MM.yyyy HH:mm")));
                 
                 if (confirmation)
                 {
@@ -205,7 +205,7 @@ namespace DiskChecker.UI.Avalonia.ViewModels
             catch (Exception ex)
             {
                 StatusMessage = $"Chyba při mazání testu: {ex.Message}";
-                await _dialogService.ShowErrorAsync("Chyba", $"Nepodařilo se smazat test: {ex.Message}");
+                await _dialogService.ShowErrorAsync(L.Get("Common.Error"), string.Format(L.Get("Common.DeleteFailed"), ex.Message));
             }
         }
 
@@ -229,15 +229,15 @@ namespace DiskChecker.UI.Avalonia.ViewModels
 
                 if (!result.IsSuccess)
                 {
-                    await _dialogService.ShowErrorAsync("Chyba", $"Nepodařilo se exportovat certifikát: {result.ErrorMessage}");
+                    await _dialogService.ShowErrorAsync(L.Get("Common.Error"), string.Format(L.Get("Common.CertExportFailed"), result.ErrorMessage));
                     return;
                 }
 
                 StatusMessage = $"Certifikát uložen: {result.Certificate!.CertificateNumber}";
 
                 var openPdf = await _dialogService.ShowConfirmationAsync(
-                    "Certifikát vytvořen",
-                    $"Certifikát byl uložen do PDF:\n{result.PdfPath}\n\nOtevřít soubor?");
+                    L.Get("Report.CertificateCreated"),
+                    string.Format(L.Get("Report.CertificatePdfSaved"), result.PdfPath));
 
                 if (openPdf)
                 {
@@ -247,7 +247,7 @@ namespace DiskChecker.UI.Avalonia.ViewModels
             catch (InvalidOperationException ex)
             {
                 StatusMessage = $"Chyba při exportu certifikátu: {ex.Message}";
-                await _dialogService.ShowErrorAsync("Chyba", $"Nepodařilo se exportovat certifikát: {ex.Message}");
+                await _dialogService.ShowErrorAsync(L.Get("Common.Error"), string.Format(L.Get("Common.CertExportFailed"), ex.Message));
             }
             finally
             {
@@ -277,7 +277,7 @@ namespace DiskChecker.UI.Avalonia.ViewModels
                 var card = await _diskCardRepository.GetByIdAsync(SelectedReport.DiskCardId);
                 if (card == null)
                 {
-                    await _dialogService.ShowErrorAsync("Chyba", "Karta disku pro vybraný report nebyla nalezena.");
+                    await _dialogService.ShowErrorAsync(L.Get("Common.Error"), L.Get("Common.CardNotFound"));
                     return;
                 }
 
@@ -285,7 +285,7 @@ namespace DiskChecker.UI.Avalonia.ViewModels
                 var session = await _diskCardRepository.GetTestSessionWithoutSamplesAsync(SelectedReport.Id);
                 if (session == null)
                 {
-                    await _dialogService.ShowErrorAsync("Chyba", "Testová session pro vybraný report nebyla nalezena.");
+                    await _dialogService.ShowErrorAsync(L.Get("Common.Error"), L.Get("Common.CardNotFound"));
                     return;
                 }
 
@@ -480,9 +480,9 @@ namespace DiskChecker.UI.Avalonia.ViewModels
                 ViewGeneratedReportCommand.NotifyCanExecuteChanged();
 
                 var openFile = await _dialogService.ShowConfirmationAsync(
-                    "Plný report připraven",
-                    (reducedMode ? "Report byl vytvořen v omezeném režimu kvůli nedostatku místa.\n\n" : string.Empty) +
-                    $"Report byl uložen do:\n{filePath}\n\n" +
+                    L.Get("Report.FullReportReady"),
+                    (reducedMode ? L.Get("Report.ReducedModeWarning") + "\n\n" : string.Empty) +
+                    string.Format(L.Get("Report.SavedTo"), filePath) + "\n\n" +
                     (graphImagePath != null ? $"Graf (PNG):\n{graphImagePath}\n\n" : string.Empty) +
                     "Otevřít report v aplikaci?");
 
@@ -494,7 +494,7 @@ namespace DiskChecker.UI.Avalonia.ViewModels
             catch (Exception ex)
             {
                 StatusMessage = $"Chyba při generování plného reportu: {ex.Message}";
-                await _dialogService.ShowErrorAsync("Chyba", $"Nepodařilo se vygenerovat plný report: {ex.Message}");
+                await _dialogService.ShowErrorAsync(L.Get("Common.Error"), string.Format(L.Get("Common.SaveFailed"), ex.Message));
             }
             finally
             {
@@ -506,7 +506,7 @@ namespace DiskChecker.UI.Avalonia.ViewModels
         {
             if (!_reportDocumentState.HasReport)
             {
-                await _dialogService.ShowWarningAsync("Report", "Nejdříve vygenerujte plný report.");
+                await _dialogService.ShowWarningAsync(L.Get("Common.Report"), L.Get("Common.ReportNotGenerated"));
                 return;
             }
 
@@ -554,7 +554,7 @@ namespace DiskChecker.UI.Avalonia.ViewModels
             catch (Exception ex)
             {
                 StatusMessage = $"Chyba při načítání testů: {ex.Message}";
-                await _dialogService.ShowErrorAsync("Chyba", $"Nepodařilo se načíst testy: {ex.Message}");
+                await _dialogService.ShowErrorAsync(L.Get("Common.Error"), string.Format(L.Get("Common.LoadFailed"), ex.Message));
                 Reports = new ObservableCollection<TestReportItem>();
             }
             finally

@@ -536,7 +536,7 @@ public partial class AnalysisViewModel : ViewModelBase
         catch (Exception ex)
         {
             StatusMessage = $"Chyba načítání analýzy: {ex.Message}";
-            await _dialogService.ShowErrorAsync("Analýza", StatusMessage);
+            await _dialogService.ShowErrorAsync(L.Get("Common.Error"), StatusMessage);
         }
         finally
         {
@@ -559,7 +559,7 @@ public partial class AnalysisViewModel : ViewModelBase
         catch (Exception ex)
         {
             StatusMessage = $"Chyba detailu analýzy: {ex.Message}";
-            await _dialogService.ShowErrorAsync("Analýza", StatusMessage);
+            await _dialogService.ShowErrorAsync(L.Get("Common.Error"), StatusMessage);
         }
         finally
         {

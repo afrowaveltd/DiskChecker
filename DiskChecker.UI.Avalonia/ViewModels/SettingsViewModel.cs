@@ -1,4 +1,4 @@
-using CommunityToolkit.Mvvm.ComponentModel;
+﻿using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using DiskChecker.UI.Avalonia.Services.Interfaces;
 using DiskChecker.UI.Avalonia.Services;
@@ -247,7 +247,7 @@ namespace DiskChecker.UI.Avalonia.ViewModels
             catch (InvalidOperationException ex)
             {
                 StatusMessage = $"Chyba při načítání nastavení: {ex.Message}";
-                await _dialogService.ShowErrorAsync("Chyba", $"Nepodařilo se načíst nastavení: {ex.Message}");
+                await _dialogService.ShowErrorAsync(L.Get("Common.Error"), string.Format(L.Get("Common.SettingsLoadFailed"), ex.Message));
             }
         }
 
@@ -286,7 +286,7 @@ namespace DiskChecker.UI.Avalonia.ViewModels
             catch (InvalidOperationException ex)
             {
                 StatusMessage = $"Chyba při ukládání nastavení: {ex.Message}";
-                await _dialogService.ShowErrorAsync("Chyba", $"Nepodařilo se uložit nastavení: {ex.Message}");
+                await _dialogService.ShowErrorAsync(L.Get("Common.Error"), string.Format(L.Get("Common.SettingsSaveFailed"), ex.Message));
             }
             finally
             {
@@ -299,8 +299,8 @@ namespace DiskChecker.UI.Avalonia.ViewModels
             try
             {
                 var confirmation = await _dialogService.ShowConfirmationAsync(
-                    "Potvrzení", 
-                    "Opravdu chcete resetovat všechna nastavení na výchozí hodnoty?");
+                    L.Get("Common.Confirmation"), 
+                    L.Get("Settings.ResetConfirmMessage"));
                 
                 if (confirmation)
                 {
@@ -318,7 +318,7 @@ namespace DiskChecker.UI.Avalonia.ViewModels
             catch (Exception ex)
             {
                 StatusMessage = $"Chyba při resetování nastavení: {ex.Message}";
-                await _dialogService.ShowErrorAsync("Chyba", $"Nepodařilo se resetovat nastavení: {ex.Message}");
+                await _dialogService.ShowErrorAsync(L.Get("Common.Error"), $"Nepodařilo se resetovat nastavení: {ex.Message}");
             }
         }
 
@@ -336,7 +336,7 @@ namespace DiskChecker.UI.Avalonia.ViewModels
             catch (Exception ex)
             {
                 StatusMessage = $"Chyba při výběru složky: {ex.Message}";
-                await _dialogService.ShowErrorAsync("Chyba", $"Nepodařilo se vybrat složku: {ex.Message}");
+                await _dialogService.ShowErrorAsync(L.Get("Common.Error"), $"Nepodařilo se vybrat složku: {ex.Message}");
             }
         }
 
@@ -367,7 +367,7 @@ namespace DiskChecker.UI.Avalonia.ViewModels
             catch(Exception ex)
             {
                 StatusMessage = $"Test DB selhal: {ex.Message}";
-                await _dialogService.ShowErrorAsync("Databáze", StatusMessage);
+                await _dialogService.ShowErrorAsync(L.Get("Common.Database"), StatusMessage);
             }
             finally
             {
@@ -385,7 +385,7 @@ namespace DiskChecker.UI.Avalonia.ViewModels
                 var backupPath = await _backupService.CreateBackupAsync(string.Empty);
                 
                 StatusMessage = $"Záloha vytvořena: {Path.GetFileName(backupPath)}";
-                await _dialogService.ShowMessageAsync("Záloha vytvořena", 
+                await _dialogService.ShowMessageAsync(L.Get("Common.BackupCreated"), 
                     $"Záloha byla úspěšně vytvořena.\n\nUmístění: {backupPath}");
                 
                 await RefreshBackupsAsync();
@@ -393,7 +393,7 @@ namespace DiskChecker.UI.Avalonia.ViewModels
             catch (Exception ex)
             {
                 StatusMessage = $"Chyba při vytváření zálohy: {ex.Message}";
-                await _dialogService.ShowErrorAsync("Chyba", $"Nepodařilo se vytvořit zálohu: {ex.Message}");
+                await _dialogService.ShowErrorAsync(L.Get("Common.Error"), $"Nepodařilo se vytvořit zálohu: {ex.Message}");
             }
             finally
             {
@@ -408,8 +408,8 @@ namespace DiskChecker.UI.Avalonia.ViewModels
             try
             {
                 var confirmation = await _dialogService.ShowConfirmationAsync(
-                    "Obnovení ze zálohy",
-                    $"Opravdu chcete obnovit data ze zálohy?\n\n" +
+                    L.Get("Settings.RestoreFromBackup"),
+                    string.Format(L.Get("Settings.RestoreConfirmMessage"), SelectedBackup.FileName, SelectedBackup.CreatedAt.ToString("dd.MM.yyyy HH:mm")));
                     $"Záloha: {SelectedBackup.FileName}\n" +
                     $"Datum: {SelectedBackup.CreatedAt:dd.MM.yyyy HH:mm}\n\n" +
                     $"VAROVÁNÍ: Aktuální data budou přepsána!");
@@ -422,14 +422,14 @@ namespace DiskChecker.UI.Avalonia.ViewModels
                     await _backupService.RestoreBackupAsync(SelectedBackup.FilePath);
                     
                     StatusMessage = "Data byla úspěšně obnovena";
-                    await _dialogService.ShowMessageAsync("Obnovení dokončeno", 
+                    await _dialogService.ShowMessageAsync(L.Get("Common.RestoreCompleted"), 
                         "Data byla úspěšně obnovena ze zálohy.\n\nRestartujte aplikaci pro načtení obnovených dat.");
                 }
             }
             catch (Exception ex)
             {
                 StatusMessage = $"Chyba při obnovování zálohy: {ex.Message}";
-                await _dialogService.ShowErrorAsync("Chyba", $"Nepodařilo se obnovit zálohu: {ex.Message}");
+                await _dialogService.ShowErrorAsync(L.Get("Common.Error"), $"Nepodařilo se obnovit zálohu: {ex.Message}");
             }
             finally
             {

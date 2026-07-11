@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.ObjectModel;
 using System.Linq;
 using System.Text.Json;
@@ -605,10 +605,10 @@ public partial class SeekTestViewModel : ViewModelBase, INavigableViewModel, IDi
         if (IsForcedFragileDiskOverride)
         {
             var confirmed = await _dialogService.ShowConfirmationAsync(
-                "Vynucený seek test na selhávajícím disku",
-                "SMART/rekomendační modul označil disk jako příliš opotřebený nebo selhávající a výchozí doporučený počet seeků je 0.\n\n" +
-                $"Požadujete vynucené spuštění {SelectedSeekCount} seeků proti doporučení. Test může disk dále zatížit nebo urychlit selhání.\n\n" +
-                "Pokračovat pouze z diagnostických důvodů?");
+                L.Get("SeekTest.ForcedTestTitle"),
+                string.Format(L.Get("SeekTest.ForcedTestMessage"), SelectedSeekCount) +
+
+
             if (!confirmed) return;
         }
 
@@ -616,9 +616,9 @@ public partial class SeekTestViewModel : ViewModelBase, INavigableViewModel, IDi
         if (!IsForcedFragileDiskOverride && SelectedSeekCount > MaxSafeSeekCount)
         {
             var confirmed = await _dialogService.ShowConfirmationAsync(
-                "Překročení bezpečného limitu",
-                $"Požadovaný počet seeků ({SelectedSeekCount}) překračuje bezpečný limit ({MaxSafeSeekCount}) " +
-                $"doporučený na základě SMART dat.\n\nChcete přesto pokračovat?");
+                L.Get("SeekTest.LimitExceededTitle"),
+                string.Format(L.Get("SeekTest.LimitExceededMessage"), SelectedSeekCount, MaxSafeSeekCount) +
+
             if (!confirmed) return;
         }
 

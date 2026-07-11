@@ -21,7 +21,7 @@ public sealed class FullReportViewerViewModel : ViewModelBase, INavigableViewMod
     private readonly IDialogService _dialogService;
     private readonly ReportDocumentState _reportDocumentState;
 
-    private string _statusMessage = "Připraven";
+    private string _statusMessage = L.Get("Common.Ready");
     private string _reportPath = string.Empty;
     private string _reportContent = string.Empty;
     private bool _isLoading;
@@ -118,29 +118,29 @@ public sealed class FullReportViewerViewModel : ViewModelBase, INavigableViewMod
         try
         {
             IsLoading = true;
-            StatusMessage = "Načítám report...";
+            StatusMessage = L.Get("FullReportViewer.Loading");
 
             if (!_reportDocumentState.HasReport || string.IsNullOrWhiteSpace(_reportDocumentState.LastReportPath))
             {
                 ReportPath = string.Empty;
                 ReportContent = "";
-                StatusMessage = "Nebyl nalezen žádný report pro zobrazení.";
+                StatusMessage = L.Get("FullReportViewer.NoReportFound");
                 return;
             }
 
             ReportPath = _reportDocumentState.LastReportPath;
             ReportContent = await File.ReadAllTextAsync(ReportPath);
-            StatusMessage = $"Report načten: {Path.GetFileName(ReportPath)}";
+            StatusMessage = string.Format(L.Get("FullReportViewer.ReportLoaded"), Path.GetFileName(ReportPath));
         }
         catch (IOException ex)
         {
-            StatusMessage = $"Chyba při načítání reportu: {ex.Message}";
-            await _dialogService.ShowErrorAsync("Chyba", $"Nepodařilo se načíst report: {ex.Message}");
+            StatusMessage = string.Format(L.Get("FullReportViewer.LoadError"), ex.Message);
+            await _dialogService.ShowErrorAsync(L.Get("Common.Error"), string.Format(L.Get("Common.OpenFailed"), ex.Message));
         }
         catch (UnauthorizedAccessException ex)
         {
-            StatusMessage = $"Chyba při načítání reportu: {ex.Message}";
-            await _dialogService.ShowErrorAsync("Chyba", $"Nepodařilo se načíst report: {ex.Message}");
+            StatusMessage = string.Format(L.Get("FullReportViewer.LoadError"), ex.Message);
+            await _dialogService.ShowErrorAsync(L.Get("Common.Error"), string.Format(L.Get("Common.OpenFailed"), ex.Message));
         }
         finally
         {
@@ -152,7 +152,7 @@ public sealed class FullReportViewerViewModel : ViewModelBase, INavigableViewMod
     {
         if (string.IsNullOrWhiteSpace(ReportPath) || !File.Exists(ReportPath))
         {
-            await _dialogService.ShowWarningAsync("Tisk", "Report není dostupný pro tisk.");
+            await _dialogService.ShowWarningAsync(L.Get("Common.Print"), L.Get("Common.PrintNotAvailable"));
             return;
         }
 
@@ -166,25 +166,25 @@ public sealed class FullReportViewerViewModel : ViewModelBase, INavigableViewMod
                 UseShellExecute = true
             });
 
-            StatusMessage = "Report byl otevřen pro tisk v externí aplikaci";
+            StatusMessage = L.Get("FullReportViewer.PrintOpened");
             await _dialogService.ShowInfoAsync(
-                "Tisk",
-                "Report byl otevřen ve výchozí aplikaci. Pro bezpečný tisk použijte tisk přímo v otevřeném okně (Ctrl+P). Automatický shell tisk byl vypnut kvůli přetížení systému.");
+                L.Get("Common.Print"),
+                L.Get("FullReportViewer.PrintMessage"));
         }
         catch (InvalidOperationException ex)
         {
-            StatusMessage = $"Chyba tisku: {ex.Message}";
-            await _dialogService.ShowErrorAsync("Chyba", $"Nepodařilo se otevřít report pro tisk: {ex.Message}");
+            StatusMessage = string.Format(L.Get("FullReportViewer.PrintError"), ex.Message);
+            await _dialogService.ShowErrorAsync(L.Get("Common.Error"), string.Format(L.Get("Common.OpenFailed"), ex.Message));
         }
         catch (Win32Exception ex)
         {
-            StatusMessage = $"Chyba tisku: {ex.Message}";
-            await _dialogService.ShowErrorAsync("Chyba", $"Nepodařilo se otevřít report pro tisk: {ex.Message}");
+            StatusMessage = string.Format(L.Get("FullReportViewer.PrintError"), ex.Message);
+            await _dialogService.ShowErrorAsync(L.Get("Common.Error"), string.Format(L.Get("Common.OpenFailed"), ex.Message));
         }
         catch (IOException ex)
         {
-            StatusMessage = $"Chyba tisku: {ex.Message}";
-            await _dialogService.ShowErrorAsync("Chyba", $"Nepodařilo se otevřít report pro tisk: {ex.Message}");
+            StatusMessage = string.Format(L.Get("FullReportViewer.PrintError"), ex.Message);
+            await _dialogService.ShowErrorAsync(L.Get("Common.Error"), string.Format(L.Get("Common.OpenFailed"), ex.Message));
         }
     }
 
@@ -192,7 +192,7 @@ public sealed class FullReportViewerViewModel : ViewModelBase, INavigableViewMod
     {
         if (string.IsNullOrWhiteSpace(ReportPath) || !File.Exists(ReportPath))
         {
-            await _dialogService.ShowWarningAsync("Report", "Report není dostupný.");
+            await _dialogService.ShowWarningAsync(L.Get("Common.Report"), L.Get("Common.ReportNotAvailable"));
             return;
         }
 
@@ -204,17 +204,17 @@ public sealed class FullReportViewerViewModel : ViewModelBase, INavigableViewMod
                 UseShellExecute = true
             });
 
-            StatusMessage = "Report otevřen externě";
+            StatusMessage = L.Get("FullReportViewer.ExternallyOpened");
         }
         catch (InvalidOperationException ex)
         {
-            StatusMessage = $"Chyba při otevírání reportu: {ex.Message}";
-            await _dialogService.ShowErrorAsync("Chyba", $"Nepodařilo se otevřít report: {ex.Message}");
+            StatusMessage = string.Format(L.Get("FullReportViewer.OpenError"), ex.Message);
+            await _dialogService.ShowErrorAsync(L.Get("Common.Error"), string.Format(L.Get("Common.OpenFailed"), ex.Message));
         }
         catch (Win32Exception ex)
         {
-            StatusMessage = $"Chyba při otevírání reportu: {ex.Message}";
-            await _dialogService.ShowErrorAsync("Chyba", $"Nepodařilo se otevřít report: {ex.Message}");
+            StatusMessage = string.Format(L.Get("FullReportViewer.OpenError"), ex.Message);
+            await _dialogService.ShowErrorAsync(L.Get("Common.Error"), string.Format(L.Get("Common.OpenFailed"), ex.Message));
         }
     }
 

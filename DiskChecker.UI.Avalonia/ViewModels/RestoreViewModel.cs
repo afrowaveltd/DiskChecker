@@ -368,7 +368,7 @@ public partial class RestoreViewModel : ViewModelBase, INavigableViewModel, IDis
         var targetDisk = TargetDisks.FirstOrDefault(t => t.IsSelected);
         if (targetDisk == null)
         {
-            await _dialogService.ShowErrorAsync("Chyba", "Není vybrán cílový disk pro obnovu.");
+            await _dialogService.ShowErrorAsync(L.Get("Common.Error"), L.Get("Common.TargetDiskNotSelected"));
             return;
         }
 
@@ -382,7 +382,7 @@ public partial class RestoreViewModel : ViewModelBase, INavigableViewModel, IDis
             var maxSafeDeficit = 1024L * 1024 * 1024; // intended for tiny vendor-size differences / tail recovery partition cases
             if (deficit <= maxSafeDeficit)
             {
-                var allow = await _dialogService.ShowConfirmationAsync("Cílový disk je mírně menší",
+                var allow = await _dialogService.ShowConfirmationAsync(L.Get("Common.TargetDiskSlightlySmaller"),
                     $"Cílový disk je menší o {FormatBytesLong(deficit)}.\n\n" +
                     "Mohu provést ZKRÁCENOU obnovu jen do konce cílového disku. Používejte pouze pokud rozdíl odpovídá koncové recovery/OEM partition nebo nevyužitému konci disku. " +
                     "GPT záložní hlavičku může být nutné opravit nástroji Windows/Linux po obnově.\n\nPokračovat?");
@@ -392,7 +392,7 @@ public partial class RestoreViewModel : ViewModelBase, INavigableViewModel, IDis
             }
             else
             {
-                await _dialogService.ShowErrorAsync("Cílový disk je malý",
+                await _dialogService.ShowErrorAsync(L.Get("Common.TargetDiskSmall"),
                     $"Cílový disk má {targetDisk.TotalSizeText}, ale záloha obsahuje {SelectedBackup.TotalBytesText}. Vyberte dostatečně velký disk.");
                 return;
             }
@@ -402,7 +402,7 @@ public partial class RestoreViewModel : ViewModelBase, INavigableViewModel, IDis
         if (targetDisk.IsSourceDisk)
         {
             var confirmed = await _dialogService.ShowConfirmationAsync(
-                "⚠️ VAROVÁNÍ – Původní disk",
+                L.Get("Restore.WarningOriginalDisk"),
                 $"Vybraný cílový disk je PŮVODNÍ disk, ze kterého byla záloha vytvořena!\n\n" +
                 $"Obnova na tento disk PŘEPÍŠE všechna data na něm.\n\n" +
                 $"OPRAVDU chcete pokračovat?");
@@ -411,7 +411,7 @@ public partial class RestoreViewModel : ViewModelBase, INavigableViewModel, IDis
 
         // General confirmation
         var generalConfirm = await _dialogService.ShowConfirmationAsync(
-            "💾 Spustit obnovu",
+            L.Get("Restore.ConfirmTitle"),
             $"Obnova bude provedena na disk: {targetDisk.DisplayName}\n\n" +
             $"Zdrojová záloha: {SelectedBackup.SourceModel}\n" +
             $"Datum zálohy: {SelectedBackup.BackupDate}\n" +
@@ -426,7 +426,7 @@ public partial class RestoreViewModel : ViewModelBase, INavigableViewModel, IDis
         _totalBytesRestored = 0;
         _restoreLog.Clear();
         Phase = RestorePhase.Running;
-        StatusMessage = "Obnova běží...";
+        StatusMessage = L.Get("Common.RestoreRunning");
 
         try
         {
@@ -1013,7 +1013,7 @@ public partial class RestoreViewModel : ViewModelBase, INavigableViewModel, IDis
     {
         if (Phase == RestorePhase.Running || Phase == RestorePhase.Verifying)
         {
-            _ = _dialogService.ShowErrorAsync("Obnova běží", "Nelze opustit během obnovy. Nejprve obnovu přerušte.");
+            _ = _dialogService.ShowErrorAsync(L.Get("Common.RestoreRunning"), L.Get("Common.CannotLeaveDuringRestore"));
             return;
         }
         _navigationService.NavigateTo<BackupViewModel>();
@@ -1039,3 +1039,5 @@ public partial class RestoreViewModel : ViewModelBase, INavigableViewModel, IDis
         GC.SuppressFinalize(this);
     }
 }
+
+

@@ -19,11 +19,13 @@ public partial class MessageBoxWindow : Window
 public partial class MessageBoxViewModel : ObservableObject
 {
     private readonly Window _window;
+    private readonly LocaleService _locale;
     private MessageBoxResult _result = MessageBoxResult.Cancel;
 
-    public MessageBoxViewModel(Window window, string title, string message, DialogType dialogType)
+    public MessageBoxViewModel(Window window, string title, string message, DialogType dialogType, LocaleService locale)
     {
         _window = window;
+        _locale = locale;
         MessageTitle = title;
         Message = message;
         DialogType = dialogType;
@@ -80,16 +82,16 @@ public partial class MessageBoxViewModel : ObservableObject
     public bool ShowNoButton => DialogType is DialogType.Question or DialogType.Danger;
     public bool ShowCancel => DialogType is DialogType.Question or DialogType.Danger;
 
-    // Button text
+    // Button text - localized via LocaleService
     public string PrimaryButtonText => DialogType switch
     {
-        DialogType.Question => "Ano",
-        DialogType.Danger => "ANO, SMAZAT!",
-        _ => "OK"
+        DialogType.Question => _locale.Get("Common.Yes"),
+        DialogType.Danger => _locale.Get("Common.YesDelete"),
+        _ => _locale.Get("Common.OK")
     };
     
-    public string NoButtonText => "Ne";
-    public string CancelButtonText => "Zrušit";
+    public string NoButtonText => _locale.Get("Common.No");
+    public string CancelButtonText => _locale.Get("Common.Cancel");
 
     // Button colors as Brushes
     public Brush PrimaryButtonBackground => DialogType switch

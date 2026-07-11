@@ -12,6 +12,13 @@ namespace DiskChecker.UI.Avalonia.Services;
 
 public class DialogService : IDialogService
 {
+    private readonly LocaleService _locale;
+
+    public DialogService(LocaleService locale)
+    {
+        _locale = locale;
+    }
+
     public async Task ShowInfoAsync(string title, string message)
     {
         await ShowDialogAsync(title, message, DialogType.Info);
@@ -61,7 +68,7 @@ public class DialogService : IDialogService
 
     public async Task<string?> ShowInputDialogAsync(string title, string message, string defaultValue = "")
     {
-        var dialog = new InputDialogWindow(title, message, defaultValue);
+        var dialog = new InputDialogWindow(title, message, defaultValue, _locale);
         var mainWindow = GetMainWindow();
         
         if (mainWindow != null)
@@ -112,7 +119,7 @@ public class DialogService : IDialogService
     private async Task<MessageBoxResult> ShowDialogAsync(string title, string message, DialogType type)
     {
         var messageBox = new MessageBoxWindow();
-        var viewModel = new MessageBoxViewModel(messageBox, title, message, type);
+        var viewModel = new MessageBoxViewModel(messageBox, title, message, type, _locale);
         messageBox.DataContext = viewModel;
         
         var mainWindow = GetMainWindow();

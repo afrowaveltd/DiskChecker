@@ -1241,8 +1241,8 @@ public partial class SurfaceTestViewModel : ViewModelBase, INavigableViewModel, 
       if(profile.IsDestructive)
       {
          var confirmed = await _dialogService.ShowDangerConfirmationAsync(
-             "Potvrzení sanitizace",
-             $"Vybraný profil \"{profile.Name}\" přepíše obsah disku {SelectedDrive.Name ?? SelectedDrive.Path}. Pokračovat?");
+            L.Get("SurfaceTest.Dialog.SanitizeConfirm"),
+            string.Format(L.Get("SurfaceTest.Dialog.SanitizeConfirmMessage"), profile.Name, SelectedDrive.Name ?? SelectedDrive.Path));
          if(!confirmed)
          {
             SetStatusMessage(L.Get("SurfaceTest.Status.SanitizeCancelled"));
@@ -1271,11 +1271,11 @@ public partial class SurfaceTestViewModel : ViewModelBase, INavigableViewModel, 
             if(result?.Success == true && !string.IsNullOrWhiteSpace(successMessage))
             {
                await _dialogService.ShowSuccessAsync("Sanitizace dokončena", successMessage);
-            }
+               await _dialogService.ShowSuccessAsync(L.Get("SurfaceTest.Status.SanitizeCompleted"), successMessage);
             else if(result?.Success == false)
             {
-               await _dialogService.ShowErrorAsync("Chyba sanitizace", errorContext ?? result.ErrorMessage ?? "Sanitizace selhala.");
-            }
+               await _dialogService.ShowErrorAsync(L.Get("SurfaceTest.Status.SanitizeError"), errorContext ?? result.ErrorMessage ?? "Sanitizace selhala.");
+               await _dialogService.ShowErrorAsync(L.Get("SurfaceTest.Status.SanitizeError"), errorContext ?? result.ErrorMessage ?? L.Get("SurfaceTest.Status.SanitizeFailed"));
          }
          else
          {
@@ -1289,12 +1289,12 @@ public partial class SurfaceTestViewModel : ViewModelBase, INavigableViewModel, 
       catch(InvalidOperationException ex)
       {
          SetStickyErrorStatus($"Chyba testu: {ex.Message}");
-         await _dialogService.ShowErrorAsync("Chyba", ex.Message);
+         await _dialogService.ShowErrorAsync(L.Get("Common.Error"), ex.Message);
       }
       catch(IOException ex)
       {
          SetStickyErrorStatus($"Chyba testu: {ex.Message}");
-         await _dialogService.ShowErrorAsync("Chyba", ex.Message);
+         await _dialogService.ShowErrorAsync(L.Get("Common.Error"), ex.Message);
       }
       finally
       {
@@ -1520,19 +1520,19 @@ public partial class SurfaceTestViewModel : ViewModelBase, INavigableViewModel, 
 
          // Build success message but don't show dialog yet
          var successMessage =
-             $"Disk byl úspěšně sanitizován a uložen.\n\n" +
-             $"📊 Výsledky sanitizace:\n" +
-             $"━━━━━━━━━━━━━━━━━━━━\n" +
-             $"💿 Disk: {SelectedDrive?.Name ?? "Unknown"}\n" +
-             $"⏱ Doba: {duration:hh\\:mm\\:ss}\n" +
-             $"💾 Zpracováno: {result.BytesWritten / (1024.0 * 1024 * 1024):F2} GB\n\n" +
-             $"📝 ZÁPIS:\n" +
-             $"   Rychlost: {result.WriteSpeedMBps:F1} MB/s\n\n" +
-             $"📖 ČTENÍ/OVĚŘENÍ:\n" +
-             $"   Rychlost: {result.ReadSpeedMBps:F1} MB/s\n\n" +
-             $"✅ Stav: {(result.ErrorsDetected == 0 ? "Bez chyb" : $"{result.ErrorsDetected} chyb")}" +
-             (string.IsNullOrWhiteSpace(usbWarning) ? string.Empty : $"\n\n⚠ {usbWarning}") +
-             $"\n📁 Karta disku vytvořena/aktualizována";
+             L.Get("SurfaceTest.Status.SanitizeSuccess");
+
+
+
+
+
+
+
+
+
+
+
+
 
          return (result, successMessage, errorContext);
       }
@@ -1765,21 +1765,21 @@ public partial class SurfaceTestViewModel : ViewModelBase, INavigableViewModel, 
 
          StatusMessage = L.Get("SurfaceTest.Status.TestDoneAvg", overallAvgSpeed.ToString("F1"));
 
-         await _dialogService.ShowSuccessAsync("Test dokončen",
-             $"Test povrchu byl úspěšně dokončen a uložen.\n\n" +
-             $"📊 Výsledky testu:\n" +
-             $"━━━━━━━━━━━━━━━━━━━━\n" +
-             $"⏱ Doba testu: {duration:mm\\:ss}\n\n" +
-             $"📝 ZÁPIS:\n" +
-             $"   Min: {minWriteSpeed:F1} MB/s\n" +
-             $"   Max: {maxWriteSpeed:F1} MB/s\n" +
-             $"   Průměr: {avgWriteSpeed:F1} MB/s\n\n" +
-             $"📖 ČTENÍ:\n" +
-             $"   Min: {minReadSpeed:F1} MB/s\n" +
-             $"   Max: {maxReadSpeed:F1} MB/s\n" +
-             $"   Průměr: {avgReadSpeed:F1} MB/s\n\n" +
-             $"💾 Celkem: {overallAvgSpeed:F1} MB/s\n" +
-             $"📈 Rozsah: {overallMinSpeed:F1} - {overallMaxSpeed:F1} MB/s");
+         await _dialogService.ShowSuccessAsync(L.Get("SurfaceTest.Status.TestCompleted"),
+             L.Get("SurfaceTest.Status.TestSuccess"));
+
+
+
+
+
+
+
+
+
+
+
+
+
       }
       catch(Exception ex)
       {
@@ -1792,11 +1792,10 @@ public partial class SurfaceTestViewModel : ViewModelBase, INavigableViewModel, 
             System.Diagnostics.Debug.WriteLine($"[SurfaceTest] Inner exception: {ex.InnerException.Message}");
          }
 
-         StatusMessage = $"Chyba při ukládání: {ex.Message}";
-         await _dialogService.ShowErrorAsync("Chyba",
-             $"Test byl dokončen, ale výsledky se nepodařilo uložit.\n\n" +
-             $"Chyba: {ex.Message}\n\n" +
-             $"Typ: {ex.GetType().Name}");
+         StatusMessage = string.Format(L.Get("SurfaceTest.Status.SaveError"), ex.Message);
+         await _dialogService.ShowErrorAsync(L.Get("Common.Error"), L.Get("SurfaceTest.Status.SaveErrorMessage"));
+
+
       }
    }
 
@@ -1827,8 +1826,8 @@ public partial class SurfaceTestViewModel : ViewModelBase, INavigableViewModel, 
 
          if(!File.Exists(certificatePath))
          {
-           StatusMessage = "Test dokončen, certifikát nebyl nalezen pro odesílání e-mailem";
-           SetStatusMessage("Test dokončen, certifikát nebyl nalezen pro odesílání e-mailem");
+           StatusMessage = L.Get("SurfaceTest.Status.CertificateNotFound");
+           SetStatusMessage(L.Get("SurfaceTest.Status.CertificateNotFound"));
              return;
          }
 
@@ -1846,13 +1845,13 @@ public partial class SurfaceTestViewModel : ViewModelBase, INavigableViewModel, 
       }
       catch (InvalidOperationException)
       {
-           StatusMessage = "Test dokončen. E-mail nebyl odeslán (SMTP není nakonfigurované).";
-           SetStatusMessage("Test dokončen. E-mail nebyl odeslán (SMTP není nakonfigurované).");
+           StatusMessage = L.Get("SurfaceTest.Status.SmtpNotConfigured");
+           SetStatusMessage(L.Get("SurfaceTest.Status.SmtpNotConfigured"));
       }
       catch (IOException)
       {
-           StatusMessage = "Test dokončen. E-mail s certifikátem se nepodařilo připravit.";
-           SetStatusMessage("Test dokončen. E-mail s certifikátem se nepodařilo připravit.");
+           StatusMessage = L.Get("SurfaceTest.Status.EmailPrepareFailed");
+           SetStatusMessage(L.Get("SurfaceTest.Status.EmailPrepareFailed"));
       }
    }
 

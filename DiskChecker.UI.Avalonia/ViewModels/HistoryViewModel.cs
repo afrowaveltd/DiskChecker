@@ -196,8 +196,8 @@ namespace DiskChecker.UI.Avalonia.ViewModels
         private async Task ClearHistoryAsync()
         {
             var confirmed = await _dialogService.ShowConfirmationAsync(
-                "Vymazat historii",
-                "Opravdu chcete vymazat celou historii testů?");
+                L.Get("History.ClearTitle"),
+                L.Get("History.ClearConfirmMessage"));
 
             if (!confirmed)
             {
@@ -215,8 +215,8 @@ namespace DiskChecker.UI.Avalonia.ViewModels
             try
             {
                 var confirmation = await _dialogService.ShowConfirmationAsync(
-                    "Potvrzení", 
-                    $"Opravdu chcete smazat test '{SelectedTest.TestType}' z {SelectedTest.TestDate:dd.MM.yyyy HH:mm}?");
+                    L.Get("Common.Confirmation"), 
+                    string.Format(L.Get("History.DeleteConfirmMessage"), SelectedTest.TestType, SelectedTest.TestDate.ToString("dd.MM.yyyy HH:mm")));
                 
                 if (confirmation)
                 {
@@ -281,7 +281,7 @@ namespace DiskChecker.UI.Avalonia.ViewModels
                     }
                 }
 
-                await _dialogService.ShowMessageAsync("Detaily testu", 
+                await _dialogService.ShowMessageAsync(L.Get("History.DetailTitle"), 
                     $"Disk: {test.DiskName}\n" +
                     $"Typ testu: {test.TestType}\n" +
                     $"Datum: {test.TestDate:dd.MM.yyyy HH:mm}\n" +

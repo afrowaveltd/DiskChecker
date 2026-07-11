@@ -2,6 +2,7 @@ using System.Windows.Input;
 using Avalonia.Controls;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using DiskChecker.UI.Avalonia.Services;
 
 namespace DiskChecker.UI.Avalonia.Views;
 
@@ -12,9 +13,9 @@ public partial class InputDialogWindow : Window
         InitializeComponent();
     }
 
-    public InputDialogWindow(string title, string message, string defaultValue = "")
+    public InputDialogWindow(string title, string message, string defaultValue, LocaleService locale)
     {
-        DataContext = new InputDialogViewModel(this, title, message, defaultValue);
+        DataContext = new InputDialogViewModel(this, title, message, defaultValue, locale);
         InitializeComponent();
     }
 }
@@ -23,13 +24,13 @@ public partial class InputDialogViewModel : ObservableObject
 {
     private readonly InputDialogWindow _window;
 
-    public InputDialogViewModel(InputDialogWindow window, string title, string message, string defaultValue)
+    public InputDialogViewModel(InputDialogWindow window, string title, string message, string defaultValue, LocaleService locale)
     {
         _window = window;
         DialogTitle = title;
         Message = message;
         InputText = defaultValue;
-        Placeholder = message;
+        Placeholder = locale.Get("InputDialog.EnterValue");
         
         OkCommand = new RelayCommand(() => _window.Close(InputText));
         CancelCommand = new RelayCommand(() => _window.Close(null));

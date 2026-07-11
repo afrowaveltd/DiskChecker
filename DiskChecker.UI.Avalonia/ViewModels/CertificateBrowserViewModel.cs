@@ -405,7 +405,7 @@ public partial class CertificateBrowserViewModel : ViewModelBase, INavigableView
             await _diskCardRepository.UpdateCertificateAsync(SelectedCertificate);
 
             StatusMessage = string.Format(L.Get("CertificateBrowser.Status.PdfExported"), pdfPath);
-            await _dialogService.ShowInfoAsync("PDF Export",
+            await _dialogService.ShowInfoAsync(L.Get("CertificateView.Dialog.PdfExport"),
                 string.Format(L.Get("CertificateBrowser.Status.PdfExported"), pdfPath) + "\n\n" +
                 L.Get("CertificateBrowser.Status.UseExternalViewer"));
         }

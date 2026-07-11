@@ -139,7 +139,7 @@ public partial class AbsoluteDestructiveTestViewModel : ViewModelBase, INavigabl
     [ObservableProperty] private bool _isTesting;
     [ObservableProperty] private bool _isCompleted;
     [ObservableProperty] private bool _wasAborted;
-    [ObservableProperty] private string _statusMessage = "Připraven k absolutnímu destruktivnímu testu";
+    [ObservableProperty] private string _statusMessage = L.Get("DestructiveTest.Status.Ready");
     [ObservableProperty] private double _overallProgress;
     [ObservableProperty] private double _currentPhaseProgress;
     [ObservableProperty] private string _currentPhaseName = string.Empty;
@@ -151,7 +151,7 @@ public partial class AbsoluteDestructiveTestViewModel : ViewModelBase, INavigabl
     [ObservableProperty] private bool _isSmartAvailable;
     [ObservableProperty] private bool _showManualProfileSelector;
     [ObservableProperty] private ManualTestProfile _selectedManualProfile = ManualTestProfile.Standard;
-    [ObservableProperty] private string _smartBaselineSummary = "Čekám...";
+    [ObservableProperty] private string _smartBaselineSummary = L.Get("DestructiveTest.Waiting");
     [ObservableProperty] private string _smartCurrentSummary = "Čekám...";
     [ObservableProperty] private string _smartDeltaSummary = "—";
     [ObservableProperty] private bool _hasResults;
@@ -519,7 +519,7 @@ public partial class AbsoluteDestructiveTestViewModel : ViewModelBase, INavigabl
     {
         if (SelectedDrive == null)
         {
-            await _dialogService.ShowErrorAsync("Chyba", "Není vybrán žádný disk.");
+            await _dialogService.ShowErrorAsync(L.Get("Common.Error"), L.Get("Common.NoDiskSelected"));
             return;
         }
 
@@ -529,17 +529,17 @@ public partial class AbsoluteDestructiveTestViewModel : ViewModelBase, INavigabl
         }
 
         var confirmed = await _dialogService.ShowConfirmationAsync(
-            "⚠️ Absolutní Destruktivní Test",
-            $"Tento test KOMPLETNĚ ZNIČÍ všechna data na disku:\n\n" +
-            $"{SelectedDrive.Name} ({SelectedDrive.Path})\n" +
-            $"Kapacita: {FormatBytes(SelectedDrive.TotalSize)}\n\n" +
-            $"Průběh testu:\n" +
-            $"1. První sanitizace (zápis nul + ověření)\n" +
-            $"2. Trojice seek testů (FullStroke, Random, Skip) po 1500 vzorcích\n" +
-            $"3. Druhá sanitizace pro porovnání\n" +
-            $"4. Generování certifikátu\n\n" +
-            $"Doba trvání: až několik hodin dle velikosti disku.\n\n" +
-            $"OPRAVDU CHCETE POKRAČOVAT?");
+            L.Get("DestructiveTest.ConfirmTitle"),
+            string.Format(L.Get("DestructiveTest.ConfirmMessage"),
+                SelectedDrive.Name, SelectedDrive.Path,
+                FormatBytes(SelectedDrive.TotalSize)));
+
+
+
+
+
+
+
 
         if (!confirmed) return;
 
@@ -567,9 +567,9 @@ public partial class AbsoluteDestructiveTestViewModel : ViewModelBase, INavigabl
             catch (Exception ex)
             {
                 // Non-critical — test can continue without power management
-                await _dialogService.ShowWarningAsync("Upozornění", 
-                    $"Nepodařilo se aktivovat řízení napájení: {ex.Message}\n\n" +
-                    "Test bude pokračovat, ale systém se může uspat během dlouhého testu.");
+                await _dialogService.ShowWarningAsync(L.Get("Common.Warning"), 
+                    string.Format(L.Get("DestructiveTest.PowerManagementFailed"), ex.Message) + "\n\n" +
+                    L.Get("DestructiveTest.PowerManagementWarning"));
             }
 
             await RunAllPhasesAsync(_testCancellation.Token);
@@ -583,7 +583,7 @@ public partial class AbsoluteDestructiveTestViewModel : ViewModelBase, INavigabl
         {
             WasAborted = true;
             StatusMessage = L.Get("DestructiveTest.Error", ex.Message);
-            await _dialogService.ShowErrorAsync("Chyba testu", $"Test selhal s chybou:\n{ex.Message}");
+            await _dialogService.ShowErrorAsync(L.Get("Common.Error"), string.Format(L.Get("Common.TestFailedWith"), ex.Message));
         }
         finally
         {
@@ -622,7 +622,7 @@ public partial class AbsoluteDestructiveTestViewModel : ViewModelBase, INavigabl
     {
         if (!IsCertificateReady || Certificate == null)
         {
-            await _dialogService.ShowErrorAsync("Chyba", "Certifikát ještě není připraven.");
+            await _dialogService.ShowErrorAsync(L.Get("Common.Error"), L.Get("Common.CertNotReady"));
             return;
         }
 
@@ -632,7 +632,7 @@ public partial class AbsoluteDestructiveTestViewModel : ViewModelBase, INavigabl
             var card = await _diskCardRepository.GetByDevicePathAsync(SelectedDrive!.Path);
             if (card == null)
             {
-                await _dialogService.ShowErrorAsync("Chyba", "Karta disku nenalezena.");
+                await _dialogService.ShowErrorAsync(L.Get("Common.Error"), L.Get("Common.CardNotFound"));
                 return;
             }
 
@@ -644,7 +644,7 @@ public partial class AbsoluteDestructiveTestViewModel : ViewModelBase, INavigabl
         }
         catch (Exception ex)
         {
-            await _dialogService.ShowErrorAsync("Chyba", $"Nepodařilo se uložit certifikát: {ex.Message}");
+            await _dialogService.ShowErrorAsync(L.Get("Common.Error"), string.Format(L.Get("Common.CertSaveFailed"), ex.Message));
         }
     }
 
@@ -653,7 +653,7 @@ public partial class AbsoluteDestructiveTestViewModel : ViewModelBase, INavigabl
     {
         if (IsTesting)
         {
-            _ = _dialogService.ShowErrorAsync("Test běží", "Nelze opustit test během jeho průběhu. Nejprve test přerušte.");
+            _ = _dialogService.ShowErrorAsync(L.Get("Common.TestRunning"), L.Get("Common.CannotLeaveDuringTest"));
             return;
         }
         _navigationService.NavigateTo<DiskSelectionViewModel>();
@@ -853,7 +853,7 @@ public partial class AbsoluteDestructiveTestViewModel : ViewModelBase, INavigabl
                 _smartBaseline?.DeviceType?.Contains("ssd", StringComparison.OrdinalIgnoreCase) == true)
             {
                 var cont = await _dialogService.ShowConfirmationAsync(
-                    "SSD detekován",
+                    L.Get("DestructiveTest.SsdDetected"),
                     "Disk byl detekován jako SSD. Seek testy na SSD nemají diagnostickou hodnotu " +
                     "(absence mechanických hlav).\n\nChcete přesto pokračovat?");
                 if (!cont) throw new OperationCanceledException();

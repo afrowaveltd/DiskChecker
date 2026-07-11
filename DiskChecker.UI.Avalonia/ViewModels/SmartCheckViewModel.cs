@@ -639,7 +639,7 @@ public string SelectedTestType
         catch (Exception ex)
         {
             StatusMessage = $"Chyba: {ex.Message}";
-            await _dialogService.ShowErrorAsync("Chyba", $"Nepodařilo se načíst disky: {ex.Message}");
+            await _dialogService.ShowErrorAsync(L.Get("Common.Error"), string.Format(L.Get("Common.LoadFailed"), ex.Message));
         }
         finally
         {
@@ -1020,7 +1020,7 @@ public string SelectedTestType
         
         if (SelectedDisk.IsSystemDisk)
         {
-            await _dialogService.ShowErrorAsync("Upozornění", 
+            await _dialogService.ShowErrorAsync(L.Get("Common.Warning"), 
                 "Na systémovém disku nelze spustit self-test.\n\nVyberte jiný disk.");
             return;
         }
@@ -1062,21 +1062,20 @@ public string SelectedTestType
                     }
                     else
                     {
-                        await _dialogService.ShowSuccessAsync("Self-Test", 
-                            testName.Capitalize() + " self-test byl úspěšně spuštěn.\n\n" +
+                        await _dialogService.ShowSuccessAsync(L.Get("SmartCheck.SelfTest"), 
+                            string.Format(L.Get("SmartCheck.Dialog.TestStarted"), testName));
                             "Výsledek zkontrolujte obnovením dat za několik minut.");
                     }
                 }
                 else
                 {
                     StatusMessage = "❌ Nepodařilo se spustit self-test";
-                    await _dialogService.ShowErrorAsync("Chyba", 
-                        "Nepodařilo se spustit self-test. Ujistěte se, že disk podporuje SMART.");
+                    await _dialogService.ShowErrorAsync(L.Get("Common.Error"), "Nepodařilo se spustit self-test. Ujistěte se, že disk podporuje SMART.");
                 }
             }
             else
             {
-                await _dialogService.ShowErrorAsync("Nepodporováno", 
+                await _dialogService.ShowErrorAsync(L.Get("Common.Unsupported"), 
                     "Self-test není podporován na tomto systému.\n\n" +
                     "Ujistěte se, že je nainstalován smartmontools.");
             }
@@ -1084,7 +1083,7 @@ public string SelectedTestType
         catch (Exception ex)
         {
             StatusMessage = "Chyba: " + ex.Message;
-            await _dialogService.ShowErrorAsync("Chyba", ex.Message);
+            await _dialogService.ShowErrorAsync(L.Get("Common.Error"), ex.Message);
         }
         finally
         {
@@ -1106,14 +1105,14 @@ public string SelectedTestType
                       "⚠️ Během testu může být disk dočasně nedostupný.";
         
         var confirmed = await _dialogService.ShowConfirmationAsync(
-            "Spustit " + testName + " self-test?", 
+            L.Get("SmartCheck.Dialog.StartTest", testName),
             message);
         
         if (!confirmed) return SelfTestConfirmationResult.Cancel;
         
         var wantPolling = await _dialogService.ShowConfirmationAsync(
-            "Sledovat průběh?",
-            "Chcete sledovat průběh self-testu v reálném čase?\n\n" +
+            L.Get("SmartCheck.Dialog.MonitorPrompt"),
+            L.Get("SmartCheck.Dialog.MonitorMessage"));
             "Aplikace bude kontrolovat stav testu každých 5 sekund.");
         
         return wantPolling ? SelfTestConfirmationResult.StartWithPolling : SelfTestConfirmationResult.Start;
@@ -1123,7 +1122,7 @@ private async Task AbortTestAsync()
     {
         if (SelectedDisk?.Drive == null) return;
 
-        var confirmed = await _dialogService.ShowConfirmationAsync("Potvrzení", 
+        var confirmed = await _dialogService.ShowConfirmationAsync(L.Get("Common.Confirmation"), 
             "Opravdu chcete přerušit běžící self-test?");
         
         if (!confirmed) return;
