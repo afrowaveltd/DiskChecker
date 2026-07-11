@@ -6,6 +6,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using DiskChecker.Core.Interfaces;
 using Microsoft.Extensions.Logging;
+using Microsoft.Win32.SafeHandles;
 
 namespace DiskChecker.Infrastructure.Hardware.Sanitization;
 
@@ -20,6 +21,7 @@ public class LinuxDiskSanitizationService : IDiskSanitizationService
     private const int BUFFER_SIZE = 64 * 1024 * 1024; // 64 MB buffer
     private const int DeviceOpenMaxAttempts = 10;
     private const int DeviceOpenRetryDelayMs = 250;
+    private const int SECTOR_SIZE = 4096; // 4 KB sector alignment for direct I/O
 
     public LinuxDiskSanitizationService(ILogger<LinuxDiskSanitizationService>? logger = null)
     {
@@ -331,7 +333,8 @@ public class LinuxDiskSanitizationService : IDiskSanitizationService
     }
 
     /// <summary>
-    /// Writes zeros using the same chunk size, speed smoothing, and progress model as Windows.
+    /// Writes zeros using SafeFileHandle + RandomAccess (direct I/O, no .NET buffering),
+    /// matching the Windows methodology of write-through raw disk access.
     /// </summary>
     private async Task<SanitizationPhaseResult> WriteZerosFileStreamAsync(
         string devicePath,
@@ -347,7 +350,7 @@ public class LinuxDiskSanitizationService : IDiskSanitizationService
 
         try
         {
-            using (var fileStream = await OpenDeviceStreamWithRetryAsync(
+            using (var fileHandle = await OpenDeviceHandleWithRetryAsync(
                 devicePath,
                 FileMode.Open,
                 FileAccess.Write,
@@ -363,7 +366,7 @@ public class LinuxDiskSanitizationService : IDiskSanitizationService
                     var chunk = await IoStallMonitor.ExecuteAsync(
                         async ct =>
                         {
-                            await fileStream.WriteAsync(buffer.AsMemory(0, bytesToWrite), ct);
+                            await RandomAccess.WriteAsync(fileHandle, buffer.AsMemory(0, bytesToWrite), bytesWritten, ct);
                             return bytesToWrite;
                         },
                         (operationElapsed, stallDuration) => CreateStalledProgress(
@@ -382,9 +385,9 @@ public class LinuxDiskSanitizationService : IDiskSanitizationService
                         cancellationToken);
 
                     bytesWritten += bytesToWrite;
-                    // The stream uses FileOptions.WriteThrough for write-through semantics.
-                    // Flush after each chunk can block indefinitely on some devices (USB, etc.)
-                    // and skew timing measurements. Omitted to match Windows behavior.
+                    // Uses FileOptions.WriteThrough for write-through semantics.
+                    // No explicit flush needed — RandomAccess.WriteAsync with WriteThrough
+                    // guarantees data reaches the device before returning.
 
                     if (result.Errors >= 10)
                     {
@@ -423,8 +426,6 @@ public class LinuxDiskSanitizationService : IDiskSanitizationService
                         StatusDetail = chunk.WasStalled ? $"Device responded after stall ({chunk.StallDuration:g})." : null
                     });
                 }
-
-                await fileStream.FlushAsync(cancellationToken);
             }
 
             result.Success = true;
@@ -464,6 +465,7 @@ public class LinuxDiskSanitizationService : IDiskSanitizationService
 
     /// <summary>
     /// Reads and verifies zeros in one pass, matching the Windows sanitization methodology.
+    /// Uses SafeFileHandle + RandomAccess (no .NET buffering) for direct I/O.
     /// </summary>
     private async Task<SanitizationPhaseResult> ReadAndVerifyFileStreamAsync(
         string devicePath,
@@ -479,7 +481,7 @@ public class LinuxDiskSanitizationService : IDiskSanitizationService
 
         try
         {
-            using (var fileStream = await OpenDeviceStreamWithRetryAsync(
+            using (var fileHandle = await OpenDeviceHandleWithRetryAsync(
                 devicePath,
                 FileMode.Open,
                 FileAccess.Read,
@@ -493,7 +495,11 @@ public class LinuxDiskSanitizationService : IDiskSanitizationService
 
                     var bytesToRead = (int)Math.Min(BUFFER_SIZE, diskSize - bytesRead);
                     var chunk = await IoStallMonitor.ExecuteAsync(
-                        ct => fileStream.ReadAsync(buffer.AsMemory(0, bytesToRead), ct).AsTask(),
+                        async ct =>
+                        {
+                            var read = await RandomAccess.ReadAsync(fileHandle, buffer.AsMemory(0, bytesToRead), bytesRead, ct);
+                            return read;
+                        },
                         (operationElapsed, stallDuration) => CreateStalledProgress(
                             SanitizationProgressPhase.ReadVerify,
                             "Čtení a ověření",
@@ -677,7 +683,11 @@ public class LinuxDiskSanitizationService : IDiskSanitizationService
                ex.Message.Contains("device not", StringComparison.OrdinalIgnoreCase);
     }
 
-    private async Task<FileStream> OpenDeviceStreamWithRetryAsync(
+    /// <summary>
+    /// Opens a device handle with retry logic. Returns a SafeFileHandle for direct I/O
+    /// (no .NET buffering), matching the Windows raw disk access model.
+    /// </summary>
+    private async Task<SafeFileHandle> OpenDeviceHandleWithRetryAsync(
         string devicePath,
         FileMode mode,
         FileAccess access,
@@ -691,13 +701,14 @@ public class LinuxDiskSanitizationService : IDiskSanitizationService
 
             try
             {
-                return new FileStream(
+                var handle = File.OpenHandle(
                     devicePath,
                     mode,
                     access,
                     share,
-                    bufferSize: 65536,
                     options);
+
+                return handle;
             }
             catch (IOException ex) when (attempt < DeviceOpenMaxAttempts)
             {

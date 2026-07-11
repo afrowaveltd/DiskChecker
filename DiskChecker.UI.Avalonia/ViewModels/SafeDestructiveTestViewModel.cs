@@ -232,6 +232,8 @@ public partial class SafeDestructiveTestViewModel : ViewModelBase, INavigableVie
     // ──────────────────────────────────────────────
 
     [ObservableProperty] private string _logText = string.Empty;
+    [ObservableProperty] private bool _isGeneratingCertificate;
+    [ObservableProperty] private string _certificateProgressText = string.Empty;
     private readonly List<string> _logEntries = new();
 
     // ──────────────────────────────────────────────
@@ -1530,6 +1532,9 @@ public partial class SafeDestructiveTestViewModel : ViewModelBase, INavigableVie
     {
         if (SelectedDrive == null) return;
 
+        IsGeneratingCertificate = true;
+        CertificateProgressText = "PĹ™ipravuji data certifikĂˇtu...";
+
         var card = await _diskCardRepository.GetByDevicePathAsync(SelectedDrive.Path);
         if (card == null)
         {
@@ -1546,66 +1551,100 @@ public partial class SafeDestructiveTestViewModel : ViewModelBase, INavigableVie
             card = await _diskCardRepository.CreateAsync(card);
         }
 
-        var cert = new DiskCertificate
-        {
-            CertificateNumber = $"SAFE-{DateTime.UtcNow:yyyyMMdd}-{Guid.NewGuid():N}"[..24],
-            DiskCardId = card.Id,
-            GeneratedAt = DateTime.UtcNow,
-            GeneratedBy = Environment.UserName,
-            DiskModel = SelectedDrive.Name ?? DiskDisplayName,
-            SerialNumber = SelectedDrive.SerialNumber ?? "-",
-            Capacity = DiskTotalSizeText,
-            DiskType = _smartBefore?.DeviceType ?? "HDD",
-            TestType = SelectedMode == SafeDestructiveMode.VhdxOnly
-                ? "Bezpečný destruktivní test (VHDx záloha → test → obnova)"
-                : SelectedMode == SafeDestructiveMode.ImageRoundTrip
-                    ? "Šetrný image round-trip test (RAW záloha → obnova → ověření)"
-                    : "Bezpečný destruktivní test (záloha → test → obnova)",
-            TestDuration = DateTime.UtcNow - _phaseStartTime,
-            Grade = CalculateSafeGrade(),
-            Score = CalculateSafeScore(),
-            HealthStatus = DetermineSafeHealthStatus(),
-            Status = CertificateStatus.Active,
-            Recommended = true,
-            Notes = SelectedMode == SafeDestructiveMode.VhdxOnly
-                ? $"Bezpečný destruktivní test: VHDx záloha → test → obnova.\n{ResultsSummary}"
-                : SelectedMode == SafeDestructiveMode.ImageRoundTrip
-                    ? $"Šetrný image round-trip: RAW záloha → ověření → obnova → ověření bez opakované sanitizace.\n{ResultsSummary}"
-                    : $"Bezpečný destruktivní test: záloha → test → obnova.\n{ResultsSummary}",
-            SmartPassed = _smartAfter?.ReallocatedSectorCount == 0 && _smartAfter?.PendingSectorCount == 0,
-            PowerOnHours = _smartAfter?.PowerOnHours ?? _smartBefore?.PowerOnHours ?? 0,
-            ReallocatedSectors = _smartAfter?.ReallocatedSectorCount ?? _smartBefore?.ReallocatedSectorCount ?? 0,
-            PendingSectors = _smartAfter?.PendingSectorCount ?? _smartBefore?.PendingSectorCount ?? 0,
-            SanitizationPerformed = true,
-            SanitizationMethod = "Zero-fill + verify (2×) — safe mode",
-            DataVerified = true,
-            ErrorCount = 0,
-            TemperatureRange = $"{_smartBefore?.Temperature ?? 0}–{_smartAfter?.Temperature ?? 0}°C",
-            SmartDeltaSummary = SmartDeltaSummary
-        };
+        // Capture all data needed for background computation (avoid cross-thread access)
+        var capturedCardId = card.Id;
+        var capturedDriveName = SelectedDrive.Name ?? DiskDisplayName;
+        var capturedSerial = SelectedDrive.SerialNumber ?? "-";
+        var capturedCapacity = DiskTotalSizeText;
+        var capturedDiskType = _smartBefore?.DeviceType ?? "HDD";
+        var capturedTestType = SelectedMode == SafeDestructiveMode.VhdxOnly
+            ? "BezpeÄŤnĂ˝ destruktivnĂ­ test (VHDx zĂˇloha â†’ test â†’ obnova)"
+            : SelectedMode == SafeDestructiveMode.ImageRoundTrip
+                ? "Ĺ etrnĂ˝ image round-trip test (RAW zĂˇloha â†’ obnova â†’ ovÄ›Ĺ™enĂ­)"
+                : "BezpeÄŤnĂ˝ destruktivnĂ­ test (zĂˇloha â†’ test â†’ obnova)";
+        var capturedTestDuration = DateTime.UtcNow - _phaseStartTime;
+        var capturedSmartAfter = _smartAfter;
+        var capturedSmartBefore = _smartBefore;
+        var capturedResultsSummary = ResultsSummary;
+        var capturedSmartDeltaSummary = SmartDeltaSummary;
+        var capturedSelectedMode = SelectedMode;
 
-        // Seek metrics
-        var allSeekPoints = SeekFullStrokePoints.Concat(SeekRandomPoints).Concat(SeekSkipPoints)
-            .Select(p => p.Y ?? 0).Where(y => y > 0).OrderBy(y => y).ToList();
-        if (allSeekPoints.Count > 0)
-        {
-            cert.SeekAvgLatencyMs = allSeekPoints.Average();
-            cert.SeekMinLatencyMs = allSeekPoints.Min();
-            cert.SeekMaxLatencyMs = allSeekPoints.Max();
-            cert.SeekP95LatencyMs = Percentile(allSeekPoints, 0.95);
-        }
+        // Capture chart data for background processing
+        var capturedSeekFullStroke = SeekFullStrokePoints.ToList();
+        var capturedSeekRandom = SeekRandomPoints.ToList();
+        var capturedSeekSkip = SeekSkipPoints.ToList();
+        var capturedSanitizePass1Write = SanitizePass1WritePoints.ToList();
+        var capturedSanitizePass1Read = SanitizePass1ReadPoints.ToList();
+        var capturedSanitizePass2Write = SanitizePass2WritePoints.ToList();
+        var capturedSanitizePass2Read = SanitizePass2ReadPoints.ToList();
 
-        // Sanitize metrics
-        if (SanitizePass1WritePoints.Count > 0)
-            cert.Sanitize1AvgWriteMBps = SanitizePass1WritePoints.Average(p => p.Y ?? 0);
-        if (SanitizePass1ReadPoints.Count > 0)
-            cert.Sanitize1AvgReadMBps = SanitizePass1ReadPoints.Average(p => p.Y ?? 0);
-        if (SanitizePass2WritePoints.Count > 0)
-            cert.Sanitize2AvgWriteMBps = SanitizePass2WritePoints.Average(p => p.Y ?? 0);
-        if (SanitizePass2ReadPoints.Count > 0)
-            cert.Sanitize2AvgReadMBps = SanitizePass2ReadPoints.Average(p => p.Y ?? 0);
+        CertificateProgressText = "PoÄŤĂ­tĂˇm metriky a znĂˇmky...";
+
+        // Run heavy computations on background thread to keep UI responsive
+        var cert = await Task.Run(() =>
+        {
+            var c = new DiskCertificate
+            {
+                CertificateNumber = $"SAFE-{DateTime.UtcNow:yyyyMMdd}-{Guid.NewGuid():N}"[..24],
+                DiskCardId = capturedCardId,
+                GeneratedAt = DateTime.UtcNow,
+                GeneratedBy = Environment.UserName,
+                DiskModel = capturedDriveName,
+                SerialNumber = capturedSerial,
+                Capacity = capturedCapacity,
+                DiskType = capturedDiskType,
+                TestType = capturedTestType,
+                TestDuration = capturedTestDuration,
+                Grade = CalculateSafeGrade(),
+                Score = CalculateSafeScore(),
+                HealthStatus = DetermineSafeHealthStatus(),
+                Status = CertificateStatus.Active,
+                Recommended = true,
+                Notes = capturedSelectedMode == SafeDestructiveMode.VhdxOnly
+                    ? $"BezpeÄŤnĂ˝ destruktivnĂ­ test: VHDx zĂˇloha â†’ test â†’ obnova.\n{capturedResultsSummary}"
+                    : capturedSelectedMode == SafeDestructiveMode.ImageRoundTrip
+                        ? $"Ĺ etrnĂ˝ image round-trip: RAW zĂˇloha â†’ ovÄ›Ĺ™enĂ­ â†’ obnova â†’ ovÄ›Ĺ™enĂ­ bez opakovanĂ© sanitizace.\n{capturedResultsSummary}"
+                        : $"BezpeÄŤnĂ˝ destruktivnĂ­ test: zĂˇloha â†’ test â†’ obnova.\n{capturedResultsSummary}",
+                SmartPassed = capturedSmartAfter?.ReallocatedSectorCount == 0 && capturedSmartAfter?.PendingSectorCount == 0,
+                PowerOnHours = capturedSmartAfter?.PowerOnHours ?? capturedSmartBefore?.PowerOnHours ?? 0,
+                ReallocatedSectors = capturedSmartAfter?.ReallocatedSectorCount ?? capturedSmartBefore?.ReallocatedSectorCount ?? 0,
+                PendingSectors = capturedSmartAfter?.PendingSectorCount ?? capturedSmartBefore?.PendingSectorCount ?? 0,
+                SanitizationPerformed = true,
+                SanitizationMethod = "Zero-fill + verify (2Ă—) - safe mode",
+                DataVerified = true,
+                ErrorCount = 0,
+                TemperatureRange = $"{capturedSmartBefore?.Temperature ?? 0}-{capturedSmartAfter?.Temperature ?? 0}Â°C",
+                SmartDeltaSummary = capturedSmartDeltaSummary
+            };
+
+            // Seek metrics
+            var allSeekPoints = capturedSeekFullStroke.Concat(capturedSeekRandom).Concat(capturedSeekSkip)
+                .Select(p => p.Y ?? 0).Where(y => y > 0).OrderBy(y => y).ToList();
+            if (allSeekPoints.Count > 0)
+            {
+                c.SeekAvgLatencyMs = allSeekPoints.Average();
+                c.SeekMinLatencyMs = allSeekPoints.Min();
+                c.SeekMaxLatencyMs = allSeekPoints.Max();
+                c.SeekP95LatencyMs = Percentile(allSeekPoints, 0.95);
+            }
+
+            // Sanitize metrics
+            if (capturedSanitizePass1Write.Count > 0)
+                c.Sanitize1AvgWriteMBps = capturedSanitizePass1Write.Average(p => p.Y ?? 0);
+            if (capturedSanitizePass1Read.Count > 0)
+                c.Sanitize1AvgReadMBps = capturedSanitizePass1Read.Average(p => p.Y ?? 0);
+            if (capturedSanitizePass2Write.Count > 0)
+                c.Sanitize2AvgWriteMBps = capturedSanitizePass2Write.Average(p => p.Y ?? 0);
+            if (capturedSanitizePass2Read.Count > 0)
+                c.Sanitize2AvgReadMBps = capturedSanitizePass2Read.Average(p => p.Y ?? 0);
+
+            return c;
+        });
 
         Certificate = cert;
+        IsGeneratingCertificate = false;
+        CertificateProgressText = string.Empty;
+    }
     }
 
     private DiskCertificate? Certificate { get; set; }

@@ -246,6 +246,8 @@ public partial class AbsoluteDestructiveTestViewModel : ViewModelBase, INavigabl
     {
         new Axis { Name = "Latence (ms)", NameTextSize = 10, TextSize = 9, MinLimit = 0, Labeler = v => $"{v:F1}" }
     };
+    [ObservableProperty] private bool _isGeneratingCertificate;
+    [ObservableProperty] private string _certificateProgressText = string.Empty;
 
     // ──────────────────────────────────────────────
     //  Constructor
@@ -1554,6 +1556,9 @@ public partial class AbsoluteDestructiveTestViewModel : ViewModelBase, INavigabl
 
     private async Task BuildCertificateAsync()
     {
+        IsGeneratingCertificate = true;
+        CertificateProgressText = "PĹ™ipravuji data certifikĂˇtu...";
+
         var card = await _diskCardRepository.GetByDevicePathAsync(SelectedDrive!.Path);
         if (card == null)
         {
@@ -1570,108 +1575,142 @@ public partial class AbsoluteDestructiveTestViewModel : ViewModelBase, INavigabl
             card = await _diskCardRepository.CreateAsync(card);
         }
 
-        var cert = new DiskCertificate
+        // Capture all data needed for background computation (avoid cross-thread access)
+        var capturedCardId = card.Id;
+        var capturedDriveName = SelectedDrive.Name;
+        var capturedSerial = SelectedDrive.SerialNumber ?? "-";
+        var capturedCapacity = FormatBytes(SelectedDrive.TotalSize);
+        var capturedDiskType = _smartBaseline?.DeviceType ?? "HDD";
+        var capturedTestDuration = DateTime.UtcNow - _testStartTime;
+        var capturedSmartFinal = _smartFinal;
+        var capturedSmartBaseline = _smartBaseline;
+        var capturedSanitize1Result = _sanitize1Result;
+        var capturedSanitize2Result = _sanitize2Result;
+        var capturedSeekFullStrokeResult = _seekFullStrokeResult;
+        var capturedSeekRandomResult = _seekRandomResult;
+        var capturedSeekSkipResult = _seekSkipResult;
+        var capturedMinTemperature = MinTemperature;
+        var capturedMaxTemperature = MaxTemperature;
+        var capturedSmartDeltaSummary = SmartDeltaSummary;
+
+        // Capture chart data for background processing
+        var capturedSanitizePass1Write = _sanitizePass1WritePoints.ToList();
+        var capturedSanitizePass1Read = _sanitizePass1ReadPoints.ToList();
+        var capturedSanitizePass2Write = _sanitizePass2WritePoints.ToList();
+        var capturedSanitizePass2Read = _sanitizePass2ReadPoints.ToList();
+
+        CertificateProgressText = "PoÄŤĂ­tĂˇm metriky a znĂˇmky...";
+
+        // Run heavy computations on background thread to keep UI responsive
+        var cert = await Task.Run(() =>
         {
-            CertificateNumber = $"DEST-{DateTime.UtcNow:yyyyMMdd}-{Guid.NewGuid():N}"[..24],
-            DiskCardId = card.Id,
-            GeneratedAt = DateTime.UtcNow,
-            GeneratedBy = Environment.UserName,
-            DiskModel = SelectedDrive!.Name,
-            SerialNumber = SelectedDrive.SerialNumber ?? "-",
-            Capacity = FormatBytes(SelectedDrive.TotalSize),
-            DiskType = _smartBaseline?.DeviceType ?? "HDD",
-            TestType = "Absolutní destruktivní test",
-            TestDuration = DateTime.UtcNow - _testStartTime,
-            Grade = CalculateGrade(),
-            Score = CalculateScore(),
-            HealthStatus = DetermineHealthStatus(),
-            Status = CertificateStatus.Active,
-            Recommended = DetermineRecommended(),
-            RecommendationNotes = BuildRecommendationNotes(),
-            Notes = BuildCertificateNotes(),
-            SmartPassed = _smartFinal?.ReallocatedSectorCount == 0 && _smartFinal?.PendingSectorCount == 0,
-            PowerOnHours = _smartFinal?.PowerOnHours ?? _smartBaseline?.PowerOnHours ?? 0,
-            PowerCycles = _smartFinal?.PowerCycleCount ?? _smartBaseline?.PowerCycleCount ?? 0,
-            ReallocatedSectors = _smartFinal?.ReallocatedSectorCount ?? _smartBaseline?.ReallocatedSectorCount ?? 0,
-            PendingSectors = _smartFinal?.PendingSectorCount ?? _smartBaseline?.PendingSectorCount ?? 0,
-            SanitizationPerformed = true,
-            SanitizationMethod = "Zero-fill + verify (2×)",
-            DataVerified = _sanitize2Result?.Success ?? false,
-            ErrorCount = (_sanitize1Result?.ErrorsDetected ?? 0) + (_sanitize2Result?.ErrorsDetected ?? 0),
-            TemperatureRange = $"{MinTemperature}–{MaxTemperature}°C"
-        };
+            var c = new DiskCertificate
+            {
+                CertificateNumber = $"DEST-{DateTime.UtcNow:yyyyMMdd}-{Guid.NewGuid():N}"[..24],
+                DiskCardId = capturedCardId,
+                GeneratedAt = DateTime.UtcNow,
+                GeneratedBy = Environment.UserName,
+                DiskModel = capturedDriveName,
+                SerialNumber = capturedSerial,
+                Capacity = capturedCapacity,
+                DiskType = capturedDiskType,
+                TestType = "AbsolutnĂ­ destruktivnĂ­ test",
+                TestDuration = capturedTestDuration,
+                Grade = CalculateGrade(),
+                Score = CalculateScore(),
+                HealthStatus = DetermineHealthStatus(),
+                Status = CertificateStatus.Active,
+                Recommended = DetermineRecommended(),
+                RecommendationNotes = BuildRecommendationNotes(),
+                Notes = BuildCertificateNotes(),
+                SmartPassed = capturedSmartFinal?.ReallocatedSectorCount == 0 && capturedSmartFinal?.PendingSectorCount == 0,
+                PowerOnHours = capturedSmartFinal?.PowerOnHours ?? capturedSmartBaseline?.PowerOnHours ?? 0,
+                PowerCycles = capturedSmartFinal?.PowerCycleCount ?? capturedSmartBaseline?.PowerCycleCount ?? 0,
+                ReallocatedSectors = capturedSmartFinal?.ReallocatedSectorCount ?? capturedSmartBaseline?.ReallocatedSectorCount ?? 0,
+                PendingSectors = capturedSmartFinal?.PendingSectorCount ?? capturedSmartBaseline?.PendingSectorCount ?? 0,
+                SanitizationPerformed = true,
+                SanitizationMethod = "Zero-fill + verify (2Ă—)",
+                DataVerified = capturedSanitize2Result?.Success ?? false,
+                ErrorCount = (capturedSanitize1Result?.ErrorsDetected ?? 0) + (capturedSanitize2Result?.ErrorsDetected ?? 0),
+                TemperatureRange = $"{capturedMinTemperature}-{capturedMaxTemperature}Â°C"
+            };
 
-        // Seek metrics
-        var allSeekSamples = new List<SeekLatencySample>();
-        if (_seekFullStrokeResult?.Samples != null) allSeekSamples.AddRange(_seekFullStrokeResult.Samples);
-        if (_seekRandomResult?.Samples != null) allSeekSamples.AddRange(_seekRandomResult.Samples);
-        if (_seekSkipResult?.Samples != null) allSeekSamples.AddRange(_seekSkipResult.Samples);
+            // Seek metrics
+            var allSeekSamples = new List<SeekLatencySample>();
+            if (capturedSeekFullStrokeResult?.Samples != null) allSeekSamples.AddRange(capturedSeekFullStrokeResult.Samples);
+            if (capturedSeekRandomResult?.Samples != null) allSeekSamples.AddRange(capturedSeekRandomResult.Samples);
+            if (capturedSeekSkipResult?.Samples != null) allSeekSamples.AddRange(capturedSeekSkipResult.Samples);
 
-        if (allSeekSamples.Count > 0)
-        {
-            var latencies = allSeekSamples.Select(s => s.LatencyMs).OrderBy(l => l).ToList();
-            cert.SeekAvgLatencyMs = latencies.Average();
-            cert.SeekMinLatencyMs = latencies.Min();
-            cert.SeekMaxLatencyMs = latencies.Max();
-            cert.SeekStdDevLatencyMs = Math.Sqrt(latencies.Average(l => Math.Pow(l - cert.SeekAvgLatencyMs.Value, 2)));
-            cert.SeekMedianLatencyMs = Percentile(latencies, 0.50);
-            cert.SeekP95LatencyMs = Percentile(latencies, 0.95);
-            cert.SeekP99LatencyMs = Percentile(latencies, 0.99);
-            cert.SeekTotalCount = allSeekSamples.Count;
-            cert.SeekErrorCount = allSeekSamples.Count(s => s.HasError);
-            cert.SeekTestSummary =
-                $"FS: {_seekFullStrokeResult?.AverageLatencyMs:F2}ms | " +
-                $"RND: {_seekRandomResult?.AverageLatencyMs:F2}ms | " +
-                $"SKIP: {_seekSkipResult?.AverageLatencyMs:F2}ms";
-        }
+            if (allSeekSamples.Count > 0)
+            {
+                var latencies = allSeekSamples.Select(s => s.LatencyMs).OrderBy(l => l).ToList();
+                c.SeekAvgLatencyMs = latencies.Average();
+                c.SeekMinLatencyMs = latencies.Min();
+                c.SeekMaxLatencyMs = latencies.Max();
+                c.SeekStdDevLatencyMs = Math.Sqrt(latencies.Average(l => Math.Pow(l - c.SeekAvgLatencyMs.Value, 2)));
+                c.SeekMedianLatencyMs = Percentile(latencies, 0.50);
+                c.SeekP95LatencyMs = Percentile(latencies, 0.95);
+                c.SeekP99LatencyMs = Percentile(latencies, 0.99);
+                c.SeekTotalCount = allSeekSamples.Count;
+                c.SeekErrorCount = allSeekSamples.Count(s => s.HasError);
+                c.SeekTestSummary =
+                    $"FS: {capturedSeekFullStrokeResult?.AverageLatencyMs:F2}ms | " +
+                    $"RND: {capturedSeekRandomResult?.AverageLatencyMs:F2}ms | " +
+                    $"SKIP: {capturedSeekSkipResult?.AverageLatencyMs:F2}ms";
+            }
 
-        // Before/after comparison
-        if (_sanitize1Result != null)
-        {
-            cert.Sanitize1AvgWriteMBps = _sanitize1Result.WriteSpeedMBps;
-            cert.Sanitize1AvgReadMBps = _sanitize1Result.ReadSpeedMBps;
-            cert.Sanitize1Errors = _sanitize1Result.ErrorsDetected;
-        }
+            // Before/after comparison
+            if (capturedSanitize1Result != null)
+            {
+                c.Sanitize1AvgWriteMBps = capturedSanitize1Result.WriteSpeedMBps;
+                c.Sanitize1AvgReadMBps = capturedSanitize1Result.ReadSpeedMBps;
+                c.Sanitize1Errors = capturedSanitize1Result.ErrorsDetected;
+            }
 
-        if (_sanitize2Result != null)
-        {
-            cert.Sanitize2AvgWriteMBps = _sanitize2Result.WriteSpeedMBps;
-            cert.Sanitize2AvgReadMBps = _sanitize2Result.ReadSpeedMBps;
-            cert.Sanitize2Errors = _sanitize2Result.ErrorsDetected;
-        }
+            if (capturedSanitize2Result != null)
+            {
+                c.Sanitize2AvgWriteMBps = capturedSanitize2Result.WriteSpeedMBps;
+                c.Sanitize2AvgReadMBps = capturedSanitize2Result.ReadSpeedMBps;
+                c.Sanitize2Errors = capturedSanitize2Result.ErrorsDetected;
+            }
 
-        // Populate generic speed fields used by CertificateView (AvgWriteSpeed, AvgReadSpeed, etc.)
-        // Use the second sanitization as the "final" speed, or first if second unavailable.
-        var finalSanitize = _sanitize2Result ?? _sanitize1Result;
-        if (finalSanitize != null)
-        {
-            cert.AvgWriteSpeed = finalSanitize.WriteSpeedMBps;
-            cert.MaxWriteSpeed = finalSanitize.WriteSpeedMBps; // sanitization reports average, use as max
-            cert.AvgReadSpeed = finalSanitize.ReadSpeedMBps;
-            cert.MaxReadSpeed = finalSanitize.ReadSpeedMBps;
-        }
+            // Populate generic speed fields used by CertificateView
+            var finalSanitize = capturedSanitize2Result ?? capturedSanitize1Result;
+            if (finalSanitize != null)
+            {
+                c.AvgWriteSpeed = finalSanitize.WriteSpeedMBps;
+                c.MaxWriteSpeed = finalSanitize.WriteSpeedMBps;
+                c.AvgReadSpeed = finalSanitize.ReadSpeedMBps;
+                c.MaxReadSpeed = finalSanitize.ReadSpeedMBps;
+            }
 
-        // Populate chart profile points for the certificate view
-        cert.WriteProfilePoints = DownsamplePoints(
-            _sanitizePass2WritePoints.Count > 0 ? _sanitizePass2WritePoints : _sanitizePass1WritePoints, 32);
-        cert.ReadProfilePoints = DownsamplePoints(
-            _sanitizePass2ReadPoints.Count > 0 ? _sanitizePass2ReadPoints : _sanitizePass1ReadPoints, 32);
+            // Populate chart profile points
+            c.WriteProfilePoints = DownsamplePoints(
+                capturedSanitizePass2Write.Count > 0 ? capturedSanitizePass2Write : capturedSanitizePass1Write, 32);
+            c.ReadProfilePoints = DownsamplePoints(
+                capturedSanitizePass2Read.Count > 0 ? capturedSanitizePass2Read : capturedSanitizePass1Read, 32);
 
-        if (cert.Sanitize1AvgWriteMBps > 0 && cert.Sanitize2AvgWriteMBps > 0)
-        {
-            cert.WriteSpeedChangePercent = ((cert.Sanitize2AvgWriteMBps.Value - cert.Sanitize1AvgWriteMBps.Value)
-                / cert.Sanitize1AvgWriteMBps.Value) * 100;
-        }
+            if (c.Sanitize1AvgWriteMBps > 0 && c.Sanitize2AvgWriteMBps > 0)
+            {
+                c.WriteSpeedChangePercent = ((c.Sanitize2AvgWriteMBps.Value - c.Sanitize1AvgWriteMBps.Value)
+                    / c.Sanitize1AvgWriteMBps.Value) * 100;
+            }
 
-        if (cert.Sanitize1AvgReadMBps > 0 && cert.Sanitize2AvgReadMBps > 0)
-        {
-            cert.ReadSpeedChangePercent = ((cert.Sanitize2AvgReadMBps.Value - cert.Sanitize1AvgReadMBps.Value)
-                / cert.Sanitize1AvgReadMBps.Value) * 100;
-        }
+            if (c.Sanitize1AvgReadMBps > 0 && c.Sanitize2AvgReadMBps > 0)
+            {
+                c.ReadSpeedChangePercent = ((c.Sanitize2AvgReadMBps.Value - c.Sanitize1AvgReadMBps.Value)
+                    / c.Sanitize1AvgReadMBps.Value) * 100;
+            }
 
-        cert.SmartDeltaSummary = SmartDeltaSummary;
+            c.SmartDeltaSummary = capturedSmartDeltaSummary;
+
+            return c;
+        });
 
         Certificate = cert;
+        IsGeneratingCertificate = false;
+        CertificateProgressText = string.Empty;
+    }
     }
 
     private async Task SaveTestSessionAsync()

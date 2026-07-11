@@ -2,6 +2,7 @@
 #pragma warning disable CA1873 // Avoid boxing of arguments for logging
 
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -16,6 +17,7 @@ namespace DiskChecker.Application.Services
     /// <summary>
     /// Centralized service for exporting test certificates from TestSession data.
     /// Provides unified API for all ViewModels with automatic downsampling, progress reporting, and error handling.
+    /// Optimized for large datasets with parallel loading and processing.
     /// </summary>
     public class CertificateExportService
     {
@@ -27,6 +29,9 @@ namespace DiskChecker.Application.Services
         private const int MaxChartPoints = 512;
         private const int SanitizationModulo = 100;
         private const int SanitizationMaxRemainders = 6;
+
+        // Detect number of CPU cores for parallel processing
+        private static readonly int ProcessorCount = Environment.ProcessorCount;
 
         public CertificateExportService(
             ICertificateGenerator certificateGenerator,
@@ -42,6 +47,7 @@ namespace DiskChecker.Application.Services
 
         /// <summary>
         /// Exportuje certifikát pro zadanou test session s automatickým downsamplingem velkých datasetů.
+        /// Využívá paralelní zpracování pro urychlení načítání a zpracování vzorků.
         /// </summary>
         /// <param name="sessionId">ID test session</param>
         /// <param name="progress">Optional progress reporter</param>
@@ -83,6 +89,9 @@ namespace DiskChecker.Application.Services
                     await LoadAndDownsampleStandardSamplesAsync(session, sessionId, progress, cancellationToken);
                 }
 
+                // Load temperature samples
+                progress?.Report(new CertificateExportProgress(_locale?.GetString("CertificateExport.LoadingTemperatures", "Načítám teploty...") ?? "Načítám teploty...", 65));
+
                 session.TemperatureSamples = DownsampleToLimit(
                     await _diskCardRepository.GetTemperatureSampleSeriesAsync(sessionId),
                     MaxChartPoints);
@@ -111,6 +120,11 @@ namespace DiskChecker.Application.Services
 
                 return CertificateExportResult.CreateSuccess(certificate, pdfPath);
             }
+            catch (OperationCanceledException)
+            {
+                _logger?.LogWarning("Certificate export cancelled for session {SessionId}", sessionId);
+                return CertificateExportResult.CreateFailure("Export byl zrušen.");
+            }
             catch (Exception ex)
             {
                 _logger?.LogError(ex, "Certificate export failed for session {SessionId}", sessionId);
@@ -119,7 +133,8 @@ namespace DiskChecker.Application.Services
         }
 
         /// <summary>
-        /// Načte a downsampleuje vzorky pro sanitizaci (velké datasety).
+        /// Načte a downsampleuje vzorky pro sanitizaci (velké datasety) s paralelním zpracováním.
+        /// Využívá více vláken pro současné načítání chunků z databáze.
         /// </summary>
         private async Task LoadAndDownsampleSanitizationSamplesAsync(
             TestSession session,
@@ -127,50 +142,75 @@ namespace DiskChecker.Application.Services
             IProgress<CertificateExportProgress>? progress,
             CancellationToken cancellationToken)
         {
-            var writeSamples = new List<SpeedSample>();
-            var readSamples = new List<SpeedSample>();
+            // Use ConcurrentBag for thread-safe collection from parallel tasks
+            var writeBag = new ConcurrentBag<SpeedSample>();
+            var readBag = new ConcurrentBag<SpeedSample>();
 
-            // Load samples progressively in chunks
+            // Load samples in parallel chunks
+            var loadTasks = new List<Task>();
+            var completedRemainders = 0;
+            var lockObj = new object();
+
             for (var remainder = 0; remainder < SanitizationMaxRemainders; remainder++)
             {
-                cancellationToken.ThrowIfCancellationRequested();
-
-                var progressPercent = 30 + ((70 - 30) * (remainder + 1) / SanitizationMaxRemainders);
-                progress?.Report(new CertificateExportProgress(
-                    string.Format(_locale?.GetString("CertificateExport.LoadingSamplesProgress", "Načítám vzorky ({0}/{1})...") ?? "Načítám vzorky ({0}/{1})...", remainder + 1, SanitizationMaxRemainders),
-                    progressPercent));
-
-                try
+                var r = remainder; // Capture for closure
+                loadTasks.Add(Task.Run(async () =>
                 {
-                    var (writeChunk, readChunk) = await _diskCardRepository.GetSpeedSampleSeriesChunkAsync(
-                        sessionId,
-                        SanitizationModulo,
-                        remainder);
+                    cancellationToken.ThrowIfCancellationRequested();
 
-                    writeSamples.AddRange(writeChunk);
-                    readSamples.AddRange(readChunk);
-                }
-                catch (Exception ex)
-                {
-                    _logger?.LogWarning(ex, "Failed to load sample chunk {Remainder} for session {SessionId}", remainder, sessionId);
-                    break;
-                }
+                    try
+                    {
+                        var (writeChunk, readChunk) = await _diskCardRepository.GetSpeedSampleSeriesChunkAsync(
+                            sessionId,
+                            SanitizationModulo,
+                            r);
+
+                        foreach (var sample in writeChunk)
+                            writeBag.Add(sample);
+                        foreach (var sample in readChunk)
+                            readBag.Add(sample);
+
+                        lock (lockObj)
+                        {
+                            completedRemainders++;
+                            var progressPercent = 30 + ((65 - 30) * completedRemainders / SanitizationMaxRemainders);
+                            progress?.Report(new CertificateExportProgress(
+                                string.Format(_locale?.GetString("CertificateExport.LoadingSamplesProgress", "Načítám vzorky ({0}/{1})...") ?? "Načítám vzorky ({0}/{1})...", completedRemainders, SanitizationMaxRemainders),
+                                progressPercent));
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger?.LogWarning(ex, "Failed to load sample chunk {Remainder} for session {SessionId}", r, sessionId);
+                    }
+                }, cancellationToken));
             }
 
-            // Downsample to MaxChartPoints
-            session.WriteSamples = DownsampleToLimit(
-                writeSamples.OrderBy(s => s.ProgressPercent).ToList(),
-                MaxChartPoints);
-            session.ReadSamples = DownsampleToLimit(
-                readSamples.OrderBy(s => s.ProgressPercent).ToList(),
-                MaxChartPoints);
+            await Task.WhenAll(loadTasks);
+
+            // Sort and downsample in parallel
+            var sortTask = Task.Run(() =>
+            {
+                var sortedWrite = writeBag.OrderBy(s => s.ProgressPercent).ToList();
+                session.WriteSamples = DownsampleToLimit(sortedWrite, MaxChartPoints);
+                return session.WriteSamples.Count;
+            }, cancellationToken);
+
+            var sortReadTask = Task.Run(() =>
+            {
+                var sortedRead = readBag.OrderBy(s => s.ProgressPercent).ToList();
+                session.ReadSamples = DownsampleToLimit(sortedRead, MaxChartPoints);
+                return session.ReadSamples.Count;
+            }, cancellationToken);
+
+            await Task.WhenAll(sortTask, sortReadTask);
 
             _logger?.LogInformation(
                 "Sanitization samples loaded and downsampled: {WriteCount} write + {ReadCount} read (from {OriginalWrite}/{OriginalRead})",
-                session.WriteSamples.Count,
-                session.ReadSamples.Count,
-                writeSamples.Count,
-                readSamples.Count);
+                sortTask.Result,
+                sortReadTask.Result,
+                writeBag.Count,
+                readBag.Count);
         }
 
         /// <summary>
@@ -186,9 +226,14 @@ namespace DiskChecker.Application.Services
 
             var (writeSamples, readSamples) = await _diskCardRepository.GetSpeedSampleSeriesAsync(sessionId);
 
-            // Downsample if needed
-            session.WriteSamples = DownsampleToLimit(writeSamples, MaxChartPoints);
-            session.ReadSamples = DownsampleToLimit(readSamples, MaxChartPoints);
+            // Downsample write and read in parallel
+            var downsampleWriteTask = Task.Run(() => DownsampleToLimit(writeSamples, MaxChartPoints), cancellationToken);
+            var downsampleReadTask = Task.Run(() => DownsampleToLimit(readSamples, MaxChartPoints), cancellationToken);
+
+            await Task.WhenAll(downsampleWriteTask, downsampleReadTask);
+
+            session.WriteSamples = downsampleWriteTask.Result;
+            session.ReadSamples = downsampleReadTask.Result;
 
             _logger?.LogInformation(
                 "Standard test samples loaded and downsampled: {WriteCount} write + {ReadCount} read (from {OriginalWrite}/{OriginalRead})",

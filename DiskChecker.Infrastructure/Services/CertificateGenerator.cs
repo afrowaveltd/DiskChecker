@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Buffers;
 using System.Collections.Generic;
 using System.Diagnostics;
@@ -310,7 +310,7 @@ public class CertificateGenerator : ICertificateGenerator
 
         var filePath = Path.Combine(_certificatesDirectory, fileName);
 
-        var jpegBytes = await RenderCertificateJpegAsync(certificate);
+        var jpegBytes = await RenderCertificateJpegAsync(certificate, CancellationToken.None);
         var pdfBytes = BuildImagePdfDocument(jpegBytes, CertWidth, CertHeight);
         await File.WriteAllBytesAsync(filePath, pdfBytes);
         TryAssignOwnershipToSudoUser(filePath);
@@ -323,7 +323,7 @@ public class CertificateGenerator : ICertificateGenerator
     /// <summary>
     /// Renders the certificate as a JPEG using SkiaSharp (cross-platform).
     /// </summary>
-    private Task<byte[]> RenderCertificateJpegAsync(DiskCertificate cert)
+    private Task<byte[]> RenderCertificateJpegAsync(DiskCertificate cert, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(cert);
 
@@ -332,6 +332,7 @@ public class CertificateGenerator : ICertificateGenerator
             using var surface = SKSurface.Create(new SKImageInfo(CertWidth, CertHeight));
             var canvas = surface.Canvas;
             canvas.Clear(SKColors.White);
+            cancellationToken.ThrowIfCancellationRequested();
 
             // Resolve fonts with fallback chain
             using var titleFont = ResolveFont(38, bold: true);
@@ -406,6 +407,8 @@ public class CertificateGenerator : ICertificateGenerator
             float scoreWidth = scoreFont.MeasureText(scoreText);
             DrawText(canvas, scoreText, sealX + (sealSize - scoreWidth) / 2f, sealY + sealSize + 8f, scoreFont, textPaint);
 
+            cancellationToken.ThrowIfCancellationRequested();
+
             // Test results
             y += 330;
             DrawText(canvas, _locale?.GetString("CertificatePdf.TestResults", "Výsledky testu") ?? "Výsledky testu", 48, y, sectionFont, accentPaint);
@@ -453,6 +456,8 @@ public class CertificateGenerator : ICertificateGenerator
                     DrawTextWrapped(canvas, cert.SeekTestSummary, 64, y + 166, 430, 60, smallFont, textPaint);
             }
 
+            cancellationToken.ThrowIfCancellationRequested();
+
             // SMART summary
             y += testResultsHeight + 20;
             DrawText(canvas, _locale?.GetString("CertificatePdf.SmartSummary", "SMART souhrn") ?? "SMART souhrn", 48, y, sectionFont, accentPaint);
@@ -467,6 +472,8 @@ public class CertificateGenerator : ICertificateGenerator
             DrawText(canvas, _locale?.GetString("CertificatePdf.GradeAB", "A = výborný stav | B = velmi dobrý stav") ?? "A = výborný stav | B = velmi dobrý stav", 64, y + 110, smallFont, textPaint);
             DrawText(canvas, _locale?.GetString("CertificatePdf.GradeCD", "C = dobrý stav | D = opotřebený disk") ?? "C = dobrý stav | D = opotřebený disk", 64, y + 132, smallFont, textPaint);
             DrawText(canvas, _locale?.GetString("CertificatePdf.GradeEF", "E = rizikový disk | F = kritický / vadný") ?? "E = rizikový disk | F = kritický / vadný", 64, y + 154, smallFont, textPaint);
+
+            cancellationToken.ThrowIfCancellationRequested();
 
             // Performance chart(s)
             y += 220;
@@ -692,6 +699,8 @@ public class CertificateGenerator : ICertificateGenerator
                 y = chartY + chartH;
             }
 
+            cancellationToken.ThrowIfCancellationRequested();
+
             // Recommendation// Recommendation
             y += 290;
             DrawText(canvas, _locale?.GetString("CertificatePdf.Recommendations", "Doporučení") ?? "Doporučení", 48, y, sectionFont, accentPaint);
@@ -699,6 +708,8 @@ public class CertificateGenerator : ICertificateGenerator
             canvas.DrawRect(48, y, CertWidth - 96, 140, panelPaint);
             canvas.DrawRect(48, y, CertWidth - 96, 140, borderPaint);
             DrawTextWrapped(canvas, cert.RecommendationNotes ?? _locale?.GetString("CertificatePdf.NotAvailable", "Není k dispozici") ?? "Není k dispozici", 64, y + 16, CertWidth - 130, 100, valueFont, textPaint);
+
+            cancellationToken.ThrowIfCancellationRequested();
 
             // Diagnostic notes
             if (!string.IsNullOrWhiteSpace(cert.Notes))
@@ -711,6 +722,8 @@ public class CertificateGenerator : ICertificateGenerator
                 canvas.DrawRect(48, y, CertWidth - 96, notesHeight, borderPaint);
                 DrawTextWrapped(canvas, cert.Notes, 64, y + 16, CertWidth - 130, notesHeight - 20, valueFont, textPaint);
             }
+
+            cancellationToken.ThrowIfCancellationRequested();
 
             // Encode as JPEG
             using var image = surface.Snapshot();
@@ -1073,7 +1086,7 @@ public class CertificateGenerator : ICertificateGenerator
 
     public Task<byte[]> GeneratePreviewAsync(DiskCertificate certificate)
     {
-        return RenderCertificateJpegAsync(certificate);
+        return RenderCertificateJpegAsync(certificate, CancellationToken.None);
     }
 
     public (string grade, double score) CalculateGrade(TestSession session)
