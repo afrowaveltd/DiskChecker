@@ -732,8 +732,9 @@ public string SelectedTestType
             if (smartData.RetrievedAtUtc == null)
                 smartData.RetrievedAtUtc = DateTime.UtcNow;
 
+            MergeCriticalCountersFromAttributes(smartData, smartData.Attributes);
             CurrentSmartData = smartData;
-            CurrentQuality = _qualityCalculator.CalculateQuality(smartData);
+            CurrentQuality = _qualityCalculator.CalculateQuality(smartData!);
 
             await PersistSmartSnapshotAsync(SelectedDisk.Drive, smartData, CurrentQuality);
 
@@ -778,6 +779,9 @@ public string SelectedTestType
                     var attributes = await advancedProvider.GetSmartAttributesAsync(devicePath, cancellationToken);
                     Console.WriteLine($"[SMART] GetSmartAttributesAsync returned {attributes?.Count ?? -1} attributes");
                     
+                    MergeCriticalCountersFromAttributes(smartData!, attributes);
+                    CurrentQuality = _qualityCalculator.CalculateQuality(smartData);
+
                     // Update collections on UI thread for proper CollectionChanged events
                     Console.WriteLine($"[SMART] Updating collections on UI thread...");
                     await Dispatcher.UIThread.InvokeAsync(() =>
@@ -796,6 +800,7 @@ public string SelectedTestType
                         {
                             CriticalAttributes.Add(attr);
                         }
+                        UpdateComputedProperties();
                         Console.WriteLine($"[SMART] CriticalAttributes now has {CriticalAttributes.Count} items");
                     });
                     System.Diagnostics.Debug.WriteLine($"Found {CriticalAttributes.Count} critical attributes");
@@ -1362,17 +1367,52 @@ private async Task AbortTestAsync()
         var result = attrs
             .Where(a => criticalIds.Contains(a.Id) || IsCriticalAttributeName(a.Name))
             .GroupBy(a => a.Id)
-            .Select(g => g.First())
+            .Select(g => g.OrderByDescending(a => a.RawValue).First())
             .OrderBy(a => Array.IndexOf(criticalIds, a.Id) < 0 ? int.MaxValue : Array.IndexOf(criticalIds, a.Id))
             .ToList();
 
-        AddSyntheticIfMissing(result, 5, "Reallocated Sectors", smartData.ReallocatedSectorCount);
-        AddSyntheticIfMissing(result, 197, "Current Pending Sectors", smartData.PendingSectorCount);
-        AddSyntheticIfMissing(result, 198, smartData.DeviceType.Contains("NVMe", StringComparison.OrdinalIgnoreCase) ? "Media/Data Integrity Errors" : "Offline Uncorrectable", smartData.MediaErrors ?? smartData.UncorrectableErrorCount);
-        AddSyntheticIfMissing(result, 170, "Available Spare", smartData.AvailableSpare);
-        AddSyntheticIfMissing(result, 177, "SSD/NVMe Life Used", smartData.PercentageUsed);
-        AddSyntheticIfMissing(result, 174, "Unsafe Shutdowns", smartData.UnsafeShutdowns);
+        AddOrOverrideSynthetic(result, 5, "Reallocated Sectors", smartData.ReallocatedSectorCount);
+        AddOrOverrideSynthetic(result, 197, "Current Pending Sectors", smartData.PendingSectorCount);
+        AddOrOverrideSynthetic(result, 198, smartData.DeviceType.Contains("NVMe", StringComparison.OrdinalIgnoreCase) ? "Media/Data Integrity Errors" : "Offline Uncorrectable", smartData.MediaErrors ?? smartData.UncorrectableErrorCount);
+        AddOrOverrideSynthetic(result, 170, "Available Spare", smartData.AvailableSpare);
+        AddOrOverrideSynthetic(result, 177, "SSD/NVMe Life Used", smartData.PercentageUsed);
+        AddOrOverrideSynthetic(result, 174, "Unsafe Shutdowns", smartData.UnsafeShutdowns);
         return result;
+    }
+
+    private static void MergeCriticalCountersFromAttributes(SmartaData smartData, IReadOnlyList<SmartaAttributeItem>? providerAttributes)
+    {
+        var attrs = (providerAttributes?.Count > 0 ? providerAttributes : smartData.Attributes) ?? new List<SmartaAttributeItem>();
+
+        smartData.ReallocatedSectorCount = MaxKnownCounter(smartData.ReallocatedSectorCount, FindRawCounter(attrs, 5, "Reallocated"));
+        smartData.PendingSectorCount = MaxKnownCounter(smartData.PendingSectorCount, FindRawCounter(attrs, 197, "Pending"));
+        smartData.UncorrectableErrorCount = MaxKnownCounter(smartData.UncorrectableErrorCount, FindRawCounter(attrs, 198, "Uncorrect"));
+        smartData.MediaErrors = MaxKnownCounter(smartData.MediaErrors, FindRawCounter(attrs, 198, "Media"));
+    }
+
+    private static int? FindRawCounter(IEnumerable<SmartaAttributeItem> attrs, int id, string nameFragment)
+    {
+        var match = attrs
+            .Where(a => a.Id == id || a.Name.Contains(nameFragment, StringComparison.OrdinalIgnoreCase))
+            .OrderByDescending(a => a.RawValue)
+            .FirstOrDefault();
+
+        return match == null ? null : (int)Math.Min(match.RawValue, int.MaxValue);
+    }
+
+    private static int? MaxKnownCounter(int? current, int? fromAttributes)
+    {
+        if (!fromAttributes.HasValue)
+        {
+            return current;
+        }
+
+        if (!current.HasValue)
+        {
+            return fromAttributes;
+        }
+
+        return Math.Max(current.Value, fromAttributes.Value);
     }
 
     private static bool IsCriticalAttributeName(string name) =>
@@ -1384,10 +1424,28 @@ private async Task AbortTestAsync()
         name.Contains("Wear", StringComparison.OrdinalIgnoreCase) ||
         name.Contains("Percentage", StringComparison.OrdinalIgnoreCase);
 
-    private static void AddSyntheticIfMissing(List<SmartaAttributeItem> items, int id, string name, int? value)
+    private static void AddOrOverrideSynthetic(List<SmartaAttributeItem> items, int id, string name, int? value)
     {
-        if (!value.HasValue || items.Any(a => a.Id == id)) return;
-        items.Add(new SmartaAttributeItem { Id = id, Name = name, RawValue = (uint)Math.Max(0, value.Value), Value = 100, Worst = 100, Threshold = 0, IsOk = value.Value == 0 });
+        if (!value.HasValue)
+        {
+            return;
+        }
+
+        var normalized = Math.Max(0, value.Value);
+        var existing = items.FirstOrDefault(a => a.Id == id);
+        if (existing != null)
+        {
+            if (normalized > existing.RawValue)
+            {
+                existing.RawValue = (uint)normalized;
+                existing.Name = string.IsNullOrWhiteSpace(existing.Name) ? name : existing.Name;
+                existing.IsOk = normalized == 0;
+                existing.Interpretation = normalized == 0 ? existing.Interpretation : $"{normalized:N0}";
+            }
+            return;
+        }
+
+        items.Add(new SmartaAttributeItem { Id = id, Name = name, RawValue = (uint)normalized, Value = 100, Worst = 100, Threshold = 0, IsOk = normalized == 0, Current = 100, Interpretation = normalized == 0 ? string.Empty : $"{normalized:N0}" });
     }
 
 private void UpdateComputedProperties()
