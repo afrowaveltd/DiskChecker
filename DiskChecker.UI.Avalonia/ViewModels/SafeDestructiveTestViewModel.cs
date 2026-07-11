@@ -59,12 +59,14 @@ public partial class SafeDestructiveTestViewModel : ViewModelBase, INavigableVie
    private readonly IDiskCardRepository _diskCardRepository;
    private readonly ICertificateGenerator _certificateGenerator;
    private readonly TestCompletionNotificationService _notificationService;
+   private readonly IPowerManagementService _powerManagementService;
 
    // ──────────────────────────────────────────────
    //  Cancellation
    // ──────────────────────────────────────────────
 
    private CancellationTokenSource? _cts;
+   private IPowerManagementSession? _powerSession;
    private bool _disposed;
 
    // ──────────────────────────────────────────────
@@ -296,7 +298,8 @@ public partial class SafeDestructiveTestViewModel : ViewModelBase, INavigableVie
        SmartCheckService smartCheckService,
        IDiskCardRepository diskCardRepository,
        ICertificateGenerator certificateGenerator,
-       TestCompletionNotificationService notificationService)
+       TestCompletionNotificationService notificationService,
+       IPowerManagementService powerManagementService)
    {
       _navigationService = navigationService;
       _selectedDiskService = selectedDiskService;
@@ -308,6 +311,7 @@ public partial class SafeDestructiveTestViewModel : ViewModelBase, INavigableVie
       _diskCardRepository = diskCardRepository;
       _certificateGenerator = certificateGenerator;
       _notificationService = notificationService;
+      _powerManagementService = powerManagementService;
 
       StartWorkflowCommand = new AsyncRelayCommand(StartWorkflowAsync, () => Phase == SafeDestructivePhase.Ready && SelectedDrive != null && HasEnoughBackupSpace);
       SelectedMode = SafeDestructiveMode.BackupAndRestore; // default
@@ -700,6 +704,10 @@ public partial class SafeDestructiveTestViewModel : ViewModelBase, INavigableVie
 
       try
       {
+         // Protect the complete operation, including backup and emergency restore.
+         // Suspending in any of these phases can leave the source or image incomplete.
+         _powerSession = await _powerManagementService.BeginTestSessionAsync(ct);
+
          // ── Phase 1: Backup + verification ──
          if(SelectedMode == SafeDestructiveMode.VhdxOnly)
          {
@@ -754,6 +762,21 @@ public partial class SafeDestructiveTestViewModel : ViewModelBase, INavigableVie
          Phase = SafeDestructivePhase.Failed;
          StatusMessage = L.Get("SafeDestructive.Status.Error", ex.Message);
          Log($"❌ FATAL: {ex.Message}");
+      }
+      finally
+      {
+         if(_powerSession != null)
+         {
+            try
+            {
+               await _powerSession.RestoreAsync();
+            }
+            finally
+            {
+               _powerSession.Dispose();
+               _powerSession = null;
+            }
+         }
       }
    }
 
@@ -2312,6 +2335,8 @@ public partial class SafeDestructiveTestViewModel : ViewModelBase, INavigableVie
       if(_disposed) return;
       _disposed = true;
       _cts?.Cancel();
+      _powerSession?.Dispose();
+      _powerSession = null;
       _cts?.Dispose();
       _cts = null;
       GC.SuppressFinalize(this);

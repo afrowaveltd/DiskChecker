@@ -95,8 +95,6 @@ public class LinuxDiskSanitizationService : IDiskSanitizationService
             result.WriteDuration = writeResult.Duration;
             result.ErrorsDetected += writeResult.Errors;
 
-            await FlushDeviceAndDropCachesAsync(normalizedPath, cancellationToken);
-
             // Phase 3: Read and verify
             progress?.Report(new SanitizationProgress
             {
@@ -353,7 +351,9 @@ public class LinuxDiskSanitizationService : IDiskSanitizationService
             using (var fileHandle = await OpenDeviceHandleWithRetryAsync(
                 devicePath,
                 FileMode.Open,
-                FileAccess.Write,
+                // Windows opens the raw disk as read/write for both phases. Some Linux
+                // block drivers also behave differently for a write-only descriptor.
+                FileAccess.ReadWrite,
                 FileShare.None,
                 FileOptions.WriteThrough | FileOptions.SequentialScan,
                 cancellationToken))
@@ -484,9 +484,12 @@ public class LinuxDiskSanitizationService : IDiskSanitizationService
             using (var fileHandle = await OpenDeviceHandleWithRetryAsync(
                 devicePath,
                 FileMode.Open,
-                FileAccess.Read,
+                // Match the Windows CreateFile handle: read/write, exclusive and
+                // write-through. WriteThrough is harmless for reads but keeps both
+                // phases on an identically configured raw-device descriptor.
+                FileAccess.ReadWrite,
                 FileShare.None,
-                FileOptions.SequentialScan,
+                FileOptions.WriteThrough | FileOptions.SequentialScan,
                 cancellationToken))
             {
                 while (bytesRead < diskSize)

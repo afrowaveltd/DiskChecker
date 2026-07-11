@@ -38,7 +38,6 @@ public class LinuxPowerManagementService : IPowerManagementService
     private sealed class LinuxPowerSession : IPowerManagementSession
     {
         private readonly ILogger? _logger;
-        private readonly CancellationToken _cancellationToken;
         private bool _disposed;
         private Process? _inhibitProcess;
         private int? _previousNice;
@@ -51,13 +50,12 @@ public class LinuxPowerManagementService : IPowerManagementService
         public LinuxPowerSession(ILogger? logger, CancellationToken cancellationToken)
         {
             _logger = logger;
-            _cancellationToken = cancellationToken;
             _currentPid = Environment.ProcessId;
 
             try
             {
                 // 1. Start systemd-inhibit to prevent sleep, idle, shutdown
-                StartSystemdInhibit();
+                StartSystemdInhibit(cancellationToken);
 
                 // 2. Save and set CPU governor to performance
                 SetPerformanceGovernor();
@@ -86,17 +84,19 @@ public class LinuxPowerManagementService : IPowerManagementService
             }
         }
 
-        private void StartSystemdInhibit()
+        private void StartSystemdInhibit(CancellationToken cancellationToken)
         {
+            // A test must not claim that sleep is inhibited unless systemd actually
+            // accepted and keeps the inhibitor lock. Failing closed is safer than a
+            // multi-hour destructive operation being interrupted by suspend.
+            if (!IsCommandAvailable("systemd-inhibit"))
+            {
+                throw new InvalidOperationException(
+                    "systemd-inhibit is not available; system sleep cannot be safely suppressed.");
+            }
+
             try
             {
-                // Check if systemd-inhibit is available
-                if (!IsCommandAvailable("systemd-inhibit"))
-                {
-                    _logger?.LogWarning("[PowerMgmt] systemd-inhibit not available, sleep prevention may not work");
-                    return;
-                }
-
                 var startInfo = new ProcessStartInfo
                 {
                     FileName = "systemd-inhibit",
@@ -111,7 +111,21 @@ public class LinuxPowerManagementService : IPowerManagementService
                     RedirectStandardError = true
                 };
 
-                _inhibitProcess = Process.Start(startInfo);
+                _inhibitProcess = Process.Start(startInfo)
+                    ?? throw new InvalidOperationException("Failed to start systemd-inhibit.");
+
+                // Detect command-line/DBus failures before reporting an active session.
+                if (_inhibitProcess.WaitForExit(250))
+                {
+                    var error = _inhibitProcess.StandardError.ReadToEnd().Trim();
+                    var exitCode = _inhibitProcess.ExitCode;
+                    _inhibitProcess.Dispose();
+                    _inhibitProcess = null;
+                    throw new InvalidOperationException(
+                        $"systemd-inhibit exited with code {exitCode}: {error}");
+                }
+
+                cancellationToken.ThrowIfCancellationRequested();
                 if (_logger != null && _logger.IsEnabled(LogLevel.Information))
                 {
                     _logger.LogInformation("[PowerMgmt] systemd-inhibit started (PID: {Pid})", _inhibitProcess?.Id);
@@ -119,7 +133,8 @@ public class LinuxPowerManagementService : IPowerManagementService
             }
             catch (Exception ex)
             {
-                _logger?.LogWarning(ex, "[PowerMgmt] Failed to start systemd-inhibit");
+                _logger?.LogError(ex, "[PowerMgmt] Failed to start mandatory systemd inhibitor");
+                throw;
             }
         }
 
@@ -242,7 +257,7 @@ public class LinuxPowerManagementService : IPowerManagementService
 
         public async Task RestoreAsync()
         {
-            if (_disposed || !IsActive)
+            if (!IsActive)
             {
                 return;
             }
@@ -365,8 +380,8 @@ public class LinuxPowerManagementService : IPowerManagementService
                 return;
             }
 
-            _disposed = true;
             RestoreAsync().GetAwaiter().GetResult();
+            _disposed = true;
             GC.SuppressFinalize(this);
         }
 
