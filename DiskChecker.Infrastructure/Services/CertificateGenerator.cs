@@ -188,8 +188,8 @@ public class CertificateGenerator : ICertificateGenerator
             var powerOnHours = session.SmartBefore?.PowerOnHours ?? diskCard.PowerOnHours ?? 0;
             var powerCycles = session.SmartBefore?.PowerCycleCount ?? diskCard.PowerCycleCount ?? 0;
 
-            var writeSamples = session.WriteSamples.Where(s => s.SpeedMBps > 0).ToList();
-            var readSamples = session.ReadSamples.Where(s => s.SpeedMBps > 0).ToList();
+            var writeSamples = session.WriteSamples?.Where(s => s.SpeedMBps > 0).ToList() ?? new List<SpeedSample>();
+            var readSamples = session.ReadSamples?.Where(s => s.SpeedMBps > 0).ToList() ?? new List<SpeedSample>();
 
             var avgWriteSpeed = session.AverageWriteSpeedMBps > 0
                 ? session.AverageWriteSpeedMBps
@@ -204,7 +204,7 @@ public class CertificateGenerator : ICertificateGenerator
                 ? session.MaxReadSpeedMBps
                 : (readSamples.Count > 0 ? readSamples.Max(s => s.SpeedMBps) : 0);
 
-            var errorCount = session.Errors.Count;
+            var errorCount = session.Errors?.Count ?? 0;
             if (errorCount == 0)
                 errorCount = Math.Max(0, session.WriteErrors) + Math.Max(0, session.ReadErrors) + Math.Max(0, session.VerificationErrors);
 
@@ -253,10 +253,10 @@ public class CertificateGenerator : ICertificateGenerator
                 ChartImagePath = session.ChartImagePath
             };
 
-            certificate.WriteProfilePoints = DownsampleSpeeds(session.WriteSamples.Select(s => s.SpeedMBps), CertificateChartPoints);
-            certificate.ReadProfilePoints = DownsampleSpeeds(session.ReadSamples.Select(s => s.SpeedMBps), CertificateChartPoints);
-            certificate.TemperatureProfilePoints = DownsampleTemperatures(session.TemperatureSamples, CertificateChartPoints);
-            certificate.StallProfilePoints = DownsampleStalls(session.WriteSamples, session.ReadSamples, CertificateChartPoints);
+            certificate.WriteProfilePoints = DownsampleSpeeds(session.WriteSamples?.Select(s => s.SpeedMBps) ?? Enumerable.Empty<double>(), CertificateChartPoints);
+            certificate.ReadProfilePoints = DownsampleSpeeds(session.ReadSamples?.Select(s => s.SpeedMBps) ?? Enumerable.Empty<double>(), CertificateChartPoints);
+            certificate.TemperatureProfilePoints = DownsampleTemperatures(session.TemperatureSamples ?? new List<TemperatureSample>(), CertificateChartPoints);
+            certificate.StallProfilePoints = DownsampleStalls(session.WriteSamples ?? new List<SpeedSample>(), session.ReadSamples ?? new List<SpeedSample>(), CertificateChartPoints);
 
             certificate.Grade = grade;
             certificate.Score = score;
@@ -521,8 +521,8 @@ public class CertificateGenerator : ICertificateGenerator
                 DrawText(canvas, _locale?.GetString("CertificatePdf.Percent100", "100 %") ?? "100 %", chartX + chartW - 40, topChartY + topChartH - 18, chartLabelFont, mutedPaint);
                 using var legendWritePaint = new SKPaint { Color = new SKColor(220, 38, 38), IsAntialias = true };
                 using var legendReadPaint = new SKPaint { Color = new SKColor(5, 150, 105), IsAntialias = true };
-                DrawText(canvas, _locale?.GetString("CertificatePdf.Write", "ZĂˇpis") ?? "ZĂˇpis", chartX + chartW - 150, topChartY + 8, chartLabelFont, legendWritePaint);
-                DrawText(canvas, _locale?.GetString("CertificatePdf.Read", "ÄŚtenĂ­") ?? "ÄŚtenĂ­", chartX + chartW - 90, topChartY + 8, chartLabelFont, legendReadPaint);
+                DrawText(canvas, _locale?.GetString("CertificatePdf.Write", "Zápis") ?? "Zápis", chartX + chartW - 150, topChartY + 8, chartLabelFont, legendWritePaint);
+                DrawText(canvas, _locale?.GetString("CertificatePdf.Read", "Čtení") ?? "Čtení", chartX + chartW - 90, topChartY + 8, chartLabelFont, legendReadPaint);
 
                 // --- Bottom chart: Seek latency scatter ---
                 y = topChartY + topChartH + gapBetweenCharts;
@@ -581,7 +581,7 @@ public class CertificateGenerator : ICertificateGenerator
                 // Single-chart layout (original behavior)
                 var chartTitle = isSeekChart
                     ? (_locale?.GetString("CertificatePdf.SeekLatencyChart", "Seek latence") ?? "Seek latence")
-                    : (_locale?.GetString("CertificatePdf.PerformanceProfile", "VĂ˝konovĂ˝ profil testu") ?? "VĂ˝konovĂ˝ profil testu");
+                    : (_locale?.GetString("CertificatePdf.PerformanceProfile", "Výkonový profil testu") ?? "Výkonový profil testu");
                 DrawText(canvas, chartTitle, 48, y, sectionFont, accentPaint);
                 y += 34;
 

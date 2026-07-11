@@ -139,7 +139,7 @@ public partial class AbsoluteDestructiveTestViewModel : ViewModelBase, INavigabl
     [ObservableProperty] private bool _isTesting;
     [ObservableProperty] private bool _isCompleted;
     [ObservableProperty] private bool _wasAborted;
-    [ObservableProperty] private string _statusMessage = L.Get("DestructiveTest.Status.Ready");
+    [ObservableProperty] private string _statusMessage = string.Empty;
     [ObservableProperty] private double _overallProgress;
     [ObservableProperty] private double _currentPhaseProgress;
     [ObservableProperty] private string _currentPhaseName = string.Empty;
@@ -151,7 +151,7 @@ public partial class AbsoluteDestructiveTestViewModel : ViewModelBase, INavigabl
     [ObservableProperty] private bool _isSmartAvailable;
     [ObservableProperty] private bool _showManualProfileSelector;
     [ObservableProperty] private ManualTestProfile _selectedManualProfile = ManualTestProfile.Standard;
-    [ObservableProperty] private string _smartBaselineSummary = L.Get("DestructiveTest.Waiting");
+    [ObservableProperty] private string _smartBaselineSummary = string.Empty;
     [ObservableProperty] private string _smartCurrentSummary = "Čekám...";
     [ObservableProperty] private string _smartDeltaSummary = "—";
     [ObservableProperty] private bool _hasResults;
@@ -449,6 +449,10 @@ public partial class AbsoluteDestructiveTestViewModel : ViewModelBase, INavigabl
                 TextSize = 10
             }
         };
+
+        // Initialize observable properties with localized values
+        StatusMessage = L.Get("DestructiveTest.Status.Ready");
+        SmartBaselineSummary = L.Get("DestructiveTest.Waiting");
     }
 
     // ──────────────────────────────────────────────
@@ -1711,7 +1715,6 @@ public partial class AbsoluteDestructiveTestViewModel : ViewModelBase, INavigabl
         IsGeneratingCertificate = false;
         CertificateProgressText = string.Empty;
     }
-    }
 
     private async Task SaveTestSessionAsync()
     {
@@ -2120,18 +2123,19 @@ public partial class AbsoluteDestructiveTestViewModel : ViewModelBase, INavigabl
     /// Y-values suitable for certificate chart rendering.
     /// </summary>
     private static List<double> DownsamplePoints(
-        ObservableCollection<ObservablePoint> points, int targetCount)
+        IEnumerable<ObservablePoint> points, int targetCount)
     {
-        if (points.Count == 0) return new List<double>();
-        if (points.Count <= targetCount) return points.Select(p => p.Y ?? 0).ToList();
+        var pointsList = points.ToList();
+        if (pointsList.Count == 0) return new List<double>();
+        if (pointsList.Count <= targetCount) return pointsList.Select(p => p.Y ?? 0).ToList();
 
         var result = new List<double>(targetCount);
-        var step = (double)points.Count / targetCount;
+        var step = (double)pointsList.Count / targetCount;
         for (int i = 0; i < targetCount; i++)
         {
             var idx = (int)(i * step);
-            if (idx >= points.Count) idx = points.Count - 1;
-            result.Add(points[idx].Y ?? 0);
+            if (idx >= pointsList.Count) idx = pointsList.Count - 1;
+            result.Add(pointsList[idx].Y ?? 0);
         }
         return result;
     }

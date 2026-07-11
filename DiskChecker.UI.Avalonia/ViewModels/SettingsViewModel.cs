@@ -410,9 +410,6 @@ namespace DiskChecker.UI.Avalonia.ViewModels
                 var confirmation = await _dialogService.ShowConfirmationAsync(
                     L.Get("Settings.RestoreFromBackup"),
                     string.Format(L.Get("Settings.RestoreConfirmMessage"), SelectedBackup.FileName, SelectedBackup.CreatedAt.ToString("dd.MM.yyyy HH:mm")));
-                    $"Záloha: {SelectedBackup.FileName}\n" +
-                    $"Datum: {SelectedBackup.CreatedAt:dd.MM.yyyy HH:mm}\n\n" +
-                    $"VAROVÁNÍ: Aktuální data budou přepsána!");
                 
                 if (confirmation)
                 {

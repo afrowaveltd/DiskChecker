@@ -339,7 +339,13 @@ public class DiskCardRepository : IDiskCardRepository
                 SeekResultsJson = t.SeekResultsJson,
                 Sanitize1ResultJson = t.Sanitize1ResultJson,
                 Sanitize2ResultJson = t.Sanitize2ResultJson,
-                AnomaliesJson = t.AnomaliesJson
+                AnomaliesJson = t.AnomaliesJson,
+                // Initialize collections to prevent null reference exceptions
+                Errors = new List<TestError>(),
+                WriteSamples = new List<SpeedSample>(),
+                ReadSamples = new List<SpeedSample>(),
+                TemperatureSamples = new List<TemperatureSample>(),
+                SmartChanges = new List<SmartAttributeChange>()
             })
             .FirstOrDefaultAsync();
     }

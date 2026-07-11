@@ -21,7 +21,7 @@ public sealed class FullReportViewerViewModel : ViewModelBase, INavigableViewMod
     private readonly IDialogService _dialogService;
     private readonly ReportDocumentState _reportDocumentState;
 
-    private string _statusMessage = L.Get("Common.Ready");
+    private string _statusMessage = string.Empty;
     private string _reportPath = string.Empty;
     private string _reportContent = string.Empty;
     private bool _isLoading;
@@ -37,6 +37,8 @@ public sealed class FullReportViewerViewModel : ViewModelBase, INavigableViewMod
         _navigationService = navigationService ?? throw new ArgumentNullException(nameof(navigationService));
         _dialogService = dialogService ?? throw new ArgumentNullException(nameof(dialogService));
         _reportDocumentState = reportDocumentState ?? throw new ArgumentNullException(nameof(reportDocumentState));
+
+        StatusMessage = L.Get("Common.Ready");
 
         ReloadCommand = new AsyncRelayCommand(LoadReportAsync);
         PrintCommand = new AsyncRelayCommand(PrintAsync, () => !string.IsNullOrWhiteSpace(ReportPath));

@@ -59,7 +59,7 @@ public class WindowsPowerManagementService : IPowerManagementService
 
     #endregion
 
-    private class WindowsPowerSession : IPowerManagementSession
+    private sealed class WindowsPowerSession : IPowerManagementSession
     {
         private readonly ILogger? _logger;
         private bool _disposed;

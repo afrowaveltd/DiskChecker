@@ -7,6 +7,8 @@
     <RootNamespace>DiskChecker.Infrastructure</RootNamespace>
     <SupportedOSPlatformVersion>windows10.0.17763.0</SupportedOSPlatformVersion>
     <NoWarn>$(NoWarn);CA1848</NoWarn>
+    <AssemblyVersion>1.0.0.0</AssemblyVersion>
+    <FileVersion>1.0.0.0</FileVersion>
   </PropertyGroup>
 
   <ItemGroup>

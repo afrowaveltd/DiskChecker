@@ -1064,7 +1064,6 @@ public string SelectedTestType
                     {
                         await _dialogService.ShowSuccessAsync(L.Get("SmartCheck.SelfTest"), 
                             string.Format(L.Get("SmartCheck.Dialog.TestStarted"), testName));
-                            "Výsledek zkontrolujte obnovením dat za několik minut.");
                     }
                 }
                 else
@@ -1113,7 +1112,6 @@ public string SelectedTestType
         var wantPolling = await _dialogService.ShowConfirmationAsync(
             L.Get("SmartCheck.Dialog.MonitorPrompt"),
             L.Get("SmartCheck.Dialog.MonitorMessage"));
-            "Aplikace bude kontrolovat stav testu každých 5 sekund.");
         
         return wantPolling ? SelfTestConfirmationResult.StartWithPolling : SelfTestConfirmationResult.Start;
     }

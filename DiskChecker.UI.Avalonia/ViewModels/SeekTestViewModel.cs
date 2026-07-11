@@ -606,8 +606,7 @@ public partial class SeekTestViewModel : ViewModelBase, INavigableViewModel, IDi
         {
             var confirmed = await _dialogService.ShowConfirmationAsync(
                 L.Get("SeekTest.ForcedTestTitle"),
-                string.Format(L.Get("SeekTest.ForcedTestMessage"), SelectedSeekCount) +
-
+                string.Format(L.Get("SeekTest.ForcedTestMessage"), SelectedSeekCount));
 
             if (!confirmed) return;
         }
@@ -617,7 +616,7 @@ public partial class SeekTestViewModel : ViewModelBase, INavigableViewModel, IDi
         {
             var confirmed = await _dialogService.ShowConfirmationAsync(
                 L.Get("SeekTest.LimitExceededTitle"),
-                string.Format(L.Get("SeekTest.LimitExceededMessage"), SelectedSeekCount, MaxSafeSeekCount) +
+                string.Format(L.Get("SeekTest.LimitExceededMessage"), SelectedSeekCount, MaxSafeSeekCount));
 
             if (!confirmed) return;
         }

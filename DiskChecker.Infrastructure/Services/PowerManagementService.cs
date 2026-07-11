@@ -48,7 +48,7 @@ public class PowerManagementService : IPowerManagementService
     /// <summary>
     /// Null implementation for unsupported platforms
     /// </summary>
-    private class NullPowerManagementService : IPowerManagementService
+    private sealed class NullPowerManagementService : IPowerManagementService
     {
         public bool IsAvailable => false;
 
@@ -57,7 +57,7 @@ public class PowerManagementService : IPowerManagementService
             return Task.FromResult<IPowerManagementSession>(new NullSession());
         }
 
-        private class NullSession : IPowerManagementSession
+        private sealed class NullSession : IPowerManagementSession
         {
             public string SessionId { get; } = "null";
             public bool IsActive => false;
@@ -66,7 +66,7 @@ public class PowerManagementService : IPowerManagementService
         }
     }
 
-    private class DelegatingLoggerProvider : ILoggerProvider
+    private sealed class DelegatingLoggerProvider : ILoggerProvider
     {
         private readonly ILogger _logger;
 

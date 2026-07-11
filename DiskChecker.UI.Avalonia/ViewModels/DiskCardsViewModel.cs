@@ -31,7 +31,7 @@ public partial class DiskCardsViewModel : ViewModelBase, INavigableViewModel
     private bool _showLockedOnly;
     private bool _showArchivedOnly;
     private bool _isLoading;
-    private string _statusMessage = L.Get("DiskCards.Status.Loading");
+    private string _statusMessage = string.Empty;
     private bool _isOpeningDetails;
 
     public DiskCardsViewModel(
@@ -46,7 +46,9 @@ public partial class DiskCardsViewModel : ViewModelBase, INavigableViewModel
         _dialogService = dialogService;
         _selectedDiskService = selectedDiskService;
         _diskCacheService = diskCacheService;
-        
+
+        StatusMessage = L.Get("DiskCards.Status.Loading");
+
         NavigateToReportsCommand = new RelayCommand(NavigateToReports);
         NavigateBackCommand = new RelayCommand(NavigateBack);
         RefreshCommand = new AsyncRelayCommand(() => LoadDiskCardsAsync(includeMaintenance: true));

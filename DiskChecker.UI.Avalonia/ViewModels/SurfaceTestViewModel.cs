@@ -1270,12 +1270,12 @@ public partial class SurfaceTestViewModel : ViewModelBase, INavigableViewModel, 
             var errorContext = sanitizationOutcome.errorContext;
             if(result?.Success == true && !string.IsNullOrWhiteSpace(successMessage))
             {
-               await _dialogService.ShowSuccessAsync("Sanitizace dokončena", successMessage);
                await _dialogService.ShowSuccessAsync(L.Get("SurfaceTest.Status.SanitizeCompleted"), successMessage);
+            }
             else if(result?.Success == false)
             {
-               await _dialogService.ShowErrorAsync(L.Get("SurfaceTest.Status.SanitizeError"), errorContext ?? result.ErrorMessage ?? "Sanitizace selhala.");
                await _dialogService.ShowErrorAsync(L.Get("SurfaceTest.Status.SanitizeError"), errorContext ?? result.ErrorMessage ?? L.Get("SurfaceTest.Status.SanitizeFailed"));
+            }
          }
          else
          {

@@ -35,7 +35,7 @@ public class LinuxPowerManagementService : IPowerManagementService
         return Task.FromResult<IPowerManagementSession>(session);
     }
 
-    private class LinuxPowerSession : IPowerManagementSession
+    private sealed class LinuxPowerSession : IPowerManagementSession
     {
         private readonly ILogger? _logger;
         private readonly CancellationToken _cancellationToken;
