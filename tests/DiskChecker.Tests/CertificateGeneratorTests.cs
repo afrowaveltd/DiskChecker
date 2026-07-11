@@ -202,6 +202,76 @@ public class CertificateGeneratorTests
     }
 
     [Fact]
+    public async Task GenerateCertificateAsync_SanitizationPassButCriticalGrade_RetiresDiskInRecommendation()
+    {
+        var logger = Substitute.For<ILogger<CertificateGenerator>>();
+        var settings = Substitute.For<ISettingsService>();
+        settings.GetCertificatePathAsync().Returns((string?)null);
+        var generator = new CertificateGenerator(logger, settings);
+
+        var session = new TestSession
+        {
+            Id = 31,
+            TestType = TestType.Sanitization,
+            Duration = TimeSpan.FromHours(3),
+            Result = TestResult.Pass,
+            Grade = "F",
+            Score = 18,
+            HealthAssessment = HealthAssessment.Critical,
+            VerificationErrors = 0,
+            Notes = "Po kompletnim prepisu narostl pocet realokovanych sektoru; kriticky SMART failure detected; opakovane stally.",
+            SmartBefore = new SmartaData
+            {
+                DeviceModel = "Failing Sanitized Drive",
+                SerialNumber = "SANFAIL001",
+                IsHealthy = true,
+                ReallocatedSectorCount = 0,
+                PendingSectorCount = 0,
+                UncorrectableErrorCount = 0
+            },
+            SmartAfter = new SmartaData
+            {
+                DeviceModel = "Failing Sanitized Drive",
+                SerialNumber = "SANFAIL001",
+                IsHealthy = false,
+                IsFailing = true,
+                ReallocatedSectorCount = 8,
+                PendingSectorCount = 2,
+                UncorrectableErrorCount = 1
+            },
+            SmartChanges = new List<SmartAttributeChange>
+            {
+                new() { AttributeId = 5, AttributeName = "Reallocated Sector Count", ValueBefore = 0, ValueAfter = 8, Change = 8 }
+            },
+            WriteSamples = Enumerable.Range(0, 10).Select(i => new SpeedSample
+            {
+                SpeedMBps = i is 2 or 5 or 8 ? 0 : 80,
+                IsStalled = i is 2 or 5 or 8,
+                Phase = "Write"
+            }).ToList()
+        };
+
+        var card = new DiskCard
+        {
+            Id = 31,
+            ModelName = "Failing Sanitized Drive",
+            SerialNumber = "SANFAIL001",
+            Capacity = 1_000_000_000_000,
+            DiskType = "HDD"
+        };
+
+        var certificate = await generator.GenerateCertificateAsync(session, card);
+
+        Assert.NotNull(certificate);
+        Assert.False(certificate.Recommended);
+        Assert.Equal("F", certificate.Grade);
+        Assert.Contains("NEN", certificate.RecommendationNotes, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("vy", certificate.RecommendationNotes, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("dobr", certificate.RecommendationNotes, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("bezpe", certificate.RecommendationNotes, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public async Task GenerateCertificateAsync_WithoutSmartData_UsesDefaults()
     {
         var logger = Substitute.For<ILogger<CertificateGenerator>>();

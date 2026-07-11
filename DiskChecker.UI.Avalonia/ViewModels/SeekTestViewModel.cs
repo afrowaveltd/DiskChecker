@@ -163,7 +163,7 @@ public partial class SeekTestViewModel : ViewModelBase, INavigableViewModel, IDi
         TestTypeOptions.Add(new() { Type = SeekTestType.Skip, Key = "Skip", Name = "⏭️ " + L.Get("SeekTest.Skip") + " (Skip)", Description = L.Get("SeekTest.SkipDescFull") });
 
         GoBackCommand = new RelayCommand(NavigateBack);
-        StartTestCommand = new AsyncRelayCommand(StartTestAsync, () => !IsTesting && !IsDiskTooFragile && SelectedDrive != null);
+        StartTestCommand = new AsyncRelayCommand(StartTestAsync, () => !IsTesting && CanRunTest);
         AbortTestCommand = new AsyncRelayCommand(AbortTestAsync, () => IsTesting);
         LoadRecommendationCommand = new AsyncRelayCommand(LoadRecommendationAsync);
     }
@@ -245,12 +245,15 @@ public partial class SeekTestViewModel : ViewModelBase, INavigableViewModel, IDi
             if (SetProperty(ref _isDiskTooFragile, value))
             {
                 StartTestCommand.NotifyCanExecuteChanged();
+                OnPropertyChanged(nameof(IsForcedFragileDiskOverride));
                 OnPropertyChanged(nameof(CanRunTest));
             }
         }
     }
 
-    public bool CanRunTest => !IsDiskTooFragile && SelectedDrive != null;
+    public bool IsForcedFragileDiskOverride => IsDiskTooFragile && SelectedSeekCount > 0;
+
+    public bool CanRunTest => SelectedDrive != null && (!IsDiskTooFragile || IsForcedFragileDiskOverride);
 
     public int RecommendedSeekCount
     {
@@ -296,6 +299,9 @@ public partial class SeekTestViewModel : ViewModelBase, INavigableViewModel, IDi
             if (SetProperty(ref _selectedSeekCount, value))
             {
                 OnPropertyChanged(nameof(IsSeekCountExceedsSafe));
+                OnPropertyChanged(nameof(IsForcedFragileDiskOverride));
+                OnPropertyChanged(nameof(CanRunTest));
+                StartTestCommand.NotifyCanExecuteChanged();
             }
         }
     }
@@ -594,10 +600,20 @@ public partial class SeekTestViewModel : ViewModelBase, INavigableViewModel, IDi
 
     private async Task StartTestAsync()
     {
-        if (SelectedDrive == null || IsDiskTooFragile) return;
+        if (SelectedDrive == null || SelectedSeekCount <= 0) return;
+
+        if (IsForcedFragileDiskOverride)
+        {
+            var confirmed = await _dialogService.ShowConfirmationAsync(
+                "Vynucený seek test na selhávajícím disku",
+                "SMART/rekomendační modul označil disk jako příliš opotřebený nebo selhávající a výchozí doporučený počet seeků je 0.\n\n" +
+                $"Požadujete vynucené spuštění {SelectedSeekCount} seeků proti doporučení. Test může disk dále zatížit nebo urychlit selhání.\n\n" +
+                "Pokračovat pouze z diagnostických důvodů?");
+            if (!confirmed) return;
+        }
 
         // Confirm if user selected more than recommended
-        if (SelectedSeekCount > MaxSafeSeekCount)
+        if (!IsForcedFragileDiskOverride && SelectedSeekCount > MaxSafeSeekCount)
         {
             var confirmed = await _dialogService.ShowConfirmationAsync(
                 "Překročení bezpečného limitu",
@@ -1267,4 +1283,4 @@ public class SeekTestTypeOption
     public string Key { get; init; } = "";
     public string Name { get; init; } = "";
     public string Description { get; init; } = "";
-}
+}

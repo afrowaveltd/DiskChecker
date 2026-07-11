@@ -20,4 +20,8 @@
     <Platforms>AnyCPU;x64</Platforms>
   </PropertyGroup>
 
+  <ItemGroup>
+    <InternalsVisibleTo Include="DiskChecker.Tests" />
+  </ItemGroup>
+
 </Project>

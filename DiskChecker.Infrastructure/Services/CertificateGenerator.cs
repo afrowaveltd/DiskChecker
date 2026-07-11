@@ -208,6 +208,11 @@ public class CertificateGenerator : ICertificateGenerator
             if (errorCount == 0)
                 errorCount = Math.Max(0, session.WriteErrors) + Math.Max(0, session.ReadErrors) + Math.Max(0, session.VerificationErrors);
 
+            var calculated = CalculateGrade(session);
+            var grade = SelectWorseGrade(session.Grade, calculated.grade);
+            var score = session.Score > 0 ? Math.Min(session.Score, calculated.score) : calculated.score;
+            var recommended = IsRecommendedForUse(session, grade, score);
+
             var certificate = new DiskCertificate
             {
                 DiskCardId = diskCard.Id,
@@ -242,10 +247,8 @@ public class CertificateGenerator : ICertificateGenerator
                 FileSystem = session.FileSystem,
                 VolumeLabel = session.VolumeLabel,
                 Status = CertificateStatus.Active,
-                Recommended = session.Result == TestResult.Pass
-                    && !string.Equals(session.Grade, "E", StringComparison.OrdinalIgnoreCase)
-                    && !string.Equals(session.Grade, "F", StringComparison.OrdinalIgnoreCase),
-                RecommendationNotes = GenerateRecommendation(session),
+                Recommended = recommended,
+                RecommendationNotes = GenerateRecommendation(session, grade, score, recommended),
                 Notes = session.Notes,
                 ChartImagePath = session.ChartImagePath
             };
@@ -255,11 +258,6 @@ public class CertificateGenerator : ICertificateGenerator
             certificate.TemperatureProfilePoints = DownsampleTemperatures(session.TemperatureSamples, CertificateChartPoints);
             certificate.StallProfilePoints = DownsampleStalls(session.WriteSamples, session.ReadSamples, CertificateChartPoints);
 
-            var calculated = CalculateGrade(session);
-            var grade = session.SmartBefore != null ? calculated.grade
-                : (string.IsNullOrWhiteSpace(session.Grade) ? calculated.grade : session.Grade);
-            var score = session.SmartBefore != null ? calculated.score
-                : (session.Score > 0 ? session.Score : calculated.score);
             certificate.Grade = grade;
             certificate.Score = score;
             certificate.HealthStatus = session.HealthAssessment.ToString();
@@ -274,6 +272,7 @@ public class CertificateGenerator : ICertificateGenerator
                     {
                         certificate.SmartAttributes.Add(new SmartAttributeSummary
                         {
+                            Id = attr.Id,
                             Name = attr.Name,
                             Value = attr.RawValue.ToString(),
                             Status = attr.IsOk ? "OK" : "Warning",
@@ -1190,22 +1189,152 @@ public class CertificateGenerator : ICertificateGenerator
         return $"{bytes} B";
     }
 
-    private string GenerateRecommendation(TestSession session)
+    private string GenerateRecommendation(TestSession session, string effectiveGrade, double effectiveScore, bool recommended)
     {
-        if (session.Result == TestResult.Pass
-            && !string.Equals(session.Grade, "E", StringComparison.OrdinalIgnoreCase)
-            && !string.Equals(session.Grade, "F", StringComparison.OrdinalIgnoreCase))
-            return _locale?.GetString("CertificatePdf.Recommendation.Good", "Disk je v dobrém stavu a lze jej bezpečně používat.") ?? "Disk je v dobrém stavu a lze jej bezpečně používat.";
+        var hasCriticalSignals = HasCriticalRetirementSignals(session, effectiveGrade, effectiveScore);
+        if (hasCriticalSignals)
+        {
+            return _locale?.GetString(
+                "CertificatePdf.Recommendation.Retire",
+                "Disk NENÍ vhodný k dalšímu používání. Doporučení: okamžitě vyřadit z provozu, nepoužívat pro žádná data a případná důležitá data obnovovat pouze ze záloh. Test sice mohl technicky doběhnout, ale výsledná známka/SMART/stally ukazují na kritickou degradaci média.")
+                ?? "Disk NENÍ vhodný k dalšímu používání. Doporučení: okamžitě vyřadit z provozu, nepoužívat pro žádná data a případná důležitá data obnovovat pouze ze záloh. Test sice mohl technicky doběhnout, ale výsledná známka/SMART/stally ukazují na kritickou degradaci média.";
+        }
 
-        if (session.SmartBefore?.ReallocatedSectorCount > 0 || session.SmartBefore?.PendingSectorCount > 0)
-            return _locale?.GetString("CertificatePdf.Recommendation.Worn", "Disk vykazuje známky opotřebení. Doporučujeme pravidelnou kontrolu SMART a zálohování důležitých dat.") ?? "Disk vykazuje známky opotřebení. Doporučujeme pravidelnou kontrolu SMART a zálohování důležitých dat.";
+        if (!recommended)
+        {
+            return _locale?.GetString(
+                "CertificatePdf.Recommendation.NotRecommended",
+                "Disk není doporučen k běžnému používání. Doporučujeme jej nenasazovat pro důležitá data, provést zálohu a zvážit výměnu. Výsledek testu nebo hodnocení neodpovídá bezpečnému provozu.")
+                ?? "Disk není doporučen k běžnému používání. Doporučujeme jej nenasazovat pro důležitá data, provést zálohu a zvážit výměnu. Výsledek testu nebo hodnocení neodpovídá bezpečnému provozu.";
+        }
 
-        if (session.Errors.Count > 0)
-            return _locale?.GetString("CertificatePdf.Recommendation.Errors", "Během testu byly detekovány chyby. Zvažte výměnu disku, zejména pokud se chyby opakují.") ?? "Během testu byly detekovány chyby. Zvažte výměnu disku, zejména pokud se chyby opakují.";
+        if (HasWarningSmartSignals(session))
+        {
+            return _locale?.GetString(
+                "CertificatePdf.Recommendation.Worn",
+                "Disk vykazuje známky opotřebení. Doporučujeme jej používat pouze s pravidelnou zálohou, sledovat SMART a při jakémkoli zhoršení jej vyměnit.")
+                ?? "Disk vykazuje známky opotřebení. Doporučujeme jej používat pouze s pravidelnou zálohou, sledovat SMART a při jakémkoli zhoršení jej vyměnit.";
+        }
 
-        return _locale?.GetString("CertificatePdf.Recommendation.Attention", "Disk vyžaduje pozornost. Doporučujeme další diagnostiku nebo výměnu.") ?? "Disk vyžaduje pozornost. Doporučujeme další diagnostiku nebo výměnu.";
+        if (session.Errors.Count > 0 || session.WriteErrors > 0 || session.ReadErrors > 0 || session.VerificationErrors > 0)
+        {
+            return _locale?.GetString(
+                "CertificatePdf.Recommendation.Errors",
+                "Během testu byly detekovány chyby. Disk nepovažujte za plně důvěryhodný, dokud nebude problém vysvětlen opakovaným testem a kontrolou SMART.")
+                ?? "Během testu byly detekovány chyby. Disk nepovažujte za plně důvěryhodný, dokud nebude problém vysvětlen opakovaným testem a kontrolou SMART.";
+        }
+
+        return _locale?.GetString(
+            "CertificatePdf.Recommendation.Good",
+            "Disk je v dobrém stavu a lze jej bezpečně používat.")
+            ?? "Disk je v dobrém stavu a lze jej bezpečně používat.";
     }
 
+    private static bool IsRecommendedForUse(TestSession session, string effectiveGrade, double effectiveScore)
+    {
+        return session.Result == TestResult.Pass
+               && !HasCriticalRetirementSignals(session, effectiveGrade, effectiveScore)
+               && !string.Equals(effectiveGrade, "D", StringComparison.OrdinalIgnoreCase);
+    }
+
+
+    private static string SelectWorseGrade(string? sessionGrade, string calculatedGrade)
+    {
+        if (string.IsNullOrWhiteSpace(sessionGrade) || sessionGrade == "?")
+        {
+            return calculatedGrade;
+        }
+
+        return GradeRank(sessionGrade) >= GradeRank(calculatedGrade)
+            ? sessionGrade.Trim().ToUpperInvariant()
+            : calculatedGrade;
+    }
+
+    private static int GradeRank(string? grade)
+    {
+        return string.IsNullOrWhiteSpace(grade) ? 6 : char.ToUpperInvariant(grade.Trim()[0]) switch
+        {
+            'A' => 1,
+            'B' => 2,
+            'C' => 3,
+            'D' => 4,
+            'E' => 5,
+            'F' => 6,
+            _ => 6
+        };
+    }
+
+    private static bool HasCriticalRetirementSignals(TestSession session, string effectiveGrade, double effectiveScore)
+    {
+        if (string.Equals(effectiveGrade, "E", StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(effectiveGrade, "F", StringComparison.OrdinalIgnoreCase) ||
+            effectiveScore < 40 ||
+            session.HealthAssessment == HealthAssessment.Critical ||
+            session.Result == TestResult.Fail)
+        {
+            return true;
+        }
+
+        if (session.SmartBefore?.IsFailing == true ||
+            session.SmartBefore?.IsHealthy == false ||
+            session.SmartAfter?.IsFailing == true ||
+            session.SmartAfter?.IsHealthy == false)
+        {
+            return true;
+        }
+
+        if (session.SmartBefore?.UncorrectableErrorCount is > 0 ||
+            session.SmartBefore?.MediaErrors is > 0 ||
+            session.SmartAfter?.UncorrectableErrorCount is > 0 ||
+            session.SmartAfter?.MediaErrors is > 0)
+        {
+            return true;
+        }
+
+        if (session.SmartChanges.Any(c => IsCriticalSmartAttribute(c.AttributeId) && c.Change > 0))
+        {
+            return true;
+        }
+
+        if (SmartDelta(session.SmartBefore?.ReallocatedSectorCount, session.SmartAfter?.ReallocatedSectorCount) > 0 ||
+            SmartDelta(session.SmartBefore?.PendingSectorCount, session.SmartAfter?.PendingSectorCount) > 0 ||
+            SmartDelta(session.SmartBefore?.UncorrectableErrorCount, session.SmartAfter?.UncorrectableErrorCount) > 0 ||
+            SmartDelta(session.SmartBefore?.MediaErrors, session.SmartAfter?.MediaErrors) > 0)
+        {
+            return true;
+        }
+
+        var stallCount = session.WriteSamples.Count(s => s.IsStalled) + session.ReadSamples.Count(s => s.IsStalled);
+        if (stallCount >= 3)
+        {
+            return true;
+        }
+
+        if (!string.IsNullOrWhiteSpace(session.Notes) &&
+            (session.Notes.Contains("krit", StringComparison.OrdinalIgnoreCase) ||
+             session.Notes.Contains("failure", StringComparison.OrdinalIgnoreCase) ||
+             session.Notes.Contains("failing", StringComparison.OrdinalIgnoreCase) ||
+             session.Notes.Contains("vyřad", StringComparison.OrdinalIgnoreCase) ||
+             session.Notes.Contains("vyrad", StringComparison.OrdinalIgnoreCase)))
+        {
+            return true;
+        }
+
+        return false;
+    }
+
+    private static bool HasWarningSmartSignals(TestSession session)
+    {
+        return session.SmartBefore?.ReallocatedSectorCount is > 0 ||
+               session.SmartBefore?.PendingSectorCount is > 0 ||
+               session.SmartAfter?.ReallocatedSectorCount is > 0 ||
+               session.SmartAfter?.PendingSectorCount is > 0 ||
+               session.SmartChanges.Any(c => IsCriticalSmartAttribute(c.AttributeId));
+    }
+
+    private static int SmartDelta(int? before, int? after) => Math.Max(0, (after ?? 0) - (before ?? 0));
+
+    private static bool IsCriticalSmartAttribute(int attributeId) => attributeId is 5 or 187 or 197 or 198 or 199;
     private static string ResolveDisplaySerial(string? smartSerial, string? storedSerial)
     {
         if (!string.IsNullOrWhiteSpace(smartSerial)) return smartSerial;

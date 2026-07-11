@@ -6,6 +6,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using DiskChecker.Core.Interfaces;
 using DiskChecker.Core.Models;
+using DiskChecker.Core.Services;
 using DiskChecker.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
@@ -975,14 +976,14 @@ public class DiskCardTestService
       return stdDev / average;
    }
 
-   private static List<SpeedSample> PrepareSpeedSamplesForPersistence(IEnumerable<SpeedSample>? samples)
+   internal static List<SpeedSample> PrepareSpeedSamplesForPersistence(IEnumerable<SpeedSample>? samples)
    {
       var ordered = (samples ?? Enumerable.Empty<SpeedSample>())
           .OrderBy(s => s.Timestamp == default ? DateTime.MaxValue : s.Timestamp)
           .ThenBy(s => s.ProgressPercent)
           .ToList();
 
-      return TrimLeadingZeroSpeedSamples(ordered, s => s.SpeedMBps)
+      var cleaned = TrimLeadingZeroSpeedSamples(ordered, s => s.SpeedMBps)
           .Select(s => new SpeedSample
           {
              Timestamp = s.Timestamp == default ? DateTime.UtcNow : s.Timestamp,
@@ -994,6 +995,17 @@ public class DiskCardTestService
              IsStalled = s.IsStalled
           })
           .ToList();
+
+      // Use retention service as safety net: if samples still exceed the Research profile
+      // limit, apply intelligent reduction that preserves stalls, extrema, and speed changes.
+      const int safetyLimit = 15_000;
+      if (cleaned.Count > safetyLimit)
+      {
+         return SpeedSampleRetentionService.ReduceForPersistence(
+             cleaned, TelemetryRetentionProfile.Research).ToList();
+      }
+
+      return cleaned;
    }
 
    private static List<T> TrimLeadingZeroSpeedSamples<T>(IEnumerable<T> samples, Func<T, double> speedSelector)
