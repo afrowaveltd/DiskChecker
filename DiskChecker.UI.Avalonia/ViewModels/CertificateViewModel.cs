@@ -1456,12 +1456,12 @@ public partial class CertificateViewModel : ViewModelBase, INavigableViewModel
        ArgumentNullException.ThrowIfNull(session);
 
        var totalErrors = session.WriteErrors + session.ReadErrors + session.VerificationErrors;
-       SelectedSessionSummary =
-           $"Test: {session.TestType} | Datum: {session.StartedAt:dd.MM.yyyy HH:mm}\n" +
-           $"Skóre: {session.Score:F0}/100 | Známka: {session.Grade} | Výsledek: {session.Result}\n" +
-           $"Zápis AVG/MIN/MAX: {session.AverageWriteSpeedMBps:F1}/{session.MinWriteSpeedMBps:F1}/{session.MaxWriteSpeedMBps:F1} MB/s\n" +
-           $"Čtení AVG/MIN/MAX: {session.AverageReadSpeedMBps:F1}/{session.MinReadSpeedMBps:F1}/{session.MaxReadSpeedMBps:F1} MB/s\n" +
-           $"Chyby: {totalErrors} | Doba: {session.Duration:hh\\:mm\\:ss}";
+       SelectedSessionSummary = string.Format(
+           L.Get("CertificateView.Session.SummaryFormat"),
+           session.TestType, session.StartedAt, session.Score, session.Grade, session.Result,
+           session.AverageWriteSpeedMBps, session.MinWriteSpeedMBps, session.MaxWriteSpeedMBps,
+           session.AverageReadSpeedMBps, session.MinReadSpeedMBps, session.MaxReadSpeedMBps,
+           totalErrors, session.Duration);
 
        SelectedSessionThermalSummary = BuildThermalSummary(session);
        SelectedSessionSmartSummary = BuildSmartSummary(session);
