@@ -38,7 +38,7 @@ public partial class CertificateViewModel : ViewModelBase, INavigableViewModel
    private DiskCertificate? _certificate;
    private bool _isLoading;
    private bool _isPrinting;
-   private string _statusMessage = "Certifikát disku";
+   private string _statusMessage = string.Empty;
    private string _printProgressMessage = string.Empty;
    private bool _isBlackAndWhiteMode;
    private TestSession? _selectedSession;
@@ -56,9 +56,9 @@ public partial class CertificateViewModel : ViewModelBase, INavigableViewModel
    private string _chartXAxisEndLabel = "100 %";
    private string _temperatureProfilePoints = "10,110 490,110";
    private bool _hasTemperatureProfile;
-   private string _selectedSessionSummary = "Vyberte test pro detailní analýzu.";
-   private string _selectedSessionThermalSummary = "Analýza teploty bude dostupná po výběru testu.";
-   private string _selectedSessionSmartSummary = "SMART souhrn bude dostupný po výběru testu.";
+   private string _selectedSessionSummary = string.Empty;
+   private string _selectedSessionThermalSummary = string.Empty;
+   private string _selectedSessionSmartSummary = string.Empty;
    private TestSession? _selectedSessionItem;
 
    public CertificateViewModel(
@@ -73,6 +73,10 @@ public partial class CertificateViewModel : ViewModelBase, INavigableViewModel
       _navigationService = navigationService;
       _dialogService = dialogService;
       _selectedDiskService = selectedDiskService;
+      StatusMessage = L.Get("CertificateView.Status.Title");
+      SelectedSessionSummary = L.Get("CertificateView.Session.SelectForDetail");
+      SelectedSessionThermalSummary = L.Get("CertificateView.Session.ThermalAvailableAfterSelection");
+      SelectedSessionSmartSummary = L.Get("CertificateView.Session.SmartAvailableAfterSelection");
       AvailableSessions = new ObservableCollection<TestSession>();
    }
 
@@ -367,7 +371,7 @@ public partial class CertificateViewModel : ViewModelBase, INavigableViewModel
    public string SmartReallocatedSectorsText => (Certificate?.ReallocatedSectors ?? 0).ToString(CultureInfo.InvariantCulture);
    public string SmartPendingSectorsText => (Certificate?.PendingSectors ?? 0).ToString(CultureInfo.InvariantCulture);
    public bool Recommended => Certificate?.Recommended ?? false;
-   public string RecommendationText => Certificate?.RecommendationNotes ?? "Není k dispozici";
+   public string RecommendationText => Certificate?.RecommendationNotes ?? L.Get("CertificateView.NotAvailable");
 
    public string TestTypeLine => string.Format(L.Get("CertificateView.TestTypeFormat"), TestType);
    public string TestDurationLine => string.Format(L.Get("CertificateView.TestDurationFormat"), TestDuration);
@@ -580,12 +584,29 @@ public partial class CertificateViewModel : ViewModelBase, INavigableViewModel
             return;
          }
 
-         _selectedSession = await _diskCardRepository.GetTestSessionAsync(targetSession.Id);
+         // Load session WITHOUT samples to avoid OOM on large datasets (e.g. sanitization tests with millions of samples)
+         _selectedSession = await _diskCardRepository.GetTestSessionWithoutSamplesAsync(targetSession.Id);
          if(_selectedSession == null)
          {
             StatusMessage = L.Get("CertificateView.Status.TestDetailError");
             await _dialogService.ShowErrorAsync(L.Get("Common.Error"), L.Get("CertificateView.Error.TestDetail"));
             return;
+         }
+
+         // Load speed samples via chunked loading + downsampling to prevent memory exhaustion
+         StatusMessage = L.Get("CertificateView.Status.LoadingGraphData");
+         var speedSeries = await LoadCertificateGraphSamplesProgressiveAsync(targetSession.Id);
+         _selectedSession.WriteSamples = speedSeries.WriteSamples;
+         _selectedSession.ReadSamples = speedSeries.ReadSamples;
+
+         // Load temperature samples via SQL downsampling (max 256 points in memory)
+         try
+         {
+            _selectedSession.TemperatureSamples = await _diskCardRepository.GetTemperatureSampleSeriesDownsampledAsync(targetSession.Id, 256);
+         }
+         catch
+         {
+            _selectedSession.TemperatureSamples = new List<TemperatureSample>();
          }
 
          Certificate = await _certificateGenerator.GenerateCertificateAsync(_selectedSession, card);
@@ -602,7 +623,7 @@ public partial class CertificateViewModel : ViewModelBase, INavigableViewModel
       catch(DbUpdateException ex)
       {
          var message = ex.InnerException?.Message ?? ex.Message;
-         StatusMessage = $"Chyba: {message}";
+         StatusMessage = string.Format(L.Get("CertificateView.Error.Generic"), message);
          await _dialogService.ShowErrorAsync(L.Get("Common.Error"), string.Format(L.Get("CertificateView.Error.SaveFailed"), message));
       }
       finally
@@ -705,31 +726,31 @@ public partial class CertificateViewModel : ViewModelBase, INavigableViewModel
       }
       catch(InvalidOperationException ex)
       {
-         StatusMessage = $"Chyba tisku: {ex.Message}";
+         StatusMessage = string.Format(L.Get("CertificateView.Error.Print"), ex.Message);
          PrintProgressMessage = string.Empty;
          await _dialogService.ShowErrorAsync(L.Get("Common.Error"), string.Format(L.Get("CertificateView.Error.PrintPrepare"), ex.Message));
       }
       catch(ArgumentException ex)
       {
-         StatusMessage = $"Chyba tisku: {ex.Message}";
+         StatusMessage = string.Format(L.Get("CertificateView.Error.Print"), ex.Message);
          PrintProgressMessage = string.Empty;
          await _dialogService.ShowErrorAsync(L.Get("Common.Error"), string.Format(L.Get("CertificateView.Error.PrintPrepare"), ex.Message));
       }
       catch(FileNotFoundException ex)
       {
-         StatusMessage = $"Chyba tisku: {ex.Message}";
+         StatusMessage = string.Format(L.Get("CertificateView.Error.Print"), ex.Message);
          PrintProgressMessage = string.Empty;
          await _dialogService.ShowErrorAsync(L.Get("Common.Error"), string.Format(L.Get("CertificateView.Error.OpenPdf"), ex.Message));
       }
       catch(IOException ex)
       {
-         StatusMessage = $"Chyba tisku: {ex.Message}";
+         StatusMessage = string.Format(L.Get("CertificateView.Error.Print"), ex.Message);
          PrintProgressMessage = string.Empty;
          await _dialogService.ShowErrorAsync(L.Get("Common.Error"), string.Format(L.Get("CertificateView.Error.PrintPrepare"), ex.Message));
       }
       catch(Win32Exception ex)
       {
-         StatusMessage = $"Chyba tisku: {ex.Message}";
+         StatusMessage = string.Format(L.Get("CertificateView.Error.Print"), ex.Message);
          PrintProgressMessage = string.Empty;
          await _dialogService.ShowErrorAsync(L.Get("Common.Error"), string.Format(L.Get("CertificateView.Error.OpenPdf"), ex.Message));
       }
@@ -767,27 +788,27 @@ public partial class CertificateViewModel : ViewModelBase, INavigableViewModel
       }
       catch(InvalidOperationException ex)
       {
-         StatusMessage = $"Chyba tisku štítku: {ex.Message}";
+         StatusMessage = string.Format(L.Get("CertificateView.Error.LabelPrint"), ex.Message);
          await _dialogService.ShowErrorAsync(L.Get("Common.Error"), string.Format(L.Get("CertificateView.Error.PrintLabelPrepare"), ex.Message));
       }
       catch(ArgumentException ex)
       {
-         StatusMessage = $"Chyba tisku štítku: {ex.Message}";
+         StatusMessage = string.Format(L.Get("CertificateView.Error.LabelPrint"), ex.Message);
          await _dialogService.ShowErrorAsync(L.Get("Common.Error"), string.Format(L.Get("CertificateView.Error.PrintLabelPrepare"), ex.Message));
       }
       catch(FileNotFoundException ex)
       {
-         StatusMessage = $"Chyba tisku štítku: {ex.Message}";
+         StatusMessage = string.Format(L.Get("CertificateView.Error.LabelPrint"), ex.Message);
          await _dialogService.ShowErrorAsync(L.Get("Common.Error"), string.Format(L.Get("CertificateView.Error.OpenLabel"), ex.Message));
       }
       catch(IOException ex)
       {
-         StatusMessage = $"Chyba tisku štítku: {ex.Message}";
+         StatusMessage = string.Format(L.Get("CertificateView.Error.LabelPrint"), ex.Message);
          await _dialogService.ShowErrorAsync(L.Get("Common.Error"), string.Format(L.Get("CertificateView.Error.PrintLabelPrepare"), ex.Message));
       }
       catch(Win32Exception ex)
       {
-         StatusMessage = $"Chyba tisku štítku: {ex.Message}";
+         StatusMessage = string.Format(L.Get("CertificateView.Error.LabelPrint"), ex.Message);
          await _dialogService.ShowErrorAsync(L.Get("Common.Error"), string.Format(L.Get("CertificateView.Error.OpenLabel"), ex.Message));
       }
       finally
@@ -990,22 +1011,22 @@ public partial class CertificateViewModel : ViewModelBase, INavigableViewModel
        }
        catch(DbException ex)
        {
-          StatusMessage = $"Chyba při načítání certifikátu: {ex.Message}";
+          StatusMessage = string.Format(L.Get("CertificateView.Error.LoadStatus"), ex.Message);
           await _dialogService.ShowErrorAsync(L.Get("Common.Error"), string.Format(L.Get("CertificateView.Error.Load"), ex.Message));
        }
        catch(InvalidOperationException ex)
        {
-          StatusMessage = $"Chyba při načítání certifikátu: {ex.Message}";
+          StatusMessage = string.Format(L.Get("CertificateView.Error.LoadStatus"), ex.Message);
           await _dialogService.ShowErrorAsync(L.Get("Common.Error"), string.Format(L.Get("CertificateView.Error.Load"), ex.Message));
        }
        catch(IOException ex)
        {
-          StatusMessage = $"Chyba při načítání certifikátu: {ex.Message}";
+          StatusMessage = string.Format(L.Get("CertificateView.Error.LoadStatus"), ex.Message);
           await _dialogService.ShowErrorAsync(L.Get("Common.Error"), string.Format(L.Get("CertificateView.Error.Load"), ex.Message));
        }
        catch(ExternalException ex)
        {
-          StatusMessage = $"Chyba při načítání certifikátu: {ex.Message}";
+          StatusMessage = string.Format(L.Get("CertificateView.Error.LoadStatus"), ex.Message);
           await _dialogService.ShowErrorAsync(L.Get("Common.Error"), string.Format(L.Get("CertificateView.Error.Render"), ex.Message));
        }
        finally
@@ -1360,32 +1381,25 @@ public partial class CertificateViewModel : ViewModelBase, INavigableViewModel
    }
    private async Task<(List<SpeedSample> WriteSamples, List<SpeedSample> ReadSamples)> LoadCertificateGraphSamplesProgressiveAsync(int sessionId)
     {
-       var writeSamples = new List<SpeedSample>();
-       var readSamples = new List<SpeedSample>();
+       // SQL-level downsampling: the database returns only ~512 rows per phase
+       // using ROW_NUMBER() window function. This keeps memory bounded
+       // regardless of dataset size (e.g. sanitization tests with millions of
+       // samples) and avoids the OOM that the previous chunked-loading approach
+       // caused.
+       const int graphMaxPoints = 512;
 
-       for(var remainder = 0; remainder < CertificateGraphRemainders; remainder++)
+       try
        {
-          try
-          {
-             var chunk = await _diskCardRepository.GetSpeedSampleSeriesChunkAsync(sessionId, CertificateGraphModulo, remainder);
-             writeSamples.AddRange(chunk.WriteSamples);
-             readSamples.AddRange(chunk.ReadSamples);
-          }
-          catch(DbException)
-          {
-             break;
-          }
-          catch(IOException)
-          {
-             break;
-          }
-
-          await Task.Yield();
+          return await _diskCardRepository.GetSpeedSampleSeriesDownsampledAsync(sessionId, graphMaxPoints);
        }
-
-       return (
-           writeSamples.Where(s => s.SpeedMBps > 0).OrderBy(s => s.ProgressPercent).ToList(),
-           readSamples.Where(s => s.SpeedMBps > 0).OrderBy(s => s.ProgressPercent).ToList());
+       catch(DbException)
+       {
+          return (new List<SpeedSample>(), new List<SpeedSample>());
+       }
+       catch(IOException)
+       {
+          return (new List<SpeedSample>(), new List<SpeedSample>());
+       }
     }
 
     private async Task RebuildPerformanceGraphAsync(DiskCertificate certificate)
@@ -1662,7 +1676,7 @@ public partial class CertificateViewModel : ViewModelBase, INavigableViewModel
        var minTemp = tempSamples.Min(t => t.TemperatureCelsius);
        var maxTemp = tempSamples.Max(t => t.TemperatureCelsius);
        var avgTemp = tempSamples.Average(t => t.TemperatureCelsius);
-       return $"Teplota MIN/AVG/MAX: {minTemp}/{avgTemp:F1}/{maxTemp} °C | Vzorky: {tempSamples.Count}";
+       return string.Format(L.Get("CertificateView.Session.ThermalSummaryFormat"), minTemp, avgTemp, maxTemp, tempSamples.Count);
     }
 
     private string BuildSmartSummary(TestSession session)
@@ -1728,6 +1742,32 @@ public partial class CertificateViewModel : ViewModelBase, INavigableViewModel
         }
 
         var result = new List<SpeedSample>(maxPoints);
+        var step = (double)samples.Count / maxPoints;
+
+        for (int i = 0; i < maxPoints; i++)
+        {
+            var index = (int)(i * step);
+            if (index < samples.Count)
+            {
+                result.Add(samples[index]);
+            }
+        }
+
+        return result;
+    }
+
+    /// <summary>
+    /// Downsampleuje teplotní vzorky na zadaný limit pomocí rovnoměrného výběru.
+    /// Používá se před generováním certifikátu pro prevenci OutOfMemoryException.
+    /// </summary>
+    private static List<TemperatureSample> DownsampleTemperaturesToLimit(List<TemperatureSample> samples, int maxPoints)
+    {
+        if (samples == null || samples.Count <= maxPoints)
+        {
+            return samples ?? new List<TemperatureSample>();
+        }
+
+        var result = new List<TemperatureSample>(maxPoints);
         var step = (double)samples.Count / maxPoints;
 
         for (int i = 0; i < maxPoints; i++)

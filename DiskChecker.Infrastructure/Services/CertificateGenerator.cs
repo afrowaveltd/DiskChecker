@@ -188,21 +188,26 @@ public class CertificateGenerator : ICertificateGenerator
             var powerOnHours = session.SmartBefore?.PowerOnHours ?? diskCard.PowerOnHours ?? 0;
             var powerCycles = session.SmartBefore?.PowerCycleCount ?? diskCard.PowerCycleCount ?? 0;
 
-            var writeSamples = session.WriteSamples?.Where(s => s.SpeedMBps > 0).ToList() ?? new List<SpeedSample>();
-            var readSamples = session.ReadSamples?.Where(s => s.SpeedMBps > 0).ToList() ?? new List<SpeedSample>();
+            // Do not clone full sample collections here. Large sanitization runs can contain
+            // millions of samples; duplicating them for certificate generation was the
+            // main source of OutOfMemoryException. Aggregates are calculated in one pass
+            // from the original collection (or taken from persisted session aggregates),
+            // while chart profiles are downsampled to a small representative set below.
+            var writeStats = CalculateSpeedStats(session.WriteSamples);
+            var readStats = CalculateSpeedStats(session.ReadSamples);
 
             var avgWriteSpeed = session.AverageWriteSpeedMBps > 0
                 ? session.AverageWriteSpeedMBps
-                : (writeSamples.Count > 0 ? writeSamples.Average(s => s.SpeedMBps) : 0);
+                : writeStats.Average;
             var maxWriteSpeed = session.MaxWriteSpeedMBps > 0
                 ? session.MaxWriteSpeedMBps
-                : (writeSamples.Count > 0 ? writeSamples.Max(s => s.SpeedMBps) : 0);
+                : writeStats.Maximum;
             var avgReadSpeed = session.AverageReadSpeedMBps > 0
                 ? session.AverageReadSpeedMBps
-                : (readSamples.Count > 0 ? readSamples.Average(s => s.SpeedMBps) : 0);
+                : readStats.Average;
             var maxReadSpeed = session.MaxReadSpeedMBps > 0
                 ? session.MaxReadSpeedMBps
-                : (readSamples.Count > 0 ? readSamples.Max(s => s.SpeedMBps) : 0);
+                : readStats.Maximum;
 
             var errorCount = session.Errors?.Count ?? 0;
             if (errorCount == 0)
@@ -253,8 +258,8 @@ public class CertificateGenerator : ICertificateGenerator
                 ChartImagePath = session.ChartImagePath
             };
 
-            certificate.WriteProfilePoints = DownsampleSpeeds(session.WriteSamples?.Select(s => s.SpeedMBps) ?? Enumerable.Empty<double>(), CertificateChartPoints);
-            certificate.ReadProfilePoints = DownsampleSpeeds(session.ReadSamples?.Select(s => s.SpeedMBps) ?? Enumerable.Empty<double>(), CertificateChartPoints);
+            certificate.WriteProfilePoints = DownsampleSpeedSamples(session.WriteSamples, CertificateChartPoints);
+            certificate.ReadProfilePoints = DownsampleSpeedSamples(session.ReadSamples, CertificateChartPoints);
             certificate.TemperatureProfilePoints = DownsampleTemperatures(session.TemperatureSamples ?? new List<TemperatureSample>(), CertificateChartPoints);
             certificate.StallProfilePoints = DownsampleStalls(session.WriteSamples ?? new List<SpeedSample>(), session.ReadSamples ?? new List<SpeedSample>(), CertificateChartPoints);
 
@@ -928,6 +933,95 @@ public class CertificateGenerator : ICertificateGenerator
     //  Chart helpers
     // ──────────────────────────────────────────────
 
+    private static (int Count, double Average, double Maximum) CalculateSpeedStats(IReadOnlyList<SpeedSample>? samples)
+    {
+        if (samples == null || samples.Count == 0)
+            return (0, 0, 0);
+
+        var count = 0;
+        var sum = 0d;
+        var max = 0d;
+
+        foreach (var sample in samples)
+        {
+            var speed = sample.SpeedMBps;
+            if (speed <= 0)
+                continue;
+
+            count++;
+            sum += speed;
+            if (speed > max)
+                max = speed;
+        }
+
+        return count == 0 ? (0, 0, 0) : (count, sum / count, max);
+    }
+
+    /// <summary>
+    /// Downsamples speed samples without materializing another full list.
+    /// Each output bucket stores the bucket average; very short dips/peaks are
+    /// still represented because the max/min metrics are stored separately on
+    /// the certificate and are not derived from this chart-only profile.
+    /// </summary>
+    private static List<double> DownsampleSpeedSamples(IReadOnlyList<SpeedSample>? samples, int targetPoints)
+    {
+        if (samples == null || samples.Count == 0)
+            return new List<double>();
+
+        var positiveCount = 0;
+        foreach (var sample in samples)
+        {
+            if (sample.SpeedMBps > 0)
+                positiveCount++;
+        }
+
+        if (positiveCount == 0)
+            return new List<double>();
+
+        if (positiveCount <= targetPoints)
+        {
+            var values = new List<double>(positiveCount);
+            foreach (var sample in samples)
+            {
+                if (sample.SpeedMBps > 0)
+                    values.Add(sample.SpeedMBps);
+            }
+            return values;
+        }
+
+        var result = new List<double>(targetPoints);
+        var bucketSize = positiveCount / (double)targetPoints;
+        var positiveIndex = 0;
+        var bucket = 0;
+        var bucketEnd = (int)Math.Floor((bucket + 1) * bucketSize);
+        var sum = 0d;
+        var count = 0;
+
+        foreach (var sample in samples)
+        {
+            if (sample.SpeedMBps <= 0)
+                continue;
+
+            while (bucket < targetPoints - 1 && positiveIndex >= bucketEnd)
+            {
+                result.Add(count > 0 ? sum / count : 0);
+                bucket++;
+                bucketEnd = (int)Math.Floor((bucket + 1) * bucketSize);
+                sum = 0d;
+                count = 0;
+            }
+
+            sum += sample.SpeedMBps;
+            count++;
+            positiveIndex++;
+        }
+
+        if (count > 0 || result.Count < targetPoints)
+            result.Add(count > 0 ? sum / count : 0);
+
+        return result.Where(v => v > 0).Take(targetPoints).ToList();
+    }
+
     private static List<double> DownsampleSpeeds(IEnumerable<double> speeds, int targetPoints)
     {
         var values = speeds.Where(v => v > 0).ToList();
@@ -1170,14 +1264,12 @@ public class CertificateGenerator : ICertificateGenerator
 
         // If no SMART, use capacity heuristics: SSDs are typically 120GB+, very old HDDs < 80GB
         var capacityGB = session.SmartBefore != null ? 0 : 0; // We need diskCard capacity here, not available in session alone
-        // Use write samples to detect SSD-like behavior (no seek latency = SSD)
-        if (!isSsd && !isNvme && session.WriteSamples.Count > 0)
+        // Use persisted session average write speed to detect SSD-like behavior.
+        // This avoids scanning the (now downsampled) sample collection and works
+        // even when only a small representative subset is in memory.
+        if (!isSsd && !isNvme && session.AverageWriteSpeedMBps > 150)
         {
-            var firstFewSpeeds = session.WriteSamples.Take(10).Select(s => s.SpeedMBps).ToList();
-            if (firstFewSpeeds.Count > 0 && firstFewSpeeds.Average() > 150)
-            {
-                isSsd = true; // HDDs rarely sustain >150 MB/s
-            }
+            isSsd = true; // HDDs rarely sustain >150 MB/s
         }
 
         if (isNvme) return 1500;  // NVMe expected: ~1.5 GB/s
@@ -1317,7 +1409,13 @@ public class CertificateGenerator : ICertificateGenerator
             return true;
         }
 
-        var stallCount = session.WriteSamples.Count(s => s.IsStalled) + session.ReadSamples.Count(s => s.IsStalled);
+        // Use the database-level stall count (StalledSampleCount) when available,
+        // which is set by CertificateExportService from GetSpeedSampleStallInfoAsync.
+        // Fall back to scanning the in-memory samples (now downsampled) only when
+        // StalledSampleCount was not populated (e.g. older code paths).
+        var stallCount = session.StalledSampleCount > 0
+            ? session.StalledSampleCount
+            : session.WriteSamples.Count(s => s.IsStalled) + session.ReadSamples.Count(s => s.IsStalled);
         if (stallCount >= 3)
         {
             return true;

@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.ObjectModel;
 using System.Linq;
 using System.Text.Json;
@@ -38,8 +38,8 @@ public partial class SeekTestViewModel : ViewModelBase, INavigableViewModel, IDi
     private CoreDriveInfo? _selectedDrive;
     private bool _isTesting;
     private bool _isLoadingRecommendation;
-    private string _statusMessage = "Připraven k seek testu";
-    private string _recommendationText = "Načítám doporučení...";
+    private string _statusMessage = string.Empty;
+    private string _recommendationText = string.Empty;
     private string _recommendationRationale = "";
     private bool _isRecommendationConservative;
     private bool _isDiskTooFragile;
@@ -96,7 +96,7 @@ public partial class SeekTestViewModel : ViewModelBase, INavigableViewModel, IDi
     };
     private Axis[] _latencyYAxes = new Axis[]
     {
-        new Axis { Name = "Latence (ms)", NameTextSize = 10, TextSize = 9, MinLimit = 0, Labeler = v => $"{v:F1}" }
+        new Axis { Name = "Latency (ms)", NameTextSize = 10, TextSize = 9, MinLimit = 0, Labeler = v => $"{v:F1}" }
     };
     private int _chartPointCount;
     private SeekLatencySample? _latestSample;
@@ -124,7 +124,7 @@ public partial class SeekTestViewModel : ViewModelBase, INavigableViewModel, IDi
     };
     private Axis[] _finalLatencyYAxes = new Axis[]
     {
-        new Axis { Name = "Latence (ms)", NameTextSize = 10, TextSize = 9, MinLimit = 0, Labeler = v => $"{v:F1}" }
+        new Axis { Name = "Latency (ms)", NameTextSize = 10, TextSize = 9, MinLimit = 0, Labeler = v => $"{v:F1}" }
     };
     private int _finalChartPointCount;
 
@@ -156,6 +156,13 @@ public partial class SeekTestViewModel : ViewModelBase, INavigableViewModel, IDi
         _certificateGenerator = certificateGenerator;
         _diskCardRepository = diskCardRepository;
         _cardTestService = cardTestService;
+
+        StatusMessage = L.Get("SeekTest.Status.Ready");
+        RecommendationText = L.Get("SeekTest.Status.LoadingRecommendation");
+        LatencyYAxes = new Axis[]
+        {
+            new Axis { Name = "Latency (ms)", NameTextSize = 10, TextSize = 9, MinLimit = 0, Labeler = v => $"{v:F1}" }
+        };
 
         // Build test type options
         TestTypeOptions.Add(new() { Type = SeekTestType.FullStroke, Key = "FullStroke", Name = "↔️ " + L.Get("SeekTest.FullStroke") + " (Full Stroke)", Description = L.Get("SeekTest.FullStrokeDescFull") });
@@ -542,7 +549,7 @@ public partial class SeekTestViewModel : ViewModelBase, INavigableViewModel, IDi
         if (SelectedDrive == null) return;
 
         IsLoadingRecommendation = true;
-        StatusMessage = "Analyzuji SMART data pro doporučení...";
+        StatusMessage = L.Get("SeekTest.Status.AnalyzingSmart");
 
         try
         {
@@ -558,8 +565,8 @@ public partial class SeekTestViewModel : ViewModelBase, INavigableViewModel, IDi
             RecommendationText = rec.IsTooFragile
                 ? "❌ " + L.Get("SeekTest.NotRecommended")
                 : rec.IsConservative
-                    ? $"⚠️ {L.Get("SeekTest.ConservativeMode")}: {typeName} – {rec.RecommendedSeekCount} {L.Get("SeekTestSeeks")}"
-                    : $"✅ {L.Get("SeekTest.FullMode")}: {typeName} – {rec.RecommendedSeekCount} {L.Get("SeekTestSeeks")}";
+                    ? $"⚠️ {L.Get("SeekTest.ConservativeMode")}: {typeName} – {rec.RecommendedSeekCount} {L.Get("SeekTest.Seeks")}"
+                    : $"✅ {L.Get("SeekTest.FullMode")}: {typeName} – {rec.RecommendedSeekCount} {L.Get("SeekTest.Seeks")}";
 
             RecommendationRationale = rec.Rationale;
             IsRecommendationConservative = rec.IsConservative;
@@ -575,18 +582,18 @@ public partial class SeekTestViewModel : ViewModelBase, INavigableViewModel, IDi
 
             if (rec.IsTooFragile)
             {
-                StatusMessage = "Disk je příliš opotřebený pro seek test – test nelze spustit";
+                StatusMessage = L.Get("SeekTest.Status.TooWorn");
             }
             else
             {
-                StatusMessage = $"Doporučení načteno: {rec.RecommendedSeekCount} seeků ({rec.RecommendedType})";
+                StatusMessage = string.Format(L.Get("SeekTest.Status.RecommendationLoaded"), rec.RecommendedSeekCount, rec.RecommendedType);
             }
         }
         catch (Exception ex)
         {
-            RecommendationText = "⚠️ Nepodařilo se načíst doporučení";
-            RecommendationRationale = $"Chyba: {ex.Message}";
-            StatusMessage = "Chyba při načítání doporučení";
+            RecommendationText = L.Get("SeekTest.RecommendationLoadFailed");
+            RecommendationRationale = string.Format(L.Get("SeekTest.ErrorWithMessage"), ex.Message);
+            StatusMessage = L.Get("SeekTest.Status.RecommendationLoadFailed");
         }
         finally
         {
@@ -632,7 +639,7 @@ public partial class SeekTestViewModel : ViewModelBase, INavigableViewModel, IDi
         ErrorCount = 0;
         LatestSample = null;
         IsPrePositioned = false;
-        StatusMessage = "Spouštím seek test...";
+        StatusMessage = L.Get("SeekTest.Status.Starting");
 
         // Clear final chart from previous test so only the real-time chart shows during testing.
         // We intentionally use new T[0] instead of Array.Empty<T>() because LiveCharts2
@@ -663,7 +670,7 @@ public partial class SeekTestViewModel : ViewModelBase, INavigableViewModel, IDi
         {
             new Axis
             {
-                Name = "Seek #",
+                Name = L.Get("SeekTest.Axis.SeekNumber"),
                 NameTextSize = 10,
                 TextSize = 9,
                 MinLimit = 0,
@@ -674,7 +681,7 @@ public partial class SeekTestViewModel : ViewModelBase, INavigableViewModel, IDi
         {
             new Axis
             {
-                Name = "Latence (ms)",
+                Name = L.Get("SeekTest.Axis.LatencyMs"),
                 NameTextSize = 10,
                 TextSize = 9,
                 MinLimit = 0,
@@ -744,7 +751,7 @@ public partial class SeekTestViewModel : ViewModelBase, INavigableViewModel, IDi
                             IsPrePositioned = true;
                         }
 
-                        StatusMessage = $"Testování... {progress.SeeksCompleted}/{progress.TotalSeeks} seeků ({progress.PercentComplete:F0}%)";
+                        StatusMessage = string.Format(L.Get("SeekTest.Status.Running"), progress.SeeksCompleted, progress.TotalSeeks, progress.PercentComplete);
                     });
                 },
                 _testCancellation.Token);
@@ -771,12 +778,12 @@ public partial class SeekTestViewModel : ViewModelBase, INavigableViewModel, IDi
             ProgressPercent = 100;
 
             ResultSummary = result.IsCompleted
-                ? $"✅ Test dokončen: {result.SeekCount} seeků, průměrná latence {result.AverageLatencyMs:F2} ms"
-                : $"⚠️ Test přerušen: {result.SeekCount} seeků";
+                ? string.Format(L.Get("SeekTest.Result.Completed"), result.SeekCount, result.AverageLatencyMs)
+                : string.Format(L.Get("SeekTest.Result.Interrupted"), result.SeekCount);
 
             StatusMessage = result.IsCompleted
-                ? $"Test dokončen – průměrná latence {result.AverageLatencyMs:F2} ms"
-                : "Test přerušen";
+                ? string.Format(L.Get("SeekTest.Status.Completed"), result.AverageLatencyMs)
+                : L.Get("SeekTest.Status.Interrupted");
 
             // Generate and save certificate
             if (result.IsCompleted)
@@ -786,15 +793,15 @@ public partial class SeekTestViewModel : ViewModelBase, INavigableViewModel, IDi
         }
         catch (OperationCanceledException)
         {
-            StatusMessage = "Test zrušen uživatelem";
+            StatusMessage = L.Get("SeekTest.Status.CancelledByUser");
             HasResults = true;
-            ResultSummary = "⚠️ Test zrušen uživatelem";
+            ResultSummary = L.Get("SeekTest.Result.CancelledByUser");
         }
         catch (Exception ex)
         {
-            StatusMessage = $"Chyba testu: {ex.Message}";
+            StatusMessage = string.Format(L.Get("SeekTest.Status.TestError"), ex.Message);
             HasResults = true;
-            ResultSummary = $"❌ Chyba: {ex.Message}";
+            ResultSummary = string.Format(L.Get("SeekTest.Result.Error"), ex.Message);
         }
         finally
         {
@@ -831,7 +838,7 @@ public partial class SeekTestViewModel : ViewModelBase, INavigableViewModel, IDi
                 Result = TestResult.Pass,
                 Grade = CalculateSeekGrade(result),
                 Score = CalculateSeekScore(result),
-                Notes = $"Seek test: {SelectedTestType}, {result.SeekCount} seeků, avg {result.AverageLatencyMs:F2} ms",
+                Notes = string.Format(L.Get("SeekTest.SessionNotes"), SelectedTestType, result.SeekCount, result.AverageLatencyMs),
                 SeekResultsJson = JsonSerializer.Serialize(result)
             };
 
@@ -850,14 +857,15 @@ public partial class SeekTestViewModel : ViewModelBase, INavigableViewModel, IDi
             cert.SeekP99LatencyMs = result.P99LatencyMs;
             cert.SeekTotalCount = result.SeekCount;
             cert.SeekErrorCount = result.ErrorCount;
-            cert.SeekTestSummary = $"{SelectedTestType}: {result.SeekCount} seekĹŻ, avg {result.AverageLatencyMs:F2} ms, p95 {result.P95LatencyMs:F2} ms";cert.Notes = session.Notes;
+            cert.SeekTestSummary = string.Format(L.Get("SeekTest.CertificateSummary"), SelectedTestType, result.SeekCount, result.AverageLatencyMs, result.P95LatencyMs);
+            cert.Notes = session.Notes;
             await _diskCardRepository.CreateCertificateAsync(cert);
 
-            StatusMessage = $"✅ Test dokončen – certifikát {cert.CertificateNumber} uložen";
+            StatusMessage = string.Format(L.Get("SeekTest.Status.CertificateSaved"), cert.CertificateNumber);
         }
         catch (Exception ex)
         {
-            StatusMessage = $"Test dokončen, ale certifikát se nepodařilo uložit: {ex.Message}";
+            StatusMessage = string.Format(L.Get("SeekTest.Status.CertificateSaveFailed"), ex.Message);
         }
     }
 
@@ -1155,7 +1163,7 @@ public partial class SeekTestViewModel : ViewModelBase, INavigableViewModel, IDi
         {
             new Axis
             {
-                Name = "Seek #",
+                Name = L.Get("SeekTest.Axis.SeekNumber"),
                 NameTextSize = 10,
                 TextSize = 9,
                 MinLimit = 0,
@@ -1169,7 +1177,7 @@ public partial class SeekTestViewModel : ViewModelBase, INavigableViewModel, IDi
         {
             new Axis
             {
-                Name = "Latence (ms)",
+                Name = L.Get("SeekTest.Axis.LatencyMs"),
                 NameTextSize = 10,
                 TextSize = 9,
                 MinLimit = 0,
@@ -1186,7 +1194,7 @@ public partial class SeekTestViewModel : ViewModelBase, INavigableViewModel, IDi
         {
             new Axis
             {
-                Name = "Seek #",
+                Name = L.Get("SeekTest.Axis.SeekNumber"),
                 NameTextSize = 10,
                 TextSize = 9,
                 MinLimit = 0,
@@ -1198,7 +1206,7 @@ public partial class SeekTestViewModel : ViewModelBase, INavigableViewModel, IDi
         {
             new Axis
             {
-                Name = "Latence (ms)",
+                Name = L.Get("SeekTest.Axis.LatencyMs"),
                 NameTextSize = 10,
                 TextSize = 9,
                 MinLimit = 0,
@@ -1233,7 +1241,7 @@ public partial class SeekTestViewModel : ViewModelBase, INavigableViewModel, IDi
     private async Task AbortTestAsync()
     {
         _testCancellation?.Cancel();
-        StatusMessage = "Ruším test...";
+        StatusMessage = L.Get("SeekTest.Status.Cancelling");
         await Task.CompletedTask;
     }
 

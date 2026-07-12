@@ -86,6 +86,30 @@ public interface IDiskCardRepository
     /// </summary>
     Task<List<TemperatureSample>> GetTemperatureSampleSeriesAsync(int sessionId);
 
+    /// <summary>
+    /// Načte rovnoměrně rozloženou podmnožinu rychlostních vzorků přímo z databáze
+    /// tak, aby v paměti nebylo nikdy více než <paramref name="maxPoints"/> záznamů
+    /// pro zápis i čtení.  Tím se předchází OOM při generování certifikátů z
+    /// rozsáhlých sanitizačních testů, které mohou obsahovat miliony vzorků.
+    /// </summary>
+    Task<(List<SpeedSample> WriteSamples, List<SpeedSample> ReadSamples)> GetSpeedSampleSeriesDownsampledAsync(
+        int sessionId, int maxPoints, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Načte rovnoměrně rozloženou podmnožinu teplotních vzorků přímo z databáze
+    /// s limitem <paramref name="maxPoints"/> záznamů v paměti.
+    /// </summary>
+    Task<List<TemperatureSample>> GetTemperatureSampleSeriesDownsampledAsync(
+        int sessionId, int maxPoints, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Vrátí celkový počet záznamů vzorků rychlosti (zápis + čtení) a počet
+    /// vzorků označených jako I/O stall.  Slouží k vyhodnocení kritických
+    /// signálů bez načítání celých kolekcí do paměti.
+    /// </summary>
+    Task<(int TotalSamples, int StalledSamples)> GetSpeedSampleStallInfoAsync(
+        int sessionId, CancellationToken cancellationToken = default);
+
     /// <summary>Persistuje throughput telemetrii pro pozdější detailní analýzu a zoom grafů.</summary>
     Task CreateTelemetrySamplesAsync(int sessionId, TelemetrySamplePhase phase, IReadOnlyCollection<SpeedSample> samples, bool replacePhase = true);
 

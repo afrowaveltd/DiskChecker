@@ -580,4 +580,116 @@ public class CertificateGeneratorTests
         Assert.Equal("DiskChecker", certificate.VolumeLabel);
         Assert.True(certificate.SeekAvgLatencyMs.HasValue);
     }
+
+    [Fact]
+    public async Task GenerateCertificateAsync_WithLargeSampleSet_DownsamplesChartButPreservesAggregates()
+    {
+        var logger = Substitute.For<ILogger<CertificateGenerator>>();
+        var settings = Substitute.For<ISettingsService>();
+        settings.GetCertificatePathAsync().Returns((string?)null);
+        var generator = new CertificateGenerator(logger, settings);
+
+        const int sampleCount = 100_000;
+        var writeSamples = Enumerable.Range(0, sampleCount)
+            .Select(i => new SpeedSample
+            {
+                ProgressPercent = i / (double)(sampleCount - 1) * 100d,
+                SpeedMBps = i == sampleCount / 2 ? 999.0 : 100.0 + (i % 50),
+                IsStalled = i is 1000 or 50000 or 90000
+            })
+            .ToList();
+        var readSamples = Enumerable.Range(0, sampleCount)
+            .Select(i => new SpeedSample
+            {
+                ProgressPercent = i / (double)(sampleCount - 1) * 100d,
+                SpeedMBps = i == sampleCount / 3 ? 777.0 : 80.0 + (i % 40)
+            })
+            .ToList();
+
+        var session = new TestSession
+        {
+            Id = 41,
+            TestType = TestType.Sanitization,
+            Duration = TimeSpan.FromHours(3),
+            Result = TestResult.Pass,
+            Grade = "B",
+            Score = 82,
+            HealthAssessment = HealthAssessment.Good,
+            WriteSamples = writeSamples,
+            ReadSamples = readSamples,
+            SmartBefore = new SmartaData { DeviceModel = "Large Test Drive", SerialNumber = "LARGE041", IsHealthy = true }
+        };
+
+        var card = new DiskCard
+        {
+            Id = 41,
+            ModelName = "Large Test Drive",
+            SerialNumber = "LARGE041",
+            Capacity = 2_000_000_000_000,
+            DiskType = "HDD"
+        };
+
+        var expectedWriteAverage = writeSamples.Average(s => s.SpeedMBps);
+        var expectedReadAverage = readSamples.Average(s => s.SpeedMBps);
+
+        var certificate = await generator.GenerateCertificateAsync(session, card);
+
+        Assert.InRange(certificate.AvgWriteSpeed, expectedWriteAverage - 0.0001, expectedWriteAverage + 0.0001);
+        Assert.Equal(999.0, certificate.MaxWriteSpeed);
+        Assert.InRange(certificate.AvgReadSpeed, expectedReadAverage - 0.0001, expectedReadAverage + 0.0001);
+        Assert.Equal(777.0, certificate.MaxReadSpeed);
+        Assert.InRange(certificate.WriteProfilePoints.Count, 1, 32);
+        Assert.InRange(certificate.ReadProfilePoints.Count, 1, 32);
+        Assert.True(certificate.StallProfilePoints.Count <= 32);
+    }
+
+    [Fact]
+    public async Task GenerateCertificateAsync_WithPersistedAggregates_DoesNotLetChartDownsamplingChangeCertificateValues()
+    {
+        var logger = Substitute.For<ILogger<CertificateGenerator>>();
+        var settings = Substitute.For<ISettingsService>();
+        settings.GetCertificatePathAsync().Returns((string?)null);
+        var generator = new CertificateGenerator(logger, settings);
+
+        var session = new TestSession
+        {
+            Id = 42,
+            TestType = TestType.AbsoluteDestructive,
+            Duration = TimeSpan.FromHours(5),
+            Result = TestResult.Pass,
+            Grade = "A",
+            Score = 93,
+            HealthAssessment = HealthAssessment.Excellent,
+            AverageWriteSpeedMBps = 123.45,
+            MaxWriteSpeedMBps = 456.78,
+            AverageReadSpeedMBps = 234.56,
+            MaxReadSpeedMBps = 567.89,
+            WriteSamples = Enumerable.Range(0, 50_000)
+                .Select(i => new SpeedSample { ProgressPercent = i / 500d, SpeedMBps = 10 + (i % 5) })
+                .ToList(),
+            ReadSamples = Enumerable.Range(0, 50_000)
+                .Select(i => new SpeedSample { ProgressPercent = i / 500d, SpeedMBps = 20 + (i % 5) })
+                .ToList(),
+            SmartBefore = new SmartaData { DeviceModel = "Aggregate Drive", SerialNumber = "AGG042", IsHealthy = true }
+        };
+
+        var card = new DiskCard
+        {
+            Id = 42,
+            ModelName = "Aggregate Drive",
+            SerialNumber = "AGG042",
+            Capacity = 1_000_000_000_000,
+            DiskType = "SSD"
+        };
+
+        var certificate = await generator.GenerateCertificateAsync(session, card);
+
+        Assert.Equal(123.45, certificate.AvgWriteSpeed);
+        Assert.Equal(456.78, certificate.MaxWriteSpeed);
+        Assert.Equal(234.56, certificate.AvgReadSpeed);
+        Assert.Equal(567.89, certificate.MaxReadSpeed);
+        Assert.True(certificate.WriteProfilePoints.Count <= 32);
+        Assert.True(certificate.ReadProfilePoints.Count <= 32);
+    }
+
 }

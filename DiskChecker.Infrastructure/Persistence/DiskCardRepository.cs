@@ -5,6 +5,7 @@ using System.Globalization;
 using System.Linq;
 using System.Security.Cryptography;
 using System.Text;
+using System.Threading;
 using System.Threading.Tasks;
 using DiskChecker.Core.Interfaces;
 using DiskChecker.Core.Models;
@@ -539,6 +540,220 @@ public class DiskCardRepository : IDiskCardRepository
                 await connection.CloseAsync();
             }
         }
+    }
+
+    /// <summary>
+    /// Načte rovnoměrně rozloženou podmnožinu rychlostních vzorků přímo z databáze.
+    /// Využívá window funkci <c>ROW_NUMBER()</c> k přiřazení indexu každému
+    /// vzorku seřazenému podle Id, a následně vybere pouze vzorky, jejichž index
+    /// odpovídá pravidelnému kroku.  Do paměti se tak dostane maximálně
+    /// <paramref name="maxPoints"/> záznamů pro zápis a stejně pro čtení.
+    /// </summary>
+    public async Task<(List<SpeedSample> WriteSamples, List<SpeedSample> ReadSamples)> GetSpeedSampleSeriesDownsampledAsync(
+        int sessionId, int maxPoints, CancellationToken cancellationToken = default)
+    {
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(sessionId);
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(maxPoints);
+
+        var connection = _context.Database.GetDbConnection();
+        var shouldClose = connection.State != System.Data.ConnectionState.Open;
+        if (shouldClose)
+            await connection.OpenAsync(cancellationToken);
+
+        try
+        {
+            await ConfigureSqliteReadOptimizationsAsync(connection);
+
+            var writeSamples = await LoadSpeedSeriesDownsampledAsync(
+                connection, "TestSessions_WriteSamples", sessionId, maxPoints, cancellationToken);
+            var readSamples = await LoadSpeedSeriesDownsampledAsync(
+                connection, "TestSessions_ReadSamples", sessionId, maxPoints, cancellationToken);
+
+            return (writeSamples, readSamples);
+        }
+        finally
+        {
+            if (shouldClose)
+                await connection.CloseAsync();
+        }
+    }
+
+    /// <summary>
+    /// Načte rovnoměrně rozloženou podmnožinu teplotních vzorků s limitem
+    /// <paramref name="maxPoints"/> záznamů v paměti.
+    /// </summary>
+    public async Task<List<TemperatureSample>> GetTemperatureSampleSeriesDownsampledAsync(
+        int sessionId, int maxPoints, CancellationToken cancellationToken = default)
+    {
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(sessionId);
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(maxPoints);
+
+        var connection = _context.Database.GetDbConnection();
+        var shouldClose = connection.State != System.Data.ConnectionState.Open;
+        if (shouldClose)
+            await connection.OpenAsync(cancellationToken);
+
+        try
+        {
+            await ConfigureSqliteReadOptimizationsAsync(connection);
+
+            var hasTimestampColumn = await ColumnExistsAsync(connection, "TestSessions_TemperatureSamples", "Timestamp");
+
+            await using var command = connection.CreateCommand();
+            command.CommandText = $@"
+                SELECT Timestamp, TemperatureCelsius, Phase, ProgressPercent
+                FROM (
+                    SELECT
+                        Timestamp,
+                        TemperatureCelsius,
+                        Phase,
+                        ProgressPercent,
+                        ROW_NUMBER() OVER (ORDER BY {(hasTimestampColumn ? "Timestamp, " : "")}Id) AS _rn,
+                        COUNT(*) OVER () AS _total
+                    FROM TestSessions_TemperatureSamples
+                    WHERE TestSessionId = @sessionId
+                )
+                WHERE _total <= @maxPoints OR
+                      ((_rn - 1) * @maxPoints / _total) <> (((_rn - 2) * @maxPoints) / _total)
+                ORDER BY _rn
+                LIMIT @maxPoints";
+
+            var sessionParam = command.CreateParameter();
+            sessionParam.ParameterName = "@sessionId";
+            sessionParam.Value = sessionId;
+            command.Parameters.Add(sessionParam);
+
+            var maxPointsParam = command.CreateParameter();
+            maxPointsParam.ParameterName = "@maxPoints";
+            maxPointsParam.Value = maxPoints;
+            command.Parameters.Add(maxPointsParam);
+
+            var values = new List<TemperatureSample>(Math.Min(maxPoints, 1024));
+            await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+            while (await reader.ReadAsync(cancellationToken))
+            {
+                values.Add(new TemperatureSample
+                {
+                    Timestamp = reader.IsDBNull(0) ? DateTime.MinValue : reader.GetDateTime(0),
+                    TemperatureCelsius = reader.IsDBNull(1) ? 0 : reader.GetInt32(1),
+                    Phase = reader.IsDBNull(2) ? string.Empty : reader.GetString(2),
+                    ProgressPercent = reader.IsDBNull(3) ? 0 : reader.GetDouble(3)
+                });
+            }
+
+            return values;
+        }
+        finally
+        {
+            if (shouldClose)
+                await connection.CloseAsync();
+        }
+    }
+
+    /// <summary>
+    /// Vrátí celkový počet vzorků a počet vzorků označených jako I/O stall,
+    /// aniž by se načítaly celé kolekce do paměti.
+    /// </summary>
+    public async Task<(int TotalSamples, int StalledSamples)> GetSpeedSampleStallInfoAsync(
+        int sessionId, CancellationToken cancellationToken = default)
+    {
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(sessionId);
+
+        var connection = _context.Database.GetDbConnection();
+        var shouldClose = connection.State != System.Data.ConnectionState.Open;
+        if (shouldClose)
+            await connection.OpenAsync(cancellationToken);
+
+        try
+        {
+            await ConfigureSqliteReadOptimizationsAsync(connection);
+
+            var writeHasStall = await ColumnExistsAsync(connection, "TestSessions_WriteSamples", "IsStalled");
+            var readHasStall = await ColumnExistsAsync(connection, "TestSessions_ReadSamples", "IsStalled");
+            var writeStallExpr = writeHasStall ? "SUM(CASE WHEN IsStalled <> 0 THEN 1 ELSE 0 END)" : "0";
+            var readStallExpr = readHasStall ? "SUM(CASE WHEN IsStalled <> 0 THEN 1 ELSE 0 END)" : "0";
+
+            await using var command = connection.CreateCommand();
+            command.CommandText = $@"
+                SELECT
+                    (SELECT COUNT(*) FROM TestSessions_WriteSamples WHERE TestSessionId = @sessionId) +
+                    (SELECT COUNT(*) FROM TestSessions_ReadSamples WHERE TestSessionId = @sessionId),
+                    (SELECT {writeStallExpr} FROM TestSessions_WriteSamples WHERE TestSessionId = @sessionId) +
+                    (SELECT {readStallExpr} FROM TestSessions_ReadSamples WHERE TestSessionId = @sessionId)";
+
+            var param = command.CreateParameter();
+            param.ParameterName = "@sessionId";
+            param.Value = sessionId;
+            command.Parameters.Add(param);
+
+            await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+            if (await reader.ReadAsync(cancellationToken))
+            {
+                var total = reader.IsDBNull(0) ? 0 : reader.GetInt32(0);
+                var stalled = reader.IsDBNull(1) ? 0 : reader.GetInt32(1);
+                return (total, stalled);
+            }
+
+            return (0, 0);
+        }
+        finally
+        {
+            if (shouldClose)
+                await connection.CloseAsync();
+        }
+    }
+
+    /// <summary>
+    /// Načte rovnoměrně rozloženou podmnožinu vzorků z jedné tabulky pomocí
+    /// window funkce <c>ROW_NUMBER()</c>.  Funguje na SQLite >= 3.25.
+    /// </summary>
+    private static async Task<List<SpeedSample>> LoadSpeedSeriesDownsampledAsync(
+        DbConnection connection,
+        string tableName,
+        int sessionId,
+        int maxPoints,
+        CancellationToken cancellationToken)
+    {
+        var hasIsStalledColumn = await ColumnExistsAsync(connection, tableName, "IsStalled");
+        var hasTimestampColumn = await ColumnExistsAsync(connection, tableName, "Timestamp");
+        var hasBytesProcessedColumn = await ColumnExistsAsync(connection, tableName, "BytesProcessed");
+        var timestampSelect = hasTimestampColumn ? "Timestamp" : "NULL AS Timestamp";
+        var bytesSelect = hasBytesProcessedColumn ? "BytesProcessed" : "0 AS BytesProcessed";
+        var stalledSelect = hasIsStalledColumn ? "IsStalled" : "0 AS IsStalled";
+        var orderClause = hasTimestampColumn ? "Timestamp, Id" : "Id";
+
+        await using var command = connection.CreateCommand();
+        command.CommandText = $@"
+            SELECT ProgressPercent, SpeedMBps, {timestampSelect}, {bytesSelect}, {stalledSelect}
+            FROM (
+                SELECT
+                    ProgressPercent,
+                    SpeedMBps,
+                    {timestampSelect},
+                    {bytesSelect},
+                    {stalledSelect},
+                    ROW_NUMBER() OVER (ORDER BY {orderClause}) AS _rn,
+                    COUNT(*) OVER () AS _total
+                FROM {tableName}
+                WHERE TestSessionId = @sessionId
+                  AND (SpeedMBps > 0 OR {stalledSelect} <> 0)
+            )
+            WHERE _total <= @maxPoints OR
+                  ((_rn - 1) * @maxPoints / _total) <> (((_rn - 2) * @maxPoints) / _total)
+            ORDER BY _rn
+            LIMIT @maxPoints";
+
+        var sessionParam = command.CreateParameter();
+        sessionParam.ParameterName = "@sessionId";
+        sessionParam.Value = sessionId;
+        command.Parameters.Add(sessionParam);
+
+        var maxPointsParam = command.CreateParameter();
+        maxPointsParam.ParameterName = "@maxPoints";
+        maxPointsParam.Value = maxPoints;
+        command.Parameters.Add(maxPointsParam);
+
+        return await ReadSpeedSamplesAsync(command);
     }
 
     private static async Task ConfigureSqliteReadOptimizationsAsync(DbConnection connection)

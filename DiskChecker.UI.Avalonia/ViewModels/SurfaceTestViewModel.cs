@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.ObjectModel;
 using System.IO;
 using System.Linq;
@@ -96,7 +96,7 @@ public partial class SurfaceTestViewModel : ViewModelBase, INavigableViewModel, 
    private int _maxTemperature;
    private int _errorCount;
    private string _timeRemaining = "00:00:00";
-   private string _statusMessage = "Připraven k testu";
+   private string _statusMessage = string.Empty;
    private bool _isTesting;
    private CoreDriveInfo? _selectedDrive;
    private bool _isLocked;
@@ -157,6 +157,7 @@ public partial class SurfaceTestViewModel : ViewModelBase, INavigableViewModel, 
       _notificationService = notificationService;
       _certificateGenerator = certificateGenerator;
       _diskCardRepository = diskCardRepository;
+      StatusMessage = L.Get("SurfaceTest.Status.Ready");
 
       AvailableDrives = new ObservableCollection<CoreDriveInfo>();
       SpeedHistory = new ObservableCollection<SpeedDataPoint>();
@@ -171,7 +172,7 @@ public partial class SurfaceTestViewModel : ViewModelBase, INavigableViewModel, 
       [
           new LineSeries<ObservablePoint>
             {
-                Name = "Zápis",
+                Name = L.Get("SurfaceTest.Chart.Write"),
                 Values = WriteSeriesValues,
                 Fill = null,
                 GeometrySize = 0,
@@ -181,7 +182,7 @@ public partial class SurfaceTestViewModel : ViewModelBase, INavigableViewModel, 
             },
             new LineSeries<ObservablePoint>
             {
-                Name = "Čtení",
+                Name = L.Get("SurfaceTest.Chart.Read"),
                 Values = ReadSeriesValues,
                 Fill = null,
                 GeometrySize = 0,
@@ -195,7 +196,7 @@ public partial class SurfaceTestViewModel : ViewModelBase, INavigableViewModel, 
       [
           new Axis
             {
-                Name = "zaznamenaná data (%)",
+                Name = L.Get("SurfaceTest.Chart.RecordedDataPercent"),
                 MinLimit = 0,
                 MaxLimit = 100,
                 LabelsPaint = new SolidColorPaint(new SKColor(148, 163, 184)),
@@ -298,8 +299,8 @@ public partial class SurfaceTestViewModel : ViewModelBase, INavigableViewModel, 
             NotifyGaugeChanged();
       }
    }
-   public string WriteTransferredText => FormatTransferredData("Zapsáno", _writeBytesProcessed, _writeTotalBytes);
-   public string ReadTransferredText => FormatTransferredData("Přečteno", _readBytesProcessed, _readTotalBytes);
+   public string WriteTransferredText => FormatTransferredData(L.Get("SurfaceTest.Transfer.Written"), _writeBytesProcessed, _writeTotalBytes);
+   public string ReadTransferredText => FormatTransferredData(L.Get("SurfaceTest.Transfer.Read"), _readBytesProcessed, _readTotalBytes);
 
    // Combined statistics (current total speed)
    public double CurrentSpeed
@@ -424,17 +425,17 @@ public partial class SurfaceTestViewModel : ViewModelBase, INavigableViewModel, 
 
    // Live dashboard/gauge values for the status card.  The graph keeps every useful
    // sample, while this panel intentionally exposes a compact, readable snapshot.
-   public string GaugeTitle => _currentPhase == 0 ? "Zápis na disk" : "Ověření čtením";
+   public string GaugeTitle => _currentPhase == 0 ? L.Get("SurfaceTest.Gauge.WriteTitle") : L.Get("SurfaceTest.Gauge.VerifyTitle");
    public string GaugeSubtitle => SelectedDrive == null
-      ? "Vyberte disk a spusťte test"
-      : $"{SelectedDrive.Name ?? SelectedDrive.Path} • živá telemetrie";
+      ? L.Get("SurfaceTest.Gauge.SelectDiskHint")
+      : $"{SelectedDrive.Name ?? SelectedDrive.Path} • {L.Get("SurfaceTest.Gauge.LiveTelemetry")}";
    public double GaugeCurrentValue => _currentPhase == 0 ? WriteCurrentSpeed : ReadCurrentSpeed;
    public double GaugeMinValue => _currentPhase == 0 ? WriteMinSpeed : ReadMinSpeed;
    public double GaugeAverageValue => _currentPhase == 0 ? WriteAvgSpeed : ReadAvgSpeed;
    public double GaugeMaxValue => _currentPhase == 0 ? WriteMaxSpeed : ReadMaxSpeed;
    public double GaugeProgressPercent => _currentPhase == 0 ? WriteProgress : VerifyProgress;
    public double GaugeScaleMaxValue => Math.Max(50, Math.Max(DisplayMaxSpeed, GaugeMaxValue * 1.15));
-   public string GaugeStatusText => IsTesting ? (_currentPhase == 0 ? "Zápis" : "Ověření") : "Připraveno";
+   public string GaugeStatusText => IsTesting ? (_currentPhase == 0 ? L.Get("SurfaceTest.Gauge.Write") : L.Get("SurfaceTest.Gauge.Verify")) : L.Get("SurfaceTest.Gauge.Ready");
    public bool GaugeHasErrors => ErrorCount > 0 || IsStatusError;
    public bool GaugeIsOverheated => CurrentTemperature >= 60;
    public bool GaugeIsStalled => IsTesting
@@ -598,7 +599,7 @@ public partial class SurfaceTestViewModel : ViewModelBase, INavigableViewModel, 
    public bool IsStatusWarning =>
        !IsStatusError &&
        !string.IsNullOrWhiteSpace(StatusMessage) &&
-       (StatusMessage.Contains('⚠') || StatusMessage.Contains("varování", StringComparison.OrdinalIgnoreCase));
+       (StatusMessage.Contains('⚠') || StatusMessage.Contains("varování", StringComparison.OrdinalIgnoreCase) || StatusMessage.Contains("warning", StringComparison.OrdinalIgnoreCase));
 
    private void SetStatusMessage(string message)
    {
@@ -1690,7 +1691,7 @@ public partial class SurfaceTestViewModel : ViewModelBase, INavigableViewModel, 
          // Verify drive is selected
          if(SelectedDrive == null)
          {
-            throw new InvalidOperationException("Žádný disk není vybrán");
+            throw new InvalidOperationException(L.Get("SurfaceTest.Error.NoDiskSelected"));
          }
 
          // Determine operation type based on profile
@@ -1896,7 +1897,7 @@ public partial class SurfaceTestViewModel : ViewModelBase, INavigableViewModel, 
       }
       catch(Exception ex)
       {
-         StatusMessage = $"SMART snapshot před testem se nepodařilo načíst: {ex.Message}";
+         StatusMessage = string.Format(L.Get("SurfaceTest.Status.SmartSnapshotFailed"), ex.Message);
          return null;
       }
    }
@@ -1952,8 +1953,8 @@ public partial class SurfaceTestViewModel : ViewModelBase, INavigableViewModel, 
    private static string FormatTransferredData(string label, long bytesProcessed, long totalBytes)
    {
       return totalBytes > 0
-          ? $"{label}: {FormatDataSize(bytesProcessed)} z {FormatDataSize(totalBytes)}"
-          : $"{label}: {FormatDataSize(bytesProcessed)}";
+          ? string.Format(App.GetService<DiskChecker.UI.Avalonia.Services.LocaleService>()?.Get("SurfaceTest.Transfer.FormatWithTotal") ?? "{0}: {1} of {2}", label, FormatDataSize(bytesProcessed), FormatDataSize(totalBytes))
+          : string.Format(App.GetService<DiskChecker.UI.Avalonia.Services.LocaleService>()?.Get("SurfaceTest.Transfer.Format") ?? "{0}: {1}", label, FormatDataSize(bytesProcessed));
    }
 
    private string? GetUsbBottleneckWarning(SanitizationResult result)
@@ -1977,12 +1978,12 @@ public partial class SurfaceTestViewModel : ViewModelBase, INavigableViewModel, 
 
       if(avgSpeed < 55)
       {
-         return $"Detekováno pravděpodobné omezení rychlosti USB 2.0 ({avgSpeed:F1} MB/s). Zkuste USB 3.x port (modrý), kratší kvalitní kabel a přímé připojení bez hubu.";
+         return string.Format(L.Get("SurfaceTest.Warning.Usb2Bottleneck"), avgSpeed);
       }
 
       if(avgSpeed < 120)
       {
-         return $"Detekováno možné omezení přenosu přes USB ({avgSpeed:F1} MB/s). Zkuste jiný port/kabel a přímé připojení bez hubu.";
+         return string.Format(L.Get("SurfaceTest.Warning.UsbBottleneck"), avgSpeed);
       }
 
       return null;
@@ -1992,7 +1993,7 @@ public partial class SurfaceTestViewModel : ViewModelBase, INavigableViewModel, 
    private void CancelTest()
    {
       _testCancellation?.Cancel();
-      StatusMessage = "Test zrušen";
+      StatusMessage = L.Get("SurfaceTest.Status.Cancelled");
    }
 
    [RelayCommand]
@@ -2008,19 +2009,19 @@ public partial class SurfaceTestViewModel : ViewModelBase, INavigableViewModel, 
 
       if(SelectedDrive.IsSystemDisk)
       {
-         StatusMessage = "Systémový disk nelze odemknout - je chráněn automaticky";
+         StatusMessage = L.Get("SurfaceTest.Status.SystemDiskProtected");
          return;
       }
 
       if(IsLocked)
       {
          await _settingsService.UnlockDiskAsync(SelectedDrive.Path);
-         StatusMessage = $"Disk {SelectedDrive.Name ?? SelectedDrive.Path} odemčen";
+         StatusMessage = string.Format(L.Get("SurfaceTest.Status.DiskUnlocked"), SelectedDrive.Name ?? SelectedDrive.Path);
       }
       else
       {
          await _settingsService.LockDiskAsync(SelectedDrive.Path);
-         StatusMessage = $"Disk {SelectedDrive.Name ?? SelectedDrive.Path} zamčen";
+         StatusMessage = string.Format(L.Get("SurfaceTest.Status.DiskLocked"), SelectedDrive.Name ?? SelectedDrive.Path);
       }
 
       await UpdateLockStatusAsync(SelectedDrive);
@@ -2032,7 +2033,7 @@ public partial class SurfaceTestViewModel : ViewModelBase, INavigableViewModel, 
       if(p == null) return;
       foreach(var x in TestProfiles) x.IsSelected = false;
       p.IsSelected = true;
-      StatusMessage = $"Vybrán profil: {p.Name}";
+      StatusMessage = string.Format(L.Get("SurfaceTest.Status.ProfileSelected"), p.Name);
    }
 
    public void Dispose()

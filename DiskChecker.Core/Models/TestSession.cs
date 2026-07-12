@@ -259,6 +259,13 @@ public class TestSession
     /// Speed samples taken during read phase
     /// </summary>
     public List<SpeedSample> ReadSamples { get; set; } = new();
+
+    /// <summary>
+    /// Počet vzorků označených jako I/O stall (získáno z databázové agregace,
+    /// nikoli skenováním kolekce).  Používá se pro vyhodnocení kritických
+    /// signálů v certifikátu bez nutnosti načítat všechny vzorky do paměti.
+    /// </summary>
+    public int StalledSampleCount { get; set; }
     
     // ========== Partition and Format ==========
     

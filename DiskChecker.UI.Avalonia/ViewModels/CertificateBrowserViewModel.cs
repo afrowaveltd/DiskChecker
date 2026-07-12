@@ -575,7 +575,7 @@ public partial class CertificateBrowserViewModel : ViewModelBase, INavigableView
             // Try to load speed samples from test session
             try
             {
-                var (writeSamples, readSamples) = await _diskCardRepository.GetSpeedSampleSeriesAsync(certificate.TestSessionId);
+                var (writeSamples, readSamples) = await LoadSpeedSamplesChunkedAsync(certificate.TestSessionId);
 
                 if (writeSamples.Count > 0 || readSamples.Count > 0)
                 {
@@ -660,7 +660,7 @@ public partial class CertificateBrowserViewModel : ViewModelBase, INavigableView
             }
         }
 
-        var (writeSamples, readSamples) = await _diskCardRepository.GetSpeedSampleSeriesAsync(certificate.TestSessionId);
+        var (writeSamples, readSamples) = await LoadSpeedSamplesChunkedAsync(certificate.TestSessionId);
         var writeValues = writeSamples.Select(s => s.SpeedMBps).Where(v => v > 0).ToList();
         var readValues = readSamples.Select(s => s.SpeedMBps).Where(v => v > 0).ToList();
 
@@ -671,6 +671,23 @@ public partial class CertificateBrowserViewModel : ViewModelBase, INavigableView
 
         certificate.WriteProfilePoints = DownsampleSpeedValues(writeValues, GraphTargetPoints);
         certificate.ReadProfilePoints = DownsampleSpeedValues(readValues, GraphTargetPoints);
+    }
+
+    /// <summary>
+    /// Načte rychlostní vzorky pomocí SQL-level downsamplingu pro prevenci OOM.
+    /// Databáze vrátí maximálně ~512 vzorků na fázi bez ohledu na velikost datasetu.
+    /// </summary>
+    private async Task<(List<SpeedSample> WriteSamples, List<SpeedSample> ReadSamples)> LoadSpeedSamplesChunkedAsync(int sessionId)
+    {
+        const int maxPoints = 512;
+        try
+        {
+            return await _diskCardRepository.GetSpeedSampleSeriesDownsampledAsync(sessionId, maxPoints);
+        }
+        catch
+        {
+            return (new List<SpeedSample>(), new List<SpeedSample>());
+        }
     }
 
     private static List<double> DownsampleSpeedValues(List<double> values, int targetPoints)
@@ -987,7 +1004,7 @@ public class CertificateListItem
 
     public string ScoreText => $"{Score:F0}";
     public string GeneratedAtText => GeneratedAt.ToString("dd.MM.yyyy HH:mm");
-    public string RecommendedText => Recommended ? "✅ Ano" : "—";
+    public string RecommendedText => Recommended ? App.GetService<DiskChecker.UI.Avalonia.Services.LocaleService>()?.Get("CertificateBrowser.RecommendedYes") ?? "✅ Yes" : "—";
     public string GradeColor => Grade switch
     {
         "A" => "#27AE60",

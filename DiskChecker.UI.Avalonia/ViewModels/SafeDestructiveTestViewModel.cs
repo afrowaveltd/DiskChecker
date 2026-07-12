@@ -1,4 +1,4 @@
-﻿using Avalonia.Threading;
+using Avalonia.Threading;
 using DiskChecker.Application.Services;
 using DiskChecker.Core.Interfaces;
 using DiskChecker.Core.Models;
@@ -74,7 +74,7 @@ public partial class SafeDestructiveTestViewModel : ViewModelBase, INavigableVie
    // ──────────────────────────────────────────────
 
    [ObservableProperty] private SafeDestructivePhase _phase = SafeDestructivePhase.Ready;
-   [ObservableProperty] private string _statusMessage = "Připraveno — vyberte cílový disk pro zálohu.";
+   [ObservableProperty] private string _statusMessage = string.Empty;
    [ObservableProperty] private double _overallProgress;
    [ObservableProperty] private string _overallProgressText = "0%";
    [ObservableProperty] private string _currentPhaseName = string.Empty;
@@ -175,7 +175,7 @@ public partial class SafeDestructiveTestViewModel : ViewModelBase, INavigableVie
    [ObservableProperty]
    private Axis[] _sanitizeChartXAxes = new Axis[]
    {
-        new Axis { Name = "Progres (%)", NameTextSize = 10, TextSize = 9, MinLimit = 0, MaxLimit = 100, Labeler = v => v.ToString("F0") }
+        new Axis { Name = "Progress (%)", NameTextSize = 10, TextSize = 9, MinLimit = 0, MaxLimit = 100, Labeler = v => v.ToString("F0") }
    };
    [ObservableProperty]
    private Axis[] _sanitizeChartYAxes = new Axis[]
@@ -312,6 +312,7 @@ public partial class SafeDestructiveTestViewModel : ViewModelBase, INavigableVie
       _certificateGenerator = certificateGenerator;
       _notificationService = notificationService;
       _powerManagementService = powerManagementService;
+      StatusMessage = L.Get("SafeDestructive.Status.ReadySelectBackupTarget");
 
       StartWorkflowCommand = new AsyncRelayCommand(StartWorkflowAsync, () => Phase == SafeDestructivePhase.Ready && SelectedDrive != null && HasEnoughBackupSpace);
       SelectedMode = SafeDestructiveMode.BackupAndRestore; // default
@@ -402,9 +403,9 @@ public partial class SafeDestructiveTestViewModel : ViewModelBase, INavigableVie
       else if(BackupTargetDrives.Count > 0)
       {
          // No target has enough space — still show them but don't auto-select
-         BackupTargetPath = "(není vybrán — žádný disk nemá dostatek místa)";
+         BackupTargetPath = L.Get("SafeDestructive.BackupTarget.NoneNoSpace");
          HasEnoughBackupSpace = false;
-         BackupSpaceSummary = $"❌ Žádný z {BackupTargetDrives.Count} cílových disků nemá dostatek místa (potřeba {DiskTotalSizeText}).";
+         BackupSpaceSummary = string.Format(L.Get("SafeDestructive.BackupSpace.NoDiskEnough"), BackupTargetDrives.Count, DiskTotalSizeText);
          StartWorkflowCommand.NotifyCanExecuteChanged();
          return;
       }
@@ -566,11 +567,11 @@ public partial class SafeDestructiveTestViewModel : ViewModelBase, INavigableVie
    {
       if(SelectedBackupTarget == null)
       {
-         BackupTargetPath = "(není vybrán)";
+         BackupTargetPath = L.Get("SafeDestructive.BackupTarget.None");
          BackupTargetFreeBytes = 0;
          BackupTargetFreeText = "0 B";
          HasEnoughBackupSpace = false;
-         BackupSpaceSummary = "❌ Není vybrán cílový disk pro zálohu.";
+         BackupSpaceSummary = L.Get("SafeDestructive.BackupSpace.NoTarget");
          StartWorkflowCommand.NotifyCanExecuteChanged();
          return;
       }
@@ -585,8 +586,8 @@ public partial class SafeDestructiveTestViewModel : ViewModelBase, INavigableVie
 
       HasEnoughBackupSpace = usableBytes >= DiskTotalBytes;
       BackupSpaceSummary = HasEnoughBackupSpace
-          ? $"✅ Dostatek místa: {FormatBytesLong(usableBytes)} volných (potřeba {DiskTotalSizeText})"
-          : $"❌ Nedostatek: {FormatBytesLong(usableBytes)} volných, potřeba {DiskTotalSizeText}";
+          ? string.Format(L.Get("SafeDestructive.BackupSpace.Enough"), FormatBytesLong(usableBytes), DiskTotalSizeText)
+          : string.Format(L.Get("SafeDestructive.BackupSpace.NotEnough"), FormatBytesLong(usableBytes), DiskTotalSizeText);
 
       StartWorkflowCommand.NotifyCanExecuteChanged();
    }
@@ -635,7 +636,7 @@ public partial class SafeDestructiveTestViewModel : ViewModelBase, INavigableVie
    {
       var xAxis = new Axis
       {
-         Name = "Progres (%)",
+         Name = L.Get("SafeDestructive.Chart.ProgressPercent"),
          MinLimit = 0,
          MaxLimit = 100,
          Labeler = v => $"{v:F0}%"
@@ -650,7 +651,7 @@ public partial class SafeDestructiveTestViewModel : ViewModelBase, INavigableVie
       SanitizeChartYAxes = new[] { yAxis };
 
       SeekChartXAxes = new[] { new Axis { Name = "Seek #", MinLimit = 0 } };
-      SeekChartYAxes = new[] { new Axis { Name = "Latence (ms)", MinLimit = 0 } };
+      SeekChartYAxes = new[] { new Axis { Name = L.Get("SafeDestructive.Chart.LatencyMs"), MinLimit = 0 } };
 
       RebuildSanitizeChart();
    }
@@ -660,13 +661,13 @@ public partial class SafeDestructiveTestViewModel : ViewModelBase, INavigableVie
       var series = new List<ISeries>();
 
       if(ShowPass1Write && SanitizePass1WritePoints.Count > 0)
-         series.Add(CreateLineSeries(SanitizePass1WritePoints, "1. Zápis", new SKColor(0xEF, 0x44, 0x44), 2));
+         series.Add(CreateLineSeries(SanitizePass1WritePoints, L.Get("SafeDestructive.Chart.WritePass1"), new SKColor(0xEF, 0x44, 0x44), 2));
       if(ShowPass1Read && SanitizePass1ReadPoints.Count > 0)
-         series.Add(CreateLineSeries(SanitizePass1ReadPoints, "1. Čtení", new SKColor(0x22, 0xC5, 0x5E), 2));
+         series.Add(CreateLineSeries(SanitizePass1ReadPoints, L.Get("SafeDestructive.Chart.ReadPass1"), new SKColor(0x22, 0xC5, 0x5E), 2));
       if(ShowPass2Write && SanitizePass2WritePoints.Count > 0)
-         series.Add(CreateLineSeries(SanitizePass2WritePoints, "2. Zápis", new SKColor(0xB9, 0x1C, 0x1C), 2));
+         series.Add(CreateLineSeries(SanitizePass2WritePoints, L.Get("SafeDestructive.Chart.WritePass2"), new SKColor(0xB9, 0x1C, 0x1C), 2));
       if(ShowPass2Read && SanitizePass2ReadPoints.Count > 0)
-         series.Add(CreateLineSeries(SanitizePass2ReadPoints, "2. Čtení", new SKColor(0x15, 0x80, 0x3D), 2));
+         series.Add(CreateLineSeries(SanitizePass2ReadPoints, L.Get("SafeDestructive.Chart.ReadPass2"), new SKColor(0x15, 0x80, 0x3D), 2));
 
       // Two-step assignment forces LiveCharts2 SkiaSharp to detect the change and redraw
       SanitizeChartSeries = Array.Empty<ISeries>();
@@ -720,7 +721,7 @@ public partial class SafeDestructiveTestViewModel : ViewModelBase, INavigableVie
          if(ct.IsCancellationRequested) return;
 
          if(!_backupVerified)
-            throw new InvalidOperationException("Záloha nebyla ověřena; destruktivní test nebude spuštěn.");
+            throw new InvalidOperationException(L.Get("SafeDestructive.Error.BackupNotVerified"));
 
          // ── Phase 2: Destructive Test ──
          _destructivePhaseStarted = true;
@@ -743,21 +744,21 @@ public partial class SafeDestructiveTestViewModel : ViewModelBase, INavigableVie
          await BuildResultsAsync();
          await BuildCertificateAsync();
          await SaveTestSessionAsync();
-         Log("═══ WORKFLOW DOKONČEN — DATA OBNOVENA ═══");
+         Log(L.Get("SafeDestructive.Log.WorkflowCompleted"));
       }
       catch(OperationCanceledException)
       {
          if(_destructivePhaseStarted && !_restoreCompleted)
-            await TryEmergencyRestoreAsync("Operace byla zrušena po zahájení destruktivní části");
+            await TryEmergencyRestoreAsync(L.Get("SafeDestructive.Emergency.CancelledAfterDestructive"));
 
          Phase = SafeDestructivePhase.Failed;
          StatusMessage = L.Get("SafeDestructive.Status.Cancelled");
-         Log("⏹ Operace zrušena.");
+         Log(L.Get("SafeDestructive.Log.OperationCancelled"));
       }
       catch(Exception ex)
       {
          if(_destructivePhaseStarted && !_restoreCompleted)
-            await TryEmergencyRestoreAsync($"Došlo k chybě po zahájení destruktivní části: {ex.Message}");
+            await TryEmergencyRestoreAsync(string.Format(L.Get("SafeDestructive.Emergency.ErrorAfterDestructive"), ex.Message));
 
          Phase = SafeDestructivePhase.Failed;
          StatusMessage = L.Get("SafeDestructive.Status.Error", ex.Message);
@@ -798,7 +799,7 @@ public partial class SafeDestructiveTestViewModel : ViewModelBase, INavigableVie
       _backupImagePath = Path.Combine(backupRoot, "disk_image.raw");
       _backupManifestPath = Path.Combine(backupRoot, "backup_manifest.json");
 
-      Log($"Záloha → {_backupImagePath}");
+      Log(string.Format(L.Get("SafeDestructive.Log.BackupPath"), _backupImagePath));
 
       // Use 1 MiB blocks for speed (was 4 KiB)
       const int blockSize = 1024 * 1024;
@@ -860,10 +861,10 @@ public partial class SafeDestructiveTestViewModel : ViewModelBase, INavigableVie
                consecutiveErrors++;
 
                if(consecutiveErrors == 1)
-                  Log($"⚠️ Nečitelný sektor na pozici {FormatBytesLong(bytesRead)} — nahrazen nulami");
+                  Log(string.Format(L.Get("SafeDestructive.Log.UnreadableSectorReplaced"), FormatBytesLong(bytesRead)));
 
                if(consecutiveErrors >= maxConsecutiveErrors)
-                  throw new IOException($"Příliš mnoho nečitelných sektorů za sebou ({consecutiveErrors}) — disk je pravděpodobně vážně poškozen. Záloha přerušena.");
+                  throw new IOException(string.Format(L.Get("SafeDestructive.Error.TooManyUnreadableSectors"), consecutiveErrors));
             }
             else
             {
@@ -902,14 +903,14 @@ public partial class SafeDestructiveTestViewModel : ViewModelBase, INavigableVie
       catch(IOException ex) when(IsDeviceDisappearedError(ex))
       {
          throw new InvalidOperationException(
-             $"❌ Zdrojové zařízení zmizelo během zálohování. Zkontrolujte připojení disku a opakujte operaci.", ex);
+             L.Get("SafeDestructive.Error.SourceDisappearedDuringBackup"), ex);
       }
 
       _backupTotalBytes = bytesRead;
       _backupSha256 = Convert.ToHexString(backupHash.GetHashAndReset());
 
       if(unreadableBytes > 0)
-         Log($"⚠️ Celkem {FormatBytesLong(unreadableBytes)} nečitelných sektorů nahrazeno nulami.");
+         Log(string.Format(L.Get("SafeDestructive.Log.UnreadableBytesReplaced"), FormatBytesLong(unreadableBytes)));
 
       // Write manifest
       var manifest = new
@@ -928,7 +929,7 @@ public partial class SafeDestructiveTestViewModel : ViewModelBase, INavigableVie
 
       await VerifyBackupImageAsync(_backupImagePath, _backupDataStartOffset, _backupTotalBytes, _backupSha256, ct);
 
-      Log($"Záloha dokončena a ověřena: {FormatBytesLong(bytesRead)}");
+      Log(string.Format(L.Get("SafeDestructive.Log.BackupCompletedVerified"), FormatBytesLong(bytesRead)));
       StatusMessage = L.Get("SafeDestructive.Status.BackupDone");
    }
 
@@ -1022,7 +1023,7 @@ public partial class SafeDestructiveTestViewModel : ViewModelBase, INavigableVie
       var phase = TestPhases[phaseIndex];
       phase.Status = TestPhaseStatus.Running;
       TestPhaseProgress = 0;
-      TestPhaseDetail = mode == "write" ? "Zapisuji..." : "Čtu...";
+      TestPhaseDetail = mode == "write" ? L.Get("SafeDestructive.Phase.Write") : L.Get("SafeDestructive.Phase.Read");
 
       SanitizeTotalBytes = DiskTotalBytes;
       SanitizeTotalBytesText = DiskTotalSizeText;
@@ -1104,13 +1105,13 @@ public partial class SafeDestructiveTestViewModel : ViewModelBase, INavigableVie
       catch(IOException ex) when(IsDeviceDisappearedError(ex))
       {
          throw new InvalidOperationException(
-             $"❌ Zařízení zmizelo během sanitizace. Zkontrolujte připojení disku a opakujte operaci.", ex);
+             L.Get("SafeDestructive.Error.DeviceDisappearedDuringSanitize"), ex);
       }
 
       phase.Status = TestPhaseStatus.Completed;
       phase.ProgressPercent = 100;
       RebuildSanitizeChart();
-      Log($"Sanitizace {phaseIndex + 1} ({mode}): dokončeno — {FormatBytesLong(bytesProcessed)}");
+      Log(string.Format(L.Get("SafeDestructive.Log.SanitizeCompleted"), phaseIndex + 1, mode, FormatBytesLong(bytesProcessed)));
    }
 
    private async Task RunSeekPhaseAsync(int phaseIndex, SeekTestType seekType,
@@ -1151,7 +1152,7 @@ public partial class SafeDestructiveTestViewModel : ViewModelBase, INavigableVie
 
       phase.Status = result.IsCompleted ? TestPhaseStatus.Completed : TestPhaseStatus.Failed;
       phase.ProgressPercent = 100;
-      Log($"Seek {seekType}: dokončeno — avg {result.AverageLatencyMs:F2} ms, P95 {result.P95LatencyMs:F2} ms, chyb: {result.ErrorCount}");
+      Log(string.Format(L.Get("SafeDestructive.Log.SeekCompleted"), seekType, result.AverageLatencyMs, result.P95LatencyMs, result.ErrorCount));
    }
 
    // ──────────────────────────────────────────────
@@ -1161,9 +1162,9 @@ public partial class SafeDestructiveTestViewModel : ViewModelBase, INavigableVie
    private async Task RunVhdxBackupPhaseAsync(CancellationToken ct)
    {
       Phase = SafeDestructivePhase.Backup;
-      CurrentPhaseName = "VHDx záloha";
+      CurrentPhaseName = L.Get("SafeDestructive.Phase.VhdxBackup");
       CurrentPhaseIcon = "💾";
-      StatusMessage = "Vytvářím VHDx obraz disku...";
+      StatusMessage = L.Get("SafeDestructive.Status.CreatingVhdx");
       OverallProgress = 0;
       OverallProgressText = "Celkem 0%";
 
@@ -1177,7 +1178,7 @@ public partial class SafeDestructiveTestViewModel : ViewModelBase, INavigableVie
       VhdxBackupPathText = _backupImagePath;
       VhdxBackupVerified = false;
 
-      Log($"VHDx záloha → {_backupImagePath}");
+      Log(string.Format(L.Get("SafeDestructive.Log.VhdxBackupPath"), _backupImagePath));
 
       // Use 1 MiB blocks for speed
       const int blockSize = 1024 * 1024;
@@ -1199,7 +1200,7 @@ public partial class SafeDestructiveTestViewModel : ViewModelBase, INavigableVie
       _backupDataStartOffset = dataStartOffset;
       var requiredBytes = dataStartOffset + RoundUp(totalSize, blockSize);
       if(BackupTargetFreeBytes < requiredBytes)
-         throw new IOException($"Cílový disk nemá dost místa pro platný VHDx soubor. Potřeba {FormatBytesLong(requiredBytes)}, dostupné {FormatBytesLong(BackupTargetFreeBytes)}.");
+         throw new IOException(string.Format(L.Get("SafeDestructive.Error.VhdxNotEnoughSpace"), FormatBytesLong(requiredBytes), FormatBytesLong(BackupTargetFreeBytes)));
 
       // Write VHDx header + BAT — fixed VHDx, all blocks pre-allocated
       await WriteVhdxHeaderAsync(_backupImagePath, totalSize, ct);
@@ -1250,10 +1251,10 @@ public partial class SafeDestructiveTestViewModel : ViewModelBase, INavigableVie
                consecutiveErrors++;
 
                if(consecutiveErrors == 1)
-                  Log($"⚠️ Nečitelný sektor na pozici {FormatBytesLong(bytesRead)} — nahrazen nulami");
+                  Log(string.Format(L.Get("SafeDestructive.Log.UnreadableSectorReplaced"), FormatBytesLong(bytesRead)));
 
                if(consecutiveErrors >= maxConsecutiveErrors)
-                  throw new IOException($"Příliš mnoho nečitelných sektorů za sebou ({consecutiveErrors}) — disk je pravděpodobně vážně poškozen. Záloha přerušena.");
+                  throw new IOException(string.Format(L.Get("SafeDestructive.Error.TooManyUnreadableSectors"), consecutiveErrors));
             }
             else
             {
@@ -1295,14 +1296,14 @@ public partial class SafeDestructiveTestViewModel : ViewModelBase, INavigableVie
       catch(IOException ex) when(IsDeviceDisappearedError(ex))
       {
          throw new InvalidOperationException(
-             $"❌ Zdrojové zařízení zmizelo během VHDx zálohování. Zkontrolujte připojení disku a opakujte operaci.", ex);
+             L.Get("SafeDestructive.Error.SourceDisappearedDuringVhdxBackup"), ex);
       }
 
       _backupTotalBytes = bytesRead;
       _backupSha256 = Convert.ToHexString(backupHash.GetHashAndReset());
 
       if(unreadableBytes > 0)
-         Log($"⚠️ Celkem {FormatBytesLong(unreadableBytes)} nečitelných sektorů nahrazeno nulami.");
+         Log(string.Format(L.Get("SafeDestructive.Log.UnreadableBytesReplaced"), FormatBytesLong(unreadableBytes)));
 
       // Write manifest
       var manifest = new
@@ -1318,7 +1319,7 @@ public partial class SafeDestructiveTestViewModel : ViewModelBase, INavigableVie
          UnreadableBytes = unreadableBytes,
          DataStartOffset = dataStartOffset,
          Sha256 = _backupSha256,
-         Note = "Soubor disk_image.vhdx je fixed VHDx obraz disku. Lze jej připojit: Windows — poklepáním; Linux — sudo qemu-nbd -c /dev/nbd0 disk_image.vhdx && sudo mount /dev/nbd0p1 /mnt"
+         Note = L.Get("SafeDestructive.VhdxNote")
       };
       using var manifestStream = File.OpenWrite(_backupManifestPath);
       await JsonSerializer.SerializeAsync(manifestStream, manifest, _jsonOptions, ct);
@@ -1326,8 +1327,8 @@ public partial class SafeDestructiveTestViewModel : ViewModelBase, INavigableVie
       await VerifyBackupImageAsync(_backupImagePath, _backupDataStartOffset, _backupTotalBytes, _backupSha256, ct);
       VhdxBackupVerified = true;
 
-      Log($"VHDx záloha dokončena a ověřena: {FormatBytesLong(bytesRead)}");
-      StatusMessage = "VHDx záloha dokončena a ověřena.";
+      Log(string.Format(L.Get("SafeDestructive.Log.VhdxBackupCompletedVerified"), FormatBytesLong(bytesRead)));
+      StatusMessage = L.Get("SafeDestructive.Status.VhdxBackupCompletedVerified");
    }
 
    // ──────────────────────────────────────────────
