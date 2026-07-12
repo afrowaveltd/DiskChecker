@@ -1446,7 +1446,7 @@ public partial class SafeDestructiveTestViewModel : ViewModelBase, INavigableVie
    private async Task RunPartitionPhaseAsync(CancellationToken ct)
    {
       Phase = SafeDestructivePhase.Partition;
-      CurrentPhaseName = "Vytváření oddílu";
+      CurrentPhaseName = L.Get("DestructiveTest.Phase.Partition");
       CurrentPhaseIcon = "📋";
       StatusMessage = "Vytvářím oddíl na disku...";
 

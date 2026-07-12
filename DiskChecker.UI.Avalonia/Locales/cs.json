@@ -2383,5 +2383,11 @@
   "Workload": "Zátěž",
   "Write": "Zápis",
   "WriteShort": "ZÁPIS",
-  "WriteSpeed": "Rychlost zápisu"
+  "WriteSpeed": "Rychlost zápisu",
+  "SurfaceTest.Zoom.1min": "1 min",
+  "SurfaceTest.Zoom.5min": "5 min",
+  "SurfaceTest.Zoom.15min": "15 min",
+  "SurfaceTest.Zoom.30min": "30 min",
+  "SurfaceTest.Zoom.1hour": "1 hod",
+  "SurfaceTest.Zoom.All": "Veškerý čas"
 }

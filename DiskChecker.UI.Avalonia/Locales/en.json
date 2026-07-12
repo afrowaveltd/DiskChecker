@@ -2383,5 +2383,11 @@
   "Workload": "Workload",
   "Write": "Write",
   "WriteShort": "WRITE",
-  "WriteSpeed": "Write Speed"
+  "WriteSpeed": "Write Speed",
+  "SurfaceTest.Zoom.1min": "1 min",
+  "SurfaceTest.Zoom.5min": "5 min",
+  "SurfaceTest.Zoom.15min": "15 min",
+  "SurfaceTest.Zoom.30min": "30 min",
+  "SurfaceTest.Zoom.1hour": "1 hour",
+  "SurfaceTest.Zoom.All": "All time"
 }

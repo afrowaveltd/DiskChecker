@@ -164,7 +164,15 @@ public partial class SurfaceTestViewModel : ViewModelBase, INavigableViewModel, 
       WriteSpeedHistory = new ObservableCollection<SurfaceTestDataPoint>();
       ReadSpeedHistory = new ObservableCollection<SurfaceTestDataPoint>();
       TemperatureHistory = new ObservableCollection<TemperatureDataPoint>();
-      ZoomLevels = new ObservableCollection<GraphZoomLevel>(GraphZoomLevel.DefaultZoomLevels);
+      ZoomLevels = new ObservableCollection<GraphZoomLevel>
+      {
+         new(L.Get("SurfaceTest.Zoom.1min"), TimeSpan.FromMinutes(1)),
+         new(L.Get("SurfaceTest.Zoom.5min"), TimeSpan.FromMinutes(5)),
+         new(L.Get("SurfaceTest.Zoom.15min"), TimeSpan.FromMinutes(15)),
+         new(L.Get("SurfaceTest.Zoom.30min"), TimeSpan.FromMinutes(30)),
+         new(L.Get("SurfaceTest.Zoom.1hour"), TimeSpan.FromHours(1)),
+         new(L.Get("SurfaceTest.Zoom.All"), TimeSpan.MaxValue)
+      };
       WriteSeriesValues = new ObservableCollection<ObservablePoint>();
       ReadSeriesValues = new ObservableCollection<ObservablePoint>();
 
