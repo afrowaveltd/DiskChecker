@@ -152,7 +152,7 @@ public partial class AbsoluteDestructiveTestViewModel : ViewModelBase, INavigabl
     [ObservableProperty] private bool _showManualProfileSelector;
     [ObservableProperty] private ManualTestProfile _selectedManualProfile = ManualTestProfile.Standard;
     [ObservableProperty] private string _smartBaselineSummary = string.Empty;
-    [ObservableProperty] private string _smartCurrentSummary = "Čekám...";
+    [ObservableProperty] private string _smartCurrentSummary = string.Empty;
     [ObservableProperty] private string _smartDeltaSummary = "—";
     [ObservableProperty] private bool _hasResults;
     [ObservableProperty] private string _resultsSummary = string.Empty;
@@ -292,6 +292,9 @@ public partial class AbsoluteDestructiveTestViewModel : ViewModelBase, INavigabl
         Phases.Add(new TestPhaseViewModel { Name = L.Get("DestructiveTest.Phase.Sanitize2"), Icon = "🧹", PhaseIndex = 5 });
         Phases.Add(new TestPhaseViewModel { Name = L.Get("DestructiveTest.Phase.Finalize"), Icon = "📄", PhaseIndex = 6 });
         Phases.Add(new TestPhaseViewModel { Name = L.Get("DestructiveTest.Phase.Partition"), Icon = "📋", PhaseIndex = 7 });
+
+        // Initialize localized strings
+        SmartCurrentSummary = L.Get("DestructiveTest.Waiting");
 
         // LiveCharts setup
         CurrentPhaseSeries = new ISeries[]
