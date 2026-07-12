@@ -23,14 +23,14 @@ public partial class MainWindowViewModel : ViewModelBase
     private readonly LocaleService _localeService;
     private ViewModelBase? _currentContent;
     private INotifyPropertyChanged? _currentContentNotifier;
-    private string _statusMessage = "Připraven";
+    private string _statusMessage = string.Empty;
     private Type? _currentViewModelType;
     
     // System info properties
-    private string _osName = "Načítám...";
+    private string _osName = string.Empty;
     private string _kernelVersion = "";
-    private string _cpuInfo = "Načítám...";
-    private string _ramInfo = "Načítám...";
+    private string _cpuInfo = string.Empty;
+    private string _ramInfo = string.Empty;
     private string _runtimeInfo = ".NET 10";
     private string _appVersion = "v1.0.0";
     private bool _isLinux;
@@ -179,7 +179,7 @@ public partial class MainWindowViewModel : ViewModelBase
     private async System.Threading.Tasks.Task SaveThemePreferenceAsync(bool isDark)
     {
         await _settingsService.SetIsDarkThemeAsync(isDark);
-        StatusMessage = isDark ? "Tmavý motiv aktivován" : "Světlý motiv aktivován";
+        StatusMessage = isDark ? _localeService.Get("MainWindow.Theme.DarkActivated") : _localeService.Get("MainWindow.Theme.LightActivated");
     }
     
     [RelayCommand]

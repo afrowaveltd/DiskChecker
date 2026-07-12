@@ -2389,5 +2389,9 @@
   "SurfaceTest.Zoom.15min": "15 min",
   "SurfaceTest.Zoom.30min": "30 min",
   "SurfaceTest.Zoom.1hour": "1 hour",
-  "SurfaceTest.Zoom.All": "All time"
+  "SurfaceTest.Zoom.All": "All time",
+"MainWindow.Status.Ready": "Ready",
+  "MainWindow.Status.Loading": "Loading...",
+  "MainWindow.Theme.DarkActivated": "Dark theme activated",
+  "MainWindow.Theme.LightActivated": "Light theme activated"
 }

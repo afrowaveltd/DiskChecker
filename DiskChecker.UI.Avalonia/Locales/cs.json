@@ -2389,5 +2389,9 @@
   "SurfaceTest.Zoom.15min": "15 min",
   "SurfaceTest.Zoom.30min": "30 min",
   "SurfaceTest.Zoom.1hour": "1 hod",
-  "SurfaceTest.Zoom.All": "Veškerý čas"
+  "SurfaceTest.Zoom.All": "Veškerý čas",
+"MainWindow.Status.Ready": "Připraven",
+  "MainWindow.Status.Loading": "Načítám...",
+  "MainWindow.Theme.DarkActivated": "Tmavý motiv aktivován",
+  "MainWindow.Theme.LightActivated": "Světlý motiv aktivován"
 }
