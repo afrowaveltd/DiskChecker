@@ -637,8 +637,9 @@ namespace DiskChecker.UI.Avalonia.ViewModels
         }
 
         /// <summary>
-        /// Načte vzorky rychlosti progresivně po dávkách (modulo/remainder), aby se nečetla celá série najednou.
-        /// Používá se pouze pro OpenFullReportAsync, exporty certifikátů používají CertificateExportService.
+        /// Načte vzorky rychlosti pomocí SQL-level downsamplingu (max ~1200 bodů na fázi).
+        /// Nahrazuje starý chunk-based přístup, který akumuloval všechny vzorky v paměti.
+        /// Exporty certifikátů používají CertificateExportService s vlastním downsamplingem.
         /// </summary>
         private async Task<(List<SpeedSample> WriteSamples, List<SpeedSample> ReadSamples, bool ReducedMode)> LoadSpeedSamplesProgressiveAsync(
             int sessionId,
@@ -648,42 +649,27 @@ namespace DiskChecker.UI.Avalonia.ViewModels
             int progressEnd,
             string stageMessage)
         {
-            var writeSamples = new List<SpeedSample>();
-            var readSamples = new List<SpeedSample>();
-            var reducedMode = false;
+            // Use SQL-level downsampling directly - returns max 1200 samples per phase.
+            // This avoids loading ALL samples into memory and then downsampling.
+            const int targetPoints = 1200;
 
-            var effectiveRemainders = Math.Clamp(maxRemainders, 1, modulo);
-            for (var remainder = 0; remainder < effectiveRemainders; remainder++)
+            try
             {
-                var progress = progressStart + ((progressEnd - progressStart) * (remainder + 1) / effectiveRemainders);
-                UpdateProgress($"{stageMessage} ({remainder + 1}/{effectiveRemainders})...", progress);
-
-                try
-                {
-                    var (writeChunk, readChunk) = await _diskCardRepository.GetSpeedSampleSeriesChunkAsync(sessionId, modulo, remainder);
-                    writeSamples.AddRange(writeChunk);
-                    readSamples.AddRange(readChunk);
-                }
-                catch (DbException ex) when (IsDiskFullLike(ex))
-                {
-                    reducedMode = true;
-                    StatusMessage = "Detekován nízký prostor pro SQLite. Pokračuji s omezeným vzorkem dat.";
-                    break;
-                }
-                catch (IOException)
-                {
-                    reducedMode = true;
-                    StatusMessage = "Nedostatek místa na disku při čtení dat. Pokračuji s omezeným vzorkem.";
-                    break;
-                }
-
-                await Task.Yield();
+                UpdateProgress($"{stageMessage} (SQL downsampling)...", progressStart);
+                var (writeSamples, readSamples) = await _diskCardRepository.GetSpeedSampleSeriesDownsampledAsync(
+                    sessionId, targetPoints);
+                return (writeSamples, readSamples, false);
             }
-
-            writeSamples = writeSamples.OrderBy(s => s.ProgressPercent).ToList();
-            readSamples = readSamples.OrderBy(s => s.ProgressPercent).ToList();
-
-            return (writeSamples, readSamples, reducedMode || effectiveRemainders < modulo);
+            catch (DbException ex) when (IsDiskFullLike(ex))
+            {
+                UpdateProgress("Detekován nedostatek místa v SQLite. Pokračuji s omezeným vzorkem dat.", progressEnd);
+                return (new List<SpeedSample>(), new List<SpeedSample>(), true);
+            }
+            catch (IOException)
+            {
+                UpdateProgress("Nedostatek místa na disku při čtení dat. Pokračuji s omezeným vzorkem.", progressEnd);
+                return (new List<SpeedSample>(), new List<SpeedSample>(), true);
+            }
         }
 
         /// <summary>

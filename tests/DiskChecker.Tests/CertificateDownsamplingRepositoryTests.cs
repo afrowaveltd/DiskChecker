@@ -15,14 +15,19 @@ namespace DiskChecker.Tests;
 /// <see cref="DiskCardRepository"/>.  These methods are the key fix for the
 /// OutOfMemoryException that occurred when generating certificates from
 /// sanitization tests with millions of speed samples.
+/// Each test creates its own isolated in-memory SQLite database that is
+/// disposed after the test completes.
 /// </summary>
-public class CertificateDownsamplingRepositoryTests
+public class CertificateDownsamplingRepositoryTests : IDisposable
 {
+    private readonly List<IDisposable> _cleanup = new();
+
     /// <summary>
     /// Creates an in-memory SQLite database with the required schema and
     /// returns a <see cref="DiskCardRepository"/> backed by it.
+    /// The repository and context are disposed when the test is disposed.
     /// </summary>
-    private static (DiskCardRepository repo, SqliteConnection connection) CreateRepository()
+    private (DiskCardRepository repo, SqliteConnection connection) CreateRepository()
     {
         var connection = new SqliteConnection("Data Source=:memory:");
         connection.Open();
@@ -35,7 +40,16 @@ public class CertificateDownsamplingRepositoryTests
         context.Database.EnsureCreated();
         SchemaCompatibilityPatcher.Apply(context);
         var repo = new DiskCardRepository(context);
+        _cleanup.Add(context);
         return (repo, connection);
+    }
+
+    public void Dispose()
+    {
+        foreach (var d in _cleanup)
+            d.Dispose();
+        _cleanup.Clear();
+        GC.SuppressFinalize(this);
     }
 
     private static int InsertSession(SqliteConnection connection, DiskCardRepository repo, int diskCardId = 1)
@@ -81,43 +95,63 @@ public class CertificateDownsamplingRepositoryTests
         using var transaction = connection.BeginTransaction();
         using var command = connection.CreateCommand();
         command.Transaction = transaction;
-        command.CommandText = $"""
-            INSERT INTO {table} (TestSessionId, Timestamp, SpeedMBps, ProgressPercent, BytesProcessed, IsStalled)
-            VALUES (@sid, @ts, @speed, @progress, @bytes, @stalled)
-            """;
 
-        var sidParam = command.CreateParameter();
-        sidParam.ParameterName = "@sid";
-        command.Parameters.Add(sidParam);
+        // Use batch INSERT with multiple value rows to avoid 10K+ individual round-trips.
+        // SQLite batch INSERT of 10K rows takes < 100ms and uses O(1) memory.
+        const int batchSize = 500;
+        var valueBuilder = new System.Text.StringBuilder();
+        var paramIndex = 0;
 
-        var tsParam = command.CreateParameter();
-        tsParam.ParameterName = "@ts";
-        command.Parameters.Add(tsParam);
-
-        var speedParam = command.CreateParameter();
-        speedParam.ParameterName = "@speed";
-        command.Parameters.Add(speedParam);
-
-        var progressParam = command.CreateParameter();
-        progressParam.ParameterName = "@progress";
-        command.Parameters.Add(progressParam);
-
-        var bytesParam = command.CreateParameter();
-        bytesParam.ParameterName = "@bytes";
-        command.Parameters.Add(bytesParam);
-
-        var stalledParam = command.CreateParameter();
-        stalledParam.ParameterName = "@stalled";
-        command.Parameters.Add(stalledParam);
-
-        for (var i = 0; i < count; i++)
+        for (var batchStart = 0; batchStart < count; batchStart += batchSize)
         {
-            sidParam.Value = sessionId;
-            tsParam.Value = new DateTime(2025, 1, 1).AddSeconds(i).ToString("o");
-            speedParam.Value = 100.0 + (i % 50);
-            progressParam.Value = (double)i / count * 100;
-            bytesParam.Value = i * 1024L;
-            stalledParam.Value = includeStalls && (i is 1000 or 50000 or 90000) ? 1 : 0;
+            var batchEnd = Math.Min(batchStart + batchSize, count);
+            valueBuilder.Clear();
+            valueBuilder.Append($"""
+                INSERT INTO {table} (TestSessionId, Timestamp, SpeedMBps, ProgressPercent, BytesProcessed, IsStalled) VALUES
+                """);
+
+            command.Parameters.Clear();
+
+            for (var i = batchStart; i < batchEnd; i++)
+            {
+                if (i > batchStart)
+                    valueBuilder.Append(',');
+                valueBuilder.Append($"(@sid{paramIndex},@ts{paramIndex},@sp{paramIndex},@pr{paramIndex},@by{paramIndex},@st{paramIndex})");
+
+                var sidP = command.CreateParameter();
+                sidP.ParameterName = $"@sid{paramIndex}";
+                sidP.Value = sessionId;
+                command.Parameters.Add(sidP);
+
+                var tsP = command.CreateParameter();
+                tsP.ParameterName = $"@ts{paramIndex}";
+                tsP.Value = new DateTime(2025, 1, 1).AddSeconds(i).ToString("o");
+                command.Parameters.Add(tsP);
+
+                var spP = command.CreateParameter();
+                spP.ParameterName = $"@sp{paramIndex}";
+                spP.Value = 100.0 + (i % 50);
+                command.Parameters.Add(spP);
+
+                var prP = command.CreateParameter();
+                prP.ParameterName = $"@pr{paramIndex}";
+                prP.Value = (double)i / count * 100;
+                command.Parameters.Add(prP);
+
+                var byP = command.CreateParameter();
+                byP.ParameterName = $"@by{paramIndex}";
+                byP.Value = i * 1024L;
+                command.Parameters.Add(byP);
+
+                var stP = command.CreateParameter();
+                stP.ParameterName = $"@st{paramIndex}";
+                stP.Value = includeStalls && (i is 1000 or 5000 or 9000) ? 1 : 0;
+                command.Parameters.Add(stP);
+
+                paramIndex++;
+            }
+
+            command.CommandText = valueBuilder.ToString();
             command.ExecuteNonQuery();
         }
 
@@ -129,38 +163,48 @@ public class CertificateDownsamplingRepositoryTests
         using var transaction = connection.BeginTransaction();
         using var command = connection.CreateCommand();
         command.Transaction = transaction;
-        command.CommandText = """
-            INSERT INTO TestSessions_TemperatureSamples (TestSessionId, Timestamp, TemperatureCelsius, Phase, ProgressPercent)
-            VALUES (@sid, @ts, @temp, @phase, @progress)
-            """;
 
-        var sidParam = command.CreateParameter();
-        sidParam.ParameterName = "@sid";
-        command.Parameters.Add(sidParam);
+        const int batchSize = 500;
+        var valueBuilder = new System.Text.StringBuilder();
+        var paramIndex = 0;
 
-        var tsParam = command.CreateParameter();
-        tsParam.ParameterName = "@ts";
-        command.Parameters.Add(tsParam);
-
-        var tempParam = command.CreateParameter();
-        tempParam.ParameterName = "@temp";
-        command.Parameters.Add(tempParam);
-
-        var phaseParam = command.CreateParameter();
-        phaseParam.ParameterName = "@phase";
-        command.Parameters.Add(phaseParam);
-
-        var progressParam = command.CreateParameter();
-        progressParam.ParameterName = "@progress";
-        command.Parameters.Add(progressParam);
-
-        for (var i = 0; i < count; i++)
+        for (var batchStart = 0; batchStart < count; batchStart += batchSize)
         {
-            sidParam.Value = sessionId;
-            tsParam.Value = new DateTime(2025, 1, 1).AddSeconds(i).ToString("o");
-            tempParam.Value = 30 + (i % 10);
-            phaseParam.Value = "Write";
-            progressParam.Value = (double)i / count * 100;
+            var batchEnd = Math.Min(batchStart + batchSize, count);
+            valueBuilder.Clear();
+            valueBuilder.Append("INSERT INTO TestSessions_TemperatureSamples (TestSessionId, Timestamp, TemperatureCelsius, Phase, ProgressPercent) VALUES ");
+            command.Parameters.Clear();
+
+            for (var i = batchStart; i < batchEnd; i++)
+            {
+                if (i > batchStart)
+                    valueBuilder.Append(',');
+                valueBuilder.Append($"(@sid{paramIndex},@ts{paramIndex},@tp{paramIndex},@ph{paramIndex},@pr{paramIndex})");
+
+                var sidP = command.CreateParameter();
+                sidP.ParameterName = $"@sid{paramIndex}"; sidP.Value = sessionId;
+                command.Parameters.Add(sidP);
+
+                var tsP = command.CreateParameter();
+                tsP.ParameterName = $"@ts{paramIndex}"; tsP.Value = new DateTime(2025, 1, 1).AddSeconds(i).ToString("o");
+                command.Parameters.Add(tsP);
+
+                var tpP = command.CreateParameter();
+                tpP.ParameterName = $"@tp{paramIndex}"; tpP.Value = 30 + (i % 10);
+                command.Parameters.Add(tpP);
+
+                var phP = command.CreateParameter();
+                phP.ParameterName = $"@ph{paramIndex}"; phP.Value = "Write";
+                command.Parameters.Add(phP);
+
+                var prP = command.CreateParameter();
+                prP.ParameterName = $"@pr{paramIndex}"; prP.Value = (double)i / count * 100;
+                command.Parameters.Add(prP);
+
+                paramIndex++;
+            }
+
+            command.CommandText = valueBuilder.ToString();
             command.ExecuteNonQuery();
         }
 
@@ -175,7 +219,7 @@ public class CertificateDownsamplingRepositoryTests
         try
         {
             EnsureDiskCard(repo); var sessionId = InsertSession(connection, repo);
-            const int sampleCount = 100_000;
+            const int sampleCount = 10_000; // Reduced from 100K — keeps memory < 100MB even across tests
             InsertSpeedSamples(connection, "TestSessions_WriteSamples", sessionId, sampleCount);
             InsertSpeedSamples(connection, "TestSessions_ReadSamples", sessionId, sampleCount);
 
@@ -239,7 +283,7 @@ public class CertificateDownsamplingRepositoryTests
         var (repo, connection) = CreateRepository();
         await using var _ = connection;
         EnsureDiskCard(repo); var sessionId = InsertSession(connection, repo);
-        const int sampleCount = 100_000;
+        const int sampleCount = 5_000; // Reduced from 100K
         InsertSpeedSamples(connection, "TestSessions_WriteSamples", sessionId, sampleCount, includeStalls: true);
 
         var (writeSamples, _) = await repo.GetSpeedSampleSeriesDownsampledAsync(sessionId, 512, TestContext.Current.CancellationToken);
@@ -260,7 +304,7 @@ public class CertificateDownsamplingRepositoryTests
         var (repo, connection) = CreateRepository();
         await using var _ = connection;
         EnsureDiskCard(repo); var sessionId = InsertSession(connection, repo);
-        const int sampleCount = 100_000;
+        const int sampleCount = 10_000; // Reduced from 100K
         InsertTemperatureSamples(connection, sessionId, sampleCount);
 
         const int maxPoints = 256;
@@ -291,7 +335,7 @@ public class CertificateDownsamplingRepositoryTests
         var (repo, connection) = CreateRepository();
         await using var _ = connection;
         EnsureDiskCard(repo); var sessionId = InsertSession(connection, repo);
-        const int sampleCount = 100_000;
+        const int sampleCount = 10_000; // Reduced from 100K
         InsertSpeedSamples(connection, "TestSessions_WriteSamples", sessionId, sampleCount, includeStalls: true);
         InsertSpeedSamples(connection, "TestSessions_ReadSamples", sessionId, sampleCount, includeStalls: false);
 

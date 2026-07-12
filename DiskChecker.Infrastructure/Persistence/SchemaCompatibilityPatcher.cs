@@ -47,6 +47,7 @@ public static class SchemaCompatibilityPatcher
             EnsureColumn(dbContext, "TestSessions", "Sanitize1ResultJson");
             EnsureColumn(dbContext, "TestSessions", "Sanitize2ResultJson");
             EnsureColumn(dbContext, "TestSessions", "AnomaliesJson");
+            EnsureColumn(dbContext, "TestSessions", "StalledSampleCount");
         }
 
         // SpeedSample.IsStalled was added after the owned sample tables already existed
@@ -237,9 +238,9 @@ public static class SchemaCompatibilityPatcher
             return;
         }
 
-        if (tableName == "TestSessions" && columnName == "AnomaliesJson")
+        if (tableName == "TestSessions" && columnName == "StalledSampleCount")
         {
-            dbContext.Database.ExecuteSqlRaw("ALTER TABLE TestSessions ADD COLUMN AnomaliesJson TEXT NULL;");
+            dbContext.Database.ExecuteSqlRaw("ALTER TABLE TestSessions ADD COLUMN StalledSampleCount INTEGER NOT NULL DEFAULT 0;");
             return;
         }
 

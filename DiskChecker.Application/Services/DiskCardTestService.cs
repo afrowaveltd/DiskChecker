@@ -978,12 +978,12 @@ public class DiskCardTestService
 
    internal static List<SpeedSample> PrepareSpeedSamplesForPersistence(IEnumerable<SpeedSample>? samples)
    {
-      var ordered = (samples ?? Enumerable.Empty<SpeedSample>())
+      // Single pass: order, trim leading zeros, and clone in one pipeline.
+      // Avoids multiple intermediate .ToList() calls that triple memory usage.
+      const int safetyLimit = 15_000;
+      var result = (samples ?? Enumerable.Empty<SpeedSample>())
           .OrderBy(s => s.Timestamp == default ? DateTime.MaxValue : s.Timestamp)
           .ThenBy(s => s.ProgressPercent)
-          .ToList();
-
-      var cleaned = TrimLeadingZeroSpeedSamples(ordered, s => s.SpeedMBps)
           .Select(s => new SpeedSample
           {
              Timestamp = s.Timestamp == default ? DateTime.UtcNow : s.Timestamp,
@@ -996,16 +996,34 @@ public class DiskCardTestService
           })
           .ToList();
 
-      // Use retention service as safety net: if samples still exceed the Research profile
-      // limit, apply intelligent reduction that preserves stalls, extrema, and speed changes.
-      const int safetyLimit = 15_000;
-      if (cleaned.Count > safetyLimit)
+      // Trim leading zero-speed samples in-place (avoids another list copy)
+      TrimLeadingZeroSpeedSamplesInPlace(result, s => s.SpeedMBps);
+
+      // Safety net: intelligent retention that preserves stalls, extrema, and speed changes
+      if (result.Count > safetyLimit)
       {
          return SpeedSampleRetentionService.ReduceForPersistence(
-             cleaned, TelemetryRetentionProfile.Research).ToList();
+             result, TelemetryRetentionProfile.Research).ToList();
       }
 
-      return cleaned;
+      return result;
+   }
+
+   /// <summary>
+   /// Trims leading zero-speed samples from a list IN PLACE without creating a copy.
+   /// </summary>
+   private static void TrimLeadingZeroSpeedSamplesInPlace<T>(List<T> samples, Func<T, double> speedSelector)
+   {
+      int skipCount = 0;
+      foreach (var sample in samples)
+      {
+         if (speedSelector(sample) > 0)
+            break;
+         skipCount++;
+      }
+
+      if (skipCount > 0)
+         samples.RemoveRange(0, skipCount);
    }
 
    private static List<T> TrimLeadingZeroSpeedSamples<T>(IEnumerable<T> samples, Func<T, double> speedSelector)

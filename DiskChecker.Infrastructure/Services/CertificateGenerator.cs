@@ -319,8 +319,19 @@ public class CertificateGenerator : ICertificateGenerator
 
         var filePath = Path.Combine(_certificatesDirectory, fileName);
 
+        // Render JPEG → build PDF → write to file.
+        // JPEG bytes are released before PDF bytes to minimize peak memory.
+        byte[] pdfBytes;
         var jpegBytes = await RenderCertificateJpegAsync(certificate, CancellationToken.None);
-        var pdfBytes = BuildImagePdfDocument(jpegBytes, CertWidth, CertHeight);
+        try
+        {
+            pdfBytes = BuildImagePdfDocument(jpegBytes, CertWidth, CertHeight);
+        }
+        finally
+        {
+            // Allow JPEG to be GC-collected while we write PDF to disk
+            jpegBytes = null;
+        }
         await File.WriteAllBytesAsync(filePath, pdfBytes);
         TryAssignOwnershipToSudoUser(filePath);
 
@@ -879,11 +890,11 @@ public class CertificateGenerator : ICertificateGenerator
 
     private static byte[] BuildImagePdfDocument(byte[] jpegBytes, int imageWidth, int imageHeight)
     {
-        using var ms = new MemoryStream();
+        using var ms = new MemoryStream(jpegBytes.Length + 2048);
         using var writer = new StreamWriter(ms, System.Text.Encoding.ASCII, leaveOpen: true);
         var offsets = new List<long> { 0 };
 
-        void WriteObject(int objectNumber, string body)
+        void WriteObject(int objectNumber, ReadOnlySpan<char> body)
         {
             writer.Flush();
             offsets.Add(ms.Position);
@@ -898,14 +909,13 @@ public class CertificateGenerator : ICertificateGenerator
         WriteObject(2, "<< /Type /Pages /Kids [3 0 R] /Count 1 >>");
         WriteObject(3, $"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << /XObject << /Im1 5 0 R >> >> /Contents 4 0 R >>");
 
-        var content = "q\n595 0 0 842 0 0 cm\n/Im1 Do\nQ\n";
-        var contentBytes = System.Text.Encoding.ASCII.GetBytes(content);
+        var content = "q\n595 0 0 842 0 0 cm\n/Im1 Do\nQ\n"u8;
         writer.Flush();
         offsets.Add(ms.Position);
         writer.Write("4 0 obj\n");
-        writer.Write($"<< /Length {contentBytes.Length} >>\nstream\n");
+        writer.Write($"<< /Length {content.Length} >>\nstream\n");
         writer.Flush();
-        ms.Write(contentBytes, 0, contentBytes.Length);
+        ms.Write(content);
         writer.Write("endstream\nendobj\n");
 
         writer.Flush();
@@ -967,46 +977,37 @@ public class CertificateGenerator : ICertificateGenerator
     /// still represented because the max/min metrics are stored separately on
     /// the certificate and are not derived from this chart-only profile.
     /// </summary>
+    /// <summary>
+    /// Downsamples speed samples in a single pass (no pre-count iteration).
+    /// Uses adaptive bucket sizing to produce at most targetPoints values
+    /// while preserving stall-related zero-speed samples for the chart.
+    /// </summary>
     private static List<double> DownsampleSpeedSamples(IReadOnlyList<SpeedSample>? samples, int targetPoints)
     {
         if (samples == null || samples.Count == 0)
             return new List<double>();
 
-        var positiveCount = 0;
-        foreach (var sample in samples)
+        if (samples.Count <= targetPoints)
         {
-            if (sample.SpeedMBps > 0)
-                positiveCount++;
-        }
-
-        if (positiveCount == 0)
-            return new List<double>();
-
-        if (positiveCount <= targetPoints)
-        {
-            var values = new List<double>(positiveCount);
-            foreach (var sample in samples)
-            {
-                if (sample.SpeedMBps > 0)
-                    values.Add(sample.SpeedMBps);
-            }
+            // Fast path: no downsampling needed, just extract speeds inline
+            var values = new List<double>(samples.Count);
+            // ReSharper disable once ForCanBeConvertedToForeach
+            for (var i = 0; i < samples.Count; i++)
+                values.Add(samples[i].SpeedMBps);
             return values;
         }
 
+        // Single pass: bucket all samples (including zeros for stall markers)
         var result = new List<double>(targetPoints);
-        var bucketSize = positiveCount / (double)targetPoints;
-        var positiveIndex = 0;
-        var bucket = 0;
-        var bucketEnd = (int)Math.Floor((bucket + 1) * bucketSize);
+        var bucketSize = samples.Count / (double)targetPoints;
+        var bucketEnd = (int)Math.Floor(bucketSize);
         var sum = 0d;
         var count = 0;
+        var bucket = 0;
 
-        foreach (var sample in samples)
+        for (var i = 0; i < samples.Count; i++)
         {
-            if (sample.SpeedMBps <= 0)
-                continue;
-
-            while (bucket < targetPoints - 1 && positiveIndex >= bucketEnd)
+            if (i >= bucketEnd)
             {
                 result.Add(count > 0 ? sum / count : 0);
                 bucket++;
@@ -1015,15 +1016,15 @@ public class CertificateGenerator : ICertificateGenerator
                 count = 0;
             }
 
-            sum += sample.SpeedMBps;
+            var speed = samples[i].SpeedMBps;
+            sum += speed;
             count++;
-            positiveIndex++;
         }
 
         if (count > 0 || result.Count < targetPoints)
             result.Add(count > 0 ? sum / count : 0);
 
-        return result.Where(v => v > 0).Take(targetPoints).ToList();
+        return result;
     }
 
     private static List<double> DownsampleSpeeds(IEnumerable<double> speeds, int targetPoints)
@@ -1049,28 +1050,33 @@ public class CertificateGenerator : ICertificateGenerator
         return result;
     }
 
+    /// <summary>
+    /// Downsamples stall flags from write+read samples without creating a combined list.
+    /// Iterates through write then read samples using an index-based approach to avoid
+    /// materializing the concatenation (which doubled memory for large datasets).
+    /// IMPORTANT: Phase transitions naturally have a gap; only flag samples explicitly
+    /// marked as stalled by the I/O monitor.
+    /// </summary>
     private static List<bool> DownsampleStalls(List<SpeedSample> writeSamples, List<SpeedSample> readSamples, int targetPoints)
     {
-        // Combine write and read samples, preserving order.
-        // IMPORTANT: Do NOT flag the write→read phase boundary as a stall.
-        // Phase transitions naturally have a gap; only flag samples explicitly
-        // marked as stalled by the I/O monitor.
-        var allSamples = writeSamples.Concat(readSamples).ToList();
-        if (allSamples.Count == 0) return new List<bool>();
+        var totalCount = (writeSamples?.Count ?? 0) + (readSamples?.Count ?? 0);
+        if (totalCount == 0) return new List<bool>();
 
-        // If any sample in a bucket is explicitly stalled, mark the bucket as stalled.
-        // We do NOT infer stalls from speed=0 at phase boundaries.
-        var bucketSize = Math.Max(1, allSamples.Count / targetPoints);
         var result = new List<bool>(targetPoints);
-        for (var i = 0; i < targetPoints && i * bucketSize < allSamples.Count; i++)
+        var bucketSize = Math.Max(1, totalCount / targetPoints);
+
+        for (var i = 0; i < targetPoints && i * bucketSize < totalCount; i++)
         {
             var start = i * bucketSize;
-            var end = Math.Min(start + bucketSize, allSamples.Count);
+            var end = Math.Min(start + bucketSize, totalCount);
             var stalled = false;
+
             for (var j = start; j < end; j++)
             {
-                // Only count explicitly flagged stalls, not phase transitions
-                if (allSamples[j].IsStalled)
+                var sample = j < writeSamples!.Count
+                    ? writeSamples[j]
+                    : readSamples![j - writeSamples.Count];
+                if (sample.IsStalled)
                 {
                     stalled = true;
                     break;

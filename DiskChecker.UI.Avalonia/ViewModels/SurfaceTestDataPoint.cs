@@ -43,9 +43,10 @@ public class SurfaceTestDataPoint
     public int Phase { get; }
 
     /// <summary>
-    /// Gets the phase name.
+    /// Gets the phase name (unused – kept for backward compatibility).
+    /// Use localized phase names from the ViewModel instead.
     /// </summary>
-    public string PhaseName => Phase == 0 ? "Zápis" : "Čtení";
+    public string PhaseName => Phase == 0 ? "Write" : "Read";
 
     /// <summary>
     /// Gets the data progress percentage (0-100).
@@ -93,6 +94,7 @@ public class TemperatureDataPoint
 
 /// <summary>
 /// Zoom level for the graph time axis.
+/// Name should be set from a locale-aware source (e.g. SurfaceTestViewModel).
 /// </summary>
 public class GraphZoomLevel
 {
@@ -106,14 +108,4 @@ public class GraphZoomLevel
     }
 
     public override string ToString() => Name;
-
-    public static GraphZoomLevel[] DefaultZoomLevels => new[]
-    {
-        new GraphZoomLevel("1 min", TimeSpan.FromMinutes(1)),
-        new GraphZoomLevel("5 min", TimeSpan.FromMinutes(5)),
-        new GraphZoomLevel("15 min", TimeSpan.FromMinutes(15)),
-        new GraphZoomLevel("30 min", TimeSpan.FromMinutes(30)),
-        new GraphZoomLevel("1 hod", TimeSpan.FromHours(1)),
-        new GraphZoomLevel("Veškerý čas", TimeSpan.MaxValue)
-    };
 }

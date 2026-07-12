@@ -23,7 +23,7 @@ namespace DiskChecker.UI.Avalonia.ViewModels;
 
 public partial class SurfaceTestViewModel : ViewModelBase, INavigableViewModel, IDisposable
 {
-   private const int MaxGraphPoints = 64000;
+   private const int MaxGraphPoints = 8000;
 
    // Downsampling - track last X and Y values
    private double _lastWriteX = double.MinValue;
