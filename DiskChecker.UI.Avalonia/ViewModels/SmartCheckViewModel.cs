@@ -1480,6 +1480,11 @@ private void UpdateComputedProperties()
         OnPropertyChanged(nameof(SsdWearIndicator));
         OnPropertyChanged(nameof(NvMeMediaErrors));
         OnPropertyChanged(nameof(NvMeUnsafeShutdowns));
+        // Critical ATA/SATA attribute notifications — were missing, causing
+        // the SMART card to show "0 ✓" even when real data was present.
+        OnPropertyChanged(nameof(ReallocatedSectors));
+        OnPropertyChanged(nameof(PendingSectors));
+        OnPropertyChanged(nameof(UncorrectableErrors));
     }
 
     [RelayCommand]

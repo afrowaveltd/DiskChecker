@@ -363,15 +363,15 @@
                             <TextBlock Grid.Column="1" Text="{Binding UncorrectableErrors}" FontSize="9" FontWeight="SemiBold"/>
                         </Grid>
                         <Grid ColumnDefinitions="130,*" Margin="0,2">
-                            <TextBlock Grid.Column="0" Text="SSD/NVMe opotřebení" FontSize="9" Foreground="{DynamicResource ThemeTextMutedBrush}"/>
+                            <TextBlock Grid.Column="0" Text="{Binding L[SmartCheck.NvMeWear]}" FontSize="9" Foreground="{DynamicResource ThemeTextMutedBrush}"/>
                             <TextBlock Grid.Column="1" Text="{Binding NvMePercentageUsed}" FontSize="9" FontWeight="SemiBold"/>
                         </Grid>
                         <Grid ColumnDefinitions="130,*" Margin="0,2">
-                            <TextBlock Grid.Column="0" Text="NVMe rezerva" FontSize="9" Foreground="{DynamicResource ThemeTextMutedBrush}"/>
+                            <TextBlock Grid.Column="0" Text="{Binding L[SmartCheck.NvMeSpare]}" FontSize="9" Foreground="{DynamicResource ThemeTextMutedBrush}"/>
                             <TextBlock Grid.Column="1" Text="{Binding NvMeAvailableSpare}" FontSize="9" FontWeight="SemiBold"/>
                         </Grid>
                         <Grid ColumnDefinitions="130,*" Margin="0,2">
-                            <TextBlock Grid.Column="0" Text="NVMe media chyby" FontSize="9" Foreground="{DynamicResource ThemeTextMutedBrush}"/>
+                            <TextBlock Grid.Column="0" Text="{Binding L[SmartCheck.NvMeMediaErrorsLabel]}" FontSize="9" Foreground="{DynamicResource ThemeTextMutedBrush}"/>
                             <TextBlock Grid.Column="1" Text="{Binding NvMeMediaErrors}" FontSize="9" FontWeight="SemiBold"/>
                         </Grid>
                     </StackPanel>
@@ -388,7 +388,7 @@
                         <TextBlock Text="{Binding L[SmartCheck.CacheSettings]}" FontSize="10" FontWeight="Bold"
                                   Foreground="{DynamicResource ThemeTextPrimaryBrush}" Margin="0,0,0,4"/>
                         <WrapPanel Orientation="Horizontal">
-                            <Button Content="🧹 Vymazat disk"
+                            <Button Content="{Binding L[SmartCheck.ClearDisk]}"
                                     Command="{Binding ClearCacheForSelectedCommand}"
                                     IsEnabled="{Binding HasSelectedDisk}"
                                     FontSize="9" Padding="6,3"

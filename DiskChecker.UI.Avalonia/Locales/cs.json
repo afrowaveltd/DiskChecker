@@ -2438,5 +2438,9 @@
   "Notification.Label.PendingSectors": "Čekající sektory",
   "Notification.Label.Notes": "Poznámky",
   "Notification.Footer": "Tento e-mail obsahuje kompletní certifikační souhrn. PDF příloha je volitelná dle nastavení.",
-  "Notification.Label.NA": "N/A"
+  "Notification.Label.NA": "N/A",
+"SmartCheck.NvMeWear": "SSD/NVMe opotřebení",
+  "SmartCheck.NvMeSpare": "NVMe rezerva",
+  "SmartCheck.NvMeMediaErrorsLabel": "NVMe media chyby",
+  "SmartCheck.ClearDisk": "🧹 Vymazat disk"
 }

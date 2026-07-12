@@ -2438,5 +2438,9 @@
   "Notification.Label.PendingSectors": "Pending Sectors",
   "Notification.Label.Notes": "Notes",
   "Notification.Footer": "This email contains a complete certification summary. PDF attachment is optional per settings.",
-  "Notification.Label.NA": "N/A"
+  "Notification.Label.NA": "N/A",
+"SmartCheck.NvMeWear": "SSD/NVMe Wear",
+  "SmartCheck.NvMeSpare": "NVMe Spare",
+  "SmartCheck.NvMeMediaErrorsLabel": "NVMe Media Errors",
+  "SmartCheck.ClearDisk": "🧹 Clear disk"
 }
