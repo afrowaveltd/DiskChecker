@@ -352,10 +352,11 @@ public class CertificateGeneratorTests
         
         Assert.NotNull(certificate);
         Assert.NotEmpty(certificate.SmartAttributes);
-        // Critical attributes (5, 197, 198) should be included
-        Assert.Contains(certificate.SmartAttributes, a => a.Id == 5);
-        Assert.Contains(certificate.SmartAttributes, a => a.Id == 197);
-        Assert.Contains(certificate.SmartAttributes, a => a.Id == 198);
+        // Critical attributes (5, 197, 198) should be included — match by Name
+        // since Id is a database-generated primary key (0 for new entities).
+        Assert.Contains(certificate.SmartAttributes, a => a.Name == "Reallocated_Sector_Ct");
+        Assert.Contains(certificate.SmartAttributes, a => a.Name == "Current_Pending_Sector");
+        Assert.Contains(certificate.SmartAttributes, a => a.Name == "Offline_Uncorrectable");
     }
 
     [Fact]

@@ -1311,9 +1311,27 @@ public class DiskCardRepository : IDiskCardRepository
             .ToListAsync();
     }
 
+    /// <summary>
+    /// Vyčistí change tracker DbContextu.  Používá se před přidáním nového
+    /// certifikátu k předejití konfliktů sledování vlastněných entit.
+    /// </summary>
+    public void ClearChangeTracker()
+    {
+        _context.ChangeTracker.Clear();
+    }
+
     public async Task<DiskCertificate> CreateCertificateAsync(DiskCertificate certificate)
     {
         ArgumentNullException.ThrowIfNull(certificate);
+
+        // Clear change tracker to prevent conflicts with owned entities
+        // (SmartAttributeSummary) from previously loaded certificates.
+        // Certificate generation creates a fresh DiskCertificate with new
+        // SmartAttributeSummary owned entities (Id = 0). If the DbContext is
+        // already tracking another certificate (e.g. from GetLatestCertificateAsync),
+        // its SmartAttributes may have the same primary key values (auto-generated),
+        // causing "another instance with the same key value" tracking errors.
+        _context.ChangeTracker.Clear();
 
         if (certificate.Id > 0)
         {

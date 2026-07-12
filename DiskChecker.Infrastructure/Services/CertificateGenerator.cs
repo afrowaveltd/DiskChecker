@@ -277,7 +277,11 @@ public class CertificateGenerator : ICertificateGenerator
                     {
                         certificate.SmartAttributes.Add(new SmartAttributeSummary
                         {
-                            Id = attr.Id,
+                            // Id is a database-generated primary key — leave it as 0.
+                            // attr.Id (e.g. 5, 197, 198) is the SMART attribute ID,
+                            // not the entity primary key. Setting it here caused
+                            // EF Core tracking conflicts when multiple certificates
+                            // had SmartAttributes with the same SMART attribute IDs.
                             Name = attr.Name,
                             Value = attr.RawValue.ToString(),
                             Status = attr.IsOk ? "OK" : "Warning",

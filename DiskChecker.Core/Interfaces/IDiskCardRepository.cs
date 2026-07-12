@@ -145,6 +145,13 @@ public interface IDiskCardRepository
     Task<List<DiskCertificate>> GetCertificatesAsync(int diskCardId);
     Task<DiskCertificate> CreateCertificateAsync(DiskCertificate certificate);
     Task UpdateCertificateAsync(DiskCertificate certificate);
+
+    /// <summary>
+    /// Vyčistí change tracker DbContextu.  Používá se před přidáním nového
+    /// certifikátu, aby se předešlo konfliktům sledování vlastněných entit
+    /// (SmartAttributeSummary) s certifikáty načtenými v předchozích operacích.
+    /// </summary>
+    void ClearChangeTracker();
     
     // ========== Comparisons ==========
     
