@@ -107,13 +107,13 @@
                         Spacing="10">
                 
                 <!-- Cancel button -->
-                <Button Content="{Binding L[Common.Cancel]}"
+                <Button Content="{Binding CancelButtonText}"
                         IsVisible="{Binding ShowCancel}"
                         Command="{Binding CancelCommand}"
                         Classes="secondary"/>
                 
                 <!-- No button -->
-                <Button Content="{Binding L[Common.No]}"
+                <Button Content="{Binding NoButtonText}"
                         IsVisible="{Binding ShowNoButton}"
                         Command="{Binding NoCommand}"
                         Classes="secondary"/>

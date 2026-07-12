@@ -42,6 +42,12 @@ public partial class PerformanceGauge : UserControl
     public static readonly StyledProperty<double> ProgressPercentProperty =
         AvaloniaProperty.Register<PerformanceGauge, double>(nameof(ProgressPercent));
 
+    /// <summary>
+    /// Speed as percentage of scale max (0-100), computed from CurrentValue / ScaleMaxValue.
+    /// Used by the gauge bar to show current speed visually.
+    /// </summary>
+    public double SpeedPercent => ScaleMaxValue > 0 ? Math.Min(100, CurrentValue / ScaleMaxValue * 100.0) : 0;
+
     public static readonly StyledProperty<int> ErrorCountProperty =
         AvaloniaProperty.Register<PerformanceGauge, int>(nameof(ErrorCount));
 

@@ -35,7 +35,7 @@
           <Grid Grid.Row="0" ColumnDefinitions="Auto,*,Auto">
             <TextBlock Text="0" FontSize="10" FontFamily="Consolas"
                        Foreground="{DynamicResource ThemeTextMutedBrush}"/>
-            <TextBlock Grid.Column="1" Text="ŠKODA-STYLE WIDE GAUGE" FontSize="9" FontWeight="SemiBold"
+            <TextBlock Grid.Column="1" Text="SPEED" FontSize="9" FontWeight="SemiBold"
                        HorizontalAlignment="Center" LetterSpacing="1.5"
                        Foreground="{DynamicResource ThemeTextMutedBrush}"/>
             <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="3">
@@ -55,12 +55,18 @@
               <Border Grid.Column="2" CornerRadius="0,10,10,0" Background="#80E74C3C"/>
             </Grid>
 
-            <!-- Current speed bar. -->
-            <ProgressBar Value="{Binding ProgressPercent, ElementName=Root}" Minimum="0" Maximum="100"
+            <!-- Speed bar (current value relative to scale max). -->
+            <ProgressBar Value="{Binding SpeedPercent, ElementName=Root}" Minimum="0" Maximum="100"
                          Height="18" CornerRadius="9"
                          VerticalAlignment="Center"
                          Foreground="{DynamicResource ThemePrimaryBrush}"
                          Background="#33000000"/>
+            <!-- Progress bar (test completion) overlaid at bottom. -->
+            <ProgressBar Value="{Binding ProgressPercent, ElementName=Root}" Minimum="0" Maximum="100"
+                         Height="6" CornerRadius="3"
+                         VerticalAlignment="Bottom" Margin="2,0,2,4"
+                         Foreground="{DynamicResource ThemeSuccessBrush}"
+                         Background="Transparent"/>
 
             <!-- Tick row. -->
             <Grid RowDefinitions="*,Auto" IsHitTestVisible="False">
@@ -88,10 +94,10 @@
             <!-- Warning lamps above the gauge. -->
             <StackPanel Orientation="Horizontal" Spacing="6" HorizontalAlignment="Center" VerticalAlignment="Top">
               <Border CornerRadius="8" Padding="6,3" Background="#E74C3C" IsVisible="{Binding IsOverheated, ElementName=Root}">
-                <TextBlock Text="🌡 PŘEHŘÁTÍ" FontSize="10" FontWeight="Bold" Foreground="White"/>
+                <TextBlock Text="🌡 OVERHEAT" FontSize="10" FontWeight="Bold" Foreground="White"/>
               </Border>
               <Border CornerRadius="8" Padding="6,3" Background="#E74C3C" IsVisible="{Binding HasErrors, ElementName=Root}">
-                <TextBlock Text="⚠ CHYBY" FontSize="10" FontWeight="Bold" Foreground="White"/>
+                <TextBlock Text="⚠ ERRORS" FontSize="10" FontWeight="Bold" Foreground="White"/>
               </Border>
               <Border CornerRadius="8" Padding="6,3" Background="#F39C12" IsVisible="{Binding IsStalled, ElementName=Root}">
                 <TextBlock Text="⏳ STALL" FontSize="10" FontWeight="Bold" Foreground="#1A1A1A"/>
@@ -110,7 +116,7 @@
 
           <Grid Grid.Row="2" ColumnDefinitions="*,Auto" ColumnSpacing="10">
             <StackPanel Orientation="Horizontal" Spacing="4">
-              <TextBlock Text="AKTUÁLNĚ" FontSize="10" Foreground="{DynamicResource ThemeTextMutedBrush}"/>
+              <TextBlock Text="CURRENT" FontSize="10" Foreground="{DynamicResource ThemeTextMutedBrush}"/>
               <TextBlock Text="{Binding CurrentValue, ElementName=Root, StringFormat='{}{0:F1}'}"
                          FontSize="18" FontWeight="Bold" FontFamily="Consolas"
                          Foreground="{DynamicResource ThemePrimaryBrush}"/>
@@ -139,10 +145,10 @@
           <TextBlock Grid.Row="0" Grid.Column="2" Text="MAX" FontSize="10" FontWeight="Bold" Foreground="{DynamicResource ThemeTextMutedBrush}"/>
           <TextBlock Grid.Row="1" Grid.Column="2" Text="{Binding MaxValue, ElementName=Root, StringFormat='{}{0:F1}'}" FontSize="17" FontFamily="Consolas" FontWeight="Bold" Foreground="{DynamicResource ThemeTextPrimaryBrush}"/>
 
-          <TextBlock Grid.Row="0" Grid.Column="3" Text="CHYBY" FontSize="10" FontWeight="Bold" Foreground="{DynamicResource ThemeTextMutedBrush}"/>
+          <TextBlock Grid.Row="0" Grid.Column="3" Text="ERRORS" FontSize="10" FontWeight="Bold" Foreground="{DynamicResource ThemeTextMutedBrush}"/>
           <TextBlock Grid.Row="1" Grid.Column="3" Text="{Binding ErrorCount, ElementName=Root}" FontSize="17" FontFamily="Consolas" FontWeight="Bold" Foreground="{DynamicResource ThemeDangerBrush}"/>
 
-          <TextBlock Grid.Row="0" Grid.Column="4" Text="TEPLOTA" FontSize="10" FontWeight="Bold" Foreground="{DynamicResource ThemeTextMutedBrush}"/>
+          <TextBlock Grid.Row="0" Grid.Column="4" Text="TEMP" FontSize="10" FontWeight="Bold" Foreground="{DynamicResource ThemeTextMutedBrush}"/>
           <TextBlock Grid.Row="1" Grid.Column="4" Text="{Binding TemperatureCelsius, ElementName=Root, StringFormat='{}{0:F0} °C'}" FontSize="17" FontFamily="Consolas" FontWeight="Bold" Foreground="{DynamicResource ThemeWarningBrush}"/>
 
           <TextBlock Grid.Row="0" Grid.Column="5" Text="ETA" FontSize="10" FontWeight="Bold" Foreground="{DynamicResource ThemeTextMutedBrush}"/>

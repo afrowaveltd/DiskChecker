@@ -1185,6 +1185,7 @@ public partial class SurfaceTestViewModel : ViewModelBase, INavigableViewModel, 
       _hasSeenNonZeroRead = false;
       _hasSeenNonZeroCombined = false;
 
+      // Temperature will be set from SMART data when test starts (see StartTestAsync)
       CurrentTemperature = 35;
       _minTemperature = int.MaxValue;
       _maxTemperature = 0;
@@ -1613,7 +1614,7 @@ public partial class SurfaceTestViewModel : ViewModelBase, INavigableViewModel, 
 
          var speed = 45 + Random.Shared.NextDouble() * 15;
          CurrentSpeed = speed;
-         CurrentTemperature = 35 + Random.Shared.Next(0, 5);
+         CurrentTemperature = 35 + Random.Shared.Next(0, 5); // Simulation fallback
          AddSpeedPoint(speed, progress);
 
          writeSamples.Add((speed, CurrentTemperature, DateTime.UtcNow));
@@ -1645,7 +1646,7 @@ public partial class SurfaceTestViewModel : ViewModelBase, INavigableViewModel, 
 
          var speed = 50 + Random.Shared.NextDouble() * 20;
          CurrentSpeed = speed;
-         CurrentTemperature = 35 + Random.Shared.Next(0, 5);
+         CurrentTemperature = 35 + Random.Shared.Next(0, 5); // Simulation fallback
          AddSpeedPoint(speed, progress);
 
          readSamples.Add((speed, CurrentTemperature, DateTime.UtcNow));
