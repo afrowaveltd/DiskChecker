@@ -87,6 +87,15 @@ public partial class SmartCheckViewModel : ViewModelBase, INavigableViewModel, I
         SelectVolumeCommand = new RelayCommand<CoreDriveInfo?>(SelectVolume);
         NavigateToBackupCommand = new AsyncRelayCommand(NavigateToBackupAsync, () => IsFailing);
         ForceTestAnywayCommand = new RelayCommand(ForceTestAnyway);
+
+        // Initialize localized SMART features
+        SmartFeatures = new[] {
+            L.Get("SmartCheck.Action.ShortTest"),
+            L.Get("SmartCheck.Action.ExtendedTest"),
+            L.Get("SmartCheck.Action.ReadSmart"),
+            L.Get("SmartCheck.Action.ReadSelfTestLog")
+        };
+        SmartFeatureDescription = L.Get("SmartCheck.Desc.ShortTest");
     }
 
     #region Properties
@@ -379,13 +388,7 @@ public string SelectedTestType
     public string[] TestTypes { get; } = new[] { "Short", "Extended", "Conveyance" };
     
     // SMART Features for dropdown
-    public string[] SmartFeatures { get; } = new[] 
-    { 
-        "Krátký self-test", 
-        "Rozšířený self-test", 
-        "Číst SMART data", 
-        "Číst self-test log" 
-    };
+    public string[] SmartFeatures { get; private set; } = Array.Empty<string>();
     
     private int _selectedSmartFeatureIndex;
     public int SelectedSmartFeatureIndex
@@ -397,16 +400,16 @@ public string SelectedTestType
             {
                 SmartFeatureDescription = value switch
                 {
-                    0 => "Rychlá kontrola disku (trvá 1-2 minuty)",
-                    1 => "Kompletní kontrola disku (může trvat několik hodin)",
-                    2 => "Zobrazí kompletní SMART data disku",
-                    _ => "Zobrazí historii všech self-testů"
+                    0 => L.Get("SmartCheck.Desc.ShortTest"),
+                    1 => L.Get("SmartCheck.Desc.ExtendedTest"),
+                    2 => L.Get("SmartCheck.Desc.ReadSmart"),
+                    _ => L.Get("SmartCheck.Desc.ReadSelfTestLog")
                 };
             }
         }
     }
     
-    private string _smartFeatureDescription = "Rychlá kontrola disku (trvá 1-2 minuty)";
+    private string _smartFeatureDescription = string.Empty;
     public string SmartFeatureDescription
     {
         get => _smartFeatureDescription;
