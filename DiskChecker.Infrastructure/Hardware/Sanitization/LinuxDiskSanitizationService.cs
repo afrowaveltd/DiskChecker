@@ -77,7 +77,7 @@ public class LinuxDiskSanitizationService : IDiskSanitizationService
             progress?.Report(new SanitizationProgress
             {
                 PhaseKind = SanitizationProgressPhase.Write,
-                Phase = "Zápis nul",
+                Phase = "Write zeros",
                 ProgressPercent = 0,
                 TotalBytes = diskSize
             });
@@ -99,7 +99,7 @@ public class LinuxDiskSanitizationService : IDiskSanitizationService
             progress?.Report(new SanitizationProgress
             {
                 PhaseKind = SanitizationProgressPhase.ReadVerify,
-                Phase = "Čtení a ověření",
+                Phase = "Read and verify",
                 ProgressPercent = 0,
                 TotalBytes = diskSize
             });
@@ -122,7 +122,7 @@ public class LinuxDiskSanitizationService : IDiskSanitizationService
             {
                 progress?.Report(new SanitizationProgress
                 {
-                    Phase = "Vytváření GPT oddílu",
+                    Phase = "Creating GPT partition",
                     ProgressPercent = 0
                 });
 
@@ -371,7 +371,7 @@ public class LinuxDiskSanitizationService : IDiskSanitizationService
                         },
                         (operationElapsed, stallDuration) => CreateStalledProgress(
                             SanitizationProgressPhase.Write,
-                            "Zápis nul",
+                            "Write zeros",
                             bytesWritten,
                             diskSize,
                             result.Errors,
@@ -410,7 +410,7 @@ public class LinuxDiskSanitizationService : IDiskSanitizationService
                     progress?.Report(new SanitizationProgress
                     {
                         PhaseKind = SanitizationProgressPhase.Write,
-                        Phase = "Zápis nul",
+                        Phase = "Write zeros",
                         ProgressPercent = (double)bytesWritten / diskSize * 100,
                         BytesProcessed = bytesWritten,
                         TotalBytes = diskSize,
@@ -505,7 +505,7 @@ public class LinuxDiskSanitizationService : IDiskSanitizationService
                         },
                         (operationElapsed, stallDuration) => CreateStalledProgress(
                             SanitizationProgressPhase.ReadVerify,
-                            "Čtení a ověření",
+                            "Read and verify",
                             bytesRead,
                             diskSize,
                             result.Errors,
@@ -526,7 +526,7 @@ public class LinuxDiskSanitizationService : IDiskSanitizationService
                         {
                             Phase = "Read",
                             ErrorCode = "PARTIAL_READ",
-                            Message = "Čtení neproběhlo v plné délce bloku.",
+                            Message = "Block read did not complete.",
                             Details = $"Přečteno {bytesReadThisChunk} z očekávaných {bytesToRead} bajtů.",
                             OffsetBytes = bytesRead
                         });
@@ -594,7 +594,7 @@ public class LinuxDiskSanitizationService : IDiskSanitizationService
                     progress?.Report(new SanitizationProgress
                     {
                         PhaseKind = SanitizationProgressPhase.ReadVerify,
-                        Phase = "Čtení a ověření",
+                        Phase = "Read and verify",
                         ProgressPercent = (double)bytesRead / diskSize * 100,
                         BytesProcessed = bytesRead,
                         TotalBytes = diskSize,
@@ -1136,7 +1136,7 @@ public class LinuxDiskSanitizationService : IDiskSanitizationService
             // Phase 2: Create GPT partition
             progress?.Report(new SanitizationProgress
             {
-                Phase = "Vytváření GPT oddílu",
+                Phase = "Creating GPT partition",
                 ProgressPercent = 50
             });
 

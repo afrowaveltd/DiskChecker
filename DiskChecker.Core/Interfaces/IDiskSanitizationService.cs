@@ -189,11 +189,11 @@ public class SanitizationProgress
 
     public bool IsWritePhase =>
         PhaseKind == SanitizationProgressPhase.Write ||
-        Phase.StartsWith("Zápis nul", StringComparison.Ordinal);
+        Phase.StartsWith("Write zeros", StringComparison.Ordinal);
 
     public bool IsReadVerifyPhase =>
         PhaseKind == SanitizationProgressPhase.ReadVerify ||
-        Phase.StartsWith("Čtení a ověření", StringComparison.Ordinal);
+        Phase.StartsWith("Read and verify", StringComparison.Ordinal);
 }
 
 public enum SanitizationProgressPhase

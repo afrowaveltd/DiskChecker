@@ -100,7 +100,7 @@ public class WindowsDiskSanitizationService : IDiskSanitizationService
             progress?.Report(new SanitizationProgress
             {
                 PhaseKind = SanitizationProgressPhase.Write,
-                Phase = "Zápis nul",
+                Phase = "Write zeros",
                 ProgressPercent = 0,
                 TotalBytes = diskSize
             });
@@ -122,7 +122,7 @@ public class WindowsDiskSanitizationService : IDiskSanitizationService
             progress?.Report(new SanitizationProgress
             {
                 PhaseKind = SanitizationProgressPhase.ReadVerify,
-                Phase = "Čtení a ověření",
+                Phase = "Read and verify",
                 ProgressPercent = 0,
                 TotalBytes = diskSize
             });
@@ -461,7 +461,7 @@ offline disk";
                         cancellationToken),
                     (operationElapsed, stallDuration) => CreateStalledProgress(
                         SanitizationProgressPhase.Write,
-                        "Zápis nul",
+                        "Write zeros",
                         bytesWritten,
                         diskSize,
                         result.Errors,
@@ -518,7 +518,7 @@ offline disk";
                 progress?.Report(new SanitizationProgress
                 {
                     PhaseKind = SanitizationProgressPhase.Write,
-                    Phase = "Zápis nul",
+                    Phase = "Write zeros",
                     ProgressPercent = (double)bytesWritten / diskSize * 100,
                     BytesProcessed = bytesWritten,
                     TotalBytes = diskSize,
@@ -608,7 +608,7 @@ offline disk";
                         cancellationToken),
                     (operationElapsed, stallDuration) => CreateStalledProgress(
                         SanitizationProgressPhase.ReadVerify,
-                        "Čtení a ověření",
+                        "Read and verify",
                         bytesRead,
                         diskSize,
                         result.Errors,
@@ -629,7 +629,7 @@ offline disk";
                     {
                         Phase = "Read",
                         ErrorCode = "PARTIAL_READ",
-                        Message = "Čtení neproběhlo v plné délce bloku.",
+                        Message = "Block read did not complete.",
                         Details = $"Přečteno {bytesReadThisChunk} z očekávaných {bytesToRead} bajtů.",
                         OffsetBytes = bytesRead
                     });
@@ -692,7 +692,7 @@ offline disk";
                 progress?.Report(new SanitizationProgress
                 {
                     PhaseKind = SanitizationProgressPhase.ReadVerify,
-                    Phase = "Čtení a ověření",
+                    Phase = "Read and verify",
                     ProgressPercent = (double)bytesRead / diskSize * 100,
                     BytesProcessed = bytesRead,
                     TotalBytes = diskSize,
