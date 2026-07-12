@@ -1272,6 +1272,15 @@ public partial class SurfaceTestViewModel : ViewModelBase, INavigableViewModel, 
       {
          var smartSnapshot = await CaptureSmartSnapshotAsync(cancellationToken);
 
+         // Set initial temperature from SMART snapshot (if available)
+         if (smartSnapshot?.Temperature > 0)
+         {
+            CurrentTemperature = smartSnapshot.Temperature.Value;
+            _minTemperature = smartSnapshot.Temperature.Value;
+            _maxTemperature = smartSnapshot.Temperature.Value;
+            NotifyGaugeChanged();
+         }
+
          if(profile.IsDestructive)
          {
             var sanitizationOutcome = await RunSanitizationAsync(smartSnapshot, cancellationToken);
@@ -1290,6 +1299,8 @@ public partial class SurfaceTestViewModel : ViewModelBase, INavigableViewModel, 
          else
          {
             await RunTestAsync(smartSnapshot, cancellationToken);
+            // Capture final temperature after test
+            await RefreshTemperatureAsync();
          }
       }
       catch(OperationCanceledException)
@@ -1908,6 +1919,31 @@ public partial class SurfaceTestViewModel : ViewModelBase, INavigableViewModel, 
       {
          StatusMessage = string.Format(L.Get("SurfaceTest.Status.SmartSnapshotFailed"), ex.Message);
          return null;
+      }
+   }
+
+   /// <summary>
+   /// Updates CurrentTemperature from SMART data when available.
+   /// Safe to call during test — returns immediately if reading fails.
+   /// </summary>
+   private async Task RefreshTemperatureAsync()
+   {
+      if (SelectedDrive == null) return;
+      try
+      {
+         var data = await _smartCheckService.GetSmartaDataSnapshotAsync(SelectedDrive, CancellationToken.None);
+         if (data?.Temperature > 0 && data.Temperature.Value != CurrentTemperature)
+         {
+            CurrentTemperature = data.Temperature.Value;
+            // Track min/max across the test
+            if (CurrentTemperature < _minTemperature) _minTemperature = CurrentTemperature;
+            if (CurrentTemperature > _maxTemperature) _maxTemperature = CurrentTemperature;
+            NotifyGaugeChanged();
+         }
+      }
+      catch
+      {
+         // SMART read failure during test is non-critical — keep last known temperature
       }
    }
 
