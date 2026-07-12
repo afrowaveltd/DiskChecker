@@ -298,7 +298,7 @@ public partial class AbsoluteDestructiveTestViewModel : ViewModelBase, INavigabl
         {
             new LineSeries<ObservablePoint>
             {
-                Name = "Zápis",
+                Name = L.Get("Write"),
                 Values = _currentPhasePoints,
                 Fill = null,
                 GeometrySize = 0,
@@ -308,7 +308,7 @@ public partial class AbsoluteDestructiveTestViewModel : ViewModelBase, INavigabl
             },
             new LineSeries<ObservablePoint>
             {
-                Name = "Čtení",
+                Name = L.Get("Read"),
                 Values = _readPhasePoints,
                 Fill = null,
                 GeometrySize = 0,
@@ -673,10 +673,10 @@ public partial class AbsoluteDestructiveTestViewModel : ViewModelBase, INavigabl
 
         var (title, points) = index switch
         {
-            0 => ("Seek: Full Stroke", _seekFullStrokePoints),
-            1 => ("Seek: Náhodný", _seekRandomPoints),
-            2 => ("Seek: Přeskakování", _seekSkipPoints),
-            _ => ("Seek: Full Stroke", _seekFullStrokePoints)
+            0 => (L.Get("SeekTest.FullStroke"), _seekFullStrokePoints),
+            1 => (L.Get("SeekTest.Random"), _seekRandomPoints),
+            2 => (L.Get("SeekTest.Skip"), _seekSkipPoints),
+            _ => (L.Get("SeekTest.FullStroke"), _seekFullStrokePoints)
         };
 
         SeekChartTitle = title;
@@ -834,7 +834,7 @@ public partial class AbsoluteDestructiveTestViewModel : ViewModelBase, INavigabl
         await RunPhaseAsync(0, "Příprava", async () =>
         {
             ct.ThrowIfCancellationRequested();
-            SetPhase(0, TestPhaseStatus.Running, "Čtení SMART a teploty...");
+            SetPhase(0, TestPhaseStatus.Running, L.Get("DestructiveTest.Phase.ReadingSmart"));
 
             // Capture baseline SMART if not already done (only if drive supports SMART)
             if (_smartBaseline == null && SelectedDrive!.SupportsSmart)
@@ -951,19 +951,19 @@ public partial class AbsoluteDestructiveTestViewModel : ViewModelBase, INavigabl
         await CooldownAsync(TimeSpan.FromMinutes(1), ct);
 
         // Phase 2: Seek FullStroke
-        await RunSeekPhaseAsync(2, "Seek: Full Stroke", SeekTestType.FullStroke, ct);
+        await RunSeekPhaseAsync(2, L.Get("SeekTest.FullStroke"), SeekTestType.FullStroke, ct);
 
         // Cooldown 2
         await CooldownAsync(TimeSpan.FromMinutes(1), ct);
 
         // Phase 3: Seek Random
-        await RunSeekPhaseAsync(3, "Seek: Náhodný", SeekTestType.Random, ct);
+        await RunSeekPhaseAsync(3, L.Get("SeekTest.Random"), SeekTestType.Random, ct);
 
         // Cooldown 3
         await CooldownAsync(TimeSpan.FromMinutes(1), ct);
 
         // Phase 4: Seek Skip
-        await RunSeekPhaseAsync(4, "Seek: Přeskakování", SeekTestType.Skip, ct);
+        await RunSeekPhaseAsync(4, L.Get("SeekTest.Skip"), SeekTestType.Skip, ct);
 
         // Cooldown 4
         await CooldownAsync(TimeSpan.FromMinutes(1), ct);
