@@ -2393,5 +2393,7 @@
 "MainWindow.Status.Ready": "Připraven",
   "MainWindow.Status.Loading": "Načítám...",
   "MainWindow.Theme.DarkActivated": "Tmavý motiv aktivován",
-  "MainWindow.Theme.LightActivated": "Světlý motiv aktivován"
+  "MainWindow.Theme.LightActivated": "Světlý motiv aktivován",
+"CertificatePdf.Recommendation.NotRecommended": "Disk není doporučen k běžnému používání. Doporučujeme jej nenasazovat pro důležitá data, provést zálohu a zvážit výměnu.",
+  "CertificatePdf.Recommendation.Retire": "Disk NENÍ vhodný k dalšímu používání. Doporučení: okamžitě vyřadit z provozu."
 }

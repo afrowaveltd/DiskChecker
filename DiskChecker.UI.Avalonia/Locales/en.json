@@ -2393,5 +2393,7 @@
 "MainWindow.Status.Ready": "Ready",
   "MainWindow.Status.Loading": "Loading...",
   "MainWindow.Theme.DarkActivated": "Dark theme activated",
-  "MainWindow.Theme.LightActivated": "Light theme activated"
+  "MainWindow.Theme.LightActivated": "Light theme activated",
+"CertificatePdf.Recommendation.NotRecommended": "Disk is not recommended for regular use. We recommend not deploying it for important data, backing up, and considering replacement.",
+  "CertificatePdf.Recommendation.Retire": "Disk is NOT suitable for continued use. Recommendation: immediately retire from service."
 }

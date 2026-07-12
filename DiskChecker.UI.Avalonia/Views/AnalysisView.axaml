@@ -74,7 +74,7 @@
                             <TextBlock Text="{Binding L[AnalysisView.Title]}" FontSize="20" FontWeight="Bold" HorizontalAlignment="Center"/>
                             <TextBlock Text="{Binding L[AnalysisView.Subtitle]}" FontSize="13" Foreground="{DynamicResource ThemeTextSecondaryBrush}" TextWrapping="Wrap" HorizontalAlignment="Center"/>
                             <Separator Margin="0,8"/>
-                            <TextBlock Text="Vyberte měření z levého panelu pro zobrazení detailní analýzy." FontSize="13" Foreground="{DynamicResource ThemeTextMutedBrush}" TextWrapping="Wrap"/>
+                            <TextBlock Text="{Binding L[Analysis.Status.SelectMeasurement]}" FontSize="13" Foreground="{DynamicResource ThemeTextMutedBrush}" TextWrapping="Wrap"/>
                             <TextBlock Text="K dispozici jsou:" FontSize="13" Foreground="{DynamicResource ThemeTextMutedBrush}"/>
                             <TextBlock Text="• Grafy propustnosti (throughput) podle průběhu a času" FontSize="12" Foreground="{DynamicResource ThemeTextMutedBrush}"/>
                             <TextBlock Text="• Seek latency grafy" FontSize="12" Foreground="{DynamicResource ThemeTextMutedBrush}"/>
