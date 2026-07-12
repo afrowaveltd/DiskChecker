@@ -15,6 +15,7 @@ public partial class TestCompletionNotificationService
     private readonly IEmailSender _emailSender;
     private readonly IEmailSettingsService _emailSettingsService;
     private readonly ILogger<TestCompletionNotificationService> _logger;
+    private readonly ILocaleProvider _locale;
 
     // LoggerMessage delegates for better performance
     [LoggerMessage(Level = LogLevel.Warning, Message = "Email address is empty, skipping notification")]
@@ -35,11 +36,13 @@ public partial class TestCompletionNotificationService
     public TestCompletionNotificationService(
         IEmailSender emailSender,
         IEmailSettingsService emailSettingsService,
-        ILogger<TestCompletionNotificationService> logger)
+        ILogger<TestCompletionNotificationService> logger,
+        ILocaleProvider locale)
     {
         _emailSender = emailSender;
         _emailSettingsService = emailSettingsService;
         _logger = logger;
+        _locale = locale;
     }
 
     /// <summary>
@@ -61,7 +64,7 @@ public partial class TestCompletionNotificationService
 
         try
         {
-            var subject = $"🔍 Test disku {diskName ?? "Unknown"} - {GetResultStatus(result)}";
+            var subject = string.Format(_locale.GetString("Notification.DiskTest.Subject", "🔍 Test disku {0} - {1}"), diskName ?? _locale.GetString("Notification.Label.Unknown", "Unknown"), GetResultStatus(result));
             var body = BuildEmailBody(result, diskName);
 
             var message = new EmailMessage
@@ -103,7 +106,7 @@ public partial class TestCompletionNotificationService
 
         try
         {
-            var subject = $"📊 Test disku {diskName ?? "Unknown"} - Zpráva - {GetResultStatus(result)}";
+            var subject = string.Format(_locale.GetString("Notification.DiskTest.SubjectWithReport", "📊 Test disku {0} - Zpráva - {1}"), diskName ?? _locale.GetString("Notification.Label.Unknown", "Unknown"), GetResultStatus(result));
             var body = certificate != null
                 ? BuildCertificateEmailBody(certificate, result)
                 : BuildEmailBody(result, diskName, includeReport: true);
@@ -207,7 +210,7 @@ public partial class TestCompletionNotificationService
         return body;
     }
 
-    private static string BuildCertificateEmailBody(DiskCertificate certificate, SurfaceTestResult result)
+    private string BuildCertificateEmailBody(DiskCertificate certificate, SurfaceTestResult result)
     {
         ArgumentNullException.ThrowIfNull(certificate);
 
@@ -225,52 +228,52 @@ public partial class TestCompletionNotificationService
         sb.Append(".grade{font-size:28px;font-weight:800;margin:0;color:#1f2937;}");
         sb.Append(".foot{margin-top:14px;font-size:12px;color:#6b7280;}");
         sb.Append("</style></head><body><div class='container'>");
-        sb.Append("<div class='header'><h2 style='margin:0'>📄 Certifikát kvality disku</h2><div style='margin-top:6px'>DiskChecker - kompletní souhrn výsledků</div></div>");
+        sb.Append("<div class='header'><h2 style='margin:0'>" + _locale.GetString("Notification.Email.CertificateSubject", "📄 Certifikát kvality disku") + "</h2><div style='margin-top:6px'>" + _locale.GetString("Notification.Email.Subtitle", "DiskChecker - kompletní souhrn výsledků") + "</div></div>");
 
         sb.Append("<div class='grid'>");
-        sb.Append("<div class='panel'><div class='title'>Identita disku</div>");
-        AppendRow(sb, "Model", certificate.DiskModel);
-        AppendRow(sb, "Sériové číslo", certificate.SerialNumber);
-        AppendRow(sb, "Kapacita", certificate.Capacity);
-        AppendRow(sb, "Typ disku", certificate.DiskType);
-        AppendRow(sb, "Rozhraní", certificate.Interface);
-        AppendRow(sb, "Firmware", certificate.Firmware);
-        AppendRow(sb, "Provozní hodiny", certificate.PowerOnHours > 0 ? certificate.PowerOnHours.ToString("#,0", CultureInfo.InvariantCulture) : "N/A");
-        AppendRow(sb, "Počet startů", certificate.PowerCycles > 0 ? certificate.PowerCycles.ToString("#,0", CultureInfo.InvariantCulture) : "N/A");
-        AppendRow(sb, "Číslo certifikátu", certificate.CertificateNumber);
-        AppendRow(sb, "Generováno", certificate.GeneratedAt.ToString("dd.MM.yyyy HH:mm"));
+        sb.Append("<div class='panel'><div class='title'>" + _locale.GetString("Notification.Section.Identity", "Identita disku") + "</div>");
+        AppendRow(sb, _locale.GetString("Notification.Label.Model", "Model"), certificate.DiskModel);
+        AppendRow(sb, _locale.GetString("Notification.Label.SerialNumber", "Sériové číslo"), certificate.SerialNumber);
+        AppendRow(sb, _locale.GetString("Notification.Label.Capacity", "Kapacita"), certificate.Capacity);
+        AppendRow(sb, _locale.GetString("Notification.Label.DiskType", "Typ disku"), certificate.DiskType);
+        AppendRow(sb, _locale.GetString("Notification.Label.Interface", "Rozhraní"), certificate.Interface);
+        AppendRow(sb, _locale.GetString("Notification.Label.Firmware", "Firmware"), certificate.Firmware);
+        AppendRow(sb, _locale.GetString("Notification.Label.PowerOnHours", "Provozní hodiny"), certificate.PowerOnHours > 0 ? certificate.PowerOnHours.ToString("#,0", CultureInfo.InvariantCulture) : _locale.GetString("Notification.Label.NA", "N/A"));
+        AppendRow(sb, _locale.GetString("Notification.Label.PowerCycles", "Počet startů"), certificate.PowerCycles > 0 ? certificate.PowerCycles.ToString("#,0", CultureInfo.InvariantCulture) : _locale.GetString("Notification.Label.NA", "N/A"));
+        AppendRow(sb, _locale.GetString("Notification.Label.CertificateNumber", "Číslo certifikátu"), certificate.CertificateNumber);
+        AppendRow(sb, _locale.GetString("Notification.Label.GeneratedAt", "Generováno"), certificate.GeneratedAt.ToString("dd.MM.yyyy HH:mm"));
         sb.Append("</div>");
 
-        sb.Append("<div class='panel'><div class='title'>Hodnocení</div>");
-        sb.Append($"<p class='grade'>Známka {WebUtility.HtmlEncode(certificate.Grade)} - {certificate.Score:F0}/100</p>");
-        AppendRow(sb, "Stav", certificate.HealthStatus);
-        AppendRow(sb, "Typ testu", certificate.TestType);
-        AppendRow(sb, "Délka testu", certificate.TestDuration.ToString(@"hh\:mm\:ss"));
-        AppendRow(sb, "SMART", certificate.SmartPassed ? "✅ V pořádku" : "⚠️ Varování");
-        AppendRow(sb, "Doporučení", certificate.Recommended ? "✅ Doporučeno" : "⚠️ Nedoporučeno");
+        sb.Append("<div class='panel'><div class='title'>" + _locale.GetString("Notification.Section.Rating", "Hodnocení") + "</div>");
+        sb.Append($"<p class='grade'>" + string.Format(_locale.GetString("Notification.Label.GradeScore", "Známka {0} - {1:F0}/100"), WebUtility.HtmlEncode(certificate.Grade), certificate.Score) + "</p>");
+        AppendRow(sb, _locale.GetString("Notification.Label.HealthStatus", "Stav"), certificate.HealthStatus);
+        AppendRow(sb, _locale.GetString("Notification.Label.TestType", "Typ testu"), certificate.TestType);
+        AppendRow(sb, _locale.GetString("Notification.Label.TestDuration", "Délka testu"), certificate.TestDuration.ToString(@"hh\:mm\:ss"));
+        AppendRow(sb, _locale.GetString("Notification.Label.Smart", "SMART"), certificate.SmartPassed ? _locale.GetString("Notification.Label.SmartOk", "✅ V pořádku") : _locale.GetString("Notification.Label.SmartWarning", "⚠️ Varování"));
+        AppendRow(sb, _locale.GetString("Notification.Label.Recommendation", "Doporučení"), certificate.Recommended ? _locale.GetString("Notification.Label.Recommended", "✅ Doporučeno") : _locale.GetString("Notification.Label.NotRecommended", "⚠️ Nedoporučeno"));
         sb.Append("</div>");
         sb.Append("</div>");
 
-        sb.Append("<div class='panel' style='margin-top:12px'><div class='title'>Výkon testu</div>");
-        AppendRow(sb, "Průměrný zápis", $"{certificate.AvgWriteSpeed:F1} MB/s");
-        AppendRow(sb, "Maximální zápis", $"{certificate.MaxWriteSpeed:F1} MB/s");
-        AppendRow(sb, "Průměrné čtení", $"{certificate.AvgReadSpeed:F1} MB/s");
-        AppendRow(sb, "Maximální čtení", $"{certificate.MaxReadSpeed:F1} MB/s");
-        AppendRow(sb, "Rozsah teplot", certificate.TemperatureRange);
-        AppendRow(sb, "Počet chyb", certificate.ErrorCount.ToString(CultureInfo.InvariantCulture));
-        AppendRow(sb, "Vzorky", result.Samples.Count.ToString(CultureInfo.InvariantCulture));
+        sb.Append("<div class='panel' style='margin-top:12px'><div class='title'>" + _locale.GetString("Notification.Section.Performance", "Výkon testu") + "</div>");
+        AppendRow(sb, _locale.GetString("Notification.Label.AvgWriteSpeed", "Průměrný zápis"), $"{certificate.AvgWriteSpeed:F1} MB/s");
+        AppendRow(sb, _locale.GetString("Notification.Label.MaxWriteSpeed", "Maximální zápis"), $"{certificate.MaxWriteSpeed:F1} MB/s");
+        AppendRow(sb, _locale.GetString("Notification.Label.AvgReadSpeed", "Průměrné čtení"), $"{certificate.AvgReadSpeed:F1} MB/s");
+        AppendRow(sb, _locale.GetString("Notification.Label.MaxReadSpeed", "Maximální čtení"), $"{certificate.MaxReadSpeed:F1} MB/s");
+        AppendRow(sb, _locale.GetString("Notification.Label.TemperatureRange", "Rozsah teplot"), certificate.TemperatureRange);
+        AppendRow(sb, _locale.GetString("Notification.Label.ErrorCount", "Počet chyb"), certificate.ErrorCount.ToString(CultureInfo.InvariantCulture));
+        AppendRow(sb, _locale.GetString("Notification.Label.Samples", "Vzorky"), result.Samples.Count.ToString(CultureInfo.InvariantCulture));
         sb.Append("</div>");
 
-        sb.Append("<div class='panel' style='margin-top:12px'><div class='title'>SMART souhrn</div>");
-        AppendRow(sb, "Realokované sektory", certificate.ReallocatedSectors.ToString(CultureInfo.InvariantCulture));
-        AppendRow(sb, "Čekající sektory", certificate.PendingSectors.ToString(CultureInfo.InvariantCulture));
+        sb.Append("<div class='panel' style='margin-top:12px'><div class='title'>" + _locale.GetString("Notification.Section.SmartSummary", "SMART souhrn") + "</div>");
+        AppendRow(sb, _locale.GetString("Notification.Label.ReallocatedSectors", "Realokované sektory"), certificate.ReallocatedSectors.ToString(CultureInfo.InvariantCulture));
+        AppendRow(sb, _locale.GetString("Notification.Label.PendingSectors", "Čekající sektory"), certificate.PendingSectors.ToString(CultureInfo.InvariantCulture));
         if (!string.IsNullOrWhiteSpace(certificate.Notes))
         {
-            AppendRow(sb, "Poznámky", certificate.Notes!);
+            AppendRow(sb, _locale.GetString("Notification.Label.Notes", "Poznámky"), certificate.Notes!);
         }
         sb.Append("</div>");
 
-        sb.Append("<div class='foot'>Tento e-mail obsahuje kompletní certifikační souhrn. PDF příloha je volitelná dle nastavení.</div>");
+        sb.Append("<div class='foot'>" + _locale.GetString("Notification.Footer", "Tento e-mail obsahuje kompletní certifikační souhrn. PDF příloha je volitelná dle nastavení.") + "</div>");
         sb.Append("</div></body></html>");
         return sb.ToString();
     }
