@@ -13,6 +13,9 @@ public partial class PerformanceGauge : UserControl
     public PerformanceGauge()
     {
         InitializeComponent();
+        // Recalculate SpeedPercent when dependent properties change
+        CurrentValueProperty.Changed.AddClassHandler<PerformanceGauge>((gauge, _) => gauge.UpdateSpeedPercent());
+        ScaleMaxValueProperty.Changed.AddClassHandler<PerformanceGauge>((gauge, _) => gauge.UpdateSpeedPercent());
     }
 
     public static readonly StyledProperty<string> TitleProperty =
@@ -46,7 +49,23 @@ public partial class PerformanceGauge : UserControl
     /// Speed as percentage of scale max (0-100), computed from CurrentValue / ScaleMaxValue.
     /// Used by the gauge bar to show current speed visually.
     /// </summary>
-    public double SpeedPercent => ScaleMaxValue > 0 ? Math.Min(100, CurrentValue / ScaleMaxValue * 100.0) : 0;
+    public static readonly StyledProperty<double> SpeedPercentProperty =
+        AvaloniaProperty.Register<PerformanceGauge, double>(nameof(SpeedPercent));
+
+    public double SpeedPercent
+    {
+        get => GetValue(SpeedPercentProperty);
+        private set => SetValue(SpeedPercentProperty, value);
+    }
+
+    /// <summary>
+    /// Recalculates SpeedPercent from CurrentValue and ScaleMaxValue.
+    /// Called automatically when either dependency changes.
+    /// </summary>
+    private void UpdateSpeedPercent()
+    {
+        SpeedPercent = ScaleMaxValue > 0 ? Math.Min(100, CurrentValue / ScaleMaxValue * 100.0) : 0;
+    }
 
     public static readonly StyledProperty<int> ErrorCountProperty =
         AvaloniaProperty.Register<PerformanceGauge, int>(nameof(ErrorCount));

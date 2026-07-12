@@ -68,6 +68,18 @@
                          Foreground="{DynamicResource ThemeSuccessBrush}"
                          Background="Transparent"/>
 
+            <!-- Large progress label at the right of the gauge -->
+            <Border CornerRadius="8" Padding="8,4"
+                    HorizontalAlignment="Right" VerticalAlignment="Top"
+                    Background="{DynamicResource ThemeCardBackgroundBrush}">
+              <StackPanel Orientation="Horizontal" Spacing="4">
+                <TextBlock Text="⏳" FontSize="12"/>
+                <TextBlock Text="{Binding ProgressPercent, ElementName=Root, StringFormat='{}{0:F0}%'}"
+                           FontSize="13" FontWeight="Bold" FontFamily="Consolas"
+                           Foreground="{DynamicResource ThemePrimaryBrush}"/>
+              </StackPanel>
+            </Border>
+
             <!-- Tick row. -->
             <Grid RowDefinitions="*,Auto" IsHitTestVisible="False">
               <Grid Grid.Row="0" ColumnDefinitions="*,*,*,*,*,*,*,*,*,*">
