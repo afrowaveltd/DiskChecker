@@ -1287,6 +1287,9 @@ public partial class SurfaceTestViewModel : ViewModelBase, INavigableViewModel, 
             var result = sanitizationOutcome.result;
             var successMessage = sanitizationOutcome.successMessage;
             var errorContext = sanitizationOutcome.errorContext;
+            // Capture final temperature after sanitization
+            await RefreshTemperatureAsync();
+
             if(result?.Success == true && !string.IsNullOrWhiteSpace(successMessage))
             {
                await _dialogService.ShowSuccessAsync(L.Get("SurfaceTest.Status.SanitizeCompleted"), successMessage);
