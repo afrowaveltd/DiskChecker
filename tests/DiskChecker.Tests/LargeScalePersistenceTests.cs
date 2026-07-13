@@ -12,6 +12,11 @@ using Microsoft.Extensions.Logging.Abstractions;
 using NSubstitute;
 using Xunit;
 
+// xUnit1051: We use CancellationTokenSource.CreateLinkedTokenSource to combine
+// TestContext.Current.CancellationToken with our own timeout tokens. The analyzer
+// cannot detect that our linked tokens already respect test cancellation.
+#pragma warning disable xUnit1051
+
 namespace DiskChecker.Tests;
 
 /// <summary>
@@ -63,7 +68,7 @@ public class LargeScalePersistenceTests
             MinSpeedMbps = 45.1,
             ErrorCount = 0,
             Operation = SurfaceTestOperation.WriteZeroFill,
-            Profile = SurfaceTestProfile.Full,
+            Profile = SurfaceTestProfile.HddFull,
             StartedAtUtc = DateTime.UtcNow.AddHours(-2),
             CompletedAtUtc = DateTime.UtcNow,
             CurrentTemperatureCelsius = 38,
@@ -76,7 +81,7 @@ public class LargeScalePersistenceTests
 
         // Generate realistic samples — each represents a 64 MB chunk
         var random = new Random(42); // Deterministic seed
-        long chunkSize = 64 * 1024 * 1024; // 64 MB
+        long chunkSize = 64L * 1024L * 1024L; // 64 MB
         var baseTime = result.StartedAtUtc;
 
         for (int i = 0; i < sampleCount; i++)
@@ -95,7 +100,7 @@ public class LargeScalePersistenceTests
             result.Samples.Add(new SurfaceTestSample
             {
                 OffsetBytes = i * chunkSize,
-                BlockSizeBytes = chunkSize,
+                BlockSizeBytes = (int)chunkSize,
                 ThroughputMbps = speed,
                 TimestampUtc = baseTime.AddSeconds(i * elapsed),
                 ErrorCount = 0,
@@ -160,7 +165,9 @@ public class LargeScalePersistenceTests
         var drive = CreateDriveInfo();
 
         // Act — with timeout to detect hang
-        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+        using var timeoutCts = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+        using var cts = CancellationTokenSource.CreateLinkedTokenSource(
+            TestContext.Current.CancellationToken, timeoutCts.Token);
 
         Guid testId;
         try
@@ -220,7 +227,9 @@ public class LargeScalePersistenceTests
         var drive = CreateDriveInfo();
 
         // Act — 90 second timeout for massive test
-        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(90));
+        using var timeoutCts = new CancellationTokenSource(TimeSpan.FromSeconds(90));
+        using var cts = CancellationTokenSource.CreateLinkedTokenSource(
+            TestContext.Current.CancellationToken, timeoutCts.Token);
         var testId = await persistenceService.SaveAsync(result, drive, cts.Token);
 
         // Assert
@@ -264,7 +273,9 @@ public class LargeScalePersistenceTests
             result.TestId = Guid.NewGuid().ToString();
             result.DriveSerialNumber = drive.SerialNumber;
 
-            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+            using var timeoutCts = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+            using var cts = CancellationTokenSource.CreateLinkedTokenSource(
+                TestContext.Current.CancellationToken, timeoutCts.Token);
             var testId = await persistenceService.SaveAsync(result, drive, cts.Token);
 
             Assert.NotEqual(Guid.Empty, testId);
@@ -302,7 +313,9 @@ public class LargeScalePersistenceTests
         var drive = CreateDriveInfo();
 
         // Act
-        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+        using var timeoutCts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+        using var cts = CancellationTokenSource.CreateLinkedTokenSource(
+            TestContext.Current.CancellationToken, timeoutCts.Token);
         var testId = await persistenceService.SaveAsync(result, drive, cts.Token);
 
         // Assert
@@ -345,7 +358,9 @@ public class LargeScalePersistenceTests
         var drive = CreateDriveInfo();
 
         // Act
-        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(15));
+        using var timeoutCts = new CancellationTokenSource(TimeSpan.FromSeconds(15));
+        using var cts = CancellationTokenSource.CreateLinkedTokenSource(
+            TestContext.Current.CancellationToken, timeoutCts.Token);
         var testId = await persistenceService.SaveAsync(result, drive, cts.Token);
 
         // Assert
@@ -383,8 +398,10 @@ public class LargeScalePersistenceTests
         var result = CreateLargeTestResult(sampleCount: 10000);
         var drive = CreateDriveInfo();
 
-        var cts = new CancellationTokenSource();
-        cts.Cancel(); // Cancel immediately
+        var cancelCts = new CancellationTokenSource();
+        cancelCts.Cancel(); // Cancel immediately
+        using var cts = CancellationTokenSource.CreateLinkedTokenSource(
+            TestContext.Current.CancellationToken, cancelCts.Token);
 
         // Act & Assert
         await Assert.ThrowsAsync<OperationCanceledException>(
@@ -419,7 +436,9 @@ public class LargeScalePersistenceTests
         var result1 = CreateLargeTestResult(sampleCount: 100);
         result1.DriveSerialNumber = drive.SerialNumber;
 
-        using var cts1 = new CancellationTokenSource(TimeSpan.FromSeconds(15));
+        using var timeoutCts1 = new CancellationTokenSource(TimeSpan.FromSeconds(15));
+        using var cts1 = CancellationTokenSource.CreateLinkedTokenSource(
+            TestContext.Current.CancellationToken, timeoutCts1.Token);
         await persistenceService1.SaveAsync(result1, drive, cts1.Token);
 
         var driveCount1 = await dbContext1.Drives.CountAsync();
@@ -431,7 +450,9 @@ public class LargeScalePersistenceTests
         result2.DriveSerialNumber = drive.SerialNumber;
         result2.DriveModel = "WDC WD5000AAKX-00ERMA0-SECOND";
 
-        using var cts2 = new CancellationTokenSource(TimeSpan.FromSeconds(15));
+        using var timeoutCts2 = new CancellationTokenSource(TimeSpan.FromSeconds(15));
+        using var cts2 = CancellationTokenSource.CreateLinkedTokenSource(
+            TestContext.Current.CancellationToken, timeoutCts2.Token);
         await persistenceService1.SaveAsync(result2, drive, cts2.Token);
 
         // Assert: still only one drive record
@@ -472,7 +493,9 @@ public class LargeScalePersistenceTests
 
         // Act
         var sw = System.Diagnostics.Stopwatch.StartNew();
-        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(60));
+        using var timeoutCts = new CancellationTokenSource(TimeSpan.FromSeconds(60));
+        using var cts = CancellationTokenSource.CreateLinkedTokenSource(
+            TestContext.Current.CancellationToken, timeoutCts.Token);
         await persistenceService.SaveAsync(result, drive, cts.Token);
         sw.Stop();
 
