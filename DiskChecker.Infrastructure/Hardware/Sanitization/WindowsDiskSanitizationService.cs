@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.ComponentModel;
 using System.Diagnostics;
 using System.IO;
@@ -475,6 +475,39 @@ offline disk";
                     cancellationToken);
                 var bytesWrittenThisChunk = chunk.Value;
                 
+                // Guard against infinite loop: if the device returns 0 bytes
+                // (e.g. stuck sector that returns immediately without data),
+                // skip the block and continue testing the rest of the disk.
+                if (bytesWrittenThisChunk == 0)
+                {
+                    result.Errors++;
+                    result.ErrorDetails.Add(new SanitizationErrorDetail
+                    {
+                        Phase = "Write",
+                        ErrorCode = "ZERO_BYTE_WRITE",
+                        Message = "Zapis vratil 0 bajtu -- sektor mozna nereaguje.",
+                        Details = $"Na offsetu {bytesWritten} disk neprovedl zadny zapis. Preskakuji blok {bytesToWrite} bajtu.",
+                        OffsetBytes = bytesWritten
+                    });
+
+                    if (_logger != null && _logger.IsEnabled(LogLevel.Warning))
+                    {
+                        _logger.LogWarning("Zero-byte write at offset {Offset}: skipping block of {BlockSize} bytes",
+                            bytesWritten, bytesToWrite);
+                    }
+
+                    if (result.Errors >= 10)
+                    {
+                        result.Success = false;
+                        result.ErrorMessage = "Test byl ukoncen: nalezeno 10 nebo vice chyb. Disk je pravdepodobne vadny.";
+                        return result;
+                    }
+
+                    // Skip this block to prevent infinite loop
+                    bytesWritten += bytesToWrite;
+                    continue;
+                }
+                
                 if (bytesWrittenThisChunk != bytesToWrite)
                 {
                     result.Errors++;
@@ -621,6 +654,38 @@ offline disk";
                     bytesRead,
                     cancellationToken);
                 var bytesReadThisChunk = chunk.Value;
+
+                // Guard against infinite loop: if the device returns 0 bytes,
+                // skip the block and continue testing the rest of the disk.
+                if (bytesReadThisChunk == 0)
+                {
+                    result.Errors++;
+                    result.ErrorDetails.Add(new SanitizationErrorDetail
+                    {
+                        Phase = "Read",
+                        ErrorCode = "ZERO_BYTE_READ",
+                        Message = "Cteni vratilo 0 bajtu -- sektor mozna nereaguje.",
+                        Details = $"Na offsetu {bytesRead} disk nevratil zadna data. Preskakuji blok {bytesToRead} bajtu.",
+                        OffsetBytes = bytesRead
+                    });
+
+                    if (_logger != null && _logger.IsEnabled(LogLevel.Warning))
+                    {
+                        _logger.LogWarning("Zero-byte read at offset {Offset}: skipping block of {BlockSize} bytes",
+                            bytesRead, bytesToRead);
+                    }
+
+                    if (result.Errors >= 10)
+                    {
+                        result.Success = false;
+                        result.ErrorMessage = "Test byl ukoncen: nalezeno 10 nebo vice chyb. Disk je pravdepodobne vadny.";
+                        return result;
+                    }
+
+                    // Skip this block to prevent infinite loop
+                    bytesRead += bytesToRead;
+                    continue;
+                }
 
                 if (bytesReadThisChunk != bytesToRead)
                 {
