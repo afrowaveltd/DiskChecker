@@ -1,0 +1,73 @@
+=== CS.json - Profile-related keys (24) ===
+KEY: CertificateBrowser.PerformanceProfile
+VAL: 📈 Výkonový profil testu
+
+KEY: CertificatePdf.PerformanceProfile
+VAL: Výkonový profil testu
+
+KEY: CertificatePdf.SanitizationProfile
+VAL: Profil sanitizace
+
+KEY: CertificateView.PerformanceProfile
+VAL: Výkonový profil testu
+
+KEY: DestructiveTest.Profile.Aggressive
+VAL: 🚀 Agresivní
+
+KEY: DestructiveTest.Profile.AggressiveDesc
+VAL: Pro mladé/zdravé disky — 3000 seeků, plná zátěž
+
+KEY: DestructiveTest.Profile.Conservative
+VAL: 🛡️ Konzervativní
+
+KEY: DestructiveTest.Profile.ConservativeDesc
+VAL: Pro staré/opotřebené disky — 800 seeků, nižší zátěž
+
+KEY: DestructiveTest.Profile.Standard
+VAL: ⚖️ Standardní (výchozí)
+
+KEY: DestructiveTest.Profile.StandardDesc
+VAL: Pro disky středního stáří — 1500 seeků, vyvážený test
+
+KEY: DestructiveTest.SelectManualProfile
+VAL: Vyberte manuální testovací profil podle předpokládaného stavu disku:
+
+KEY: SeekTest.ProfileMid
+VAL: Pro disky středního stáří — 1500 seeků, vyvážený test
+
+KEY: SeekTest.ProfileOld
+VAL: Pro staré/opotřebené disky — 800 seeků, nižší zátěž
+
+KEY: SeekTest.ProfileYoung
+VAL: Pro mladé/zdravé disky — 3000 seeků, plná zátěž
+
+KEY: SurfaceTest.Profile.Full1GB
+VAL: Plný test (1 GB)
+
+KEY: SurfaceTest.Profile.FullDisk
+VAL: Test celého disku
+
+KEY: SurfaceTest.Profile.FullDiskDesc
+VAL: Zápis a ověření celého disku
+
+KEY: SurfaceTest.Profile.Quick100MB
+VAL: Rychlý test (100 MB)
+
+KEY: SurfaceTest.Profile.Sanitize
+VAL: ⚡ SANITIZACE DISKU
+
+KEY: SurfaceTest.Profile.SanitizeDesc
+VAL: DESTRUKTIVNÍ! Přepíše disk nulama
+
+KEY: SurfaceTest.Status.NoProfile
+VAL: Nebyl vybrán profil testu
+
+KEY: SurfaceTest.Status.ProfileSelected
+VAL: Vybrán profil: {0}
+
+KEY: SurfaceTest.TestProfiles
+VAL: 📋 Profily testů
+
+KEY: Test.NoProfile
+VAL: Nebyl vybrán profil testu
+

@@ -65,7 +65,7 @@ public partial class MainWindowViewModel : ViewModelBase
         _navigationService.NavigateTo<DiskSelectionViewModel>();
     }
     
-    private void OnLocaleChanged()
+    protected override void OnLocaleChanged()
     {
         // Refresh language names in the current locale
         RefreshAvailableLanguages();

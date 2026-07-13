@@ -238,6 +238,25 @@ public partial class SurfaceTestViewModel : ViewModelBase, INavigableViewModel, 
       ZoomWindowPresetsGb = new ObservableCollection<double> { 1, 5, 10, 20, 50, 100 };
       ZoomWindowPresetsPercent = new ObservableCollection<double> { 1, 2, 5, 10, 20, 50 };
    }
+   /// <summary>
+   /// Refreshes localized strings in TestProfiles and chart labels when the locale changes.
+   /// </summary>
+   protected override void OnLocaleChanged()
+   {
+      base.OnLocaleChanged();
+
+      foreach (var profile in TestProfiles)
+      {
+         (profile.Name, profile.Description) = profile.Key switch
+         {
+            "Quick100MB" => (L.Get("SurfaceTest.Profile.Quick100MB"), L.Get("SurfaceTest.QuickTestDesc")),
+            "Full1GB"    => (L.Get("SurfaceTest.Profile.Full1GB"),    L.Get("SurfaceTest.FullTestDesc")),
+            "FullDisk"   => (L.Get("SurfaceTest.Profile.FullDisk"),   L.Get("SurfaceTest.Profile.FullDiskDesc")),
+            "Sanitize"   => (L.Get("SurfaceTest.Profile.Sanitize"),   L.Get("SurfaceTest.Profile.SanitizeDesc")),
+            _ => (profile.Name, profile.Description)
+         };
+      }
+   }
 
    public ObservableCollection<CoreDriveInfo> AvailableDrives { get; }
    public ObservableCollection<TestProfileItem> TestProfiles { get; }

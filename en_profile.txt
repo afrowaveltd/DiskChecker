@@ -1,0 +1,73 @@
+=== EN.json - Profile-related keys (24) ===
+KEY: CertificateBrowser.PerformanceProfile
+VAL: 📈 Test performance profile
+
+KEY: CertificatePdf.PerformanceProfile
+VAL: Performance Profile
+
+KEY: CertificatePdf.SanitizationProfile
+VAL: Sanitization profile
+
+KEY: CertificateView.PerformanceProfile
+VAL: Test performance profile
+
+KEY: DestructiveTest.Profile.Aggressive
+VAL: 🚀 Aggressive
+
+KEY: DestructiveTest.Profile.AggressiveDesc
+VAL: For young/healthy disks — 3000 seeks, full load
+
+KEY: DestructiveTest.Profile.Conservative
+VAL: 🛡️ Conservative
+
+KEY: DestructiveTest.Profile.ConservativeDesc
+VAL: For old/worn disks — 800 seeks, lower load
+
+KEY: DestructiveTest.Profile.Standard
+VAL: ⚖️ Standard (default)
+
+KEY: DestructiveTest.Profile.StandardDesc
+VAL: For mid-age disks — 1500 seeks, balanced test
+
+KEY: DestructiveTest.SelectManualProfile
+VAL: Select a manual test profile based on the expected disk condition:
+
+KEY: SeekTest.ProfileMid
+VAL: For mid-age disks — 1500 seeks, balanced test
+
+KEY: SeekTest.ProfileOld
+VAL: For old/worn disks — 800 seeks, lower load
+
+KEY: SeekTest.ProfileYoung
+VAL: For young/healthy disks — 3000 seeks, full load
+
+KEY: SurfaceTest.Profile.Full1GB
+VAL: Full Test (1 GB)
+
+KEY: SurfaceTest.Profile.FullDisk
+VAL: Full Disk Test
+
+KEY: SurfaceTest.Profile.FullDiskDesc
+VAL: Write and verify the entire disk
+
+KEY: SurfaceTest.Profile.Quick100MB
+VAL: Quick Test (100 MB)
+
+KEY: SurfaceTest.Profile.Sanitize
+VAL: ⚡ DISK SANITIZATION
+
+KEY: SurfaceTest.Profile.SanitizeDesc
+VAL: DESTRUCTIVE! Overwrites disk with zeros
+
+KEY: SurfaceTest.Status.NoProfile
+VAL: No test profile selected
+
+KEY: SurfaceTest.Status.ProfileSelected
+VAL: Selected profile: {0}
+
+KEY: SurfaceTest.TestProfiles
+VAL: 📋 Test Profiles
+
+KEY: Test.NoProfile
+VAL: No test profile selected
+

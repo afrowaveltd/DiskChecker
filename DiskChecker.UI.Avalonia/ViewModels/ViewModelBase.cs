@@ -18,7 +18,7 @@ namespace DiskChecker.UI.Avalonia.ViewModels
             }
         }
         
-        private void OnLocaleChanged()
+        protected virtual void OnLocaleChanged()
         {
             // Notify that L property changed so all {Binding L[...]} refresh
             OnPropertyChanged(nameof(L));

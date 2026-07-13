@@ -1,0 +1,447 @@
+=== CS.json - SurfaceTest.* keys (143) ===
+KEY: SurfaceTest.Avg
+CS: Prům
+
+KEY: SurfaceTest.AvgLabel
+CS: Průměr:
+
+KEY: SurfaceTest.BackToOverview
+CS: ← Zpět na přehled
+
+KEY: SurfaceTest.CancelError
+CS: Chyba při rušení analýzy: {ex.Message}
+
+KEY: SurfaceTest.CancelTest
+CS: ■ Zrušit Test
+
+KEY: SurfaceTest.Cancelled
+CS: Analýza zrušena uživatelem
+
+KEY: SurfaceTest.CannotCompare
+CS: Nelze porovnat degradaci bez SMART snapshotu.
+
+KEY: SurfaceTest.Chart.Read
+CS: Čtení
+
+KEY: SurfaceTest.Chart.RecordedDataPercent
+CS: zaznamenaná data (%)
+
+KEY: SurfaceTest.Chart.Write
+CS: Zápis
+
+KEY: SurfaceTest.Completed
+CS: Analýza povrchu dokončena
+
+KEY: SurfaceTest.ConfirmSanitize
+CS: Potvrzení sanitizace
+
+KEY: SurfaceTest.Current
+CS: Akt
+
+KEY: SurfaceTest.DegradationCompare
+CS: Porovnání degradace bude dostupné po výběru testu.
+
+KEY: SurfaceTest.Description
+CS: Komplexní přehled zdraví a parametrů disku
+
+KEY: SurfaceTest.Dialog.SanitizeConfirm
+CS: Potvrzení sanitizace
+
+KEY: SurfaceTest.Dialog.SanitizeConfirmMessage
+CS: Sanitizace smaže všechna data na vybraném disku. Opravdu chcete pokračovat?
+
+KEY: SurfaceTest.Error
+CS: Nepodařilo se analyzovat povrch disku: {ex.Message}
+
+KEY: SurfaceTest.Error.NoDiskSelected
+CS: Žádný disk není vybrán
+
+KEY: SurfaceTest.Errors
+CS: ⚠ Chyby：
+
+KEY: SurfaceTest.FullTest
+CS: Plný test
+
+KEY: SurfaceTest.FullTestDesc
+CS: Kompletní zápis a ověření celého povrchu disku
+
+KEY: SurfaceTest.Gauge.LiveTelemetry
+CS: živá telemetrie
+
+KEY: SurfaceTest.Gauge.Ready
+CS: Připraveno
+
+KEY: SurfaceTest.Gauge.SelectDiskHint
+CS: Vyberte disk a spusťte test
+
+KEY: SurfaceTest.Gauge.Verify
+CS: Ověření
+
+KEY: SurfaceTest.Gauge.VerifyTitle
+CS: Ověření čtením
+
+KEY: SurfaceTest.Gauge.Write
+CS: Zápis
+
+KEY: SurfaceTest.Gauge.WriteTitle
+CS: Zápis na disk
+
+KEY: SurfaceTest.Max
+CS: Max
+
+KEY: SurfaceTest.MediaErrors
+CS: Media chyby:
+
+KEY: SurfaceTest.Min
+CS: Min
+
+KEY: SurfaceTest.NoDegradation
+CS: K vybranému testu není starší SMART snapshot pro porovnání degradace.
+
+KEY: SurfaceTest.Position
+CS: Pozice:
+
+KEY: SurfaceTest.Profile.Full1GB
+CS: Plný test (1 GB)
+
+KEY: SurfaceTest.Profile.FullDisk
+CS: Test celého disku
+
+KEY: SurfaceTest.Profile.FullDiskDesc
+CS: Zápis a ověření celého disku
+
+KEY: SurfaceTest.Profile.Quick100MB
+CS: Rychlý test (100 MB)
+
+KEY: SurfaceTest.Profile.Sanitize
+CS: ⚡ SANITIZACE DISKU
+
+KEY: SurfaceTest.Profile.SanitizeDesc
+CS: DESTRUKTIVNÍ! Přepíše disk nulama
+
+KEY: SurfaceTest.Progress
+CS: Progress
+
+KEY: SurfaceTest.QuickTest
+CS: Rychlý test
+
+KEY: SurfaceTest.QuickTestDesc
+CS: Rychlé ověření bez zápisu
+
+KEY: SurfaceTest.ReadErrors
+CS: Chyby čtení:
+
+KEY: SurfaceTest.ReadOnly
+CS: Jen čtení
+
+KEY: SurfaceTest.ReadSpeed
+CS: Rychlost čtení:
+
+KEY: SurfaceTest.ReadSpeedGraph
+CS: Rychlost čtení (MB/s)
+
+KEY: SurfaceTest.RemainingTime
+CS: Zbývající čas:
+
+KEY: SurfaceTest.RunTestForGraph
+CS: 📈 Spusťte test pro zobrazení grafu
+
+KEY: SurfaceTest.Running
+CS: Probíhá analýza povrchu... {percent}%
+
+KEY: SurfaceTest.Sector
+CS: Sektor {bytesWritten / sectorSize:N0} / {totalSize / sectorSize:N0}
+
+KEY: SurfaceTest.SelectedDisk
+CS: Vybraný disk
+
+KEY: SurfaceTest.Speed
+CS: Rychlost testu
+
+KEY: SurfaceTest.StartTest
+CS: ▶ Spustit Test
+
+KEY: SurfaceTest.Starting
+CS: Spouštím test povrchu...
+
+KEY: SurfaceTest.Status.Cancelled
+CS: Test zrušen
+
+KEY: SurfaceTest.Status.CertNotFound
+CS: Test dokončen, certifikát nebyl nalezen pro odesílání e-mailem
+
+KEY: SurfaceTest.Status.CertificateNotFound
+CS: Certifikát nebyl nalezen.
+
+KEY: SurfaceTest.Status.Completed
+CS: Dokončeno! Zápis: {0} MB/s, Čtení: {1} MB/s
+
+KEY: SurfaceTest.Status.DiskLocked
+CS: Disk {0} zamčen
+
+KEY: SurfaceTest.Status.DiskSelected
+CS: Vybrán disk: {0}
+
+KEY: SurfaceTest.Status.DiskUnlocked
+CS: Disk {0} odemčen
+
+KEY: SurfaceTest.Status.EmailNotConfigured
+CS: Test dokončen. E-mail nebyl odeslán (SMTP není nakonfigurované).
+
+KEY: SurfaceTest.Status.EmailPrepareFailed
+CS: Test dokončen. E-mail s certifikátem se nepodařilo připravit.
+
+KEY: SurfaceTest.Status.Error
+CS: Chyba: {0}
+
+KEY: SurfaceTest.Status.ErrorDetail
+CS: Chyba ({0}/{1}): {2}
+
+KEY: SurfaceTest.Status.ErrorFormat
+CS: Chyba: {0}
+
+KEY: SurfaceTest.Status.LoadingDisks
+CS: Načítám disky...
+
+KEY: SurfaceTest.Status.NoDiskSelected
+CS: Žádný disk není vybrán
+
+KEY: SurfaceTest.Status.NoDisksFound
+CS: Nebyly nalezeny žádné disky
+
+KEY: SurfaceTest.Status.NoErrors
+CS: Bez chyb
+
+KEY: SurfaceTest.Status.NoProfile
+CS: Nebyl vybrán profil testu
+
+KEY: SurfaceTest.Status.ProfileSelected
+CS: Vybrán profil: {0}
+
+KEY: SurfaceTest.Status.ReadAvg
+CS: Průměr: {0:F1} MB/s
+
+
+
+KEY: SurfaceTest.Status.ReadVerify
+CS: 📖 ČTENÍ/OVĚŘENÍ:
+
+
+KEY: SurfaceTest.Status.Reading
+CS: Čtení a ověřování...
+
+KEY: SurfaceTest.Status.ReadingVerifying
+CS: Čtení a ověřování...
+
+KEY: SurfaceTest.Status.Ready
+CS: Připraven k testu
+
+KEY: SurfaceTest.Status.SanitizeCancelled
+CS: Sanitizace zrušena (disk může být částečně přepsán)
+
+KEY: SurfaceTest.Status.SanitizeCancelledPartial
+CS: Sanitizace zrušena (disk může být částečně přepsán)
+
+KEY: SurfaceTest.Status.SanitizeCompleted
+CS: Sanitizace dokončena
+
+KEY: SurfaceTest.Status.SanitizeDone
+CS: Sanitizace dokončena
+
+KEY: SurfaceTest.Status.SanitizeError
+CS: Chyba sanitizace
+
+KEY: SurfaceTest.Status.SanitizeFailed
+CS: Sanitizace selhala.
+
+KEY: SurfaceTest.Status.SanitizeProcessed
+CS: 💾 Zpracováno: {0:F2} GB
+
+
+
+KEY: SurfaceTest.Status.SanitizeResults
+CS: 📊 Výsledky sanitizace:
+
+
+KEY: SurfaceTest.Status.SanitizeSaveFailed
+CS: Sanitizace dokončena, ale uložení karty selhalo: {0}
+
+KEY: SurfaceTest.Status.SanitizeSaved
+CS: Sanitizace uložena - {0} ({1} vzorků)
+
+KEY: SurfaceTest.Status.SanitizeSavedFailed
+CS: Sanitizace dokončena, ale uložení karty selhalo: {0}
+
+KEY: SurfaceTest.Status.SanitizeSavedFailedShort
+CS: Chyba: Sanitizace dokončena, ale uložení karty selhalo: {0}
+
+KEY: SurfaceTest.Status.SanitizeSavedSimple
+CS: Sanitizace uložena - {0}
+
+KEY: SurfaceTest.Status.SanitizeSuccess
+CS: Disk byl úspěšně sanitizován a uložen.
+
+
+
+KEY: SurfaceTest.Status.SaveError
+CS: Chyba při ukládání: {0}
+
+KEY: SurfaceTest.Status.SaveErrorMessage
+CS: Uložení se nezdařilo: {0}
+
+KEY: SurfaceTest.Status.SaveFailed
+CS: Test byl dokončen, ale výsledky se nepodařilo uložit.
+
+
+
+KEY: SurfaceTest.Status.SaveFailedDetail
+CS: Chyba: {0}
+
+
+
+KEY: SurfaceTest.Status.Saving
+CS: Ukládám výsledky testu...
+
+KEY: SurfaceTest.Status.SavingResults
+CS: Ukládám výsledky testu...
+
+KEY: SurfaceTest.Status.SmartSnapshotError
+CS: SMART snapshot před testem se nepodařilo načíst: {0}
+
+KEY: SurfaceTest.Status.SmartSnapshotFailed
+CS: SMART snapshot před testem se nepodařilo načíst: {0}
+
+KEY: SurfaceTest.Status.SmtpNotConfigured
+CS: SMTP není nakonfigurováno.
+
+KEY: SurfaceTest.Status.Starting
+CS: Spouštím {0}...
+
+KEY: SurfaceTest.Status.StartingSanitize
+CS: Spouštím sanitizaci disku...
+
+KEY: SurfaceTest.Status.StartingSurfaceTest
+CS: Spouštím test povrchu...
+
+KEY: SurfaceTest.Status.StartingTest
+CS: Spouštím test povrchu...
+
+KEY: SurfaceTest.Status.SystemDiskLocked
+CS: Systémový disk nelze odemknout - je chráněn automaticky
+
+KEY: SurfaceTest.Status.SystemDiskProtected
+CS: Systémový disk nelze odemknout - je chráněn automaticky
+
+KEY: SurfaceTest.Status.TestCancelled
+CS: Test zrušen
+
+KEY: SurfaceTest.Status.TestCompleted
+CS: Test dokončen
+
+KEY: SurfaceTest.Status.TestCompletedAvg
+CS: Test dokončen - Průměr: {0:F1} MB/s
+
+KEY: SurfaceTest.Status.TestDoneAvg
+CS: Test dokončen - Průměr: {0} MB/s
+
+KEY: SurfaceTest.Status.TestError
+CS: Chyba testu: {0}
+
+KEY: SurfaceTest.Status.TestResults
+CS: 📊 Výsledky testu:
+
+
+KEY: SurfaceTest.Status.TestSuccess
+CS: Test povrchu byl úspěšně dokončen a uložen.
+
+
+
+KEY: SurfaceTest.Status.Usb2Limit
+CS: Detekováno pravděpodobné omezení rychlosti USB 2.0 ({0:F1} MB/s). Zkuste 
+
+KEY: SurfaceTest.Status.UsbLimit
+CS: Detekováno možné omezení přenosu přes USB ({0:F1} MB/s). Zkuste jiný port
+
+KEY: SurfaceTest.Status.WriteAvg
+CS: Průměr: {0:F1} MB/s
+
+
+
+KEY: SurfaceTest.Status.Writing
+CS: Zápis dat...
+
+KEY: SurfaceTest.Status.WritingData
+CS: Zápis dat...
+
+KEY: SurfaceTest.TempAnalysis
+CS: Analýza teploty bude dostupná po výběru testu.
+
+KEY: SurfaceTest.TemperatureDuring
+CS: Teplota během testu
+
+KEY: SurfaceTest.TestProfiles
+CS: 📋 Profily testů
+
+KEY: SurfaceTest.Title
+CS: Test povrchu
+
+KEY: SurfaceTest.TotalErrors
+CS: Celkem chyb:
+
+KEY: SurfaceTest.TotalSectors
+CS: Celkem test. sektorů:
+
+KEY: SurfaceTest.Transfer.Format
+CS: {0}: {1}
+
+KEY: SurfaceTest.Transfer.FormatWithTotal
+CS: {0}: {1} z {2}
+
+KEY: SurfaceTest.Transfer.Read
+CS: Přečteno
+
+KEY: SurfaceTest.Transfer.Written
+CS: Zapsáno
+
+KEY: SurfaceTest.Warning.Usb2Bottleneck
+CS: Detekováno pravděpodobné omezení rychlosti USB 2.0 ({0:F1} MB/s). Zkuste USB 3.x port (modrý), kratší kvalitní kabel a přímé připojení bez hubu.
+
+KEY: SurfaceTest.Warning.UsbBottleneck
+CS: Detekováno možné omezení přenosu přes USB ({0:F1} MB/s). Zkuste jiný port/kabel a přímé připojení bez hubu.
+
+KEY: SurfaceTest.WriteRead
+CS: Zápis + čtení
+
+KEY: SurfaceTest.WriteSpeed
+CS: Rychlost zápisu:
+
+KEY: SurfaceTest.WriteSpeedGraph
+CS: Rychlost zápisu (MB/s)
+
+KEY: SurfaceTest.ZeroFill
+CS: Zero-fill
+
+KEY: SurfaceTest.ZeroFillDesc
+CS: DESTRUKTIVNÍ! Přepíše disk nulama
+
+KEY: SurfaceTest.Zoom.15min
+CS: 15 min
+
+KEY: SurfaceTest.Zoom.1hour
+CS: 1 hod
+
+KEY: SurfaceTest.Zoom.1min
+CS: 1 min
+
+KEY: SurfaceTest.Zoom.30min
+CS: 30 min
+
+KEY: SurfaceTest.Zoom.5min
+CS: 5 min
+
+KEY: SurfaceTest.Zoom.All
+CS: Veškerý čas
+
+KEY: SurfaceTest.ZoomView
+CS: Výřez kolem aktuální pozice
+
