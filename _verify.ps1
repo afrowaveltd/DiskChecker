@@ -1,7 +1,11 @@
-$f = "D:\DiskChecker\DiskChecker.Infrastructure\Persistence\DiskCardRepository.cs"
-$c = [System.IO.File]::ReadAllText($f, [System.Text.Encoding]::UTF8)
-$lines = $c -split "`n"
-Write-Output ("Lines: " + $lines.Count)
-Write-Output ("Has ROW_NUMBER: " + $c.Contains("ROW_NUMBER()"))
-Write-Output ("Has modulo: " + $c.Contains("Id % @step"))
-Write-Output ("Has temp_store: " + $c.Contains("temp_store=FILE"))
+$file = 'D:\DiskChecker\DiskChecker.UI.Avalonia\ViewModels\DiskCardDetailViewModel.cs'
+$content = [System.IO.File]::ReadAllText($file, [System.Text.Encoding]::UTF8)
+$lines = $content -split "`n"
+$i = 0
+foreach ($line in $lines) {
+    $i++
+    if ($line -match 'DIAG' -or $line -match 'GeneratingCert') {
+        Write-Host "$i`: $line"
+    }
+}
+Write-Host "Done"

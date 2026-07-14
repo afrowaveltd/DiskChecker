@@ -1,0 +1,6 @@
+﻿GetCertificateAsync in: D:\DiskChecker\DiskChecker.Core\Interfaces\IDiskCardRepository.cs
+TestSession class in: D:\DiskChecker\DiskChecker.Core\Models\TestSession.cs
+GetCertificateAsync in: D:\DiskChecker\DiskChecker.Infrastructure\Persistence\DiskCardRepository.cs
+OwnsMany in: D:\DiskChecker\DiskChecker.Infrastructure\Persistence\DiskCheckerDbContext.cs
+GetCertificateAsync in: D:\DiskChecker\DiskChecker.UI.Avalonia\ViewModels\CertificateBrowserViewModel.cs
+GetCertificateAsync in: D:\DiskChecker\DiskChecker.UI.Avalonia\ViewModels\CertificateViewModel.cs
