@@ -1285,6 +1285,50 @@ public class DiskCardRepository : IDiskCardRepository
           .ToListAsync();
    }
 
+   /// <summary>
+   /// Načte maximálně <paramref name="maxPoints"/> seek sample záznamů pomocí SQL
+   /// Id-modulo downsamplingu.  Používá se při zobrazování certifikátu pro testy
+   /// s velkým počtem seek operací (např. AbsoluteDestructive), kde by načtení
+   /// všech záznamů způsobilo OutOfMemoryException.
+   /// </summary>
+   public async Task<List<SeekSampleRecord>> GetSeekSamplesDownsampledAsync(
+       int sessionId, int maxPoints, SeekTestType? testType = null)
+   {
+      ArgumentOutOfRangeException.ThrowIfNegativeOrZero(sessionId);
+      ArgumentOutOfRangeException.ThrowIfNegativeOrZero(maxPoints);
+
+      var queryBase = _context.SeekSamples
+          .AsNoTracking()
+          .Where(s => s.TestSessionId == sessionId);
+
+      if(testType.HasValue)
+      {
+         queryBase = queryBase.Where(s => s.TestType == testType.Value);
+      }
+
+      // Nejprve zjistíme celkový počet (levný dotaz s indexem)
+      var totalCount = await queryBase.CountAsync();
+
+      if(totalCount <= maxPoints)
+      {
+         // Malý dataset: načti vše
+         return await queryBase
+             .OrderBy(s => s.TestType)
+             .ThenBy(s => s.Index)
+             .ToListAsync();
+      }
+
+      // Velký dataset: modulo sampling na Id (stejný přístup jako u speed samples)
+      var step = Math.Max(1, totalCount / maxPoints);
+
+      return await queryBase
+          .Where(s => s.Id % step == 0)
+          .OrderBy(s => s.TestType)
+          .ThenBy(s => s.Index)
+          .Take(maxPoints)
+          .ToListAsync();
+   }
+
    public async Task<TestSession> CreateTestSessionAsync(TestSession session)
    {
       session.SessionId = Guid.NewGuid();

@@ -1284,7 +1284,10 @@ public partial class CertificateViewModel : ViewModelBase, INavigableViewModel
    {
       try
       {
-         var records = await _diskCardRepository.GetSeekSamplesAsync(sessionId);
+         // SQL-level downsampling: načte max 1024 záznamů pomocí Id-modulo,
+         // aby nedošlo k OOM při zobrazování certifikátu testů jako AbsoluteDestructive,
+         // které mohou mít desítky tisíc seek operací.
+         var records = await _diskCardRepository.GetSeekSamplesDownsampledAsync(sessionId, maxPoints: 1024);
          var values = records
             .Where(s => !s.HasError && s.LatencyMs > 0)
             .OrderBy(s => s.TestType)

@@ -133,6 +133,14 @@ public interface IDiskCardRepository
 
     /// <summary>Načte kompletní seek vzorky pro test session.</summary>
     Task<List<SeekSampleRecord>> GetSeekSamplesAsync(int sessionId, SeekTestType? testType = null);
+
+    /// <summary>
+    /// Načte maximálně <paramref name="maxPoints"/> seek sample záznamů pomocí SQL
+    /// Id-modulo downsamplingu.  Zabraňuje OOM při zobrazení certifikátu pro testy
+    /// s velkým počtem seek operací (např. AbsoluteDestructive).
+    /// </summary>
+    Task<List<SeekSampleRecord>> GetSeekSamplesDownsampledAsync(
+        int sessionId, int maxPoints, SeekTestType? testType = null);
     
     Task<TestSession> CreateTestSessionAsync(TestSession session);
     Task<TestSession> UpdateTestSessionAsync(TestSession session);
