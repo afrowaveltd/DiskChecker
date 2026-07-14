@@ -759,7 +759,13 @@ public class DiskCardRepository : IDiskCardRepository
     private static async Task ConfigureSqliteReadOptimizationsAsync(DbConnection connection)
     {
         await using var pragmaCommand = connection.CreateCommand();
-        pragmaCommand.CommandText = "PRAGMA temp_store=MEMORY; PRAGMA cache_size=-20000;";
+        // IMPORTANT: Do NOT use temp_store=MEMORY here. Window-function downsampling
+        // (ROW_NUMBER + COUNT OVER) forces SQLite to sort millions of rows. With
+        // temp_store=MEMORY the entire sort spills into the application's virtual
+        // memory, which can exhaust all system RAM on large sanitization tests
+        // (500GB+ drives) and crash the OS. Default temp_store=FILE allows SQLite
+        // to use temporary disk files for large intermediate results.
+        pragmaCommand.CommandText = "PRAGMA cache_size=-20000;";
         await pragmaCommand.ExecuteNonQueryAsync();
     }
 

@@ -181,6 +181,19 @@ public class CertificateGenerator : ICertificateGenerator
 
         return Task.Run(() =>
         {
+            // Deserialize SMART data from JSON when the navigation properties were
+            // not loaded (e.g. by GetTestSessionWithoutSamplesAsync). This ensures
+            // certificate grading has access to real SMART values even when the
+            // full object graph wasn't fetched from the database.
+            if (session.SmartBefore == null && !string.IsNullOrWhiteSpace(session.SmartBeforeJson))
+            {
+                try { session.SmartBefore = JsonSerializer.Deserialize<SmartaData>(session.SmartBeforeJson); } catch { /* ignore malformed JSON */ }
+            }
+            if (session.SmartAfter == null && !string.IsNullOrWhiteSpace(session.SmartAfterJson))
+            {
+                try { session.SmartAfter = JsonSerializer.Deserialize<SmartaData>(session.SmartAfterJson); } catch { /* ignore malformed JSON */ }
+            }
+
             var reallocatedSectors = session.SmartBefore?.ReallocatedSectorCount
                 ?? GetSmartAttributeValue(session, 5) ?? 0;
             var pendingSectors = session.SmartBefore?.PendingSectorCount
