@@ -31,7 +31,7 @@ public static class CertificateGenerator
       sb.AppendLine("                       HEALTH ASSESSMENT                        ");
       sb.AppendLine("────────────────────────────────────────────────────────────────");
       sb.AppendLine($"Grade: {rating.Grade}");
-      sb.AppendLine($"Score: {rating.Score:F1}/100");
+      sb.AppendLine($"Score: {rating.Score:F0}/100");
       sb.AppendLine();
 
       if(rating.Warnings.Count > 0)

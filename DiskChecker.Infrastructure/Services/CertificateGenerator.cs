@@ -436,7 +436,7 @@ public class CertificateGenerator : ICertificateGenerator
             float gradeY = sealY + (sealSize - gradeFont.Size) / 2f;
             DrawText(canvas, gradeText, gradeX, gradeY, gradeFont, gradePaint);
 
-            var scoreText = string.Format(_locale?.GetString("CertificatePdf.Score", "Skóre: {0}/100") ?? "Skóre: {0}/100", cert.Score);
+            var scoreText = string.Format(_locale?.GetString("CertificatePdf.Score", "Skóre: {0:F0}/100") ?? "Skóre: {0:F0}/100", cert.Score);
             float scoreWidth = scoreFont.MeasureText(scoreText);
             DrawText(canvas, scoreText, sealX + (sealSize - scoreWidth) / 2f, sealY + sealSize + 8f, scoreFont, textPaint);
 
