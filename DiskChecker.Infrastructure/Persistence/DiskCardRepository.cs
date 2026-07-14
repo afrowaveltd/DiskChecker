@@ -1375,12 +1375,11 @@ public class DiskCardRepository : IDiskCardRepository
 
    public async Task DeleteTestSessionAsync(int sessionId)
    {
-      var session = await _context.TestSessions.FindAsync(sessionId);
-      if(session != null)
-      {
-         _context.TestSessions.Remove(session);
-         await _context.SaveChangesAsync();
-      }
+      // Use raw SQL DELETE to avoid loading all owned collections (WriteSamples,
+      // ReadSamples, TemperatureSamples, Errors, SmartChanges) into memory.
+      // EF Core cascade delete handles the owned tables automatically.
+      await _context.Database.ExecuteSqlRawAsync(
+          "DELETE FROM TestSessions WHERE Id = {0}", sessionId);
    }
 
    // ========== Certificates ==========
@@ -1464,12 +1463,15 @@ public class DiskCardRepository : IDiskCardRepository
       _context.DiskCertificates.Add(certificate);
       await _context.SaveChangesAsync();
 
-      var session = await _context.TestSessions.FindAsync(certificate.TestSessionId);
-      if(session != null && session.CertificateId != certificate.Id)
-      {
-         session.CertificateId = certificate.Id;
-         await _context.SaveChangesAsync();
-      }
+      // IMPORTANT: Do NOT use FindAsync here! FindAsync loads the entire TestSession
+      // entity including ALL owned collections (WriteSamples, ReadSamples,
+      // TemperatureSamples, Errors, SmartChanges). For sanitization tests on large
+      // drives, these collections can contain millions of rows, causing massive memory
+      // allocation, swapping, and UI freezes. Instead, use a lightweight SQL UPDATE
+      // to set CertificateId directly on the TestSessions table.
+      var rowsAffected = await _context.Database.ExecuteSqlRawAsync(
+          "UPDATE TestSessions SET CertificateId = {0} WHERE Id = {1} AND (CertificateId IS NULL OR CertificateId <> {0})",
+          certificate.Id, certificate.TestSessionId);
 
       return certificate;
    }
@@ -1487,12 +1489,11 @@ public class DiskCardRepository : IDiskCardRepository
       _context.DiskCertificates.Update(certificate);
       await _context.SaveChangesAsync();
 
-      var session = await _context.TestSessions.FindAsync(certificate.TestSessionId);
-      if(session != null && session.CertificateId != certificate.Id)
-      {
-         session.CertificateId = certificate.Id;
-         await _context.SaveChangesAsync();
-      }
+      // Same as above: use lightweight SQL UPDATE instead of FindAsync to avoid
+      // loading millions of owned collection rows into memory.
+      await _context.Database.ExecuteSqlRawAsync(
+          "UPDATE TestSessions SET CertificateId = {0} WHERE Id = {1} AND (CertificateId IS NULL OR CertificateId <> {0})",
+          certificate.Id, certificate.TestSessionId);
    }
 
    // ========== Comparisons ==========
