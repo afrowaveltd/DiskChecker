@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Data.Common;
 using System.Globalization;
@@ -443,8 +443,6 @@ public class DiskCardRepository : IDiskCardRepository
 
         try
         {
-            await ConfigureSqliteReadOptimizationsAsync(connection);
-
             var writeSamples = await LoadSpeedSeriesAsync(connection, "TestSessions_WriteSamples", sessionId);
             var readSamples = await LoadSpeedSeriesAsync(connection, "TestSessions_ReadSamples", sessionId);
             return (writeSamples, readSamples);
@@ -480,8 +478,6 @@ public class DiskCardRepository : IDiskCardRepository
 
         try
         {
-            await ConfigureSqliteReadOptimizationsAsync(connection);
-
             var writeSamples = await LoadSpeedSeriesChunkAsync(connection, "TestSessions_WriteSamples", sessionId, modulo, remainder);
             var readSamples = await LoadSpeedSeriesChunkAsync(connection, "TestSessions_ReadSamples", sessionId, modulo, remainder);
             return (writeSamples, readSamples);
@@ -509,8 +505,6 @@ public class DiskCardRepository : IDiskCardRepository
 
         try
         {
-            await ConfigureSqliteReadOptimizationsAsync(connection);
-
             await using var command = connection.CreateCommand();
             command.CommandText = "SELECT Timestamp, TemperatureCelsius, Phase, ProgressPercent FROM TestSessions_TemperatureSamples WHERE TestSessionId = @sessionId ORDER BY Timestamp, Id";
             var parameter = command.CreateParameter();
@@ -543,11 +537,10 @@ public class DiskCardRepository : IDiskCardRepository
     }
 
     /// <summary>
-    /// Načte rovnoměrně rozloženou podmnožinu rychlostních vzorků přímo z databáze.
-    /// Využívá window funkci <c>ROW_NUMBER()</c> k přiřazení indexu každému
-    /// vzorku seřazenému podle Id, a následně vybere pouze vzorky, jejichž index
-    /// odpovídá pravidelnému kroku.  Do paměti se tak dostane maximálně
-    /// <paramref name="maxPoints"/> záznamů pro zápis a stejně pro čtení.
+    /// Loads evenly distributed speed samples using Id-modulo sampling.
+    /// Calculates a step size from total count and maxPoints, then selects
+    /// rows where (Id % step) = 0. No window functions -- avoids temp file explosion.
+    /// Returns at most <paramref name="maxPoints"/> samples for write and read each.
     /// </summary>
     public async Task<(List<SpeedSample> WriteSamples, List<SpeedSample> ReadSamples)> GetSpeedSampleSeriesDownsampledAsync(
         int sessionId, int maxPoints, CancellationToken cancellationToken = default)
@@ -562,8 +555,6 @@ public class DiskCardRepository : IDiskCardRepository
 
         try
         {
-            await ConfigureSqliteReadOptimizationsAsync(connection);
-
             var writeSamples = await LoadSpeedSeriesDownsampledAsync(
                 connection, "TestSessions_WriteSamples", sessionId, maxPoints, cancellationToken);
             var readSamples = await LoadSpeedSeriesDownsampledAsync(
@@ -579,8 +570,10 @@ public class DiskCardRepository : IDiskCardRepository
     }
 
     /// <summary>
-    /// Načte rovnoměrně rozloženou podmnožinu teplotních vzorků s limitem
-    /// <paramref name="maxPoints"/> záznamů v paměti.
+    /// Loads evenly distributed temperature samples using Id-modulo sampling.
+    /// Calculates a step size from total count and maxPoints, then selects
+    /// rows where (Id % step) = 0. No window functions -- avoids temp file explosion.
+    /// Returns at most <paramref name="maxPoints"/> samples.
     /// </summary>
     public async Task<List<TemperatureSample>> GetTemperatureSampleSeriesDownsampledAsync(
         int sessionId, int maxPoints, CancellationToken cancellationToken = default)
@@ -595,33 +588,69 @@ public class DiskCardRepository : IDiskCardRepository
 
         try
         {
-            await ConfigureSqliteReadOptimizationsAsync(connection);
-
             var hasTimestampColumn = await ColumnExistsAsync(connection, "TestSessions_TemperatureSamples", "Timestamp");
+
+            // Get total count (cheap with index)
+            await using var countCmd = connection.CreateCommand();
+            countCmd.CommandText = "SELECT COUNT(*) FROM TestSessions_TemperatureSamples WHERE TestSessionId = @sessionId";
+            var tcountParam = countCmd.CreateParameter();
+            tcountParam.ParameterName = "@sessionId";
+            tcountParam.Value = sessionId;
+            countCmd.Parameters.Add(tcountParam);
+
+            var obj = await countCmd.ExecuteScalarAsync(cancellationToken);
+            var totalCount = obj is long l ? l : Convert.ToInt64(obj ?? 0);
+
+            if (totalCount <= maxPoints)
+            {
+                // Small dataset: read all directly
+                await using var directCmd = connection.CreateCommand();
+                directCmd.CommandText = $@"
+                    SELECT Timestamp, TemperatureCelsius, Phase, ProgressPercent
+                    FROM TestSessions_TemperatureSamples
+                    WHERE TestSessionId = @sessionId
+                    ORDER BY {(hasTimestampColumn ? "Timestamp, " : "")}Id";
+                var dp = directCmd.CreateParameter();
+                dp.ParameterName = "@sessionId";
+                dp.Value = sessionId;
+                directCmd.Parameters.Add(dp);
+
+                var directValues = new List<TemperatureSample>(Math.Min(maxPoints, 1024));
+                await using var dr = await directCmd.ExecuteReaderAsync(cancellationToken);
+                while (await dr.ReadAsync(cancellationToken))
+                {
+                    directValues.Add(new TemperatureSample
+                    {
+                        Timestamp = dr.IsDBNull(0) ? DateTime.MinValue : dr.GetDateTime(0),
+                        TemperatureCelsius = dr.IsDBNull(1) ? 0 : dr.GetInt32(1),
+                        Phase = dr.IsDBNull(2) ? string.Empty : dr.GetString(2),
+                        ProgressPercent = dr.IsDBNull(3) ? 0 : dr.GetDouble(3)
+                    });
+                }
+                return directValues;
+            }
+
+            // Large dataset: modulo sampling (no window function)
+            var step = (int)Math.Max(1, totalCount / maxPoints);
 
             await using var command = connection.CreateCommand();
             command.CommandText = $@"
                 SELECT Timestamp, TemperatureCelsius, Phase, ProgressPercent
-                FROM (
-                    SELECT
-                        Timestamp,
-                        TemperatureCelsius,
-                        Phase,
-                        ProgressPercent,
-                        ROW_NUMBER() OVER (ORDER BY {(hasTimestampColumn ? "Timestamp, " : "")}Id) AS _rn,
-                        COUNT(*) OVER () AS _total
-                    FROM TestSessions_TemperatureSamples
-                    WHERE TestSessionId = @sessionId
-                )
-                WHERE _total <= @maxPoints OR
-                      ((_rn - 1) * @maxPoints / _total) <> (((_rn - 2) * @maxPoints) / _total)
-                ORDER BY _rn
+                FROM TestSessions_TemperatureSamples
+                WHERE TestSessionId = @sessionId
+                  AND (Id % @step) = 0
+                ORDER BY {(hasTimestampColumn ? "Timestamp, " : "")}Id
                 LIMIT @maxPoints";
 
             var sessionParam = command.CreateParameter();
             sessionParam.ParameterName = "@sessionId";
             sessionParam.Value = sessionId;
             command.Parameters.Add(sessionParam);
+
+            var stepParam = command.CreateParameter();
+            stepParam.ParameterName = "@step";
+            stepParam.Value = step;
+            command.Parameters.Add(stepParam);
 
             var maxPointsParam = command.CreateParameter();
             maxPointsParam.ParameterName = "@maxPoints";
@@ -666,8 +695,6 @@ public class DiskCardRepository : IDiskCardRepository
 
         try
         {
-            await ConfigureSqliteReadOptimizationsAsync(connection);
-
             var writeHasStall = await ColumnExistsAsync(connection, "TestSessions_WriteSamples", "IsStalled");
             var readHasStall = await ColumnExistsAsync(connection, "TestSessions_ReadSamples", "IsStalled");
             var writeStallExpr = writeHasStall ? "SUM(CASE WHEN IsStalled <> 0 THEN 1 ELSE 0 END)" : "0";
@@ -704,8 +731,10 @@ public class DiskCardRepository : IDiskCardRepository
     }
 
     /// <summary>
-    /// Načte rovnoměrně rozloženou podmnožinu vzorků z jedné tabulky pomocí
-    /// window funkce <c>ROW_NUMBER()</c>.  Funguje na SQLite >= 3.25.
+    /// Loads evenly distributed subset of samples using Id-modulo sampling.
+    /// Does NOT use window functions (ROW_NUMBER/COUNT OVER), so SQLite
+    /// does not create temp files for sorting millions of rows.
+    /// This was the main cause of disk exhaustion on large sanitization tests.
     /// </summary>
     private static async Task<List<SpeedSample>> LoadSpeedSeriesDownsampledAsync(
         DbConnection connection,
@@ -720,33 +749,57 @@ public class DiskCardRepository : IDiskCardRepository
         var timestampSelect = hasTimestampColumn ? "Timestamp" : "NULL AS Timestamp";
         var bytesSelect = hasBytesProcessedColumn ? "BytesProcessed" : "0 AS BytesProcessed";
         var stalledSelect = hasIsStalledColumn ? "IsStalled" : "0 AS IsStalled";
-        var orderClause = hasTimestampColumn ? "Timestamp, Id" : "Id";
+
+        // Get total count first (cheap with index)
+        await using var countCmd = connection.CreateCommand();
+        countCmd.CommandText = $@"
+            SELECT COUNT(*)
+            FROM {tableName}
+            WHERE TestSessionId = @sessionId
+              AND (SpeedMBps > 0 OR {stalledSelect} <> 0)";
+        var countParam = countCmd.CreateParameter();
+        countParam.ParameterName = "@sessionId";
+        countParam.Value = sessionId;
+        countCmd.Parameters.Add(countParam);
+
+        var obj = await countCmd.ExecuteScalarAsync(cancellationToken);
+        var totalCount = obj is long l ? l : Convert.ToInt64(obj ?? 0);
+
+        // Small dataset: read all directly
+        if (totalCount <= maxPoints)
+        {
+            return await LoadSpeedSeriesAsync(connection, tableName, sessionId);
+        }
+
+        // Large dataset: modulo sampling on Id (no window function = no temp files)
+        var step = (int)Math.Max(1, totalCount / maxPoints);
 
         await using var command = connection.CreateCommand();
-        command.CommandText = $@"
-            SELECT ProgressPercent, SpeedMBps, {timestampSelect}, {bytesSelect}, {stalledSelect}
-            FROM (
-                SELECT
-                    ProgressPercent,
-                    SpeedMBps,
-                    {timestampSelect},
-                    {bytesSelect},
-                    {stalledSelect},
-                    ROW_NUMBER() OVER (ORDER BY {orderClause}) AS _rn,
-                    COUNT(*) OVER () AS _total
+        command.CommandText = hasIsStalledColumn
+            ? $@"SELECT ProgressPercent, SpeedMBps, {timestampSelect}, {bytesSelect}, IsStalled
                 FROM {tableName}
                 WHERE TestSessionId = @sessionId
-                  AND (SpeedMBps > 0 OR {stalledSelect} <> 0)
-            )
-            WHERE _total <= @maxPoints OR
-                  ((_rn - 1) * @maxPoints / _total) <> (((_rn - 2) * @maxPoints) / _total)
-            ORDER BY _rn
-            LIMIT @maxPoints";
+                  AND (SpeedMBps > 0 OR IsStalled <> 0)
+                  AND (Id % @step) = 0
+                ORDER BY Id
+                LIMIT @maxPoints"
+            : $@"SELECT ProgressPercent, SpeedMBps, {timestampSelect}, {bytesSelect}, 0 AS IsStalled
+                FROM {tableName}
+                WHERE TestSessionId = @sessionId
+                  AND SpeedMBps > 0
+                  AND (Id % @step) = 0
+                ORDER BY Id
+                LIMIT @maxPoints";
 
         var sessionParam = command.CreateParameter();
         sessionParam.ParameterName = "@sessionId";
         sessionParam.Value = sessionId;
         command.Parameters.Add(sessionParam);
+
+        var stepParam = command.CreateParameter();
+        stepParam.ParameterName = "@step";
+        stepParam.Value = step;
+        command.Parameters.Add(stepParam);
 
         var maxPointsParam = command.CreateParameter();
         maxPointsParam.ParameterName = "@maxPoints";
@@ -759,13 +812,13 @@ public class DiskCardRepository : IDiskCardRepository
     private static async Task ConfigureSqliteReadOptimizationsAsync(DbConnection connection)
     {
         await using var pragmaCommand = connection.CreateCommand();
-        // IMPORTANT: Do NOT use temp_store=MEMORY here. Window-function downsampling
-        // (ROW_NUMBER + COUNT OVER) forces SQLite to sort millions of rows. With
-        // temp_store=MEMORY the entire sort spills into the application's virtual
-        // memory, which can exhaust all system RAM on large sanitization tests
-        // (500GB+ drives) and crash the OS. Default temp_store=FILE allows SQLite
-        // to use temporary disk files for large intermediate results.
-        pragmaCommand.CommandText = "PRAGMA cache_size=-20000;";
+        // Downsampling queries now use Id-modulo sampling instead of window
+        // functions (ROW_NUMBER + COUNT OVER), so SQLite does NOT need to
+        // sort millions of rows.  The small cache is still sufficient for
+        // the COUNT(*) + simple index scan used by the new approach.
+        // We also explicitly set temp_store=FILE as a safety measure to
+        // prevent any accidental in-memory spill on edge cases.
+        pragmaCommand.CommandText = "PRAGMA cache_size=-50000; PRAGMA temp_store=FILE;";
         await pragmaCommand.ExecuteNonQueryAsync();
     }
 
