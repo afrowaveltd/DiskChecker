@@ -19,14 +19,14 @@ public class AdaptiveSpeedSamplerTests
             MinAnomalyDurationMs = 100,
             BaselineWindowSize = 5
         };
-        sampler.Initialize(1_000_000_000); // 1 GB
+        sampler.Initialize(2_000_000_000); // 2 GB (avoids edge zone)
 
         var startTime = new DateTime(2025, 1, 1, 0, 0, 0, DateTimeKind.Utc);
 
-        // Feed steady 100 MB/s samples
+        // Feed steady 100 MB/s samples (past edge zone)
         for (int i = 0; i < 50; i++)
         {
-            sampler.AddSample(100.0, i * 20_000_000, startTime.AddMilliseconds(i * 200));
+            sampler.AddSample(100.0, 100_000_000L + (long)i * 20_000_000, startTime.AddMilliseconds(i * 200));
         }
 
         sampler.FinalizePhase();
@@ -46,21 +46,21 @@ public class AdaptiveSpeedSamplerTests
             BaselineWindowSize = 5,
             MinStandardIntervalMs = 50
         };
-        sampler.Initialize(1_000_000_000);
+        sampler.Initialize(2_000_000_000); // 2GB to avoid edge zone
 
         var startTime = new DateTime(2025, 1, 1, 0, 0, 0, DateTimeKind.Utc);
 
-        // Steady 100 MB/s for 10 samples
+        // Steady 100 MB/s for 10 samples (past edge zone)
         for (int i = 0; i < 10; i++)
-            sampler.AddSample(100.0, i * 20_000_000, startTime.AddMilliseconds(i * 200));
+            sampler.AddSample(100.0, 100_000_000L + (long)i * 20_000_000, startTime.AddMilliseconds(i * 200));
 
         // Sudden drop to 50 MB/s (50% deviation) for 10 samples
         for (int i = 0; i < 10; i++)
-            sampler.AddSample(50.0, (10 + i) * 20_000_000, startTime.AddMilliseconds((10 + i) * 200));
+            sampler.AddSample(50.0, 300_000_000L + (long)i * 20_000_000, startTime.AddMilliseconds((10 + i) * 200));
 
         // Recovery to 100 MB/s
         for (int i = 0; i < 10; i++)
-            sampler.AddSample(100.0, (20 + i) * 20_000_000, startTime.AddMilliseconds((20 + i) * 200));
+            sampler.AddSample(100.0, 500_000_000L + (long)i * 20_000_000, startTime.AddMilliseconds((20 + i) * 200));
 
         sampler.FinalizePhase();
 
@@ -84,15 +84,15 @@ public class AdaptiveSpeedSamplerTests
             BaselineWindowSize = 5,
             MinStandardIntervalMs = 50
         };
-        sampler.Initialize(1_000_000_000);
+        sampler.Initialize(2_000_000_000); // 2GB to avoid edge zone
 
         var startTime = new DateTime(2025, 1, 1, 0, 0, 0, DateTimeKind.Utc);
         for (int i = 0; i < 10; i++)
-            sampler.AddSample(100.0, i * 20_000_000L, startTime.AddMilliseconds(i * 200));
+            sampler.AddSample(100.0, 100_000_000L + (long)i * 20_000_000L, startTime.AddMilliseconds(i * 200));
         for (int i = 0; i < 10; i++)
-            sampler.AddSample(50.0, (10 + i) * 20_000_000L, startTime.AddMilliseconds((10 + i) * 200));
+            sampler.AddSample(50.0, 300_000_000L + (long)i * 20_000_000L, startTime.AddMilliseconds((10 + i) * 200));
         for (int i = 0; i < 10; i++)
-            sampler.AddSample(100.0, (20 + i) * 20_000_000L, startTime.AddMilliseconds((20 + i) * 200));
+            sampler.AddSample(100.0, 500_000_000L + (long)i * 20_000_000L, startTime.AddMilliseconds((20 + i) * 200));
 
         sampler.FinalizePhase();
 
@@ -115,21 +115,21 @@ public class AdaptiveSpeedSamplerTests
             BaselineWindowSize = 5,
             MinStandardIntervalMs = 50
         };
-        sampler.Initialize(1_000_000_000);
+        sampler.Initialize(2_000_000_000);
 
         var startTime = new DateTime(2025, 1, 1, 0, 0, 0, DateTimeKind.Utc);
 
-        // Steady 100 MB/s for 20 samples (builds solid baseline)
+        // Steady 100 MB/s for 20 samples (past edge zone)
         for (int i = 0; i < 20; i++)
-            sampler.AddSample(100.0, i * 20_000_000, startTime.AddMilliseconds(i * 200));
+            sampler.AddSample(100.0, 100_000_000L + (long)i * 20_000_000, startTime.AddMilliseconds(i * 200));
 
         // Brief spike: 3 samples at 200 MB/s = 600ms (below 2000ms threshold)
         for (int i = 0; i < 3; i++)
-            sampler.AddSample(200.0, (20 + i) * 20_000_000, startTime.AddMilliseconds(4000 + i * 200));
+            sampler.AddSample(200.0, 500_000_000L + (long)i * 20_000_000, startTime.AddMilliseconds(4000 + i * 200));
 
         // Back to steady for many samples to let any false anomaly resolve
         for (int i = 0; i < 30; i++)
-            sampler.AddSample(100.0, (23 + i) * 20_000_000, startTime.AddMilliseconds(4600 + i * 200));
+            sampler.AddSample(100.0, 560_000_000L + (long)i * 20_000_000, startTime.AddMilliseconds(4600 + i * 200));
 
         sampler.FinalizePhase();
 
@@ -146,27 +146,29 @@ public class AdaptiveSpeedSamplerTests
             HysteresisPercent = 5.0,
             MinAnomalyDurationMs = 100,
             BaselineWindowSize = 5,
-            MinStandardIntervalMs = 50
+            MinStandardIntervalMs = 50,
+            MinSamplesBeforeDetection = 3, // Lower for test
+            EdgeZoneFraction = 0.01 // 1% edge zone for test
         };
-        sampler.Initialize(1_000_000_000);
+        sampler.Initialize(2_000_000_000); // 2GB to avoid edge zone (3% = 60M)
 
         var startTime = new DateTime(2025, 1, 1, 0, 0, 0, DateTimeKind.Utc);
 
-        // Steady write
-        for (int i = 0; i < 10; i++)
-            sampler.AddSample(100.0, i * 20_000_000, startTime.AddMilliseconds(i * 200));
+        // Steady write (past edge zone by using enough bytes)
+        for (int i = 0; i < 5; i++)
+            sampler.AddSample(100.0, 100_000_000L + (long)i * 20_000_000, startTime.AddMilliseconds(i * 200));
 
-        // Drop during write
-        for (int i = 0; i < 10; i++)
-            sampler.AddSample(50.0, (10 + i) * 20_000_000, startTime.AddMilliseconds((10 + i) * 200));
+        // Drop during write (still past edge zone)
+        for (int i = 0; i < 15; i++)
+            sampler.AddSample(50.0, 200_000_000L + (long)i * 20_000_000, startTime.AddMilliseconds((5 + i) * 200));
 
         // Switch to Read phase (should finalize write anomaly)
         sampler.Phase = "Read";
-        sampler.Initialize(1_000_000_000);
+        sampler.Initialize(2_000_000_000);
 
-        // Steady read
+        // Steady read (past edge zone)
         for (int i = 0; i < 20; i++)
-            sampler.AddSample(120.0, i * 20_000_000, startTime.AddMilliseconds(5000 + i * 200));
+            sampler.AddSample(120.0, 100_000_000L + (long)i * 20_000_000, startTime.AddMilliseconds(5000 + i * 200));
 
         sampler.FinalizePhase();
 
