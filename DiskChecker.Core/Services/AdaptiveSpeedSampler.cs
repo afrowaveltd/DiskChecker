@@ -50,6 +50,19 @@ public class AdaptiveSpeedSampler
     /// <summary>Window size for rolling baseline calculation.</summary>
     public int BaselineWindowSize { get; set; } = 10;
 
+    /// <summary>
+    /// Ignore anomaly detection for this fraction of the test at start and end.
+    /// These zones naturally contain speed transitions (0→full speed at start,
+    /// full speed→0 at end) that are not real anomalies.
+    /// </summary>
+    public double EdgeZoneFraction { get; set; } = 0.03; // 3% at each end
+
+    /// <summary>
+    /// Minimum number of samples required before anomaly detection activates.
+    /// Prevents false positives during initial baseline ramp-up.
+    /// </summary>
+    public int MinSamplesBeforeDetection { get; set; } = 20;
+
     // ── State ──────────────────────────────────────────────────
 
     private readonly List<SpeedSample> _standardSamples = new();
@@ -142,8 +155,20 @@ public class AdaptiveSpeedSampler
             _baselineWindow.RemoveAt(0);
 
         // ── Anomaly detection ──
-        if (_baselineWindow.Count >= 3)
+        if (_baselineWindow.Count >= 3 && _standardSamples.Count >= MinSamplesBeforeDetection)
         {
+            // Skip anomaly detection in edge zones (start/end of test)
+            // Natural speed transitions (0→full speed at start, full speed→0 at end)
+            // are NOT real anomalies and should not degrade the test score.
+            var edgeZone = EdgeZoneFraction * 100.0; // Convert to percent
+            if (progress < edgeZone || progress > (100.0 - edgeZone))
+            {
+                // If we were in an anomaly, finalize it immediately (edge zone overrides)
+                if (_inAnomaly)
+                    FinalizeAnomaly();
+                return;
+            }
+
             // Use frozen baseline during anomaly, rolling baseline otherwise
             var baseline = _inAnomaly
                 ? _frozenBaseline
