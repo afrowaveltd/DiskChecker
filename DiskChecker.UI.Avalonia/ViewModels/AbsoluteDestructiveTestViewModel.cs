@@ -1691,11 +1691,20 @@ public partial class AbsoluteDestructiveTestViewModel : ViewModelBase, INavigabl
                 c.MaxReadSpeed = finalSanitize.ReadSpeedMBps;
             }
 
-            // Populate chart profile points
-            c.WriteProfilePoints = DownsamplePoints(
-                capturedSanitizePass2Write.Count > 0 ? capturedSanitizePass2Write : capturedSanitizePass1Write, 32);
-            c.ReadProfilePoints = DownsamplePoints(
-                capturedSanitizePass2Read.Count > 0 ? capturedSanitizePass2Read : capturedSanitizePass1Read, 32);
+            // Populate all 4 sanitization series for certificate chart
+            const int chartPoints = 32;
+            c.Sanitize1WritePoints = DownsamplePoints(capturedSanitizePass1Write, chartPoints);
+            c.Sanitize1ReadPoints = DownsamplePoints(capturedSanitizePass1Read, chartPoints);
+            c.Sanitize2WritePoints = DownsamplePoints(capturedSanitizePass2Write, chartPoints);
+            c.Sanitize2ReadPoints = DownsamplePoints(capturedSanitizePass2Read, chartPoints);
+
+            // Keep backward-compatible generic profile points (use pass2 if available, else pass1)
+            c.WriteProfilePoints = capturedSanitizePass2Write.Count > 0
+                ? c.Sanitize2WritePoints
+                : c.Sanitize1WritePoints;
+            c.ReadProfilePoints = capturedSanitizePass2Read.Count > 0
+                ? c.Sanitize2ReadPoints
+                : c.Sanitize1ReadPoints;
 
             if (c.Sanitize1AvgWriteMBps > 0 && c.Sanitize2AvgWriteMBps > 0)
             {

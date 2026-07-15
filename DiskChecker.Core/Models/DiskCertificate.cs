@@ -327,6 +327,32 @@ public class DiskCertificate
     /// </summary>
     [NotMapped]
     public List<bool> StallProfilePoints { get; set; } = new();
+
+    // ========== Absolute Destructive - Sanitization Pass Details (4 series) ==========
+
+    /// <summary>
+    /// Speed profile points for first sanitization pass - write phase.
+    /// </summary>
+    [NotMapped]
+    public List<double> Sanitize1WritePoints { get; set; } = new();
+
+    /// <summary>
+    /// Speed profile points for first sanitization pass - read/verify phase.
+    /// </summary>
+    [NotMapped]
+    public List<double> Sanitize1ReadPoints { get; set; } = new();
+
+    /// <summary>
+    /// Speed profile points for second sanitization pass - write phase.
+    /// </summary>
+    [NotMapped]
+    public List<double> Sanitize2WritePoints { get; set; } = new();
+
+    /// <summary>
+    /// Speed profile points for second sanitization pass - read/verify phase.
+    /// </summary>
+    [NotMapped]
+    public List<double> Sanitize2ReadPoints { get; set; } = new();
     // ========== Before/After Sanitization Comparison ==========
 
     /// <summary>

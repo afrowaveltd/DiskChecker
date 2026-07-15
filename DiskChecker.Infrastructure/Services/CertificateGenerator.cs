@@ -521,21 +521,45 @@ public class CertificateGenerator : ICertificateGenerator
             if (hasBothCharts)
             {
                 // Dual-chart layout for AbsoluteDestructive tests:
-                // Top: Sanitization speed profile (write/read overlay)
-                // Bottom: Seek latency scatter chart
+                // Top: Sanitization speed profile (all 4 series: pass1 write/read, pass2 write/read)
+                // Bottom: Seek latency scatter chart (full stroke only)
                 float topChartH = 200f;
                 float bottomChartH = 200f;
                 float gapBetweenCharts = 30f;
 
+                // Check if we have 4 sanitization series (Absolute Destructive Test)
+                var hasFourSeries = HasFourSanitizationSeries(cert);
+
                 // --- Top chart: Sanitization speed profile ---
-                var topTitle = _locale?.GetString("CertificatePdf.SanitizationProfile", "Profil sanitizace") ?? "Profil sanitizace";
+                // Colors for 4 series: pass1 write = red, pass1 read = green, pass2 write = dark red, pass2 read = dark green
+                using var pass1WritePen = new SKPaint { Color = new SKColor(220, 38, 38), IsAntialias = true, Style = SKPaintStyle.Stroke, StrokeWidth = 2.5f, StrokeCap = SKStrokeCap.Round };
+                using var pass1ReadPen = new SKPaint { Color = new SKColor(5, 150, 105), IsAntialias = true, Style = SKPaintStyle.Stroke, StrokeWidth = 2.5f, StrokeCap = SKStrokeCap.Round };
+                using var pass2WritePen = new SKPaint { Color = new SKColor(185, 28, 28), IsAntialias = true, Style = SKPaintStyle.Stroke, StrokeWidth = 2.5f, StrokeCap = SKStrokeCap.Round, PathEffect = SKPathEffect.CreateDash(new float[] { 6, 3 }, 0) };
+                using var pass2ReadPen = new SKPaint { Color = new SKColor(21, 128, 61), IsAntialias = true, Style = SKPaintStyle.Stroke, StrokeWidth = 2.5f, StrokeCap = SKStrokeCap.Round, PathEffect = SKPathEffect.CreateDash(new float[] { 6, 3 }, 0) };
+
+                var topTitle = _locale?.GetString("CertificatePdf.SanitizationProfile", "Profil sanitizace (4 průběhy)") ?? "Profil sanitizace (4 průběhy)";
                 DrawText(canvas, topTitle, 48, y, sectionFont, accentPaint);
                 y += 34;
                 float topChartY = y;
                 canvas.DrawRect(chartX, topChartY, chartW, topChartH, borderPaint);
 
-                var maxSpeed = Math.Max(writePoints.Count > 0 ? writePoints.Max() : 0, readPoints.Count > 0 ? readPoints.Max() : 0);
+                // Calculate max speed across all 4 series
+                var allSpeeds = new List<double>();
+                if (hasFourSeries)
+                {
+                    allSpeeds.AddRange(cert.Sanitize1WritePoints?.Where(v => v > 0) ?? Array.Empty<double>());
+                    allSpeeds.AddRange(cert.Sanitize1ReadPoints?.Where(v => v > 0) ?? Array.Empty<double>());
+                    allSpeeds.AddRange(cert.Sanitize2WritePoints?.Where(v => v > 0) ?? Array.Empty<double>());
+                    allSpeeds.AddRange(cert.Sanitize2ReadPoints?.Where(v => v > 0) ?? Array.Empty<double>());
+                }
+                else
+                {
+                    allSpeeds.AddRange(writePoints);
+                    allSpeeds.AddRange(readPoints);
+                }
+                var maxSpeed = allSpeeds.Count > 0 ? allSpeeds.Max() : 1;
                 if (maxSpeed <= 0) maxSpeed = 1;
+
                 canvas.DrawLine(chartX + 30, topChartY + 14, chartX + 30, topChartY + topChartH - 26, axisPen);
                 canvas.DrawLine(chartX + 30, topChartY + topChartH - 26, chartX + chartW - 20, topChartY + topChartH - 26, axisPen);
                 for (int g = 1; g <= 3; g++)
@@ -543,8 +567,30 @@ public class CertificateGenerator : ICertificateGenerator
                     float gx = chartX + 30 + (chartW - 50) * g / 4f;
                     canvas.DrawLine(gx, topChartY + 14, gx, topChartY + topChartH - 26, axisPen);
                 }
-                DrawProfilePolyline(canvas, writePen, writePoints, maxSpeed, chartX + 30, topChartY + 14, chartW - 50, topChartH - 40);
-                DrawProfilePolyline(canvas, readPen, readPoints, maxSpeed, chartX + 30, topChartY + 14, chartW - 50, topChartH - 40);
+
+                if (hasFourSeries)
+                {
+                    // Draw all 4 series
+                    DrawProfilePolyline(canvas, pass1WritePen,
+                        cert.Sanitize1WritePoints?.Where(v => v > 0).ToList() ?? new List<double>(),
+                        maxSpeed, chartX + 30, topChartY + 14, chartW - 50, topChartH - 40);
+                    DrawProfilePolyline(canvas, pass1ReadPen,
+                        cert.Sanitize1ReadPoints?.Where(v => v > 0).ToList() ?? new List<double>(),
+                        maxSpeed, chartX + 30, topChartY + 14, chartW - 50, topChartH - 40);
+                    DrawProfilePolyline(canvas, pass2WritePen,
+                        cert.Sanitize2WritePoints?.Where(v => v > 0).ToList() ?? new List<double>(),
+                        maxSpeed, chartX + 30, topChartY + 14, chartW - 50, topChartH - 40);
+                    DrawProfilePolyline(canvas, pass2ReadPen,
+                        cert.Sanitize2ReadPoints?.Where(v => v > 0).ToList() ?? new List<double>(),
+                        maxSpeed, chartX + 30, topChartY + 14, chartW - 50, topChartH - 40);
+                }
+                else
+                {
+                    // Fallback: draw single pass write/read
+                    DrawProfilePolyline(canvas, pass1WritePen, writePoints, maxSpeed, chartX + 30, topChartY + 14, chartW - 50, topChartH - 40);
+                    DrawProfilePolyline(canvas, pass1ReadPen, readPoints, maxSpeed, chartX + 30, topChartY + 14, chartW - 50, topChartH - 40);
+                }
+
                 DrawText(canvas, _locale?.GetString("CertificatePdf.Mbps", "MB/s") ?? "MB/s", chartX - 4, topChartY + 8, chartLabelFont, mutedPaint);
                 DrawText(canvas, $"{maxSpeed:F0}", chartX - 22, topChartY + 14, chartLabelFont, mutedPaint);
                 DrawText(canvas, $"{maxSpeed / 2:F0}", chartX - 22, topChartY + (topChartH - 40) / 2 + 10, chartLabelFont, mutedPaint);
@@ -552,15 +598,37 @@ public class CertificateGenerator : ICertificateGenerator
                 DrawText(canvas, _locale?.GetString("CertificatePdf.Percent0", "0 %") ?? "0 %", chartX + 26, topChartY + topChartH - 18, chartLabelFont, mutedPaint);
                 DrawText(canvas, _locale?.GetString("CertificatePdf.Percent50", "50 %") ?? "50 %", chartX + chartW / 2 - 8, topChartY + topChartH - 18, chartLabelFont, mutedPaint);
                 DrawText(canvas, _locale?.GetString("CertificatePdf.Percent100", "100 %") ?? "100 %", chartX + chartW - 40, topChartY + topChartH - 18, chartLabelFont, mutedPaint);
-                using var legendWritePaint = new SKPaint { Color = new SKColor(220, 38, 38), IsAntialias = true };
-                using var legendReadPaint = new SKPaint { Color = new SKColor(5, 150, 105), IsAntialias = true };
-                DrawText(canvas, _locale?.GetString("CertificatePdf.Write", "Zápis") ?? "Zápis", chartX + chartW - 150, topChartY + 8, chartLabelFont, legendWritePaint);
-                DrawText(canvas, _locale?.GetString("CertificatePdf.Read", "Čtení") ?? "Čtení", chartX + chartW - 90, topChartY + 8, chartLabelFont, legendReadPaint);
 
-                // --- Bottom chart: Seek latency scatter ---
+                // Legend with 4 colors
+                using var legendP1Write = new SKPaint { Color = new SKColor(220, 38, 38), IsAntialias = true };
+                using var legendP1Read = new SKPaint { Color = new SKColor(5, 150, 105), IsAntialias = true };
+                using var legendP2Write = new SKPaint { Color = new SKColor(185, 28, 28), IsAntialias = true };
+                using var legendP2Read = new SKPaint { Color = new SKColor(21, 128, 61), IsAntialias = true };
+
+                if (hasFourSeries)
+                {
+                    DrawText(canvas, "1. Zápis", chartX + chartW - 240, topChartY + 8, chartLabelFont, legendP1Write);
+                    DrawText(canvas, "1. Čtení", chartX + chartW - 160, topChartY + 8, chartLabelFont, legendP1Read);
+                    DrawText(canvas, "2. Zápis", chartX + chartW - 240, topChartY + 24, chartLabelFont, legendP2Write);
+                    DrawText(canvas, "2. Čtení", chartX + chartW - 160, topChartY + 24, chartLabelFont, legendP2Read);
+                }
+                else
+                {
+                    DrawText(canvas, _locale?.GetString("CertificatePdf.Write", "Zápis") ?? "Zápis", chartX + chartW - 150, topChartY + 8, chartLabelFont, legendP1Write);
+                    DrawText(canvas, _locale?.GetString("CertificatePdf.Read", "Čtení") ?? "Čtení", chartX + chartW - 90, topChartY + 8, chartLabelFont, legendP1Read);
+                }
+
+                // --- Bottom chart: Seek latency scatter (full stroke only) ---
                 y = topChartY + topChartH + gapBetweenCharts;
-                var bottomTitle = _locale?.GetString("CertificatePdf.SeekLatencyChart", "Seek latence") ?? "Seek latence";
+                var bottomTitle = _locale?.GetString("CertificatePdf.SeekLatencyChart", "Seek latence (Full Stroke)") ?? "Seek latence (Full Stroke)";
                 DrawText(canvas, bottomTitle, 48, y, sectionFont, accentPaint);
+
+                // Seek text summary next to title
+                if (!string.IsNullOrWhiteSpace(cert.SeekTestSummary))
+                {
+                    DrawText(canvas, cert.SeekTestSummary, 400, y, smallFont, mutedPaint);
+                }
+
                 y += 34;
                 float bottomChartY = y;
                 canvas.DrawRect(chartX, bottomChartY, chartW, bottomChartH, borderPaint);
@@ -577,7 +645,7 @@ public class CertificateGenerator : ICertificateGenerator
                         float gy = bottomChartY + 14 + (bottomChartH - 40) * g / 4f;
                         canvas.DrawLine(chartX + 30, gy, chartX + chartW - 20, gy, axisPen);
                     }
-                    using var dotPaint = new SKPaint { Color = new SKColor(220, 38, 38), Style = SKPaintStyle.Fill, IsAntialias = true };
+                    using var dotPaint = new SKPaint { Color = new SKColor(30, 64, 175), Style = SKPaintStyle.Fill, IsAntialias = true };
                     float plotW = chartW - 50;
                     float plotH = bottomChartH - 40;
                     for (var i = 0; i < latencies.Count; i++)
@@ -594,8 +662,26 @@ public class CertificateGenerator : ICertificateGenerator
                     var midLabel = Math.Max(1, latencies.Count / 2).ToString(CultureInfo.InvariantCulture);
                     DrawText(canvas, midLabel, chartX + 30 + plotW / 2f - 8, bottomChartY + bottomChartH - 18, chartLabelFont, mutedPaint);
                     DrawText(canvas, latencies.Count.ToString(CultureInfo.InvariantCulture), chartX + chartW - 40, bottomChartY + bottomChartH - 18, chartLabelFont, mutedPaint);
-                    using var legendDotPaint = new SKPaint { Color = new SKColor(220, 38, 38), IsAntialias = true };
+                    using var legendDotPaint = new SKPaint { Color = new SKColor(30, 64, 175), IsAntialias = true };
                     DrawText(canvas, _locale?.GetString("CertificatePdf.Latency", "Latence") ?? "Latence", chartX + chartW - 120, bottomChartY + 8, chartLabelFont, legendDotPaint);
+
+                    // Draw P95 and P99 threshold lines on seek chart
+                    if (cert.SeekP95LatencyMs > 0)
+                    {
+                        using var p95Pen = new SKPaint { Color = new SKColor(245, 158, 11), IsAntialias = true, Style = SKPaintStyle.Stroke, StrokeWidth = 1.5f, PathEffect = SKPathEffect.CreateDash(new float[] { 4, 3 }, 0) };
+                        var p95Y = bottomChartY + 14 + plotH - (float)(cert.SeekP95LatencyMs.Value / yMax * plotH);
+                        if (p95Y >= bottomChartY + 14 && p95Y <= bottomChartY + bottomChartH - 26)
+                            canvas.DrawLine(chartX + 30, p95Y, chartX + chartW - 20, p95Y, p95Pen);
+                        DrawText(canvas, $"P95={cert.SeekP95LatencyMs.Value:F1}", chartX + chartW - 90, bottomChartY + 24, chartLabelFont, p95Pen);
+                    }
+                    if (cert.SeekP99LatencyMs > 0)
+                    {
+                        using var p99Pen = new SKPaint { Color = new SKColor(220, 38, 38), IsAntialias = true, Style = SKPaintStyle.Stroke, StrokeWidth = 1.5f, PathEffect = SKPathEffect.CreateDash(new float[] { 2, 2 }, 0) };
+                        var p99Y = bottomChartY + 14 + plotH - (float)(cert.SeekP99LatencyMs.Value / yMax * plotH);
+                        if (p99Y >= bottomChartY + 14 && p99Y <= bottomChartY + bottomChartH - 26)
+                            canvas.DrawLine(chartX + 30, p99Y, chartX + chartW - 20, p99Y, p99Pen);
+                        DrawText(canvas, $"P99={cert.SeekP99LatencyMs.Value:F1}", chartX + chartW - 90, bottomChartY + 10, chartLabelFont, p99Pen);
+                    }
                 }
                 else
                 {
@@ -608,6 +694,78 @@ public class CertificateGenerator : ICertificateGenerator
                 }
 
                 y = bottomChartY + bottomChartH;
+
+                // ── Sanitization comparison table ──
+                if (cert.Sanitize1AvgWriteMBps > 0 || cert.Sanitize2AvgWriteMBps > 0)
+                {
+                    y += 10;
+                    var tableTitle = _locale?.GetString("CertificatePdf.SanitizationComparison", "Porovnání sanitizací") ?? "Porovnání sanitizací";
+                    DrawText(canvas, tableTitle, 48, y, sectionFont, accentPaint);
+                    y += 34;
+
+                    float tableY = y;
+                    float tableW = CertWidth - 96;
+                    float tableH = 90;
+                    canvas.DrawRect(48, tableY, tableW, tableH, panelPaint);
+                    canvas.DrawRect(48, tableY, tableW, tableH, borderPaint);
+
+                    // Headers
+                    float col1X = 64, col2X = 300, col3X = 500, col4X = 700;
+                    DrawText(canvas, _locale?.GetString("CertificatePdf.Metric", "Metrika") ?? "Metrika", col1X, tableY + 8, labelFont, textPaint);
+                    DrawText(canvas, _locale?.GetString("CertificatePdf.Sanitization1", "Sanitizace 1") ?? "Sanitizace 1", col2X, tableY + 8, labelFont, textPaint);
+                    DrawText(canvas, _locale?.GetString("CertificatePdf.Sanitization2", "Sanitizace 2") ?? "Sanitizace 2", col3X, tableY + 8, labelFont, textPaint);
+                    DrawText(canvas, _locale?.GetString("CertificatePdf.Change", "Změna") ?? "Změna", col4X, tableY + 8, labelFont, textPaint);
+
+                    // Write speed row
+                    var s1Write = cert.Sanitize1AvgWriteMBps ?? 0;
+                    var s2Write = cert.Sanitize2AvgWriteMBps ?? 0;
+                    var writeDelta = cert.WriteSpeedChangePercent ?? (s1Write > 0 ? ((s2Write - s1Write) / s1Write) * 100 : 0);
+                    DrawText(canvas, _locale?.GetString("CertificatePdf.WriteSpeed", "Zápis (MB/s)") ?? "Zápis (MB/s)", col1X, tableY + 44, valueFont, textPaint);
+                    DrawText(canvas, s1Write > 0 ? s1Write.ToString("F1", CultureInfo.InvariantCulture) : "—", col2X, tableY + 44, valueFont, textPaint);
+                    DrawText(canvas, s2Write > 0 ? s2Write.ToString("F1", CultureInfo.InvariantCulture) : "—", col3X, tableY + 44, valueFont, textPaint);
+                    DrawText(canvas, writeDelta != 0 ? $"{writeDelta:+0.0;-0.0}%" : "—", col4X, tableY + 44, valueFont, textPaint);
+
+                    // Read speed row
+                    var s1Read = cert.Sanitize1AvgReadMBps ?? 0;
+                    var s2Read = cert.Sanitize2AvgReadMBps ?? 0;
+                    var readDelta = cert.ReadSpeedChangePercent ?? (s1Read > 0 ? ((s2Read - s1Read) / s1Read) * 100 : 0);
+                    DrawText(canvas, _locale?.GetString("CertificatePdf.ReadSpeed", "Čtení (MB/s)") ?? "Čtení (MB/s)", col1X, tableY + 72, valueFont, textPaint);
+                    DrawText(canvas, s1Read > 0 ? s1Read.ToString("F1", CultureInfo.InvariantCulture) : "—", col2X, tableY + 72, valueFont, textPaint);
+                    DrawText(canvas, s2Read > 0 ? s2Read.ToString("F1", CultureInfo.InvariantCulture) : "—", col3X, tableY + 72, valueFont, textPaint);
+                    DrawText(canvas, readDelta != 0 ? $"{readDelta:+0.0;-0.0}%" : "—", col4X, tableY + 72, valueFont, textPaint);
+
+                    y = (int)(tableY + tableH);
+                }
+
+                // ── Seek statistics table ──
+                if (cert.SeekAvgLatencyMs > 0)
+                {
+                    y += 10;
+                    var seekTableTitle = _locale?.GetString("CertificatePdf.SeekStatistics", "Seek statistika") ?? "Seek statistika";
+                    DrawText(canvas, seekTableTitle, 48, y, sectionFont, accentPaint);
+                    y += 34;
+
+                    float seekTableY = y;
+                    float seekTableW = CertWidth - 96;
+                    float seekTableH = 60;
+                    canvas.DrawRect(48, seekTableY, seekTableW, seekTableH, panelPaint);
+                    canvas.DrawRect(48, seekTableY, seekTableW, seekTableH, borderPaint);
+
+                    float seekCol1 = 64, seekCol2 = 240, seekCol3 = 420, seekCol4 = 580, seekCol5 = 740;
+                    DrawText(canvas, _locale?.GetString("CertificatePdf.Average", "Průměr") ?? "Průměr", seekCol1, seekTableY + 8, labelFont, textPaint);
+                    DrawText(canvas, _locale?.GetString("CertificatePdf.Minimum", "Minimum") ?? "Minimum", seekCol2, seekTableY + 8, labelFont, textPaint);
+                    DrawText(canvas, _locale?.GetString("CertificatePdf.Maximum", "Maximum") ?? "Maximum", seekCol3, seekTableY + 8, labelFont, textPaint);
+                    DrawText(canvas, "P95", seekCol4, seekTableY + 8, labelFont, textPaint);
+                    DrawText(canvas, "P99", seekCol5, seekTableY + 8, labelFont, textPaint);
+
+                    DrawText(canvas, $"{cert.SeekAvgLatencyMs:F2} ms", seekCol1, seekTableY + 42, valueFont, textPaint);
+                    DrawText(canvas, $"{cert.SeekMinLatencyMs:F2} ms", seekCol2, seekTableY + 42, valueFont, textPaint);
+                    DrawText(canvas, $"{cert.SeekMaxLatencyMs:F2} ms", seekCol3, seekTableY + 42, valueFont, textPaint);
+                    DrawText(canvas, $"{cert.SeekP95LatencyMs:F2} ms", seekCol4, seekTableY + 42, valueFont, textPaint);
+                    DrawText(canvas, $"{cert.SeekP99LatencyMs:F2} ms", seekCol5, seekTableY + 42, valueFont, textPaint);
+
+                    y = (int)(seekTableY + seekTableH);
+                }
             }
             else
             {
@@ -734,8 +892,12 @@ public class CertificateGenerator : ICertificateGenerator
 
             cancellationToken.ThrowIfCancellationRequested();
 
-            // Recommendation// Recommendation
-            y += 290;
+            // Recommendation - spacing depends on content density
+            // If we already showed comparison tables (hasBothCharts), less spacing is needed
+            if (hasBothCharts)
+                y += 30;
+            else
+                y += 290;
             DrawText(canvas, _locale?.GetString("CertificatePdf.Recommendations", "Doporučení") ?? "Doporučení", 48, y, sectionFont, accentPaint);
             y += 34;
             canvas.DrawRect(48, y, CertWidth - 96, 140, panelPaint);
@@ -1098,6 +1260,16 @@ public class CertificateGenerator : ICertificateGenerator
             result.Add(stalled);
         }
         return result;
+    }
+
+    /// <summary>
+    /// Returns true if the certificate has four separate sanitization series (pass1 write/read, pass2 write/read).
+    /// This is the case for Absolute Destructive Test certificates.
+    /// </summary>
+    private static bool HasFourSanitizationSeries(DiskCertificate cert)
+    {
+        return (cert.Sanitize1WritePoints?.Count > 0 || cert.Sanitize1ReadPoints?.Count > 0) &&
+               (cert.Sanitize2WritePoints?.Count > 0 || cert.Sanitize2ReadPoints?.Count > 0);
     }
 
     private static (List<double> Write, List<double> Read) GetProfilePointsForChart(DiskCertificate cert)
