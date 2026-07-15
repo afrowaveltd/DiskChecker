@@ -36,7 +36,7 @@ public class CertificateGenerator : ICertificateGenerator
 
     // Certificate JPEG dimensions (A4 at 150 DPI, extended for all content)
     private const int CertWidth = 1240;
-    private const int CertHeight = 2200;
+    private const int CertHeight = 2400;
 
     // Font family fallback chain (cross-platform)
     private const string FontSansSerif = "DejaVu Sans";
