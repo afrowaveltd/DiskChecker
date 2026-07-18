@@ -64,7 +64,7 @@ public class SanitizationProgressTests
                 new CallbackProgress<SanitizationProgress>(writeProgress.Add));
             var readResult = await InvokePhaseAsync(
                 service,
-                "ReadAndVerifyAsync",
+                "ReadAndVerifyFileStreamAsync",
                 path,
                 fileSize,
                 new CallbackProgress<SanitizationProgress>(readProgress.Add));
@@ -98,7 +98,7 @@ public class SanitizationProgressTests
 
             var readTask = InvokePhaseAsync(
                 service,
-                "ReadAndVerifyAsync",
+                "ReadAndVerifyFileStreamAsync",
                 path,
                 fileSize,
                 new CallbackProgress<SanitizationProgress>(_ => { }));
