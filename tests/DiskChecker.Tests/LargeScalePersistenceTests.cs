@@ -370,9 +370,7 @@ public class LargeScalePersistenceTests
 
         Assert.NotNull(testRecord);
         Assert.Equal(15, testRecord.Errors);
-        Assert.Equal("F", testRecord.Grade); // >100 errors → F... wait, actually 15 errors → E according to the code
-        // Let's check: ErrorCount > 100 → F, > 10 → E, > 5 → D, > 0 → C
-        Assert.Equal("E", testRecord.Grade); // 15 errors → E
+        Assert.Equal("E", testRecord.Grade); // 15 errors → E (>10 errors = E grade)
     }
 
     // ── Test 6: Cancellation support ─────────────────────────────────

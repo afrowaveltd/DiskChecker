@@ -8,9 +8,9 @@ namespace DiskChecker.Tests;
 public class SanitizationProgressTests
 {
     [Theory]
-    [InlineData("Zápis nul")]
-    [InlineData("Zápis nul (O_DIRECT)")]
-    [InlineData("Zápis nul (FileStream)")]
+    [InlineData("Write zeros")]
+    [InlineData("Write zeros (O_DIRECT)")]
+    [InlineData("Write zeros (FileStream)")]
     public void IsWritePhase_RecognizesCompatibleDisplayNames(string phase)
     {
         var progress = new SanitizationProgress { Phase = phase };
@@ -20,8 +20,8 @@ public class SanitizationProgressTests
     }
 
     [Theory]
-    [InlineData("Čtení a ověření")]
-    [InlineData("Čtení a ověření (FileStream)")]
+    [InlineData("Read and verify")]
+    [InlineData("Read and verify (FileStream)")]
     public void IsReadVerifyPhase_RecognizesCompatibleDisplayNames(string phase)
     {
         var progress = new SanitizationProgress { Phase = phase };
