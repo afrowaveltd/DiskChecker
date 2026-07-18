@@ -636,6 +636,7 @@ public partial class MainWindowViewModel : ViewModelBase
     public bool IsOnBackup => _currentViewModelType == typeof(BackupViewModel);
     public bool IsOnRestore => _currentViewModelType == typeof(RestoreViewModel);
     public bool IsOnSettings => _currentViewModelType == typeof(SettingsViewModel);
+    public bool IsOnExportImport => _currentViewModelType == typeof(ExportImportViewModel);
 
     /// <summary>
     /// Disables top navigation while an operation that owns a disk handle is running.
@@ -717,6 +718,9 @@ public partial class MainWindowViewModel : ViewModelBase
     [RelayCommand]
     private void NavigateToSettings() => NavigateSafely<SettingsViewModel>("Naviguji na nastavení...");
 
+    [RelayCommand]
+    private void NavigateToExportImport() => NavigateSafely<ExportImportViewModel>("Naviguji na export/import dat...");
+
     private void OnNavigated(object? sender, AppNavigationEventArgs e)
     {
         // Close language menu when navigating
@@ -748,6 +752,7 @@ public partial class MainWindowViewModel : ViewModelBase
         OnPropertyChanged(nameof(IsOnBackup));
         OnPropertyChanged(nameof(IsOnRestore));
         OnPropertyChanged(nameof(IsOnSettings));
+        OnPropertyChanged(nameof(IsOnExportImport));
         OnPropertyChanged(nameof(CanNavigateFromCurrentView));
     }
 
@@ -764,3 +769,4 @@ public partial class MainWindowViewModel : ViewModelBase
         }
     }
 }
+

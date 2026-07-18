@@ -57,6 +57,7 @@ namespace DiskChecker.UI.Avalonia.ViewModels
             RefreshBackupsCommand = new AsyncRelayCommand(RefreshBackupsAsync);
             SetLanguageCommand = new RelayCommand<string>(SetLanguage);
             TestDatabaseConnectionCommand = new AsyncRelayCommand(TestDatabaseConnectionAsync, () => !IsSaving);
+        NavigateToExportImportCommand = new RelayCommand(NavigateToExportImport);
 
             // Populate available languages
             foreach (var loc in _localizationService.GetAvailableLocales())
@@ -192,6 +193,7 @@ namespace DiskChecker.UI.Avalonia.ViewModels
         public IAsyncRelayCommand RefreshBackupsCommand { get; }
         public IRelayCommand<string> SetLanguageCommand { get; }
         public IAsyncRelayCommand TestDatabaseConnectionCommand { get; }
+    public IRelayCommand NavigateToExportImportCommand { get; }
 
         public ObservableCollection<string> AvailableLanguages { get; } = new();
         public ObservableCollection<string> AvailableDatabaseProviders { get; } = new(Enum.GetNames<DatabaseProviderKind>());
@@ -450,6 +452,12 @@ namespace DiskChecker.UI.Avalonia.ViewModels
             {
                 IsLoadingBackups = false;
             }
+        }
+
+        private void NavigateToExportImport()
+        {
+            var navService = App.GetService<INavigationService>();
+            navService?.NavigateTo<ExportImportViewModel>();
         }
 
         private void SetLanguage(string? locale)

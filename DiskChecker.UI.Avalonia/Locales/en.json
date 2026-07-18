@@ -1,4 +1,4 @@
-{
+﻿{
   "Action": "Action",
   "Activate": "Activate",
   "Adapter": "Adapter",
@@ -2453,5 +2453,29 @@
 "SmartCheck.NvMeWear": "SSD/NVMe Wear",
   "SmartCheck.NvMeSpare": "NVMe Spare",
   "SmartCheck.NvMeMediaErrorsLabel": "NVMe Media Errors",
-  "SmartCheck.ClearDisk": "🧹 Clear disk"
+  "SmartCheck.ClearDisk": "🧹 Clear disk",
+  "ExportImport.Title": "Data Export & Import",
+  "ExportImport.Description": "Export and import database data (disks, measurements, certificates)",
+  "ExportImport.ExportSection": "đź“¤ Export Data",
+  "ExportImport.ImportSection": "đź“Ą Import Data",
+  "ExportImport.ExportScope": "Export scope:",
+  "ExportImport.ExportAll": "đź’ż Export entire database (all disks, tests, certificates)",
+  "ExportImport.ExportMeasurements": "đź“Š Export measurements and disks only (without certificates)",
+  "ExportImport.ExportSelected": "đźŽŻ Export selected disks",
+  "ExportImport.SelectDisks": "Select disks to export:",
+  "ExportImport.SelectExportPath": "Select destination file...",
+  "ExportImport.SelectImportPath": "Select file to import...",
+  "ExportImport.Browse": "đź“‚ Browse",
+  "ExportImport.StartExport": "đźš€ Start Export",
+  "ExportImport.StartImport": "âš ď¸Ź Start Import",
+  "ExportImport.ImportMode": "Import mode:",
+  "ExportImport.ImportAdd": "âž• Add new data (keep existing records)",
+  "ExportImport.ImportReplace": "đź”„ Replace existing records",
+  "ExportImport.ImportModeHint": "In Add mode, only missing tests and certificates are imported (matched by disk serial number and session ID). In Replace mode, disk metadata is updated and all tests and certificates are imported.",
+  "ExportImport.Exporting": "đź“¤ Exporting...",
+  "ExportImport.Importing": "đź“Ą Importing...",
+  "ExportImport.Result": "âś… Result",
+  "ExportImport.Failed": "âťŚ Operation failed",
+  "ExportImport.Log": "đź“‹ Log",
+  "ExportImport.Cancel": "âťŚ Cancel"
 }

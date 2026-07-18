@@ -313,6 +313,14 @@
                                    Padding="12,6"
                                    FontWeight="SemiBold"
                                    FontSize="10"/>
+                            <Button Content="{Binding L[Settings.ExportImport]}"
+                                   Command="{Binding \$parent[UserControl].DataContext.NavigateToExportImportCommand}"
+                                   Background="{DynamicResource ThemePrimaryBrush}"
+                                   Foreground="White"
+                                   CornerRadius="6"
+                                   Padding="12,6"
+                                   FontSize="11"
+                                   Cursor="Hand"/>
                             <Button Content="{Binding L[Settings.RestoreBackup]}"
                                    Command="{Binding RestoreBackupCommand}"
                                    Background="{DynamicResource ThemeSecondaryBackgroundBrush}"
@@ -374,3 +382,4 @@
         </Border>
     </Grid>
 </UserControl>
+

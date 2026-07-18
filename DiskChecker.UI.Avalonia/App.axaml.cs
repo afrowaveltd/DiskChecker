@@ -174,6 +174,9 @@ public partial class App : global::Avalonia.Application
         // Backup service
         services.AddSingleton<IBackupService, BackupService>();
         
+        // Data export/import service
+        services.AddSingleton<IDataExportImportService, DataExportImportService>();
+        
         // Settings service interface
         services.AddSingleton<ISettingsService>(sp => sp.GetRequiredService<SettingsService>());
         
@@ -261,6 +264,7 @@ public partial class App : global::Avalonia.Application
         services.AddTransient<FullReportViewerViewModel>();
         services.AddTransient<HistoryViewModel>();
         services.AddTransient<SettingsViewModel>();
+        services.AddTransient<ExportImportViewModel>();
         
         // View models - new
         services.AddTransient<DiskCardsViewModel>();
@@ -275,3 +279,4 @@ public partial class App : global::Avalonia.Application
         services.AddTransient<SafeDestructiveTestViewModel>();
     }
 }
+
