@@ -2,6 +2,7 @@ using Avalonia.Threading;
 using DiskChecker.Application.Services;
 using DiskChecker.Core.Interfaces;
 using DiskChecker.Core.Models;
+using DiskChecker.UI.Avalonia.Services;
 using DiskChecker.UI.Avalonia.Services.Interfaces;
 using LiveChartsCore;
 using LiveChartsCore.Defaults;
@@ -1196,17 +1197,14 @@ public partial class SafeDestructiveTestViewModel : ViewModelBase, INavigableVie
       BackupProgressText = "0%";
       using var backupHash = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
 
-      var dataStartOffset = CalculateVhdxDataStartOffset(totalSize);
+      var dataStartOffset = VhdxImageUtility.CalculateDataStartOffset(totalSize);
       _backupDataStartOffset = dataStartOffset;
-      var requiredBytes = dataStartOffset + RoundUp(totalSize, blockSize);
+      var requiredBytes = VhdxImageUtility.CalculateRequiredFileBytes(totalSize);
       if(BackupTargetFreeBytes < requiredBytes)
          throw new IOException(string.Format(L.Get("SafeDestructive.Error.VhdxNotEnoughSpace"), FormatBytesLong(requiredBytes), FormatBytesLong(BackupTargetFreeBytes)));
 
       // Write VHDx header + BAT — fixed VHDx, all blocks pre-allocated
-      await WriteVhdxHeaderAsync(_backupImagePath, totalSize, ct);
-
-      // Data start offset of the VHDx payload area.
-      const int logicalSectorSize = 1048576;
+      await VhdxImageUtility.WriteFixedHeaderAsync(_backupImagePath, totalSize, ct);
 
       using var sourceStream = new FileStream(DiskPath, FileMode.Open, FileAccess.Read,
           FileShare.Read, blockSize, FileOptions.SequentialScan);
@@ -1262,9 +1260,7 @@ public partial class SafeDestructiveTestViewModel : ViewModelBase, INavigableVie
             }
 
             // Write data at the correct offset in the fixed VHDx
-            long chunkIndex = bytesRead / logicalSectorSize;
-            long writeOffset = dataStartOffset + chunkIndex * logicalSectorSize;
-            targetStream.Position = writeOffset;
+            targetStream.Position = dataStartOffset + bytesRead;
             await targetStream.WriteAsync(buffer.AsMemory(0, bytesReadNow), ct);
             backupHash.AppendData(buffer, 0, bytesReadNow);
             bytesRead += bytesReadNow;
@@ -1316,6 +1312,8 @@ public partial class SafeDestructiveTestViewModel : ViewModelBase, INavigableVie
          MountableImage = _backupImagePath,
          TotalBytes = bytesRead,
          BlockSize = blockSize,
+         ImageFileBytes = new FileInfo(_backupImagePath).Length,
+         VirtualDiskBytes = VhdxImageUtility.RoundUp(bytesRead, blockSize),
          UnreadableBytes = unreadableBytes,
          DataStartOffset = dataStartOffset,
          Sha256 = _backupSha256,
@@ -2072,18 +2070,9 @@ public partial class SafeDestructiveTestViewModel : ViewModelBase, INavigableVie
    /// Writes a minimal VHDx header and Block Allocation Table for a dynamic disk.
    /// This creates a valid, mountable VHDx file that Windows and Linux can open.
    /// </summary>
-   private static long RoundUp(long value, long alignment) => ((value + alignment - 1) / alignment) * alignment;
+   private static long RoundUp(long value, long alignment) => VhdxImageUtility.RoundUp(value, alignment);
 
-   private static long CalculateVhdxDataStartOffset(long diskSizeBytes)
-   {
-      const int logicalSectorSize = 1048576;
-      const int physicalSectorSize = 4096;
-      long diskSizeRounded = RoundUp(diskSizeBytes, logicalSectorSize);
-      long chunkCount = diskSizeRounded / logicalSectorSize;
-      long batSize = RoundUp(chunkCount * 8, physicalSectorSize);
-      long metadataEnd = 256L * 1024 + batSize + 1024L * 1024;
-      return RoundUp(metadataEnd, logicalSectorSize);
-   }
+   private static long CalculateVhdxDataStartOffset(long diskSizeBytes) => VhdxImageUtility.CalculateDataStartOffset(diskSizeBytes);
 
    private static async Task WriteVhdxHeaderAsync(string path, long diskSizeBytes, CancellationToken ct)
    {

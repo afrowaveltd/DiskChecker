@@ -64,4 +64,9 @@ public interface IDialogService
     /// Shows a platform file picker and returns selected local filesystem paths.
     /// </summary>
     Task<IReadOnlyList<string>> PickFilesAsync(string title, bool allowMultiple = true);
+
+    /// <summary>
+    /// Shows a platform save-file picker and returns the selected local filesystem path.
+    /// </summary>
+    Task<string?> PickSaveFileAsync(string title, string? suggestedFileName = null);
 }

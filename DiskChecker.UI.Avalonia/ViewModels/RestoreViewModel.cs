@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.IO;
@@ -10,7 +10,9 @@ using System.Threading.Tasks;
 using Avalonia.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using DiskChecker.Core.Interfaces;
 using DiskChecker.Core.Models;
+using DiskChecker.UI.Avalonia.Services;
 using DiskChecker.UI.Avalonia.Services.Interfaces;
 
 namespace DiskChecker.UI.Avalonia.ViewModels;
@@ -31,6 +33,7 @@ public partial class DiscoveredBackup : ObservableObject
     public int Parts { get; init; } = 1;
     public List<string> Folders { get; init; } = new();
     public string FoldersSummary { get; init; } = string.Empty;
+    public string? ImagePathOverride { get; init; }
 }
 
 /// <summary>
@@ -69,6 +72,8 @@ public partial class RestoreViewModel : ViewModelBase, INavigableViewModel, IDis
     private readonly INavigationService _navigationService;
     private readonly ISelectedDiskService _selectedDiskService;
     private readonly IDialogService _dialogService;
+    private readonly IDiskCacheService? _diskCacheService;
+    private readonly IDiskDetectionService? _diskDetectionService;
 
     private CancellationTokenSource? _restoreCancellation;
     private bool _disposed;
@@ -102,6 +107,8 @@ public partial class RestoreViewModel : ViewModelBase, INavigableViewModel, IDis
     public ObservableCollection<RestoreTargetItem> TargetDisks { get; } = new();
 
     public IAsyncRelayCommand ScanForBackupsCommand { get; }
+    public IAsyncRelayCommand SelectBackupFileCommand { get; }
+    public IAsyncRelayCommand SelectRestoreTargetFileCommand { get; }
     public IAsyncRelayCommand StartRestoreCommand { get; }
     public IRelayCommand CancelRestoreCommand { get; }
     public IRelayCommand GoBackCommand { get; }
@@ -110,13 +117,19 @@ public partial class RestoreViewModel : ViewModelBase, INavigableViewModel, IDis
     public RestoreViewModel(
         INavigationService navigationService,
         ISelectedDiskService selectedDiskService,
-        IDialogService dialogService)
+        IDialogService dialogService,
+        IDiskCacheService? diskCacheService = null,
+        IDiskDetectionService? diskDetectionService = null)
     {
         _navigationService = navigationService;
         _selectedDiskService = selectedDiskService;
         _dialogService = dialogService;
+        _diskCacheService = diskCacheService;
+        _diskDetectionService = diskDetectionService;
 
         ScanForBackupsCommand = new AsyncRelayCommand(ScanForBackupsAsync);
+        SelectBackupFileCommand = new AsyncRelayCommand(SelectBackupFileAsync);
+        SelectRestoreTargetFileCommand = new AsyncRelayCommand(SelectRestoreTargetFileAsync);
         StartRestoreCommand = new AsyncRelayCommand(StartRestoreAsync,
             () => Phase == RestorePhase.Ready && HasSelectedBackup && TargetDisks.Any(t => t.IsSelected));
         CancelRestoreCommand = new RelayCommand(CancelRestore);
@@ -136,20 +149,17 @@ public partial class RestoreViewModel : ViewModelBase, INavigableViewModel, IDis
         await ScanForBackupsAsync();
         await ScanTargetDisksAsync();
 
-        if (DiscoveredBackups.Count > 0)
-        {
-            Phase = RestorePhase.Ready;
-            StatusMessage = $"Nalezeno {DiscoveredBackups.Count} záloh. Vyberte zálohu a cílový disk.";
-        }
-        else
-        {
-            Phase = RestorePhase.Idle;
-            StatusMessage = "Nenalezeny žádné zálohy. Nejprve proveďte zálohu disku.";
-        }
+        Phase = RestorePhase.Ready;
+        StatusMessage = DiscoveredBackups.Count > 0
+            ? $"Nalezeno {DiscoveredBackups.Count} záloh. Vyberte zálohu a cílový disk, nebo zvolte manifest ručně."
+            : "Automaticky nebyly nalezeny žádné zálohy. Můžete ručně vybrat backup_manifest.json / VHDx / IMG / RAW soubor.";
     }
 
     private async Task ScanForBackupsAsync()
     {
+        var previous = SelectedBackup?.ManifestPath;
+        HasSelectedBackup = false;
+        SelectedBackup = null;
         DiscoveredBackups.Clear();
 
         try
@@ -160,7 +170,8 @@ public partial class RestoreViewModel : ViewModelBase, INavigableViewModel, IDis
 
             foreach (var drive in allDrives)
             {
-                await Task.Run(() => ScanDriveForBackups(drive.RootDirectory.FullName));
+                ScanDriveForBackups(drive.RootDirectory.FullName);
+                await Dispatcher.UIThread.InvokeAsync(() => { }, DispatcherPriority.Background);
             }
 
             // Also scan common backup locations
@@ -190,6 +201,24 @@ public partial class RestoreViewModel : ViewModelBase, INavigableViewModel, IDis
         DiscoveredBackups.Clear();
         foreach (var b in sorted)
             DiscoveredBackups.Add(b);
+
+        if (!string.IsNullOrWhiteSpace(previous))
+        {
+            var restoredSelection = DiscoveredBackups.FirstOrDefault(b => string.Equals(b.ManifestPath, previous, StringComparison.OrdinalIgnoreCase));
+            if (restoredSelection != null)
+            {
+                SelectedBackup = restoredSelection;
+                HasSelectedBackup = true;
+            }
+        }
+
+        if (Phase is RestorePhase.Scanning or RestorePhase.Idle or RestorePhase.Ready)
+        {
+            Phase = RestorePhase.Ready;
+            StatusMessage = DiscoveredBackups.Count > 0
+                ? $"Nalezeno {DiscoveredBackups.Count} záloh. Vyberte zálohu a cílový disk."
+                : "Automaticky nebyly nalezeny žádné zálohy. Použijte ruční výběr zálohy.";
+        }
     }
 
     private void ScanDriveForBackups(string rootPath)
@@ -223,12 +252,27 @@ public partial class RestoreViewModel : ViewModelBase, INavigableViewModel, IDis
             var manifestPath = Path.Combine(directoryPath, "backup_manifest.json");
             if (!File.Exists(manifestPath)) return;
 
+            var backup = CreateDiscoveredBackupFromManifest(manifestPath);
+            if (backup == null) return;
+
+            Dispatcher.UIThread.Post(() => AddDiscoveredBackupIfNew(backup));
+        }
+        catch { }
+    }
+
+    private static DiscoveredBackup? CreateDiscoveredBackupFromManifest(string manifestPath)
+    {
+        try
+        {
+            if (!File.Exists(manifestPath)) return null;
+            var directoryPath = Path.GetDirectoryName(manifestPath) ?? Environment.CurrentDirectory;
             var json = File.ReadAllText(manifestPath);
             using var doc = JsonDocument.Parse(json);
             var root = doc.RootElement;
 
             var mode = root.TryGetProperty("Mode", out var modeEl) ? modeEl.GetString() ?? "Unknown" : "Unknown";
             var totalBytes = root.TryGetProperty("TotalBytes", out var tbEl) ? tbEl.GetInt64() : 0;
+            if (totalBytes <= 0 && root.TryGetProperty("VirtualDiskBytes", out var vdbEl)) totalBytes = vdbEl.GetInt64();
             var parts = root.TryGetProperty("Parts", out var pEl) ? pEl.GetInt32() : 1;
             var sourceDrive = root.TryGetProperty("SourceDrive", out var sdEl) ? sdEl.GetString() ?? "?" : "?";
             var sourceModel = root.TryGetProperty("SourceModel", out var smEl) ? smEl.GetString() ?? "?" : "?";
@@ -262,91 +306,194 @@ public partial class RestoreViewModel : ViewModelBase, INavigableViewModel, IDis
             if (DateTime.TryParse(backupDate, out var dt))
                 dateDisplay = dt.ToLocalTime().ToString("dd.MM.yyyy HH:mm");
 
-            Dispatcher.UIThread.Post(() =>
+            return new DiscoveredBackup
             {
-                DiscoveredBackups.Add(new DiscoveredBackup
+                ManifestPath = manifestPath,
+                BackupRoot = directoryPath,
+                SourceDrivePath = sourceDrive,
+                SourceModel = sourceModel,
+                BackupDate = dateDisplay,
+                Mode = mode switch
                 {
-                    ManifestPath = manifestPath,
-                    BackupRoot = directoryPath,
-                    SourceDrivePath = sourceDrive,
-                    SourceModel = sourceModel,
-                    BackupDate = dateDisplay,
-                    Mode = mode switch
-                    {
-                        "RawImage" => "Raw obraz",
-                        "VhdxImage" => "VHDx obraz",
-                        _ => "Souborová"
-                    },
-                    TotalBytes = totalBytes,
-                    TotalBytesText = FormatBytesLong(totalBytes),
-                    Parts = parts,
-                    Folders = folders,
-                    FoldersSummary = foldersSummary
-                });
-            });
+                    "RawImage" => "Raw obraz",
+                    "VhdxImage" => "VHDx obraz",
+                    _ => "Souborová"
+                },
+                TotalBytes = totalBytes,
+                TotalBytesText = FormatBytesLong(totalBytes),
+                Parts = parts,
+                Folders = folders,
+                FoldersSummary = foldersSummary
+            };
         }
-        catch { }
+        catch { return null; }
+    }
+
+    private void AddDiscoveredBackupIfNew(DiscoveredBackup backup)
+    {
+        if (DiscoveredBackups.Any(b => string.Equals(b.ManifestPath, backup.ManifestPath, StringComparison.OrdinalIgnoreCase)))
+            return;
+        DiscoveredBackups.Add(backup);
     }
 
     private async Task ScanTargetDisksAsync()
     {
         TargetDisks.Clear();
 
-        var allDrives = System.IO.DriveInfo.GetDrives()
-            .Where(d => d.IsReady)
-            .ToList();
-
-        foreach (var drive in allDrives)
+        var added = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        void AddTarget(RestoreTargetItem item)
         {
-            var isSource = SelectedBackup != null &&
-                (drive.Name.StartsWith(SelectedBackup.SourceDrivePath, StringComparison.OrdinalIgnoreCase) ||
-                 SelectedBackup.SourceDrivePath.StartsWith(drive.Name, StringComparison.OrdinalIgnoreCase));
+            if (string.IsNullOrWhiteSpace(item.DrivePath) || !added.Add(item.DrivePath)) return;
+            TargetDisks.Add(item);
+        }
 
-            string warning = "";
-            if (isSource)
-                warning = "⚠️ Toto je původní disk! Obnova na něj může přepsat data.";
-            else if (drive.DriveType == DriveType.CDRom)
-                warning = "CD/DVD – nelze použít";
-
-            TargetDisks.Add(new RestoreTargetItem
+        foreach (var drive in System.IO.DriveInfo.GetDrives().Where(d => d.IsReady && d.DriveType != DriveType.CDRom))
+        {
+            var isSource = IsSameAsBackupSource(drive.Name);
+            AddTarget(new RestoreTargetItem
             {
                 DrivePath = drive.Name,
                 DisplayName = $"{drive.Name} ({drive.VolumeLabel}) — {drive.DriveFormat}",
                 TotalSize = drive.TotalSize,
                 TotalSizeText = FormatBytesLong(drive.TotalSize),
                 IsSourceDisk = isSource,
-                Warning = warning,
+                Warning = isSource ? "⚠️ Toto je původní disk! Obnova na něj může přepsat data." : "Obnova na kořen svazku / souborový cíl",
                 IsSelected = false
             });
         }
 
-        // Also add physical drives for raw restore
         try
         {
-            var physicalDrives = System.IO.DriveInfo.GetDrives()
-                .Where(d => !d.IsReady)
-                .Select(d => d.Name)
-                .ToList();
+            IReadOnlyList<CoreDriveInfo> physicalDrives = Array.Empty<CoreDriveInfo>();
+            if (_diskCacheService != null)
+                physicalDrives = await _diskCacheService.GetDrivesAsync();
+            else if (_diskDetectionService != null)
+                physicalDrives = (await _diskDetectionService.GetDrivesAsync()).ToList();
 
-            foreach (var physPath in physicalDrives)
+            foreach (var disk in physicalDrives.Where(d => d.IsPhysical || d.Path.StartsWith("/dev/", StringComparison.OrdinalIgnoreCase) || d.Path.StartsWith(@"\\.\", StringComparison.OrdinalIgnoreCase)))
             {
-                if (TargetDisks.Any(t => t.DrivePath == physPath)) continue;
-
-                TargetDisks.Add(new RestoreTargetItem
+                var isSource = IsSameAsBackupSource(disk.Path);
+                AddTarget(new RestoreTargetItem
                 {
-                    DrivePath = physPath,
-                    DisplayName = $"{physPath} (nepřipojený/logický disk)",
-                    TotalSize = 0,
-                    TotalSizeText = "?",
-                    IsSourceDisk = false,
-                    Warning = "Disk není připojen – raw restore možný",
+                    DrivePath = disk.Path,
+                    DisplayName = $"{disk.Name ?? disk.Model ?? disk.Path} — {disk.Path}",
+                    TotalSize = disk.TotalSize,
+                    TotalSizeText = disk.TotalSize > 0 ? FormatBytesLong(disk.TotalSize) : "?",
+                    IsSourceDisk = isSource,
+                    Warning = isSource ? "⚠️ Toto je původní fyzický disk! Obnova jej přepíše." : "Fyzický disk — raw/VHDx obnova přepíše data",
                     IsSelected = false
                 });
             }
         }
-        catch { }
+        catch (Exception ex)
+        {
+            _restoreLog.Add($"[TARGET SCAN] Fyzické disky se nepodařilo načíst: {ex.Message}");
+        }
 
-        await Task.CompletedTask;
+        StartRestoreCommand.NotifyCanExecuteChanged();
+    }
+
+    private bool IsSameAsBackupSource(string path)
+    {
+        return SelectedBackup != null &&
+            (path.StartsWith(SelectedBackup.SourceDrivePath, StringComparison.OrdinalIgnoreCase) ||
+             SelectedBackup.SourceDrivePath.StartsWith(path, StringComparison.OrdinalIgnoreCase));
+    }
+
+    private async Task SelectBackupFileAsync()
+    {
+        var paths = await _dialogService.PickFilesAsync("Vyberte backup_manifest.json, .vhdx, .img nebo .raw zálohu", allowMultiple: false);
+        var path = paths.Count > 0 ? paths[0] : null;
+        if (string.IsNullOrWhiteSpace(path)) return;
+
+        try
+        {
+            DiscoveredBackup? backup;
+            if (Path.GetFileName(path).Equals("backup_manifest.json", StringComparison.OrdinalIgnoreCase) ||
+                Path.GetExtension(path).Equals(".json", StringComparison.OrdinalIgnoreCase))
+            {
+                backup = CreateDiscoveredBackupFromManifest(path);
+            }
+            else
+            {
+                backup = CreateDiscoveredBackupFromImage(path);
+            }
+
+            if (backup == null)
+            {
+                await _dialogService.ShowErrorAsync("Záloha", "Vybraný soubor nelze načíst jako zálohu DiskChecker.");
+                return;
+            }
+
+            AddDiscoveredBackupIfNew(backup);
+            SelectedBackup = DiscoveredBackups.FirstOrDefault(b => string.Equals(b.ManifestPath, backup.ManifestPath, StringComparison.OrdinalIgnoreCase)) ?? backup;
+            HasSelectedBackup = true;
+            Phase = RestorePhase.Ready;
+            StatusMessage = $"Ručně vybrána záloha: {SelectedBackup.SourceModel} ({SelectedBackup.TotalBytesText}).";
+            await ScanTargetDisksAsync();
+            StartRestoreCommand.NotifyCanExecuteChanged();
+        }
+        catch (Exception ex)
+        {
+            await _dialogService.ShowErrorAsync("Chyba výběru zálohy", ex.Message);
+        }
+    }
+
+    private static DiscoveredBackup? CreateDiscoveredBackupFromImage(string imagePath)
+    {
+        if (!File.Exists(imagePath)) return null;
+        var ext = Path.GetExtension(imagePath).ToLowerInvariant();
+        var isVhdx = ext == ".vhdx";
+        long totalBytes;
+        long parts = 1;
+
+        if (isVhdx && VhdxImageUtility.TryReadInfo(imagePath, out var info))
+            totalBytes = info.VirtualDiskSizeBytes;
+        else
+            totalBytes = new FileInfo(imagePath).Length;
+
+        var manifestPath = Path.Combine(Path.GetDirectoryName(imagePath) ?? Environment.CurrentDirectory, "backup_manifest.manual.json");
+        return new DiscoveredBackup
+        {
+            ManifestPath = manifestPath,
+            BackupRoot = Path.GetDirectoryName(imagePath) ?? Environment.CurrentDirectory,
+            SourceDrivePath = "?",
+            SourceModel = Path.GetFileName(imagePath),
+            BackupDate = File.GetLastWriteTime(imagePath).ToString("dd.MM.yyyy HH:mm"),
+            Mode = isVhdx ? "VHDx obraz" : "Raw obraz",
+            TotalBytes = totalBytes,
+            TotalBytesText = FormatBytesLong(totalBytes),
+            Parts = (int)parts,
+            FoldersSummary = isVhdx ? "Ručně vybraný VHDx obraz" : "Ručně vybraný RAW/IMG obraz",
+            ImagePathOverride = imagePath
+        };
+    }
+
+    private async Task SelectRestoreTargetFileAsync()
+    {
+        var suggested = SelectedBackup?.Mode == "VHDx obraz" ? "restored_disk.img" : "restored_disk.img";
+        var path = await _dialogService.PickSaveFileAsync("Vyberte cílový IMG soubor pro testovací obnovu", suggested);
+        if (string.IsNullOrWhiteSpace(path)) return;
+
+        var size = File.Exists(path) ? new FileInfo(path).Length : 0;
+        var existing = TargetDisks.FirstOrDefault(t => string.Equals(t.DrivePath, path, StringComparison.OrdinalIgnoreCase));
+        if (existing == null)
+        {
+            TargetDisks.Add(new RestoreTargetItem
+            {
+                DrivePath = path,
+                DisplayName = $"Testovací IMG soubor — {path}",
+                TotalSize = size,
+                TotalSizeText = size > 0 ? FormatBytesLong(size) : "bude vytvořen/zvětšen dle zálohy",
+                Warning = "Souborový cíl pro bezpečné testování obnovy",
+                IsSelected = true
+            });
+        }
+
+        foreach (var t in TargetDisks)
+            t.IsSelected = string.Equals(t.DrivePath, path, StringComparison.OrdinalIgnoreCase);
+
+        StartRestoreCommand.NotifyCanExecuteChanged();
     }
 
     private void SelectBackup()
@@ -550,6 +697,9 @@ public partial class RestoreViewModel : ViewModelBase, INavigableViewModel, IDis
 
     private static IReadOnlyList<string> FindRawImageParts(DiscoveredBackup backup)
     {
+        if (!string.IsNullOrWhiteSpace(backup.ImagePathOverride) && File.Exists(backup.ImagePathOverride))
+            return new[] { backup.ImagePathOverride };
+
         var result = new List<string>();
 
         try
@@ -679,7 +829,20 @@ public partial class RestoreViewModel : ViewModelBase, INavigableViewModel, IDis
         const int bufferSize = 1024 * 1024; // 1MB buffer
         var buffer = new byte[bufferSize];
 
-        using var targetStream = new FileStream(targetPath, FileMode.Open, FileAccess.Write,
+        var isBlockDeviceTarget = targetPath.StartsWith("/dev/", StringComparison.OrdinalIgnoreCase) ||
+                                  targetPath.StartsWith(@"\\.\", StringComparison.OrdinalIgnoreCase);
+        if (!isBlockDeviceTarget)
+        {
+            var restoreLimit = _isTruncatedRestore && _truncatedRestoreBytes > 0 ? _truncatedRestoreBytes : SelectedBackup.TotalBytes;
+            if (!File.Exists(targetPath) || new FileInfo(targetPath).Length < restoreLimit)
+            {
+                Directory.CreateDirectory(Path.GetDirectoryName(targetPath) ?? Environment.CurrentDirectory);
+                await using var createStream = new FileStream(targetPath, FileMode.OpenOrCreate, FileAccess.Write, FileShare.Read, 4096, FileOptions.SequentialScan);
+                createStream.SetLength(restoreLimit);
+            }
+        }
+
+        using var targetStream = new FileStream(targetPath, FileMode.OpenOrCreate, FileAccess.Write,
             FileShare.None, bufferSize, FileOptions.SequentialScan);
 
         long totalSourceDataBytes = 0;
@@ -899,6 +1062,19 @@ public partial class RestoreViewModel : ViewModelBase, INavigableViewModel, IDis
             var isBlockDeviceTarget = targetPath.StartsWith("/dev/", StringComparison.OrdinalIgnoreCase) ||
                                       targetPath.StartsWith(@"\.\", StringComparison.OrdinalIgnoreCase);
 
+            var targetInfo = new FileInfo(targetPath);
+            if (!isBlockDeviceTarget && targetInfo.Exists && targetInfo.Length >= totalSourceBytes)
+            {
+                var expectedFromParts = await ComputeImageDataSha256Async(SelectedBackup, allParts, totalSourceBytes, ct);
+                var actualFromTarget = await ComputeFileRegionSha256Async(targetPath, 0, totalSourceBytes, ct);
+                IsVerifyOk = string.Equals(actualFromTarget, expectedFromParts, StringComparison.OrdinalIgnoreCase);
+                VerifyResult = IsVerifyOk
+                    ? $"✅ Raw/VHDx obnova ověřena porovnáním se zálohou — {FormatBytesLong(totalSourceBytes)}"
+                    : "❌ Obnovený soubor nesouhlasí s daty v záloze.";
+                _restoreLog.Add($"[VERIFY] target={actualFromTarget}, backup={expectedFromParts}");
+                return;
+            }
+
             if (isBlockDeviceTarget)
             {
                 IsVerifyOk = true;
@@ -906,7 +1082,6 @@ public partial class RestoreViewModel : ViewModelBase, INavigableViewModel, IDis
                 return;
             }
 
-            var targetInfo = new FileInfo(targetPath);
             IsVerifyOk = targetInfo.Exists && targetInfo.Length >= totalSourceBytes;
             VerifyResult = IsVerifyOk
                 ? $"✅ Legacy raw obraz ověřen velikostí — {FormatBytesLong(targetInfo.Length)}"
@@ -916,6 +1091,56 @@ public partial class RestoreViewModel : ViewModelBase, INavigableViewModel, IDis
         {
             VerifyResult = $"Ověření selhalo: {ex.Message}";
             IsVerifyOk = false;
+        }
+    }
+
+    private static async Task<string> ComputeImageDataSha256Async(DiscoveredBackup backup, IReadOnlyList<string> parts, long bytesToHash, CancellationToken ct)
+    {
+        const int bufferSize = 1024 * 1024;
+        var buffer = new byte[bufferSize];
+        using var hash = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
+        var isVhdx = backup.Mode == "VHDx obraz";
+        var dataOffset = TryReadManifestLong(backup.ManifestPath, "DataStartOffset") ?? 0;
+        if (isVhdx && dataOffset <= 0 && parts.Count > 0 && VhdxImageUtility.TryReadInfo(parts[0], out var info))
+            dataOffset = info.DataStartOffset;
+
+        long remaining = bytesToHash;
+        foreach (var partPath in parts)
+        {
+            await using var stream = new FileStream(partPath, FileMode.Open, FileAccess.Read, FileShare.Read, bufferSize, FileOptions.SequentialScan);
+            if (isVhdx && dataOffset > 0)
+                stream.Position = dataOffset;
+
+            while (remaining > 0)
+            {
+                ct.ThrowIfCancellationRequested();
+                var toRead = (int)Math.Min(buffer.Length, remaining);
+                var read = await stream.ReadAsync(buffer.AsMemory(0, toRead), ct);
+                if (read == 0) break;
+                hash.AppendData(buffer, 0, read);
+                remaining -= read;
+            }
+
+            if (remaining == 0) break;
+        }
+
+        if (remaining != 0)
+            throw new EndOfStreamException("Neočekávaný konec zálohy při ověřování obnovy.");
+
+        return Convert.ToHexString(hash.GetHashAndReset());
+    }
+
+    private static long? TryReadManifestLong(string manifestPath, string propertyName)
+    {
+        try
+        {
+            if (!File.Exists(manifestPath)) return null;
+            using var doc = JsonDocument.Parse(File.ReadAllText(manifestPath));
+            return doc.RootElement.TryGetProperty(propertyName, out var el) && el.ValueKind == JsonValueKind.Number ? el.GetInt64() : null;
+        }
+        catch
+        {
+            return null;
         }
     }
 

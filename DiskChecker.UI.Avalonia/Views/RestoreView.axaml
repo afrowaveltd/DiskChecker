@@ -48,13 +48,16 @@
 
         <!-- ═══ MAIN CONTENT (Ready / Running / Verifying / Completed) ═══ -->
         <Grid Grid.Row="2" ColumnDefinitions="*,*" RowDefinitions="Auto,*" Margin="0,12,0,0"
-              IsVisible="{Binding Phase, Converter={StaticResource EnumNeqConverter}, ConverterParameter=Idle}">
+              IsVisible="{Binding Phase, Converter={StaticResource EnumNeqConverter}, ConverterParameter=Scanning}">
 
             <!-- LEFT: Backup list -->
             <Border Grid.Row="0" Grid.Column="0" Padding="12" CornerRadius="8"
                     Background="{DynamicResource ThemeCardBrush}" Margin="0,0,6,0">
                 <StackPanel Spacing="8">
-                    <TextBlock Text="{Binding L[RestoreView.FoundBackups]}" FontSize="14" FontWeight="Bold"/>
+                    <Grid ColumnDefinitions="*,Auto">
+                        <TextBlock Grid.Column="0" Text="{Binding L[RestoreView.FoundBackups]}" FontSize="14" FontWeight="Bold"/>
+                        <Button Grid.Column="1" Content="📂 Ručně vybrat" Command="{Binding SelectBackupFileCommand}" Classes="Secondary" Padding="8,4"/>
+                    </Grid>
                     <ScrollViewer Height="200">
                         <ItemsControl ItemsSource="{Binding DiscoveredBackups}">
                             <ItemsControl.ItemTemplate>
@@ -92,7 +95,10 @@
             <Border Grid.Row="0" Grid.Column="1" Padding="12" CornerRadius="8"
                     Background="{DynamicResource ThemeCardBrush}" Margin="6,0,0,0">
                 <StackPanel Spacing="8">
-                    <TextBlock Text="{Binding L[RestoreView.TargetDisk]}" FontSize="14" FontWeight="Bold"/>
+                    <Grid ColumnDefinitions="*,Auto">
+                        <TextBlock Grid.Column="0" Text="{Binding L[RestoreView.TargetDisk]}" FontSize="14" FontWeight="Bold"/>
+                        <Button Grid.Column="1" Content="🧪 Cílový IMG" Command="{Binding SelectRestoreTargetFileCommand}" Classes="Secondary" Padding="8,4"/>
+                    </Grid>
                     <ScrollViewer Height="200">
                         <ItemsControl ItemsSource="{Binding TargetDisks}">
                             <ItemsControl.ItemTemplate>
@@ -247,6 +253,8 @@
                     IsVisible="{Binding Phase, Converter={StaticResource EnumNeqConverter}, ConverterParameter=Running}"/>
             <Button Content="{Binding L[RestoreView.Interrupt]}" Command="{Binding CancelRestoreCommand}" Classes="Danger"
                     IsVisible="{Binding Phase, Converter={StaticResource EnumInConverter}, ConverterParameter='Running,Verifying'}"/>
+            <Button Content="📂 RUČNĚ VYBRAT ZÁLOHU" Command="{Binding SelectBackupFileCommand}" Classes="Secondary"
+                    IsVisible="{Binding Phase, Converter={StaticResource EnumEqConverter}, ConverterParameter=Ready}"/>
             <Button Content="💾 SPUSTIT OBNOVU" Command="{Binding StartRestoreCommand}" Classes="Primary"
                     IsVisible="{Binding Phase, Converter={StaticResource EnumEqConverter}, ConverterParameter=Ready}"/>
         </StackPanel>

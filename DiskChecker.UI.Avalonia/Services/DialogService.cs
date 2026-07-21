@@ -116,6 +116,22 @@ public class DialogService : IDialogService
             .ToList();
     }
 
+
+    public async Task<string?> PickSaveFileAsync(string title, string? suggestedFileName = null)
+    {
+        var mainWindow = GetMainWindow();
+        if (mainWindow == null)
+            return null;
+
+        var result = await mainWindow.StorageProvider.SaveFilePickerAsync(new FilePickerSaveOptions
+        {
+            Title = title,
+            SuggestedFileName = suggestedFileName
+        });
+
+        return result?.Path.LocalPath;
+    }
+
     private async Task<MessageBoxResult> ShowDialogAsync(string title, string message, DialogType type)
     {
         var messageBox = new MessageBoxWindow();

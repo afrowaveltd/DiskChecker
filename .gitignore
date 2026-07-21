@@ -57,3 +57,7 @@ installer/*.exe
 installer/*.msi
 installer/*.deb
 installer/*.rpm
+# Dynamicky generované testovací image soubory
+tests/DiskChecker.Tests/Fixtures/*.img
+tests/DiskChecker.Tests/Fixtures/*.raw
+tests/DiskChecker.Tests/Fixtures/*.vhdx

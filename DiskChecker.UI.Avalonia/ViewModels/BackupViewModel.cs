@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Diagnostics;
@@ -14,6 +14,7 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using DiskChecker.Core.Interfaces;
 using DiskChecker.Core.Models;
+using DiskChecker.UI.Avalonia.Services;
 using DiskChecker.UI.Avalonia.Services.Interfaces;
 
 namespace DiskChecker.UI.Avalonia.ViewModels;
@@ -901,7 +902,7 @@ public partial class BackupViewModel : ViewModelBase, INavigableViewModel, IDisp
     {
         if (SelectedMode == BackupMode.VhdxImage)
         {
-            TotalRequiredBytes = SourceDrive?.TotalSize > 0 ? CalculateRequiredVhdxBytes(SourceDrive.TotalSize) : 0;
+            TotalRequiredBytes = SourceDrive?.TotalSize > 0 ? VhdxImageUtility.CalculateRequiredFileBytes(SourceDrive.TotalSize) : 0;
         }
         else if (SelectedMode == BackupMode.RawImage)
         {
@@ -958,11 +959,7 @@ public partial class BackupViewModel : ViewModelBase, INavigableViewModel, IDisp
         return Math.Max(0, target.TotalFreeSpace - (SystemReserveBytes / selectedCount));
     }
 
-    private static long CalculateRequiredVhdxBytes(long diskSizeBytes)
-    {
-        const int blockSize = 1024 * 1024;
-        return CalculateVhdxDataStartOffset(diskSizeBytes) + RoundUp(diskSizeBytes, blockSize);
-    }
+    private static long CalculateRequiredVhdxBytes(long diskSizeBytes) => VhdxImageUtility.CalculateRequiredFileBytes(diskSizeBytes);
 
     private void DistributeAllocation()
     {
@@ -1427,22 +1424,19 @@ public partial class BackupViewModel : ViewModelBase, INavigableViewModel, IDisp
         const int blockSize = 1024 * 1024; // 1 MiB
         var buffer = new byte[blockSize];
 
-        var dataStartOffset = CalculateVhdxDataStartOffset(totalSize);
-        var requiredBytes = CalculateRequiredVhdxBytes(totalSize);
+        var dataStartOffset = VhdxImageUtility.CalculateDataStartOffset(totalSize);
+        var requiredBytes = VhdxImageUtility.CalculateRequiredFileBytes(totalSize);
         var targetUsableBytes = GetUsableTargetBytes(targetDrives[0]);
         if (targetUsableBytes < requiredBytes)
             throw new IOException($"Cílový disk nemá dost místa pro jeden platný VHDx soubor. Potřeba {FormatBytesLong(requiredBytes)}, dostupné {FormatBytesLong(targetUsableBytes)}. VHDx zálohu nelze bezpečně dělit na více částí; vyberte větší cílový disk nebo použijte raw režim.");
         targetDrives[0].AllocatedBytes = requiredBytes;
 
         // Write VHDx header + BAT — fixed VHDx, all blocks pre-allocated
-        await WriteVhdxHeaderAsync(vhdxPath, totalSize, ct);
+        await VhdxImageUtility.WriteFixedHeaderAsync(vhdxPath, totalSize, ct);
 
         // Open for writing at specific offsets (not append)
         using var vhdxStream = new FileStream(vhdxPath, FileMode.Open, FileAccess.Write,
             FileShare.Read, blockSize, FileOptions.SequentialScan);
-
-        // Data start offset of the VHDx payload area.
-        const int logicalSectorSize = 1048576;
 
         try
         {
@@ -1492,10 +1486,9 @@ public partial class BackupViewModel : ViewModelBase, INavigableViewModel, IDisp
                     consecutiveErrors = 0;
                 }
 
-                // Write data at the correct offset in the fixed VHDx
-                long chunkIndex = bytesRead / logicalSectorSize;
-                long writeOffset = dataStartOffset + chunkIndex * logicalSectorSize;
-                vhdxStream.Position = writeOffset;
+                // Write data sequentially into the VHDx payload area.
+                // Header creation already pre-extends the file to the rounded payload size.
+                vhdxStream.Position = dataStartOffset + bytesRead;
                 await vhdxStream.WriteAsync(buffer.AsMemory(0, bytesReadNow), ct);
 
                 bytesRead += bytesReadNow;
@@ -1533,6 +1526,8 @@ public partial class BackupViewModel : ViewModelBase, INavigableViewModel, IDisp
             MountableImage = vhdxPath,
             TotalBytes = bytesRead,
             BlockSize = blockSize,
+            ImageFileBytes = new FileInfo(vhdxPath).Length,
+            VirtualDiskBytes = VhdxImageUtility.RoundUp(bytesRead, blockSize),
             Parts = 1,
             PartFiles = new[] { Path.GetFileName(vhdxPath) },
             PartPaths = new[] { vhdxPath },
@@ -1543,18 +1538,9 @@ public partial class BackupViewModel : ViewModelBase, INavigableViewModel, IDisp
         await JsonSerializer.SerializeAsync(manifestStream, manifest, _jsonOptions, ct);
         _backupLog.Add($"[{DateTime.Now:HH:mm:ss}] VHDx záloha dokončena: {FormatBytesLong(bytesRead)} v jednom platném VHDx souboru");
     }
-private static long RoundUp(long value, long alignment) => ((value + alignment - 1) / alignment) * alignment;
+private static long RoundUp(long value, long alignment) => VhdxImageUtility.RoundUp(value, alignment);
 
-    private static long CalculateVhdxDataStartOffset(long diskSizeBytes)
-    {
-        const int logicalSectorSize = 1048576;
-        const int physicalSectorSize = 4096;
-        long diskSizeRounded = RoundUp(diskSizeBytes, logicalSectorSize);
-        long chunkCount = diskSizeRounded / logicalSectorSize;
-        long batSize = RoundUp(chunkCount * 8, physicalSectorSize);
-        long metadataEnd = 256L * 1024 + batSize + 1024L * 1024;
-        return RoundUp(metadataEnd, logicalSectorSize);
-    }
+    private static long CalculateVhdxDataStartOffset(long diskSizeBytes) => VhdxImageUtility.CalculateDataStartOffset(diskSizeBytes);
 
     private static async Task WriteVhdxHeaderAsync(string path, long diskSizeBytes, CancellationToken ct)
     {
@@ -1864,8 +1850,8 @@ private static long RoundUp(long value, long alignment) => ((value + alignment -
 
         var backupRoot = Path.GetDirectoryName(manifestPath)!;
         var vhdxPath = Path.Combine(backupRoot, "disk_image_converted.vhdx");
-        var dataStartOffset = CalculateVhdxDataStartOffset(totalBytes);
-        await WriteVhdxHeaderAsync(vhdxPath, totalBytes, ct);
+        var dataStartOffset = VhdxImageUtility.CalculateDataStartOffset(totalBytes);
+        await VhdxImageUtility.WriteFixedHeaderAsync(vhdxPath, totalBytes, ct);
 
         const int blockSize = 1024 * 1024;
         var buffer = new byte[blockSize];
@@ -1897,6 +1883,7 @@ private static long RoundUp(long value, long alignment) => ((value + alignment -
         if (copied != totalBytes) throw new IOException($"Převedeno jen {FormatBytesLong(copied)} z {FormatBytesLong(totalBytes)}.");
 
         var sha = Convert.ToHexString(hash.GetHashAndReset());
+        VhdxImageUtility.ValidateFixedImageLength(vhdxPath, totalBytes);
         File.SetAttributes(vhdxPath, File.GetAttributes(vhdxPath) | FileAttributes.ReadOnly);
         var convertedManifest = new
         {
@@ -1907,6 +1894,8 @@ private static long RoundUp(long value, long alignment) => ((value + alignment -
             MountableImage = vhdxPath,
             TotalBytes = totalBytes,
             DataStartOffset = dataStartOffset,
+            ImageFileBytes = new FileInfo(vhdxPath).Length,
+            VirtualDiskBytes = VhdxImageUtility.RoundUp(totalBytes, blockSize),
             Sha256 = sha,
             ReadOnly = true,
             Note = "VHDx vytvořený z RAW zálohy. Soubor byl označen jako read-only; připojujte ideálně pouze pro čtení."
