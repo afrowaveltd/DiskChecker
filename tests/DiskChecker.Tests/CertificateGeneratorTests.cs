@@ -271,6 +271,210 @@ public class CertificateGeneratorTests
         Assert.DoesNotContain("bezpe", certificate.RecommendationNotes, StringComparison.OrdinalIgnoreCase);
     }
 
+
+    [Fact]
+    public async Task GenerateCertificateAsync_DeviceFailureDuringWrite_CreatesFailedRetirementCertificate()
+    {
+        var logger = Substitute.For<ILogger<CertificateGenerator>>();
+        var settings = Substitute.For<ISettingsService>();
+        settings.GetCertificatePathAsync().Returns((string?)null);
+        var generator = new CertificateGenerator(logger, settings);
+
+        var session = new TestSession
+        {
+            Id = 100,
+            TestType = TestType.Sanitization,
+            Status = TestStatus.Failed,
+            Result = TestResult.Fail,
+            Grade = "A",
+            Score = 97,
+            HealthAssessment = HealthAssessment.Good,
+            WriteErrors = 1,
+            Notes = "Sanitizační test selhal: Device disappeared during write",
+            Errors = new List<TestError>
+            {
+                new() { Phase = "Write", ErrorCode = "DEVICE_DISAPPEARED", Message = "Device disappeared during write", IsCritical = true }
+            }
+        };
+
+        var card = new DiskCard { Id = 100, ModelName = "Disconnecting Drive", SerialNumber = "DROPW", Capacity = 1_000_000_000_000 };
+
+        var certificate = await generator.GenerateCertificateAsync(session, card);
+
+        Assert.Equal("F", certificate.Grade);
+        Assert.Equal(0, certificate.Score);
+        Assert.Equal(HealthAssessment.Critical.ToString(), certificate.HealthStatus);
+        Assert.False(certificate.Recommended);
+        Assert.False(certificate.DataVerified);
+        Assert.Contains("SELHAL", certificate.RecommendationNotes, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("Write", certificate.RecommendationNotes, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("vyřad", certificate.RecommendationNotes, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("Fáze selhání: Write", certificate.Notes, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("Device disappeared", certificate.Notes, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task GenerateCertificateAsync_DeviceFailureDuringRead_CreatesFailedRetirementCertificate()
+    {
+        var logger = Substitute.For<ILogger<CertificateGenerator>>();
+        var settings = Substitute.For<ISettingsService>();
+        settings.GetCertificatePathAsync().Returns((string?)null);
+        var generator = new CertificateGenerator(logger, settings);
+
+        var session = new TestSession
+        {
+            Id = 101,
+            TestType = TestType.Sanitization,
+            Status = TestStatus.Failed,
+            Result = TestResult.Fail,
+            Grade = "B",
+            Score = 82,
+            HealthAssessment = HealthAssessment.Fair,
+            ReadErrors = 1,
+            Errors = new List<TestError>
+            {
+                new() { Phase = "Read", ErrorCode = "IO_TIMEOUT", Message = "Read phase timed out", Details = "Device did not respond", IsCritical = true }
+            }
+        };
+
+        var card = new DiskCard { Id = 101, ModelName = "Read Failing Drive", SerialNumber = "DROPR", Capacity = 1_000_000_000_000 };
+
+        var certificate = await generator.GenerateCertificateAsync(session, card);
+
+        Assert.Equal("F", certificate.Grade);
+        Assert.Equal(0, certificate.Score);
+        Assert.False(certificate.Recommended);
+        Assert.Contains("Read", certificate.Notes, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("Device did not respond", certificate.Notes, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task GenerateCertificateAsync_UserCancelled_IsNotMarkedAsFaultyDisk()
+    {
+        var logger = Substitute.For<ILogger<CertificateGenerator>>();
+        var settings = Substitute.For<ISettingsService>();
+        settings.GetCertificatePathAsync().Returns((string?)null);
+        var generator = new CertificateGenerator(logger, settings);
+
+        var session = new TestSession
+        {
+            Id = 102,
+            TestType = TestType.Sanitization,
+            Status = TestStatus.Cancelled,
+            Result = TestResult.Inconclusive,
+            Grade = "A",
+            Score = 95,
+            HealthAssessment = HealthAssessment.Good,
+            Notes = "Operace zrušena uživatelem"
+        };
+
+        var card = new DiskCard { Id = 102, ModelName = "Cancelled Drive", SerialNumber = "CANCEL", Capacity = 1_000_000_000_000 };
+
+        var certificate = await generator.GenerateCertificateAsync(session, card);
+
+        Assert.NotEqual("F", certificate.Grade);
+        Assert.False(certificate.Recommended);
+        Assert.Contains("uživatelem", certificate.RecommendationNotes, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("vad", certificate.RecommendationNotes, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("vyřad", certificate.RecommendationNotes, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("není hodnoceno jako porucha", certificate.Notes, StringComparison.OrdinalIgnoreCase);
+    }
+
+
+    [Fact]
+    public async Task GenerateCertificateAsync_CriticalSmartOnly_RetiresDiskAndStatesScope()
+    {
+        var logger = Substitute.For<ILogger<CertificateGenerator>>();
+        var settings = Substitute.For<ISettingsService>();
+        settings.GetCertificatePathAsync().Returns((string?)null);
+        var generator = new CertificateGenerator(logger, settings);
+
+        var session = new TestSession
+        {
+            Id = 103,
+            TestType = TestType.SmartShort,
+            Status = TestStatus.Completed,
+            Result = TestResult.Fail,
+            Grade = "F",
+            Score = 10,
+            HealthAssessment = HealthAssessment.Critical,
+            IsDestructive = false,
+            Notes = "SMART-only certificate: nebyl proveden povrchový ani sanitizační test; závěr vychází pouze z aktuální SMART diagnostiky.",
+            SmartBefore = new SmartaData
+            {
+                DeviceModel = "Critical SMART Drive",
+                SerialNumber = "SMARTFAIL",
+                SmartEnabled = true,
+                IsHealthy = false,
+                IsFailing = true,
+                ReallocatedSectorCount = 12,
+                PendingSectorCount = 3,
+                UncorrectableErrorCount = 1,
+                Attributes = new List<SmartaAttributeItem>
+                {
+                    new() { Id = 5, Name = "Reallocated_Sector_Ct", RawValue = 12, IsOk = false },
+                    new() { Id = 197, Name = "Current_Pending_Sector", RawValue = 3, IsOk = false }
+                }
+            }
+        };
+
+        var card = new DiskCard { Id = 103, ModelName = "Critical SMART Drive", SerialNumber = "SMARTFAIL", Capacity = 500_000_000_000 };
+
+        var certificate = await generator.GenerateCertificateAsync(session, card);
+
+        Assert.Equal("SMART-only", certificate.TestType);
+        Assert.False(certificate.SanitizationPerformed);
+        Assert.False(certificate.Recommended);
+        Assert.Equal("F", certificate.Grade);
+        Assert.Contains("pouze", certificate.RecommendationNotes, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("nebyl proveden povrchový", certificate.Notes, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("Reallocated", certificate.Notes, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("vyřad", certificate.RecommendationNotes, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task GenerateCertificateAsync_NonCriticalSmartOnly_DoesNotCreateFalseCriticalConclusion()
+    {
+        var logger = Substitute.For<ILogger<CertificateGenerator>>();
+        var settings = Substitute.For<ISettingsService>();
+        settings.GetCertificatePathAsync().Returns((string?)null);
+        var generator = new CertificateGenerator(logger, settings);
+
+        var session = new TestSession
+        {
+            Id = 104,
+            TestType = TestType.SmartShort,
+            Status = TestStatus.Completed,
+            Result = TestResult.Pass,
+            Grade = "A",
+            Score = 95,
+            HealthAssessment = HealthAssessment.Good,
+            IsDestructive = false,
+            Notes = "SMART-only certificate: nebyl proveden povrchový ani sanitizační test; závěr vychází pouze z aktuální SMART diagnostiky.",
+            SmartBefore = new SmartaData
+            {
+                DeviceModel = "Healthy SMART Drive",
+                SerialNumber = "SMARTOK",
+                SmartEnabled = true,
+                IsHealthy = true,
+                IsFailing = false,
+                ReallocatedSectorCount = 0,
+                PendingSectorCount = 0,
+                UncorrectableErrorCount = 0
+            }
+        };
+
+        var card = new DiskCard { Id = 104, ModelName = "Healthy SMART Drive", SerialNumber = "SMARTOK", Capacity = 500_000_000_000 };
+
+        var certificate = await generator.GenerateCertificateAsync(session, card);
+
+        Assert.Equal("SMART-only", certificate.TestType);
+        Assert.True(certificate.Recommended);
+        Assert.NotEqual("F", certificate.Grade);
+        Assert.Contains("neobsahuje jednoznačný kritický", certificate.RecommendationNotes, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("vyřad", certificate.RecommendationNotes, StringComparison.OrdinalIgnoreCase);
+    }
+
     [Fact]
     public async Task GenerateCertificateAsync_WithoutSmartData_UsesDefaults()
     {

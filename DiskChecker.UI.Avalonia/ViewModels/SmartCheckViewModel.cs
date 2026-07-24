@@ -87,6 +87,7 @@ public partial class SmartCheckViewModel : ViewModelBase, INavigableViewModel, I
         SelectVolumeCommand = new RelayCommand<CoreDriveInfo?>(SelectVolume);
         NavigateToBackupCommand = new AsyncRelayCommand(NavigateToBackupAsync, () => IsFailing);
         ForceTestAnywayCommand = new RelayCommand(ForceTestAnyway);
+        GenerateSmartCertificateCommand = new AsyncRelayCommand(GenerateSmartCertificateAsync, () => CanGenerateSmartCertificate);
 
         // Initialize localized SMART features
         SmartFeatures = new[] {
@@ -122,6 +123,8 @@ public partial class SmartCheckViewModel : ViewModelBase, INavigableViewModel, I
                 RunLongTestCommand.NotifyCanExecuteChanged();
                 AbortTestCommand.NotifyCanExecuteChanged();
                 ClearCacheForSelectedCommand.NotifyCanExecuteChanged();
+                GenerateSmartCertificateCommand.NotifyCanExecuteChanged();
+                OnPropertyChanged(nameof(CanGenerateSmartCertificate));
 
                 if (value != null)
                 {
@@ -145,6 +148,8 @@ public partial class SmartCheckViewModel : ViewModelBase, INavigableViewModel, I
                 RunShortTestCommand.NotifyCanExecuteChanged();
                 RunLongTestCommand.NotifyCanExecuteChanged();
                 AbortTestCommand.NotifyCanExecuteChanged();
+                GenerateSmartCertificateCommand.NotifyCanExecuteChanged();
+                OnPropertyChanged(nameof(CanGenerateSmartCertificate));
             }
         }
     }
@@ -171,6 +176,8 @@ public partial class SmartCheckViewModel : ViewModelBase, INavigableViewModel, I
                 OnPropertyChanged(nameof(HasData));
                 OnPropertyChanged(nameof(HasHealthData));
                 UpdateComputedProperties();
+                OnPropertyChanged(nameof(CanGenerateSmartCertificate));
+                GenerateSmartCertificateCommand.NotifyCanExecuteChanged();
             }
         }
     }
@@ -333,6 +340,10 @@ public string SelectedTestType
     }
     
     public bool CanRunSelfTest => !IsChecking && !IsSelfTestRunning && SelectedDisk != null;
+    public bool CanGenerateSmartCertificate => !IsChecking
+        && SelectedDisk?.Drive?.SupportsSmart == true
+        && CurrentSmartData != null
+        && HasMeaningfulSmartCertificateData(CurrentSmartData);
     
     // Safe property accessors with fallbacks
     public string DiskName => SelectedDisk?.DisplayName ?? "Nevybrán žádný disk";
@@ -435,6 +446,7 @@ public string SelectedTestType
     public IAsyncRelayCommand? ClearSelfTestResultCommand { get; private set; }
     public IAsyncRelayCommand NavigateToBackupCommand { get; }
     public IRelayCommand ForceTestAnywayCommand { get; }
+    public IAsyncRelayCommand GenerateSmartCertificateCommand { get; }
 
     #endregion
 
@@ -871,9 +883,91 @@ public string SelectedTestType
         }
     }
 
+    private async Task GenerateSmartCertificateAsync()
+    {
+        if (SelectedDisk?.Drive == null || CurrentSmartData == null || CurrentQuality == null || !CanGenerateSmartCertificate)
+        {
+            await _dialogService.ShowWarningAsync("SMART certifikát", "SMART certifikát lze vytvořit pouze pro zařízení s úspěšně načtenými SMART údaji.");
+            return;
+        }
+
+        try
+        {
+            IsChecking = true;
+            StatusMessage = "Vytvářím SMART-only certifikát...";
+
+            var smartOnlyNotes = BuildSmartOnlyCertificateNotes(CurrentSmartData);
+            var card = await _cardTestService.GetOrCreateCardAsync(SelectedDisk.Drive, CurrentSmartData);
+            var session = await _cardTestService.SaveSmartCheckAsync(
+                card,
+                CurrentSmartData,
+                CurrentQuality,
+                TestType.SmartShort,
+                smartOnlyNotes);
+
+            _selectedDiskService.SelectedDisk = SelectedDisk.Drive;
+            _selectedDiskService.SelectedDiskDisplayName = SelectedDisk.DisplayName;
+            _selectedDiskService.SelectedTestSessionId = session.Id;
+            _selectedDiskService.SelectedCertificateId = null;
+
+            StatusMessage = "SMART-only certifikát připraven.";
+            _navigationService.NavigateTo<CertificateViewModel>();
+        }
+        catch (Exception ex) when (ex is InvalidOperationException or DbUpdateException or IOException)
+        {
+            StatusMessage = $"SMART certifikát se nepodařilo vytvořit: {ex.Message}";
+            await _dialogService.ShowErrorAsync("SMART certifikát", StatusMessage);
+        }
+        finally
+        {
+            IsChecking = false;
+        }
+    }
+
     private async Task RefreshAsync()
     {
         await LoadSmartDataAsync();
+    }
+
+    private static bool HasMeaningfulSmartCertificateData(SmartaData smartData)
+    {
+        return smartData.SmartEnabled
+            || smartData.IsHealthy
+            || smartData.IsFailing
+            || !string.IsNullOrWhiteSpace(smartData.DeviceModel)
+            || !string.IsNullOrWhiteSpace(smartData.SerialNumber)
+            || smartData.PowerOnHours.HasValue
+            || smartData.Temperature.HasValue
+            || smartData.ReallocatedSectorCount.HasValue
+            || smartData.PendingSectorCount.HasValue
+            || smartData.UncorrectableErrorCount.HasValue
+            || smartData.MediaErrors.HasValue
+            || smartData.AvailableSpare.HasValue
+            || smartData.PercentageUsed.HasValue
+            || smartData.Attributes.Count > 0;
+    }
+
+    private static string BuildSmartOnlyCertificateNotes(SmartaData smartData)
+    {
+        var findings = new List<string>
+        {
+            "SMART-only certificate: nebyl proveden povrchový ani sanitizační test; závěr vychází pouze z aktuální SMART diagnostiky."
+        };
+
+        if (smartData.IsFailing) findings.Add("SMART overall-health hlásí selhání.");
+        if (!smartData.IsHealthy) findings.Add("SMART health není v pořádku.");
+        if (smartData.ReallocatedSectorCount is > 0) findings.Add($"Realokované sektory: {smartData.ReallocatedSectorCount}.");
+        if (smartData.PendingSectorCount is > 0) findings.Add($"Čekající sektory: {smartData.PendingSectorCount}.");
+        if (smartData.UncorrectableErrorCount is > 0) findings.Add($"Neopravitelné chyby: {smartData.UncorrectableErrorCount}.");
+        if (smartData.MediaErrors is > 0) findings.Add($"NVMe media errors: {smartData.MediaErrors}.");
+        if (smartData.AvailableSpare is <= 10) findings.Add($"NVMe available spare je kriticky nízké: {smartData.AvailableSpare}%.");
+        if (smartData.PercentageUsed is >= 90) findings.Add($"NVMe percentage used: {smartData.PercentageUsed}%.");
+        findings.AddRange(smartData.FailingAttributes.Select(a => $"Failing SMART atribut: {a}."));
+
+        if (findings.Count == 1)
+            findings.Add("SMART neobsahuje jednoznačný kritický závěr.");
+
+        return string.Join(" ", findings);
     }
 
     private async Task PersistSmartSnapshotAsync(CoreDriveInfo drive, SmartaData smartData, QualityRating rating)

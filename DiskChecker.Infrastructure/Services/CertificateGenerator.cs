@@ -229,7 +229,28 @@ public class CertificateGenerator : ICertificateGenerator
             var calculated = CalculateGrade(session);
             var grade = SelectWorseGrade(session.Grade, calculated.grade);
             var score = session.Score > 0 ? Math.Min(session.Score, calculated.score) : calculated.score;
+
+            var failureClassification = ClassifyTestCompletion(session);
+            var isSmartOnlyDiagnostic = IsSmartOnlyDiagnostic(session);
+            if (failureClassification.IsDeviceFailure)
+            {
+                grade = "F";
+                score = 0;
+            }
+            else if (failureClassification.IsUserCancelled)
+            {
+                grade = SelectWorseGrade(grade, "D");
+                score = Math.Min(score, 55);
+            }
+
             var recommended = IsRecommendedForUse(session, grade, score);
+            var recommendationNotes = GenerateRecommendation(session, grade, score, recommended);
+            var certificateNotes = BuildCertificateNotes(session, failureClassification);
+            var healthStatus = failureClassification.IsDeviceFailure
+                ? HealthAssessment.Critical.ToString()
+                : failureClassification.IsUserCancelled
+                    ? HealthAssessment.Unknown.ToString()
+                    : session.HealthAssessment.ToString();
 
             var certificate = new DiskCertificate
             {
@@ -243,7 +264,7 @@ public class CertificateGenerator : ICertificateGenerator
                 DiskType = diskCard.DiskType,
                 Firmware = diskCard.FirmwareVersion,
                 Interface = diskCard.InterfaceType,
-                TestType = session.TestType.ToString(),
+                TestType = isSmartOnlyDiagnostic ? "SMART-only" : session.TestType.ToString(),
                 TestDuration = session.Duration,
                 ErrorCount = errorCount,
                 AvgWriteSpeed = avgWriteSpeed,
@@ -260,14 +281,16 @@ public class CertificateGenerator : ICertificateGenerator
                 PendingSectors = pendingSectors,
                 SanitizationPerformed = session.TestType == TestType.Sanitization,
                 SanitizationMethod = session.TestType == TestType.Sanitization ? "Zero-fill" : null,
-                DataVerified = session.VerificationErrors == 0,
+                DataVerified = failureClassification.IsDeviceFailure
+                    ? false
+                    : session.Result == TestResult.Pass && session.VerificationErrors == 0,
                 PartitionScheme = session.PartitionScheme,
                 FileSystem = session.FileSystem,
                 VolumeLabel = session.VolumeLabel,
                 Status = CertificateStatus.Active,
                 Recommended = recommended,
-                RecommendationNotes = GenerateRecommendation(session, grade, score, recommended),
-                Notes = session.Notes,
+                RecommendationNotes = recommendationNotes,
+                Notes = certificateNotes,
                 ChartImagePath = session.ChartImagePath
             };
 
@@ -278,7 +301,7 @@ public class CertificateGenerator : ICertificateGenerator
 
             certificate.Grade = grade;
             certificate.Score = score;
-            certificate.HealthStatus = session.HealthAssessment.ToString();
+            certificate.HealthStatus = healthStatus;
 
             PopulateAdvancedTestMetrics(certificate, session);
 
@@ -1491,6 +1514,30 @@ public class CertificateGenerator : ICertificateGenerator
 
     private string GenerateRecommendation(TestSession session, string effectiveGrade, double effectiveScore, bool recommended)
     {
+        var completion = ClassifyTestCompletion(session);
+        if (completion.IsDeviceFailure)
+        {
+            var phase = string.IsNullOrWhiteSpace(completion.FailurePhase) ? "neznámá fáze" : completion.FailurePhase;
+            var reason = string.IsNullOrWhiteSpace(completion.FailureReason) ? "důvod není k dispozici" : completion.FailureReason;
+            return $"Test SELHAL nebo nemohl být dokončen kvůli chybě zařízení/I/O. Fáze selhání: {phase}. Důvod: {reason}. Zařízení je nefunkční, nespolehlivé nebo nevhodné k dalšímu používání; doporučení: zařízení vyřadit z provozu a nepoužívat pro žádná data.";
+        }
+
+        if (completion.IsUserCancelled)
+        {
+            return "Test byl ručně přerušen uživatelem a nebyl dokončen. Samotné uživatelské zrušení není vyhodnoceno jako porucha disku; pro rozhodnutí o stavu zařízení je nutné test opakovat nebo vyhodnotit jiné diagnostické údaje.";
+        }
+
+        if (IsSmartOnlyDiagnostic(session))
+        {
+            var criticalSummary = BuildSmartOnlyCriticalSummary(session);
+            if (HasCriticalRetirementSignals(session, effectiveGrade, effectiveScore))
+            {
+                return $"Certifikát je založen pouze na aktuální SMART diagnostice; nebyl proveden povrchový ani sanitizační test. SMART ukazuje kritický/nebezpečný stav ({criticalSummary}). Disk NENÍ vhodný k dalšímu používání; doporučení: zařízení vyřadit.";
+            }
+
+            return $"Certifikát je založen pouze na aktuální SMART diagnostice; nebyl proveden povrchový ani sanitizační test. SMART neobsahuje jednoznačný kritický závěr ({criticalSummary}). Bez povrchového nebo sanitizačního testu nejde potvrdit stav média mimo rozsah SMART údajů.";
+        }
+
         var hasCriticalSignals = HasCriticalRetirementSignals(session, effectiveGrade, effectiveScore);
         if (hasCriticalSignals)
         {
@@ -1532,11 +1579,135 @@ public class CertificateGenerator : ICertificateGenerator
 
     private static bool IsRecommendedForUse(TestSession session, string effectiveGrade, double effectiveScore)
     {
+        var completion = ClassifyTestCompletion(session);
         return session.Result == TestResult.Pass
+               && !completion.IsDeviceFailure
+               && !completion.IsUserCancelled
                && !HasCriticalRetirementSignals(session, effectiveGrade, effectiveScore)
                && !string.Equals(effectiveGrade, "D", StringComparison.OrdinalIgnoreCase);
     }
 
+    private static bool IsSmartOnlyDiagnostic(TestSession session)
+    {
+        return session.TestType is TestType.SmartShort or TestType.SmartExtended or TestType.SmartConveyance
+               && !session.IsDestructive
+               && !string.IsNullOrWhiteSpace(session.Notes)
+               && session.Notes.Contains("SMART-only", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static string BuildSmartOnlyCriticalSummary(TestSession session)
+    {
+        var smart = session.SmartBefore ?? session.SmartAfter;
+        if (smart == null)
+            return "SMART údaje nejsou v session dostupné.";
+
+        var findings = new List<string>();
+        if (smart.IsFailing) findings.Add("SMART overall-health hlásí selhání");
+        if (!smart.IsHealthy) findings.Add("SMART health není v pořádku");
+        if (smart.ReallocatedSectorCount is > 0) findings.Add($"realokované sektory: {smart.ReallocatedSectorCount}");
+        if (smart.PendingSectorCount is > 0) findings.Add($"čekající sektory: {smart.PendingSectorCount}");
+        if (smart.UncorrectableErrorCount is > 0) findings.Add($"neopravitelné chyby: {smart.UncorrectableErrorCount}");
+        if (smart.MediaErrors is > 0) findings.Add($"NVMe media errors: {smart.MediaErrors}");
+        if (smart.AvailableSpare is <= 10) findings.Add($"NVMe available spare: {smart.AvailableSpare}%");
+        if (smart.PercentageUsed is >= 90) findings.Add($"NVMe percentage used: {smart.PercentageUsed}%");
+        findings.AddRange(smart.FailingAttributes.Select(a => $"failing attribute: {a}"));
+
+        foreach (var attr in smart.Attributes.Where(a => IsCriticalSmartAttribute(a.Id) && (!a.IsOk || a.RawValue > 0)).Take(8))
+        {
+            findings.Add($"{attr.Name} (ID {attr.Id}) = {attr.RawValue}, stav {(attr.IsOk ? "OK" : "Warning")}");
+        }
+
+        return findings.Count == 0
+            ? "Nebyly nalezeny kritické SMART atributy ani failing SMART závěr."
+            : "Kritické SMART závěry/atributy: " + string.Join(", ", findings.Distinct());
+    }
+
+    private static TestCompletionClassification ClassifyTestCompletion(TestSession session)
+    {
+        ArgumentNullException.ThrowIfNull(session);
+
+        var cancellationSignals = new[] { "cancel", "cancelled", "canceled", "zrušen", "zrusen", "user", "uživatel", "uzivatel", "přerušen", "prerusen" };
+        var deviceSignals = new[] { "io", "i/o", "device", "disk", "read", "write", "verify", "raw", "usb", "timeout", "disappear", "odpoj", "čten", "cten", "zápis", "zapis", "zařízení", "zarizeni" };
+
+        var firstError = session.Errors.FirstOrDefault();
+        var failurePhase = firstError?.Phase;
+        var failureReason = firstError == null
+            ? session.Notes
+            : string.Join(" ", new[] { firstError.Message, firstError.Details }.Where(v => !string.IsNullOrWhiteSpace(v)));
+
+        var allText = string.Join(" ", new[]
+        {
+            session.Status.ToString(),
+            session.Result.ToString(),
+            session.Notes ?? string.Empty,
+            firstError?.Phase ?? string.Empty,
+            firstError?.ErrorCode ?? string.Empty,
+            firstError?.Message ?? string.Empty,
+            firstError?.Details ?? string.Empty
+        });
+
+        var isCancelledStatus = session.Status == TestStatus.Cancelled;
+        var hasCancellationSignal = ContainsAny(allText, cancellationSignals);
+        var hasDeviceSignal = ContainsAny(allText, deviceSignals) || session.Errors.Any(e => e.IsCritical);
+        var hasDeviceFailureResult = session.Result == TestResult.Fail || session.Status == TestStatus.Failed;
+
+        var isUserCancelled = isCancelledStatus || (hasCancellationSignal && !hasDeviceFailureResult);
+        var isDeviceFailure = !isUserCancelled && hasDeviceFailureResult && (hasDeviceSignal || session.Errors.Count > 0 || session.WriteErrors > 0 || session.ReadErrors > 0 || session.VerificationErrors > 0);
+
+        return new TestCompletionClassification(isDeviceFailure, isUserCancelled, failurePhase, failureReason);
+    }
+
+    private static string BuildCertificateNotes(TestSession session, TestCompletionClassification completion)
+    {
+        var notes = new List<string>();
+
+        if (IsSmartOnlyDiagnostic(session))
+        {
+            notes.Add("SMART-only certifikát: nebyl proveden povrchový ani sanitizační test.");
+            notes.Add("Závěr vychází pouze z aktuálně načtené SMART diagnostiky.");
+            notes.Add(BuildSmartOnlyCriticalSummary(session));
+        }
+
+        if (completion.IsDeviceFailure)
+        {
+            notes.Add("Test selhal nebo nemohl být dokončen kvůli skutečné chybě zařízení/I/O.");
+            if (!string.IsNullOrWhiteSpace(completion.FailurePhase))
+                notes.Add($"Fáze selhání: {completion.FailurePhase}.");
+            if (!string.IsNullOrWhiteSpace(completion.FailureReason))
+                notes.Add($"Důvod/chyba: {completion.FailureReason}.");
+            notes.Add("Zařízení je nefunkční, nespolehlivé nebo nevhodné k dalšímu používání; doporučení: vyřadit.");
+        }
+        else if (completion.IsUserCancelled)
+        {
+            notes.Add("Test byl ručně přerušen uživatelem a nebyl dokončen.");
+            notes.Add("Uživatelské zrušení samo o sobě není hodnoceno jako porucha disku.");
+        }
+
+        if (!string.IsNullOrWhiteSpace(session.Notes))
+            notes.Add(session.Notes);
+
+        foreach (var error in session.Errors.Take(5))
+        {
+            var phase = string.IsNullOrWhiteSpace(error.Phase) ? "neznámá fáze" : error.Phase;
+            var code = string.IsNullOrWhiteSpace(error.ErrorCode) ? "ERR" : error.ErrorCode;
+            var message = string.IsNullOrWhiteSpace(error.Message) ? error.Details : error.Message;
+            if (!string.IsNullOrWhiteSpace(message))
+                notes.Add($"{phase}/{code}: {message}");
+        }
+
+        return notes.Count == 0 ? (session.Notes ?? string.Empty) : string.Join("; ", notes);
+    }
+
+    private static bool ContainsAny(string text, IEnumerable<string> needles)
+    {
+        return needles.Any(n => text.Contains(n, StringComparison.OrdinalIgnoreCase));
+    }
+
+    private readonly record struct TestCompletionClassification(
+        bool IsDeviceFailure,
+        bool IsUserCancelled,
+        string? FailurePhase,
+        string? FailureReason);
 
     private static string SelectWorseGrade(string? sessionGrade, string calculatedGrade)
     {

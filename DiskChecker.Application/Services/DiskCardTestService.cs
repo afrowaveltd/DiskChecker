@@ -229,6 +229,7 @@ public class DiskCardTestService
        SmartaData smartaData,
        QualityRating rating,
        TestType smartTestType = TestType.SmartShort,
+       string? notes = null,
        CancellationToken cancellationToken = default)
    {
       ArgumentNullException.ThrowIfNull(card);
@@ -243,10 +244,11 @@ public class DiskCardTestService
          CompletedAt = DateTime.UtcNow,
          Status = TestStatus.Completed,
          IsDestructive = false,
-         Result = TestResult.Pass,
+         Result = DetermineSmartResult(smartaData),
          Grade = rating.Grade.ToString(),
          Score = (int)rating.Score,
          HealthAssessment = MapHealthAssessment(rating.Grade.ToString()),
+         Notes = notes,
          SmartBefore = smartaData
       };
 
@@ -541,6 +543,24 @@ public class DiskCardTestService
           : 0d;
       var writeDuration = result.WriteDuration > TimeSpan.Zero ? result.WriteDuration : result.Duration;
       var readDuration = result.ReadDuration > TimeSpan.Zero ? result.ReadDuration : result.Duration;
+      var wasUserCancelled = IsUserCancelledSanitization(result);
+      var sessionStatus = wasUserCancelled
+          ? TestStatus.Cancelled
+          : result.Success ? TestStatus.Completed : TestStatus.Failed;
+      var sessionResult = wasUserCancelled
+          ? TestResult.Inconclusive
+          : result.Success && result.ErrorsDetected == 0 ? TestResult.Pass : TestResult.Fail;
+      var sessionGrade = wasUserCancelled ? "?" : breakdown.Grade;
+      var sessionScore = wasUserCancelled ? 0 : breakdown.Score;
+      var sessionHealth = wasUserCancelled ? HealthAssessment.Unknown : breakdown.Health;
+      var sessionNotes = wasUserCancelled
+          ? string.Join("; ", new[]
+          {
+             "Sanitizační test byl ručně zrušen uživatelem a nebyl dokončen.",
+             "Uživatelské zrušení samo o sobě není hodnoceno jako porucha disku.",
+             result.ErrorMessage
+          }.Where(v => !string.IsNullOrWhiteSpace(v)))
+          : breakdown.Findings.Count > 0 ? string.Join("; ", breakdown.Findings) : null;
 
       var session = new TestSession
       {
@@ -550,7 +570,7 @@ public class DiskCardTestService
          StartedAt = DateTime.UtcNow - result.Duration,
          CompletedAt = DateTime.UtcNow,
          Duration = result.Duration,
-         Status = result.Success ? TestStatus.Completed : TestStatus.Failed,
+         Status = sessionStatus,
          IsDestructive = true,
          BytesWritten = result.BytesWritten,
          BytesRead = result.BytesRead,
@@ -572,11 +592,11 @@ public class DiskCardTestService
          WasFormatted = result.Formatted,
          FileSystem = result.FileSystem ?? (RuntimeInformation.IsOSPlatform(OSPlatform.Linux) ? "ext4" : "NTFS"),
          VolumeLabel = result.VolumeLabel ?? "SCCM",
-         Result = result.Success && result.ErrorsDetected == 0 ? TestResult.Pass : TestResult.Fail,
-         Grade = breakdown.Grade,
-         Score = breakdown.Score,
-         HealthAssessment = breakdown.Health,
-         Notes = breakdown.Findings.Count > 0 ? string.Join("; ", breakdown.Findings) : null,
+         Result = sessionResult,
+         Grade = sessionGrade,
+         Score = sessionScore,
+         HealthAssessment = sessionHealth,
+         Notes = sessionNotes,
          SmartBefore = smartaData,
          SmartAfter = smartAfter,
          WriteSamples = persistedWriteSamples,
@@ -714,6 +734,49 @@ public class DiskCardTestService
 
       card.OverallGrade = calculatedGrade;
    }
+
+   private static bool IsUserCancelledSanitization(SanitizationResult result)
+   {
+      if (result.Success || result.ErrorDetails.Count > 0)
+      {
+         return false;
+      }
+
+      var message = result.ErrorMessage ?? string.Empty;
+      return message.Contains("cancel", StringComparison.OrdinalIgnoreCase)
+             || message.Contains("canceled", StringComparison.OrdinalIgnoreCase)
+             || message.Contains("cancelled", StringComparison.OrdinalIgnoreCase)
+             || message.Contains("zrušen", StringComparison.OrdinalIgnoreCase)
+             || message.Contains("zrusen", StringComparison.OrdinalIgnoreCase)
+             || message.Contains("uživatelem", StringComparison.OrdinalIgnoreCase)
+             || message.Contains("uzivatelem", StringComparison.OrdinalIgnoreCase);
+   }
+
+   private static TestResult DetermineSmartResult(SmartaData smartaData)
+   {
+      ArgumentNullException.ThrowIfNull(smartaData);
+
+      if (smartaData.IsFailing || !smartaData.IsHealthy ||
+          smartaData.UncorrectableErrorCount is > 0 ||
+          smartaData.MediaErrors is > 0 ||
+          smartaData.PendingSectorCount is > 0)
+      {
+         return TestResult.Fail;
+      }
+
+      if (smartaData.ReallocatedSectorCount is > 0 ||
+          smartaData.PercentageUsed is >= 90 ||
+          smartaData.AvailableSpare is <= 10 ||
+          smartaData.FailingAttributes.Count > 0 ||
+          smartaData.Attributes.Any(a => IsCriticalSmartAttributeForResult(a.Id) && !a.IsOk))
+      {
+         return TestResult.Warning;
+      }
+
+      return TestResult.Pass;
+   }
+
+   private static bool IsCriticalSmartAttributeForResult(int attributeId) => attributeId is 5 or 187 or 197 or 198 or 199;
 
    private static HealthAssessment MapHealthAssessment(string grade)
    {

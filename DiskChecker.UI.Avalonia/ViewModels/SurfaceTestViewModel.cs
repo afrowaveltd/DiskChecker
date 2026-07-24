@@ -1421,8 +1421,10 @@ public partial class SurfaceTestViewModel : ViewModelBase, INavigableViewModel, 
       // We check cancellation before starting but the operation itself runs to completion
       cancellationToken.ThrowIfCancellationRequested();
 
-      var result = await _sanitizationService.SanitizeDiskAsync(
-          SelectedDrive.Path, SelectedDrive.TotalSize, true, true, "SCCM", progress, cancellationToken);
+      var drivePath = SelectedDrive.Path;
+      var driveSize = SelectedDrive.TotalSize;
+      var result = await Task.Run(() => _sanitizationService.SanitizeDiskAsync(
+          drivePath, driveSize, true, true, "SCCM", progress, cancellationToken), cancellationToken);
 
       SmartaData? smartAfterSnapshot = null;
       if(result.Success)
@@ -1593,9 +1595,57 @@ public partial class SurfaceTestViewModel : ViewModelBase, INavigableViewModel, 
              message = $"{message} | Detail: {detail.Details}";
          }
 
+         string? errorContext = null;
+         try
+         {
+            var card = await _cardTestService.GetOrCreateCardAsync(SelectedDrive!, smartSnapshot, cancellationToken);
+            var writeSamples = await CaptureSanitizationSamplesAsync(WriteSpeedHistory, SelectedDrive!.TotalSize);
+            var readSamples = await CaptureSanitizationSamplesAsync(ReadSpeedHistory, SelectedDrive!.TotalSize);
+            var session = await _cardTestService.SaveSanitizationAsync(card, result, writeSamples, readSamples, smartSnapshot, null, cancellationToken);
+            _selectedDiskService.SelectedDisk = SelectedDrive;
+            _selectedDiskService.SelectedDiskDisplayName = SelectedDrive.Name;
+            _selectedDiskService.SelectedTestSessionId = session.Id;
+         }
+         catch (Exception ex) when (ex is InvalidOperationException or DbUpdateException or IOException)
+         {
+            errorContext = ex is DbUpdateException db ? db.InnerException?.Message ?? db.Message : ex.Message;
+            SetStickyErrorStatus($"{message} | Výsledek selhání se nepodařilo uložit: {errorContext}");
+            return (result, null, errorContext);
+         }
+
          SetStickyErrorStatus(message);
-         return (result, null, null);
+         return (result, null, errorContext);
       }
+   }
+
+   private async Task<List<SpeedSample>> CaptureSanitizationSamplesAsync(IEnumerable<SurfaceTestDataPoint> source, long totalBytes)
+   {
+      const int MaxSamplesToSave = 2000;
+      return await Dispatcher.UIThread.InvokeAsync(() =>
+      {
+         var allSamples = source.Select(point => new SpeedSample
+         {
+            Timestamp = point.Timestamp,
+            SpeedMBps = point.Speed,
+            ProgressPercent = point.DataPercent,
+            BytesProcessed = (long)(point.DataPercent / 100.0 * totalBytes),
+            Phase = point.Phase == 1 ? "Read" : "Write",
+            IsStalled = point.Speed <= 0
+         }).ToList();
+
+         if (allSamples.Count <= MaxSamplesToSave)
+            return allSamples;
+
+         var step = Math.Max(1, allSamples.Count / MaxSamplesToSave);
+         var downsampled = new List<SpeedSample>();
+         for (var i = 0; i < allSamples.Count; i += step)
+            downsampled.Add(allSamples[i]);
+
+         if (allSamples.Count > 0 && downsampled[^1] != allSamples[^1])
+            downsampled.Add(allSamples[^1]);
+
+         return downsampled;
+      });
    }
 
    private async Task RunTestAsync(SmartaData? smartSnapshot, CancellationToken cancellationToken)

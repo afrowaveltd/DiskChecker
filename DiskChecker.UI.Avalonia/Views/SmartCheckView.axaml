@@ -284,6 +284,16 @@
                                 </Button.Styles>
                             </Button>
                         </Grid>
+                        <Button Content="SMART certifikát"
+                                Command="{Binding GenerateSmartCertificateCommand}"
+                                IsVisible="{Binding CanGenerateSmartCertificate}"
+                                IsEnabled="{Binding CanGenerateSmartCertificate}"
+                                HorizontalAlignment="Left"
+                                Background="{DynamicResource ThemeInfoBrush}"
+                                Foreground="White"
+                                FontWeight="SemiBold"
+                                Padding="10,6"
+                                CornerRadius="6"/>
                         <TextBlock Text="{Binding SmartFeatureDescription}" 
                                   FontSize="9" Foreground="{DynamicResource ThemeTextSecondaryBrush}"
                                   TextWrapping="Wrap"/>
