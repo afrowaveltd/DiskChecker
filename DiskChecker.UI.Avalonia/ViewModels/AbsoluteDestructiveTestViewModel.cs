@@ -888,13 +888,15 @@ public partial class AbsoluteDestructiveTestViewModel : ViewModelBase, INavigabl
             _samplerPass1 = new AdaptiveSpeedSampler();
             _samplerPass1.Initialize(SelectedDrive!.TotalSize);
 
-            _sanitize1Result = await _sanitizationService.SanitizeDiskAsync(
-                SelectedDrive!.Path,
-                SelectedDrive.TotalSize,
+            var sanitize1DrivePath = SelectedDrive!.Path;
+            var sanitize1DriveSize = SelectedDrive.TotalSize;
+            _sanitize1Result = await Task.Run(() => _sanitizationService.SanitizeDiskAsync(
+                sanitize1DrivePath,
+                sanitize1DriveSize,
                 createPartition: false,
                 format: false,
                 volumeLabel: "",
-                new Progress<SanitizationProgress>(p =>
+                new CallbackProgress<SanitizationProgress>(p =>
                 {
                     // Feed adaptive sampler
                     _samplerPass1?.AddSample(p.CurrentSpeedMBps, (long)(SelectedDrive!.TotalSize * p.ProgressPercent / 100.0), DateTime.UtcNow);
@@ -938,7 +940,7 @@ public partial class AbsoluteDestructiveTestViewModel : ViewModelBase, INavigabl
                         SanitizeProgressPercent = p.ProgressPercent;
                     });
                 }),
-                ct);
+                ct), ct);
 
             // Capture SMART after first sanitization
             _smartAfterSanitize1 = await CaptureSmartAsync(ct);
@@ -984,13 +986,15 @@ public partial class AbsoluteDestructiveTestViewModel : ViewModelBase, INavigabl
             _samplerPass2 = new AdaptiveSpeedSampler();
             _samplerPass2.Initialize(SelectedDrive!.TotalSize);
 
-            _sanitize2Result = await _sanitizationService.SanitizeDiskAsync(
-                SelectedDrive!.Path,
-                SelectedDrive.TotalSize,
+            var sanitize2DrivePath = SelectedDrive!.Path;
+            var sanitize2DriveSize = SelectedDrive.TotalSize;
+            _sanitize2Result = await Task.Run(() => _sanitizationService.SanitizeDiskAsync(
+                sanitize2DrivePath,
+                sanitize2DriveSize,
                 createPartition: false,
                 format: false,
                 volumeLabel: "",
-                new Progress<SanitizationProgress>(p =>
+                new CallbackProgress<SanitizationProgress>(p =>
                 {
                     // Feed adaptive sampler
                     _samplerPass2?.AddSample(p.CurrentSpeedMBps, (long)(SelectedDrive!.TotalSize * p.ProgressPercent / 100.0), DateTime.UtcNow);
@@ -1033,7 +1037,7 @@ public partial class AbsoluteDestructiveTestViewModel : ViewModelBase, INavigabl
                         SanitizeProgressPercent = p.ProgressPercent;
                     });
                 }),
-                ct);
+                ct), ct);
 
             // Finalize adaptive sampler for pass 2
             _samplerPass2?.FinalizePhase();
@@ -1084,7 +1088,7 @@ public partial class AbsoluteDestructiveTestViewModel : ViewModelBase, INavigabl
                         SelectedDrive.Path,
                         volumeLabel: "Tested",
                         format: true,
-                        progress: new Progress<SanitizationProgress>(p =>
+                        progress: new CallbackProgress<SanitizationProgress>(p =>
                         {
                             Dispatcher.UIThread.Post(() =>
                             {
@@ -2193,6 +2197,11 @@ public partial class AbsoluteDestructiveTestViewModel : ViewModelBase, INavigabl
                 });
             }
         }
+    }
+
+    private sealed class CallbackProgress<T>(Action<T> callback) : IProgress<T>
+    {
+        public void Report(T value) => callback(value);
     }
 
     // ──────────────────────────────────────────────

@@ -106,6 +106,46 @@ public class IoStallMonitorTests
             reportInterval: TimeSpan.FromMilliseconds(20)));
     }
 
+
+    [Fact]
+    public async Task TransitionOpenThatNeverResponds_TimesOutInsteadOfBlockingForever()
+    {
+        var samples = new List<SanitizationProgress>();
+
+        var ex = await Assert.ThrowsAsync<TimeoutException>(() => IoStallMonitor.ExecuteAsync<int>(
+            async ct =>
+            {
+                await Task.Delay(TimeSpan.FromSeconds(10), ct);
+                return 1;
+            },
+            (elapsed, stall) => new SanitizationProgress
+            {
+                PhaseKind = SanitizationProgressPhase.ReadVerify,
+                Phase = "Read and verify",
+                BytesProcessed = 0,
+                TotalBytes = 1024,
+                CurrentOperationElapsed = elapsed,
+                StallDuration = stall
+            },
+            new CallbackProgress<SanitizationProgress>(samples.Add),
+            logger: null,
+            phase: "ReadTransition",
+            offsetBytes: 0,
+            TestContext.Current.CancellationToken,
+            stallReportThreshold: TimeSpan.FromMilliseconds(20),
+            reportInterval: TimeSpan.FromMilliseconds(20),
+            operationTimeout: TimeSpan.FromMilliseconds(80)));
+
+        Assert.Contains("ReadTransition", ex.Message);
+        Assert.NotEmpty(samples);
+        Assert.All(samples, sample =>
+        {
+            Assert.True(sample.IsStalled);
+            Assert.True(sample.IsWaitingForDevice);
+            Assert.True(sample.IsReadVerifyPhase);
+        });
+    }
+
     private static SanitizationProgress CreateProgress(long bytesProcessed, TimeSpan elapsed, TimeSpan stall)
     {
         return new SanitizationProgress
