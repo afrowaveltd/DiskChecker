@@ -218,70 +218,113 @@
                             <StackPanel Spacing="8">
                                 <TextBlock Text="{Binding L[CertificateView.PerformanceProfile]}" FontWeight="Bold" FontSize="13"/>
 
-                                <Grid ColumnDefinitions="Auto,*" RowDefinitions="* ,Auto" RowSpacing="4" ColumnSpacing="8">
-                                    <Grid Grid.Row="0" Grid.Column="0" RowDefinitions="Auto,*,Auto" Height="120">
-                                        <TextBlock Grid.Row="0" Text="{Binding ChartMaxSpeedLabel}" FontSize="9" Foreground="{DynamicResource ThemeTextMutedBrush}"/>
-                                        <TextBlock Grid.Row="1" Text="{Binding ChartMidSpeedLabel}" FontSize="9" Foreground="{DynamicResource ThemeTextMutedBrush}" VerticalAlignment="Center"/>
-                                        <TextBlock Grid.Row="2" Text="{Binding ChartMinSpeedLabel}" FontSize="9" Foreground="{DynamicResource ThemeTextMutedBrush}" VerticalAlignment="Bottom"/>
-                                    </Grid>
+                                <StackPanel Spacing="12">
+                                    <Border Background="#FFFFFFFF" BorderBrush="#FFE2E8F0" BorderThickness="1" CornerRadius="6" Padding="10"
+                                            IsVisible="{Binding IsThroughputChart}">
+                                        <Grid ColumnDefinitions="Auto,*" RowDefinitions="Auto,Auto" RowSpacing="6" ColumnSpacing="10">
+                                            <Grid Grid.Row="0" Grid.Column="0" RowDefinitions="Auto,*,Auto" Height="240" MinWidth="46">
+                                                <TextBlock Grid.Row="0" Text="{Binding ChartMaxSpeedLabel}" FontSize="10" Foreground="#FF64748B"/>
+                                                <TextBlock Grid.Row="1" Text="{Binding ChartMidSpeedLabel}" FontSize="10" Foreground="#FF64748B" VerticalAlignment="Center"/>
+                                                <TextBlock Grid.Row="2" Text="{Binding ChartMinSpeedLabel}" FontSize="10" Foreground="#FF64748B" VerticalAlignment="Bottom"/>
+                                            </Grid>
 
-                                    <Viewbox Grid.Row="0" Grid.Column="1" Stretch="Fill" StretchDirection="Both">
-                                        <Canvas Width="520" Height="120" Background="#FFFFFFFF" ClipToBounds="True">
-                                            <Line StartPoint="10,10" EndPoint="10,110" Stroke="#FFCBD5E1" StrokeThickness="1"/>
-                                            <Line StartPoint="10,60" EndPoint="520,60" Stroke="#FFF1F5F9" StrokeThickness="1"/>
-                                            <Line StartPoint="10,110" EndPoint="520,110" Stroke="#FFCBD5E1" StrokeThickness="1"/>
+                                            <Viewbox Grid.Row="0" Grid.Column="1" Stretch="Fill" StretchDirection="Both" MinHeight="240">
+                                                <Canvas Width="920" Height="260" Background="#FFFFFFFF" ClipToBounds="True">
+                                                    <Rectangle Canvas.Left="56" Canvas.Top="18" Width="830" Height="208" Stroke="#FFCBD5E1" StrokeThickness="1" Fill="#00FFFFFF"/>
+                                                    <Line StartPoint="56,70" EndPoint="886,70" Stroke="#FFE2E8F0" StrokeThickness="1"/>
+                                                    <Line StartPoint="56,122" EndPoint="886,122" Stroke="#FFE2E8F0" StrokeThickness="1"/>
+                                                    <Line StartPoint="56,174" EndPoint="886,174" Stroke="#FFE2E8F0" StrokeThickness="1"/>
+                                                    <Line StartPoint="264,18" EndPoint="264,226" Stroke="#FFF1F5F9" StrokeThickness="1"/>
+                                                    <Line StartPoint="471,18" EndPoint="471,226" Stroke="#FFF1F5F9" StrokeThickness="1"/>
+                                                    <Line StartPoint="679,18" EndPoint="679,226" Stroke="#FFF1F5F9" StrokeThickness="1"/>
 
-                                            <Polyline Points="{Binding WriteProfilePoints, Converter={StaticResource PointsStringConverter}}"
-                                                      Stroke="{Binding ChartStrokeWrite}" StrokeThickness="2"
-                                                      IsVisible="{Binding IsThroughputChart}"/>
-                                            <Polyline Points="{Binding ReadProfilePoints, Converter={StaticResource PointsStringConverter}}"
-                                                      Stroke="{Binding ChartStrokeRead}" StrokeThickness="2"
-                                                      IsVisible="{Binding IsThroughputChart}"/>
-                                            <Polyline Points="{Binding TemperatureProfilePoints, Converter={StaticResource PointsStringConverter}}"
-                                                      Stroke="#FF7C3AED" StrokeThickness="2"
-                                                      IsVisible="{Binding HasTemperatureProfile}"/>
+                                                    <Polyline Points="{Binding WriteProfilePoints, Converter={StaticResource PointsStringConverter}}"
+                                                              Stroke="{Binding ChartStrokeWrite}" StrokeThickness="2"
+                                                              StrokeJoin="Round" StrokeLineCap="Round"/>
+                                                    <Polyline Points="{Binding ReadProfilePoints, Converter={StaticResource PointsStringConverter}}"
+                                                              Stroke="{Binding ChartStrokeRead}" StrokeThickness="2"
+                                                              StrokeJoin="Round" StrokeLineCap="Round"/>
+                                                    <Polyline Points="{Binding TemperatureProfilePoints, Converter={StaticResource PointsStringConverter}}"
+                                                              Stroke="#FF7C3AED" StrokeThickness="1.6"
+                                                              StrokeJoin="Round" StrokeLineCap="Round"
+                                                              IsVisible="{Binding HasTemperatureProfile}"/>
+                                                </Canvas>
+                                            </Viewbox>
 
-                                            <ItemsControl ItemsSource="{Binding SeekScatterPoints}"
-                                                          IsVisible="{Binding IsSeekChart}">
-                                                <ItemsControl.ItemsPanel>
-                                                    <ItemsPanelTemplate>
-                                                        <Canvas/>
-                                                    </ItemsPanelTemplate>
-                                                </ItemsControl.ItemsPanel>
-                                                <ItemsControl.ItemTemplate>
-                                                    <DataTemplate>
-                                                        <Ellipse Width="2.4" Height="2.4" Fill="#DC2626"
-                                                                 Canvas.Left="{Binding X}"
-                                                                 Canvas.Top="{Binding Y}"/>
-                                                    </DataTemplate>
-                                                </ItemsControl.ItemTemplate>
-                                            </ItemsControl>
-                                         </Canvas>
-                                     </Viewbox>
+                                            <Grid Grid.Row="1" Grid.Column="1" ColumnDefinitions="Auto,*,Auto,*,Auto,*,Auto,*,Auto">
+                                                <TextBlock Grid.Column="0" Text="0 %" FontSize="10" Foreground="#FF64748B"/>
+                                                <TextBlock Grid.Column="2" Text="25 %" FontSize="10" Foreground="#FF64748B" HorizontalAlignment="Center"/>
+                                                <TextBlock Grid.Column="4" Text="50 %" FontSize="10" Foreground="#FF64748B" HorizontalAlignment="Center"/>
+                                                <TextBlock Grid.Column="6" Text="75 %" FontSize="10" Foreground="#FF64748B" HorizontalAlignment="Center"/>
+                                                <TextBlock Grid.Column="8" Text="100 %" FontSize="10" Foreground="#FF64748B" HorizontalAlignment="Right"/>
+                                            </Grid>
+                                        </Grid>
+                                    </Border>
 
-                                     <Grid Grid.Row="1" Grid.Column="1" ColumnDefinitions="Auto,*,Auto,*,Auto,*,Auto,*,Auto">
-                                        <TextBlock Grid.Column="0" Text="0 %" FontSize="9" Foreground="{DynamicResource ThemeTextMutedBrush}"/>
-                                        <TextBlock Grid.Column="2" Text="25 %" FontSize="9" Foreground="{DynamicResource ThemeTextMutedBrush}" HorizontalAlignment="Center"/>
-                                        <TextBlock Grid.Column="4" Text="50 %" FontSize="9" Foreground="{DynamicResource ThemeTextMutedBrush}" HorizontalAlignment="Center"/>
-                                        <TextBlock Grid.Column="6" Text="75 %" FontSize="9" Foreground="{DynamicResource ThemeTextMutedBrush}" HorizontalAlignment="Center"/>
-                                        <TextBlock Grid.Column="8" Text="100 %" FontSize="9" Foreground="{DynamicResource ThemeTextMutedBrush}" HorizontalAlignment="Right"/>
-                                    </Grid>
-                                </Grid>
+                                    <Border Background="#FFFFFFFF" BorderBrush="#FFE2E8F0" BorderThickness="1" CornerRadius="6" Padding="10"
+                                            IsVisible="{Binding IsSeekChart}">
+                                        <StackPanel Spacing="6">
+                                            <TextBlock Text="Seek latence" FontSize="11" FontWeight="SemiBold" Foreground="#FF1E3A8A"/>
+                                            <Grid ColumnDefinitions="Auto,*" RowDefinitions="Auto,Auto" RowSpacing="6" ColumnSpacing="10">
+                                                <Grid Grid.Row="0" Grid.Column="0" RowDefinitions="Auto,*,Auto" Height="220" MinWidth="46">
+                                                    <TextBlock Grid.Row="0" Text="{Binding SeekChartMaxLabel}" FontSize="10" Foreground="#FF64748B"/>
+                                                    <TextBlock Grid.Row="1" Text="{Binding SeekChartMidLabel}" FontSize="10" Foreground="#FF64748B" VerticalAlignment="Center"/>
+                                                    <TextBlock Grid.Row="2" Text="{Binding SeekChartMinLabel}" FontSize="10" Foreground="#FF64748B" VerticalAlignment="Bottom"/>
+                                                </Grid>
 
-                                <StackPanel Orientation="Horizontal" Spacing="16">
-                                     <StackPanel Orientation="Horizontal" Spacing="6">
-                                         <Border Width="10" Height="10" Background="{Binding ChartStrokeWrite}" CornerRadius="2"/>
-                                         <TextBlock Text="{Binding L[CertificateView.Write]}" FontSize="11"/>
-                                     </StackPanel>
-                                     <StackPanel Orientation="Horizontal" Spacing="6">
-                                         <Border Width="10" Height="10" Background="{Binding ChartStrokeRead}" CornerRadius="2"/>
-                                         <TextBlock Text="{Binding L[CertificateView.Read]}" FontSize="11"/>
-                                     </StackPanel>
-                                    <StackPanel Orientation="Horizontal" Spacing="6" IsVisible="{Binding HasTemperatureProfile}">
-                                        <Border Width="10" Height="10" Background="#FF7C3AED" CornerRadius="2"/>
-                                        <TextBlock Text="{Binding L[CertificateView.TemperatureChart]}" FontSize="11"/>
-                                     </StackPanel>
-                                 </StackPanel>
+                                                <Viewbox Grid.Row="0" Grid.Column="1" Stretch="Fill" StretchDirection="Both" MinHeight="220">
+                                                    <Canvas Width="920" Height="250" Background="#FFFFFFFF" ClipToBounds="True">
+                                                        <Rectangle Canvas.Left="56" Canvas.Top="18" Width="830" Height="208" Stroke="#FFCBD5E1" StrokeThickness="1" Fill="#00FFFFFF"/>
+                                                        <Line StartPoint="56,70" EndPoint="886,70" Stroke="#FFE2E8F0" StrokeThickness="1"/>
+                                                        <Line StartPoint="56,122" EndPoint="886,122" Stroke="#FFE2E8F0" StrokeThickness="1"/>
+                                                        <Line StartPoint="56,174" EndPoint="886,174" Stroke="#FFE2E8F0" StrokeThickness="1"/>
+                                                        <ItemsControl ItemsSource="{Binding SeekScatterPoints}">
+                                                            <ItemsControl.ItemsPanel>
+                                                                <ItemsPanelTemplate>
+                                                                    <Canvas/>
+                                                                </ItemsPanelTemplate>
+                                                            </ItemsControl.ItemsPanel>
+                                                            <ItemsControl.ItemTemplate>
+                                                                <DataTemplate>
+                                                                    <Ellipse Width="3" Height="3" Fill="#FF1D4ED8">
+                                                                        <Ellipse.RenderTransform>
+                                                                            <TranslateTransform X="{Binding X}" Y="{Binding Y}"/>
+                                                                        </Ellipse.RenderTransform>
+                                                                    </Ellipse>
+                                                                </DataTemplate>
+                                                            </ItemsControl.ItemTemplate>
+                                                        </ItemsControl>
+                                                    </Canvas>
+                                                </Viewbox>
+
+                                                <Grid Grid.Row="1" Grid.Column="1" ColumnDefinitions="Auto,*,Auto,*,Auto">
+                                                    <TextBlock Grid.Column="0" Text="{Binding SeekChartXAxisStartLabel}" FontSize="10" Foreground="#FF64748B"/>
+                                                    <TextBlock Grid.Column="2" Text="{Binding SeekChartXAxisMidLabel}" FontSize="10" Foreground="#FF64748B" HorizontalAlignment="Center"/>
+                                                    <TextBlock Grid.Column="4" Text="{Binding SeekChartXAxisEndLabel}" FontSize="10" Foreground="#FF64748B" HorizontalAlignment="Right"/>
+                                                </Grid>
+                                            </Grid>
+                                        </StackPanel>
+                                    </Border>
+
+                                    <StackPanel Orientation="Horizontal" Spacing="16">
+                                        <StackPanel Orientation="Horizontal" Spacing="6">
+                                            <Border Width="10" Height="10" Background="{Binding ChartStrokeWrite}" CornerRadius="2"/>
+                                            <TextBlock Text="{Binding L[CertificateView.Write]}" FontSize="11"/>
+                                        </StackPanel>
+                                        <StackPanel Orientation="Horizontal" Spacing="6">
+                                            <Border Width="10" Height="10" Background="{Binding ChartStrokeRead}" CornerRadius="2"/>
+                                            <TextBlock Text="{Binding L[CertificateView.Read]}" FontSize="11"/>
+                                        </StackPanel>
+                                        <StackPanel Orientation="Horizontal" Spacing="6" IsVisible="{Binding HasTemperatureProfile}">
+                                            <Border Width="10" Height="10" Background="#FF7C3AED" CornerRadius="2"/>
+                                            <TextBlock Text="{Binding L[CertificateView.TemperatureChart]}" FontSize="11"/>
+                                        </StackPanel>
+                                        <StackPanel Orientation="Horizontal" Spacing="6" IsVisible="{Binding IsSeekChart}">
+                                            <Border Width="10" Height="10" Background="#FF1D4ED8" CornerRadius="5"/>
+                                            <TextBlock Text="Seek latence" FontSize="11"/>
+                                        </StackPanel>
+                                    </StackPanel>
+                                </StackPanel>
                              </StackPanel>
                          </Border>
 

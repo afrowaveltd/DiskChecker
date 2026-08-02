@@ -4,11 +4,13 @@ using System.Collections.ObjectModel;
 using System.Globalization;
 using System.Linq;
 using System.Threading.Tasks;
+using System.Text.Json;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using DiskChecker.Core.Interfaces;
 using DiskChecker.Core.Models;
 using DiskChecker.UI.Avalonia.Services.Interfaces;
+using LiveChartsCore.Defaults;
 
 namespace DiskChecker.UI.Avalonia.ViewModels;
 
@@ -17,7 +19,11 @@ namespace DiskChecker.UI.Avalonia.ViewModels;
 /// </summary>
 public partial class CertificateBrowserViewModel : ViewModelBase, INavigableViewModel
 {
-    private const int GraphTargetPoints = 32;
+    private const int GraphTargetPoints = 1024;
+    private const double ChartStartX = 56d;
+    private const double ChartEndX = 886d;
+    private const double ChartMinY = 18d;
+    private const double ChartMaxY = 226d;
 
     private readonly IDiskCardRepository _diskCardRepository;
     private readonly INavigationService _navigationService;
@@ -46,6 +52,13 @@ public partial class CertificateBrowserViewModel : ViewModelBase, INavigableView
     private string _chartXAxisStartLabel = CertificateGraphData.Default.ChartXAxisStartLabel;
     private string _chartXAxisMidLabel = CertificateGraphData.Default.ChartXAxisMidLabel;
     private string _chartXAxisEndLabel = CertificateGraphData.Default.ChartXAxisEndLabel;
+    private ObservableCollection<ObservablePoint> _seekScatterPoints = new();
+    private string _seekChartMaxLabel = "0 ms";
+    private string _seekChartMidLabel = "0 ms";
+    private string _seekChartMinLabel = "0 ms";
+    private string _seekChartXAxisStartLabel = "1";
+    private string _seekChartXAxisMidLabel = "-";
+    private string _seekChartXAxisEndLabel = "-";
 
     public CertificateBrowserViewModel(
         IDiskCardRepository diskCardRepository,
@@ -155,6 +168,14 @@ public partial class CertificateBrowserViewModel : ViewModelBase, INavigableView
                 OnPropertyChanged(nameof(DiagnosticHighlightsText));
                 OnPropertyChanged(nameof(HasScoringReasons));
                 OnPropertyChanged(nameof(ScoringReasonsText));
+                OnPropertyChanged(nameof(IsSeekChart));
+                OnPropertyChanged(nameof(SeekScatterPoints));
+                OnPropertyChanged(nameof(SeekChartMaxLabel));
+                OnPropertyChanged(nameof(SeekChartMidLabel));
+                OnPropertyChanged(nameof(SeekChartMinLabel));
+                OnPropertyChanged(nameof(SeekChartXAxisStartLabel));
+                OnPropertyChanged(nameof(SeekChartXAxisMidLabel));
+                OnPropertyChanged(nameof(SeekChartXAxisEndLabel));
             }
         }
     }
@@ -361,6 +382,56 @@ public partial class CertificateBrowserViewModel : ViewModelBase, INavigableView
         private set => SetProperty(ref _chartXAxisEndLabel, value);
     }
 
+    public ObservableCollection<ObservablePoint> SeekScatterPoints
+    {
+        get => _seekScatterPoints;
+        private set
+        {
+            if (SetProperty(ref _seekScatterPoints, value))
+            {
+                OnPropertyChanged(nameof(IsSeekChart));
+            }
+        }
+    }
+
+    public bool IsSeekChart => HasSeekMetrics && SeekScatterPoints.Count > 0;
+
+    public string SeekChartMaxLabel
+    {
+        get => _seekChartMaxLabel;
+        private set => SetProperty(ref _seekChartMaxLabel, value);
+    }
+
+    public string SeekChartMidLabel
+    {
+        get => _seekChartMidLabel;
+        private set => SetProperty(ref _seekChartMidLabel, value);
+    }
+
+    public string SeekChartMinLabel
+    {
+        get => _seekChartMinLabel;
+        private set => SetProperty(ref _seekChartMinLabel, value);
+    }
+
+    public string SeekChartXAxisStartLabel
+    {
+        get => _seekChartXAxisStartLabel;
+        private set => SetProperty(ref _seekChartXAxisStartLabel, value);
+    }
+
+    public string SeekChartXAxisMidLabel
+    {
+        get => _seekChartXAxisMidLabel;
+        private set => SetProperty(ref _seekChartXAxisMidLabel, value);
+    }
+
+    public string SeekChartXAxisEndLabel
+    {
+        get => _seekChartXAxisEndLabel;
+        private set => SetProperty(ref _seekChartXAxisEndLabel, value);
+    }
+
     #endregion
 
     #region Navigation
@@ -538,6 +609,16 @@ public partial class CertificateBrowserViewModel : ViewModelBase, INavigableView
         var hasWriteProfile = certificate.WriteProfilePoints is { Count: > 0 };
         var hasReadProfile = certificate.ReadProfilePoints is { Count: > 0 };
 
+        if (HasSeekMetrics && certificate.TestSessionId > 0)
+        {
+            var seekLatencies = await LoadSeekLatencySamplesAsync(certificate.TestSessionId);
+            ApplySeekScatterGraph(seekLatencies);
+        }
+        else
+        {
+            ResetSeekGraph();
+        }
+
         if (hasWriteProfile && hasReadProfile)
         {
             // Reconstruct graph from stored downsampled points
@@ -622,6 +703,7 @@ public partial class CertificateBrowserViewModel : ViewModelBase, INavigableView
 
     private void ResetGraphToDefaults()
     {
+        ResetSeekGraph();
         var defaults = CertificateGraphData.Default;
         WriteProfilePoints = defaults.WriteProfilePoints;
         ReadProfilePoints = defaults.ReadProfilePoints;
@@ -633,6 +715,140 @@ public partial class CertificateBrowserViewModel : ViewModelBase, INavigableView
         ChartXAxisStartLabel = defaults.ChartXAxisStartLabel;
         ChartXAxisMidLabel = defaults.ChartXAxisMidLabel;
         ChartXAxisEndLabel = defaults.ChartXAxisEndLabel;
+    }
+
+    private async Task<List<double>> LoadSeekLatencySamplesAsync(int sessionId)
+    {
+        try
+        {
+            // Keep all seek dots for analytical certificate browsing. Seek tests
+            // are bounded by UI limits, unlike surface-test telemetry, and the
+            // full-stroke shape is important for diagnosis.
+            var records = await _diskCardRepository.GetSeekSamplesAsync(sessionId);
+            var successful = records.Where(s => !s.HasError && s.LatencyMs > 0).ToList();
+            if (successful.Count > 0)
+            {
+                var fullStroke = successful
+                    .Where(s => s.TestType == SeekTestType.FullStroke)
+                    .OrderBy(s => s.Index)
+                    .Select(s => s.LatencyMs)
+                    .ToList();
+
+                if (fullStroke.Count > 0)
+                {
+                    return fullStroke;
+                }
+
+                return successful
+                    .OrderBy(s => s.TestType)
+                    .ThenBy(s => s.Index)
+                    .Select(s => s.LatencyMs)
+                    .ToList();
+            }
+        }
+        catch
+        {
+            // Fallback below for older DBs or partially migrated data.
+        }
+
+        return ExtractSeekLatenciesFromSession(_selectedSession);
+    }
+
+    private static List<double> ExtractSeekLatenciesFromSession(TestSession? session)
+    {
+        if (string.IsNullOrWhiteSpace(session?.SeekResultsJson))
+        {
+            return new List<double>();
+        }
+
+        try
+        {
+            var single = JsonSerializer.Deserialize<SeekTestResult>(session.SeekResultsJson);
+            if (single?.Samples.Count > 0)
+            {
+                return single.Samples
+                    .Where(s => !s.HasError && s.LatencyMs > 0)
+                    .OrderBy(s => s.Index)
+                    .Select(s => s.LatencyMs)
+                    .ToList();
+            }
+        }
+        catch (JsonException) { }
+
+        try
+        {
+            var envelope = JsonSerializer.Deserialize<SeekResultsEnvelope>(session.SeekResultsJson);
+            var fullStroke = envelope?.FullStroke?.Samples
+                .Where(s => !s.HasError && s.LatencyMs > 0)
+                .OrderBy(s => s.Index)
+                .Select(s => s.LatencyMs)
+                .ToList() ?? new List<double>();
+
+            if (fullStroke.Count > 0)
+            {
+                return fullStroke;
+            }
+
+            return new[] { envelope?.Random, envelope?.Skip }
+                .Where(r => r != null)
+                .SelectMany(r => r!.Samples)
+                .Where(s => !s.HasError && s.LatencyMs > 0)
+                .OrderBy(s => s.Index)
+                .Select(s => s.LatencyMs)
+                .ToList();
+        }
+        catch (JsonException)
+        {
+            return new List<double>();
+        }
+    }
+
+    private void ApplySeekScatterGraph(IReadOnlyList<double> latencies)
+    {
+        var values = latencies.Where(v => v > 0).ToList();
+        if (values.Count == 0)
+        {
+            ResetSeekGraph();
+            return;
+        }
+
+        var yMax = Math.Max(values.Max() * 1.15, values.Max() + 1);
+        var points = new ObservableCollection<ObservablePoint>();
+
+        for (var i = 0; i < values.Count; i++)
+        {
+            var x = values.Count == 1
+                ? ChartStartX
+                : ChartStartX + (i / (double)(values.Count - 1)) * (ChartEndX - ChartStartX);
+            var y = ChartMaxY - ((ChartMaxY - ChartMinY) * Math.Clamp(values[i] / yMax, 0d, 1d));
+            points.Add(new ObservablePoint(x, y));
+        }
+
+        SeekScatterPoints = points;
+        SeekChartMaxLabel = $"{yMax:F1} ms";
+        SeekChartMidLabel = $"{(yMax / 2):F1} ms";
+        SeekChartMinLabel = "0 ms";
+        SeekChartXAxisStartLabel = "1";
+        SeekChartXAxisMidLabel = Math.Max(1, values.Count / 2).ToString(CultureInfo.InvariantCulture);
+        SeekChartXAxisEndLabel = values.Count.ToString(CultureInfo.InvariantCulture);
+    }
+
+    private void ResetSeekGraph()
+    {
+        SeekScatterPoints = new ObservableCollection<ObservablePoint>();
+        SeekChartMaxLabel = "0 ms";
+        SeekChartMidLabel = "0 ms";
+        SeekChartMinLabel = "0 ms";
+        SeekChartXAxisStartLabel = "1";
+        SeekChartXAxisMidLabel = "-";
+        SeekChartXAxisEndLabel = "-";
+    }
+
+    private sealed class SeekResultsEnvelope
+    {
+        public SeekTestResult? FullStroke { get; set; }
+        public SeekTestResult? Random { get; set; }
+        public SeekTestResult? Skip { get; set; }
     }
 
     private async Task HydrateCertificateForPdfAsync(DiskCertificate certificate)
@@ -679,7 +895,7 @@ public partial class CertificateBrowserViewModel : ViewModelBase, INavigableView
     /// </summary>
     private async Task<(List<SpeedSample> WriteSamples, List<SpeedSample> ReadSamples)> LoadSpeedSamplesChunkedAsync(int sessionId)
     {
-        const int maxPoints = 512;
+        const int maxPoints = GraphTargetPoints;
         try
         {
             return await _diskCardRepository.GetSpeedSampleSeriesDownsampledAsync(sessionId, maxPoints);
@@ -751,7 +967,7 @@ public partial class CertificateBrowserViewModel : ViewModelBase, INavigableView
         return new CertificateGraphData(
             BuildPolylinePoints(writeSamples, minSpeed, maxSpeed),
             BuildPolylinePoints(readSamples, minSpeed, maxSpeed),
-            "10,110 490,110",
+            $"{ChartStartX:0},{ChartMaxY:0} {ChartEndX:0},{ChartMaxY:0}",
             false,
             $"{maxSpeed:F1} MB/s",
             $"{((maxSpeed + minSpeed) / 2):F1} MB/s",
@@ -792,7 +1008,7 @@ public partial class CertificateBrowserViewModel : ViewModelBase, INavigableView
 
         var tempPoints = temperatureSamples.OrderBy(t => t.ProgressPercent).ToList();
         var hasTemp = tempPoints.Count > 1;
-        var temperaturePolyline = hasTemp ? BuildTemperaturePolylinePoints(tempPoints) : "10,110 490,110";
+        var temperaturePolyline = hasTemp ? BuildTemperaturePolylinePoints(tempPoints) : $"{ChartStartX:0},{ChartMaxY:0} {ChartEndX:0},{ChartMaxY:0}";
 
         return new CertificateGraphData(
             BuildPolylinePoints(writePoints, minSpeed, maxSpeed),
@@ -834,13 +1050,13 @@ public partial class CertificateBrowserViewModel : ViewModelBase, INavigableView
     {
         if (samples.Count == 0)
         {
-            return "10,102 70,102 130,102 190,102 250,102 310,102 370,102 430,102 490,102";
+            return $"{ChartStartX:0},{ChartMaxY:0} {ChartEndX:0},{ChartMaxY:0}";
         }
 
-        var startX = 10d;
-        var endX = 490d;
-        var minY = 18d;
-        var maxY = 102d;
+        var startX = ChartStartX;
+        var endX = ChartEndX;
+        var minY = ChartMinY;
+        var maxY = ChartMaxY;
         var range = Math.Max(0.0001d, maxSpeed - minSpeed);
         var points = new List<string>(samples.Count);
 
@@ -859,16 +1075,16 @@ public partial class CertificateBrowserViewModel : ViewModelBase, INavigableView
     {
         if (samples.Count == 0)
         {
-            return "10,110 490,110";
+            return $"{ChartStartX:0},{ChartMaxY:0} {ChartEndX:0},{ChartMaxY:0}";
         }
 
         var minTemp = samples.Min(s => s.TemperatureCelsius);
         var maxTemp = samples.Max(s => s.TemperatureCelsius);
         var range = Math.Max(1d, maxTemp - minTemp);
-        var startX = 10d;
-        var endX = 490d;
-        var minY = 18d;
-        var maxY = 102d;
+        var startX = ChartStartX;
+        var endX = ChartEndX;
+        var minY = ChartMinY;
+        var maxY = ChartMaxY;
         var points = new List<string>(samples.Count);
 
         foreach (var sample in samples)

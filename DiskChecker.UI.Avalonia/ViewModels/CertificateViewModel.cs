@@ -28,6 +28,11 @@ public partial class CertificateViewModel : ViewModelBase, INavigableViewModel
 {
    private const int CertificateGraphModulo = 96;
    private const int CertificateGraphRemainders = 4;
+   private const int InternalChartTargetPoints = 1024;
+   private const double ChartStartX = 56d;
+   private const double ChartEndX = 886d;
+   private const double ChartMinY = 18d;
+   private const double ChartMaxY = 226d;
 
    private readonly ICertificateGenerator _certificateGenerator;
    private readonly IDiskCardRepository _diskCardRepository;
@@ -46,15 +51,22 @@ public partial class CertificateViewModel : ViewModelBase, INavigableViewModel
    private List<SpeedSample> _readGraphSamples = [];
    private List<double> _seekLatencyGraphSamples = [];
    private ObservableCollection<ObservablePoint> _seekScatterPoints = new();
-   private string _writeProfilePoints = "10,62 70,58 130,56 190,54 250,50 310,48 370,45 430,42 490,40";
-   private string _readProfilePoints = "10,66 70,61 130,58 190,55 250,53 310,50 370,47 430,45 490,43";
+   private bool _hasThroughputChart = true;
+   private string _seekChartMaxLabel = "0 ms";
+   private string _seekChartMidLabel = "0 ms";
+   private string _seekChartMinLabel = "0 ms";
+   private string _seekChartXAxisStartLabel = "1";
+   private string _seekChartXAxisMidLabel = "-";
+   private string _seekChartXAxisEndLabel = "-";
+   private string _writeProfilePoints = "56,145 160,135 264,131 368,127 471,117 575,113 679,106 783,99 886,94";
+   private string _readProfilePoints = "56,154 160,143 264,135 368,129 471,125 575,117 679,109 783,104 886,99";
    private string _chartMaxSpeedLabel = "0 MB/s";
    private string _chartMidSpeedLabel = "0 MB/s";
    private string _chartMinSpeedLabel = "0 MB/s";
    private string _chartXAxisStartLabel = "0 %";
    private string _chartXAxisMidLabel = "50 %";
    private string _chartXAxisEndLabel = "100 %";
-   private string _temperatureProfilePoints = "10,110 490,110";
+   private string _temperatureProfilePoints = "56,226 886,226";
    private bool _hasTemperatureProfile;
    private string _selectedSessionSummary = string.Empty;
    private string _selectedSessionThermalSummary = string.Empty;
@@ -160,6 +172,7 @@ public partial class CertificateViewModel : ViewModelBase, INavigableViewModel
             OnPropertyChanged(nameof(Sanitize2ReadLine));
             OnPropertyChanged(nameof(WriteSpeedChangeLine));
             OnPropertyChanged(nameof(ReadSpeedChangeLine));
+            OnPropertyChanged(nameof(HasThroughputChart));
             OnPropertyChanged(nameof(IsSeekChart));
             OnPropertyChanged(nameof(IsThroughputChart));
          }
@@ -274,7 +287,20 @@ public partial class CertificateViewModel : ViewModelBase, INavigableViewModel
       {
          if(SetProperty(ref _seekScatterPoints, value))
          {
+            OnPropertyChanged(nameof(HasThroughputChart));
             OnPropertyChanged(nameof(IsSeekChart));
+            OnPropertyChanged(nameof(IsThroughputChart));
+         }
+      }
+   }
+
+   public bool HasThroughputChart
+   {
+      get => _hasThroughputChart;
+      private set
+      {
+         if(SetProperty(ref _hasThroughputChart, value))
+         {
             OnPropertyChanged(nameof(IsThroughputChart));
          }
       }
@@ -282,7 +308,43 @@ public partial class CertificateViewModel : ViewModelBase, INavigableViewModel
 
    public bool IsSeekChart => HasSeekMetrics && SeekScatterPoints.Count > 0;
 
-   public bool IsThroughputChart => !IsSeekChart;
+   public bool IsThroughputChart => HasThroughputChart;
+
+   public string SeekChartMaxLabel
+   {
+      get => _seekChartMaxLabel;
+      private set => SetProperty(ref _seekChartMaxLabel, value);
+   }
+
+   public string SeekChartMidLabel
+   {
+      get => _seekChartMidLabel;
+      private set => SetProperty(ref _seekChartMidLabel, value);
+   }
+
+   public string SeekChartMinLabel
+   {
+      get => _seekChartMinLabel;
+      private set => SetProperty(ref _seekChartMinLabel, value);
+   }
+
+   public string SeekChartXAxisStartLabel
+   {
+      get => _seekChartXAxisStartLabel;
+      private set => SetProperty(ref _seekChartXAxisStartLabel, value);
+   }
+
+   public string SeekChartXAxisMidLabel
+   {
+      get => _seekChartXAxisMidLabel;
+      private set => SetProperty(ref _seekChartXAxisMidLabel, value);
+   }
+
+   public string SeekChartXAxisEndLabel
+   {
+      get => _seekChartXAxisEndLabel;
+      private set => SetProperty(ref _seekChartXAxisEndLabel, value);
+   }
 
    /// <summary>
    /// Gets temperature profile polyline points for the certificate chart.
@@ -1147,11 +1209,9 @@ public partial class CertificateViewModel : ViewModelBase, INavigableViewModel
          _seekLatencyGraphSamples = certificate.SeekLatencyPoints.Where(v => v > 0).ToList();
       }
 
-      if(isSeekCertificate)
-      {
-         return;
-      }
-
+      // Even seek/absolute-destructive certificates can contain a full throughput
+      // profile. Load it for the internal analytical preview; PDF generation keeps
+      // using its own certificate rendering path.
       if((_writeGraphSamples.Count == 0 && _readGraphSamples.Count == 0) && sessionId > 0)
       {
          StatusMessage = L.Get("CertificateView.Status.LoadingGraphData");
@@ -1284,19 +1344,34 @@ public partial class CertificateViewModel : ViewModelBase, INavigableViewModel
    {
       try
       {
-         // SQL-level downsampling: načte max 1024 záznamů pomocí Id-modulo,
-         // aby nedošlo k OOM při zobrazování certifikátu testů jako AbsoluteDestructive,
-         // které mohou mít desítky tisíc seek operací.
-         var records = await _diskCardRepository.GetSeekSamplesDownsampledAsync(sessionId, maxPoints: 1024);
-         var values = records
+         // Seek tests are intentionally much smaller than surface/sanitization
+         // telemetry (UI maximum is 10k seeks). For certificate analysis we want
+         // every measured dot, not a reduced line, so the characteristic
+         // full-stroke V/diamond pattern remains visible just like in SeekTestView
+         // and in the generated PDF certificate.
+         var records = await _diskCardRepository.GetSeekSamplesAsync(sessionId);
+         var successful = records
             .Where(s => !s.HasError && s.LatencyMs > 0)
-            .OrderBy(s => s.TestType)
-            .ThenBy(s => s.Index)
-            .Select(s => s.LatencyMs)
             .ToList();
-         if(values.Count > 0)
+
+         if(successful.Count > 0)
          {
-            return values;
+            var fullStroke = successful
+               .Where(s => s.TestType == SeekTestType.FullStroke)
+               .OrderBy(s => s.Index)
+               .Select(s => s.LatencyMs)
+               .ToList();
+
+            if(fullStroke.Count > 0)
+            {
+               return fullStroke;
+            }
+
+            return successful
+               .OrderBy(s => s.TestType)
+               .ThenBy(s => s.Index)
+               .Select(s => s.LatencyMs)
+               .ToList();
          }
       }
       catch
@@ -1352,10 +1427,10 @@ public partial class CertificateViewModel : ViewModelBase, INavigableViewModel
 
       var max = values.Max();
       var yMax = Math.Max(max * 1.15, max + 1);
-      const double startX = 10d;
-      const double endX = 490d;
-      const double minY = 18d;
-      const double maxY = 102d;
+      const double startX = ChartStartX;
+      const double endX = ChartEndX;
+      const double minY = ChartMinY;
+      const double maxY = ChartMaxY;
       var points = new ObservableCollection<ObservablePoint>();
 
       for(var i = 0; i < values.Count; i++)
@@ -1366,14 +1441,12 @@ public partial class CertificateViewModel : ViewModelBase, INavigableViewModel
       }
 
       SeekScatterPoints = points;
-      TemperatureProfilePoints = "10,110 490,110";
-      HasTemperatureProfile = false;
-      ChartMaxSpeedLabel = $"{yMax:F1} ms";
-      ChartMidSpeedLabel = $"{(yMax / 2):F1} ms";
-      ChartMinSpeedLabel = "0 ms";
-      ChartXAxisStartLabel = "1";
-      ChartXAxisMidLabel = Math.Max(1, values.Count / 2).ToString(CultureInfo.InvariantCulture);
-      ChartXAxisEndLabel = values.Count.ToString(CultureInfo.InvariantCulture);
+      SeekChartMaxLabel = $"{yMax:F1} ms";
+      SeekChartMidLabel = $"{(yMax / 2):F1} ms";
+      SeekChartMinLabel = "0 ms";
+      SeekChartXAxisStartLabel = "1";
+      SeekChartXAxisMidLabel = Math.Max(1, values.Count / 2).ToString(CultureInfo.InvariantCulture);
+      SeekChartXAxisEndLabel = values.Count.ToString(CultureInfo.InvariantCulture);
    }
 
    private sealed class SeekResultsEnvelope
@@ -1384,12 +1457,10 @@ public partial class CertificateViewModel : ViewModelBase, INavigableViewModel
    }
    private async Task<(List<SpeedSample> WriteSamples, List<SpeedSample> ReadSamples)> LoadCertificateGraphSamplesProgressiveAsync(int sessionId)
     {
-       // SQL-level downsampling: the database returns only ~512 rows per phase
-       // using ROW_NUMBER() window function. This keeps memory bounded
-       // regardless of dataset size (e.g. sanitization tests with millions of
-       // samples) and avoids the OOM that the previous chunked-loading approach
-       // caused.
-       const int graphMaxPoints = 512;
+       // SQL-level downsampling keeps memory bounded while still giving the
+       // internal preview enough detail for visual analysis. PDF generation uses
+       // its own compact certificate profile and is intentionally unaffected.
+       const int graphMaxPoints = InternalChartTargetPoints;
 
        try
        {
@@ -1415,12 +1486,24 @@ public partial class CertificateViewModel : ViewModelBase, INavigableViewModel
              ? _seekLatencyGraphSamples
              : certificate.SeekLatencyPoints.Where(v => v > 0).ToList();
           ApplySeekScatterGraph(seekValues);
-          return;
+       }
+       else
+       {
+          SeekScatterPoints = new ObservableCollection<ObservablePoint>();
        }
 
        var writeGraphSamples = _writeGraphSamples;
        var readGraphSamples = _readGraphSamples;
        var temperatureSamples = _selectedSession?.TemperatureSamples ?? [];
+       HasThroughputChart = writeGraphSamples.Any(s => s.SpeedMBps > 0) ||
+          readGraphSamples.Any(s => s.SpeedMBps > 0) ||
+          certificate.WriteProfilePoints.Any(v => v > 0) ||
+          certificate.ReadProfilePoints.Any(v => v > 0) ||
+          certificate.AvgWriteSpeed > 0 ||
+          certificate.AvgReadSpeed > 0 ||
+          certificate.MaxWriteSpeed > 0 ||
+          certificate.MaxReadSpeed > 0;
+
        var graphData = await Task.Run(() => BuildGraphData(certificate, writeGraphSamples, readGraphSamples, temperatureSamples)).ConfigureAwait(true);
 
        WriteProfilePoints = graphData.WriteProfilePoints;
@@ -1441,6 +1524,13 @@ public partial class CertificateViewModel : ViewModelBase, INavigableViewModel
        _readGraphSamples = [];
        _seekLatencyGraphSamples = [];
        SeekScatterPoints = new ObservableCollection<ObservablePoint>();
+       HasThroughputChart = true;
+       SeekChartMaxLabel = "0 ms";
+       SeekChartMidLabel = "0 ms";
+       SeekChartMinLabel = "0 ms";
+       SeekChartXAxisStartLabel = "1";
+       SeekChartXAxisMidLabel = "-";
+       SeekChartXAxisEndLabel = "-";
        var graphData = CertificateGraphData.Default;
        WriteProfilePoints = graphData.WriteProfilePoints;
        ReadProfilePoints = graphData.ReadProfilePoints;
@@ -1500,7 +1590,7 @@ public partial class CertificateViewModel : ViewModelBase, INavigableViewModel
 
        var tempPoints = temperatureSamples.OrderBy(t => t.ProgressPercent).ToList();
        var hasTemp = tempPoints.Count > 1;
-       var temperaturePolyline = hasTemp ? BuildTemperaturePolylinePoints(tempPoints) : "10,110 490,110";
+       var temperaturePolyline = hasTemp ? BuildTemperaturePolylinePoints(tempPoints) : $"{ChartStartX:0},{ChartMaxY:0} {ChartEndX:0},{ChartMaxY:0}";
 
        return new CertificateGraphData(
            BuildPolylinePoints(writePoints, minSpeed, maxSpeed),
@@ -1519,16 +1609,16 @@ public partial class CertificateViewModel : ViewModelBase, INavigableViewModel
     {
        if(samples.Count == 0)
        {
-          return "10,110 490,110";
+          return $"{ChartStartX:0},{ChartMaxY:0} {ChartEndX:0},{ChartMaxY:0}";
        }
 
        var minTemp = samples.Min(s => s.TemperatureCelsius);
        var maxTemp = samples.Max(s => s.TemperatureCelsius);
        var range = Math.Max(1d, maxTemp - minTemp);
-       var startX = 10d;
-       var endX = 490d;
-       var minY = 18d;
-       var maxY = 102d;
+       var startX = ChartStartX;
+       var endX = ChartEndX;
+       var minY = ChartMinY;
+       var maxY = ChartMaxY;
        var points = new List<string>(samples.Count);
 
        foreach(var sample in samples)
@@ -1547,7 +1637,7 @@ public partial class CertificateViewModel : ViewModelBase, INavigableViewModel
        var values = samples.Where(s => s.SpeedMBps > 0).OrderBy(s => s.ProgressPercent).ToList();
        if(values.Count > 0)
        {
-          return DownsampleGraphSamples(values, 32);
+          return DownsampleGraphSamples(values, InternalChartTargetPoints);
        }
 
        if(averageSpeed <= 0 && maxSpeed <= 0)
@@ -1570,13 +1660,13 @@ public partial class CertificateViewModel : ViewModelBase, INavigableViewModel
        var values = samples.Where(v => v.SpeedMBps > 0).OrderBy(v => v.ProgressPercent).ToList();
        if(values.Count == 0)
        {
-          return "10,102 70,102 130,102 190,102 250,102 310,102 370,102 430,102 490,102";
+          return $"{ChartStartX:0},{ChartMaxY:0} {ChartEndX:0},{ChartMaxY:0}";
        }
 
-       var startX = 10d;
-       var endX = 490d;
-       var minY = 18d;
-       var maxY = 102d;
+       var startX = ChartStartX;
+       var endX = ChartEndX;
+       var minY = ChartMinY;
+       var maxY = ChartMaxY;
        var range = Math.Max(0.0001d, maxSpeed - minSpeed);
        var points = new List<string>(values.Count);
 

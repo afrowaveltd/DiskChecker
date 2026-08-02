@@ -327,38 +327,45 @@
                             <StackPanel Spacing="6">
                                 <TextBlock Text="{Binding L[CertificateBrowser.PerformanceProfile]}" FontWeight="Bold" FontSize="12"/>
 
-                                <Grid ColumnDefinitions="Auto,*" RowDefinitions="*,Auto" RowSpacing="4" ColumnSpacing="8">
-                                    <Grid Grid.Row="0" Grid.Column="0" RowDefinitions="Auto,*,Auto" Height="100">
-                                        <TextBlock Grid.Row="0" Text="{Binding ChartMaxSpeedLabel}" FontSize="8"
+                                <Grid ColumnDefinitions="Auto,*" RowDefinitions="Auto,Auto" RowSpacing="6" ColumnSpacing="8">
+                                    <Grid Grid.Row="0" Grid.Column="0" RowDefinitions="Auto,*,Auto" Height="220" MinWidth="46">
+                                        <TextBlock Grid.Row="0" Text="{Binding ChartMaxSpeedLabel}" FontSize="9"
                                                    Foreground="{DynamicResource ThemeTextMutedBrush}"/>
-                                        <TextBlock Grid.Row="1" Text="{Binding ChartMidSpeedLabel}" FontSize="8"
+                                        <TextBlock Grid.Row="1" Text="{Binding ChartMidSpeedLabel}" FontSize="9"
                                                    Foreground="{DynamicResource ThemeTextMutedBrush}" VerticalAlignment="Center"/>
-                                        <TextBlock Grid.Row="2" Text="{Binding ChartMinSpeedLabel}" FontSize="8"
+                                        <TextBlock Grid.Row="2" Text="{Binding ChartMinSpeedLabel}" FontSize="9"
                                                    Foreground="{DynamicResource ThemeTextMutedBrush}" VerticalAlignment="Bottom"/>
                                     </Grid>
 
-                                    <Viewbox Grid.Row="0" Grid.Column="1" Stretch="Fill" StretchDirection="Both">
-                                        <Canvas Width="520" Height="120" Background="#FFFFFFFF" ClipToBounds="True">
-                                            <Line StartPoint="10,10" EndPoint="10,110" Stroke="#FFCBD5E1" StrokeThickness="1"/>
-                                            <Line StartPoint="10,60" EndPoint="520,60" Stroke="#FFF1F5F9" StrokeThickness="1"/>
-                                            <Line StartPoint="10,110" EndPoint="520,110" Stroke="#FFCBD5E1" StrokeThickness="1"/>
+                                    <Viewbox Grid.Row="0" Grid.Column="1" Stretch="Fill" StretchDirection="Both" MinHeight="220">
+                                        <Canvas Width="920" Height="260" Background="#FFFFFFFF" ClipToBounds="True">
+                                            <Rectangle Canvas.Left="56" Canvas.Top="18" Width="830" Height="208" Stroke="#FFCBD5E1" StrokeThickness="1" Fill="#00FFFFFF"/>
+                                            <Line StartPoint="56,70" EndPoint="886,70" Stroke="#FFE2E8F0" StrokeThickness="1"/>
+                                            <Line StartPoint="56,122" EndPoint="886,122" Stroke="#FFE2E8F0" StrokeThickness="1"/>
+                                            <Line StartPoint="56,174" EndPoint="886,174" Stroke="#FFE2E8F0" StrokeThickness="1"/>
+                                            <Line StartPoint="264,18" EndPoint="264,226" Stroke="#FFF1F5F9" StrokeThickness="1"/>
+                                            <Line StartPoint="471,18" EndPoint="471,226" Stroke="#FFF1F5F9" StrokeThickness="1"/>
+                                            <Line StartPoint="679,18" EndPoint="679,226" Stroke="#FFF1F5F9" StrokeThickness="1"/>
 
                                             <Polyline Points="{Binding WriteProfilePoints, Converter={StaticResource PointsStringConverter}}"
-                                                      Stroke="{Binding ChartStrokeWrite}" StrokeThickness="2"/>
+                                                      Stroke="{Binding ChartStrokeWrite}" StrokeThickness="2"
+                                                      StrokeJoin="Round" StrokeLineCap="Round"/>
                                             <Polyline Points="{Binding ReadProfilePoints, Converter={StaticResource PointsStringConverter}}"
-                                                      Stroke="{Binding ChartStrokeRead}" StrokeThickness="2"/>
+                                                      Stroke="{Binding ChartStrokeRead}" StrokeThickness="2"
+                                                      StrokeJoin="Round" StrokeLineCap="Round"/>
                                             <Polyline Points="{Binding TemperatureProfilePoints, Converter={StaticResource PointsStringConverter}}"
-                                                      Stroke="#FF7C3AED" StrokeThickness="2"
+                                                      Stroke="#FF7C3AED" StrokeThickness="1.6"
+                                                      StrokeJoin="Round" StrokeLineCap="Round"
                                                       IsVisible="{Binding HasTemperatureProfile}"/>
                                         </Canvas>
                                     </Viewbox>
 
                                     <Grid Grid.Row="1" Grid.Column="1" ColumnDefinitions="Auto,*,Auto,*,Auto,*,Auto,*,Auto">
-                                        <TextBlock Grid.Column="0" Text="0 %" FontSize="8" Foreground="{DynamicResource ThemeTextMutedBrush}"/>
-                                        <TextBlock Grid.Column="2" Text="25 %" FontSize="8" Foreground="{DynamicResource ThemeTextMutedBrush}" HorizontalAlignment="Center"/>
-                                        <TextBlock Grid.Column="4" Text="50 %" FontSize="8" Foreground="{DynamicResource ThemeTextMutedBrush}" HorizontalAlignment="Center"/>
-                                        <TextBlock Grid.Column="6" Text="75 %" FontSize="8" Foreground="{DynamicResource ThemeTextMutedBrush}" HorizontalAlignment="Center"/>
-                                        <TextBlock Grid.Column="8" Text="100 %" FontSize="8" Foreground="{DynamicResource ThemeTextMutedBrush}" HorizontalAlignment="Right"/>
+                                        <TextBlock Grid.Column="0" Text="0 %" FontSize="9" Foreground="{DynamicResource ThemeTextMutedBrush}"/>
+                                        <TextBlock Grid.Column="2" Text="25 %" FontSize="9" Foreground="{DynamicResource ThemeTextMutedBrush}" HorizontalAlignment="Center"/>
+                                        <TextBlock Grid.Column="4" Text="50 %" FontSize="9" Foreground="{DynamicResource ThemeTextMutedBrush}" HorizontalAlignment="Center"/>
+                                        <TextBlock Grid.Column="6" Text="75 %" FontSize="9" Foreground="{DynamicResource ThemeTextMutedBrush}" HorizontalAlignment="Center"/>
+                                        <TextBlock Grid.Column="8" Text="100 %" FontSize="9" Foreground="{DynamicResource ThemeTextMutedBrush}" HorizontalAlignment="Right"/>
                                     </Grid>
                                 </Grid>
 
@@ -375,6 +382,54 @@
                                         <Border Width="10" Height="10" Background="#FF7C3AED" CornerRadius="2"/>
                                         <TextBlock Text="{Binding L[CertificateBrowserView.TemperatureChart]}" FontSize="10"/>
                                     </StackPanel>
+                                </StackPanel>
+                            </StackPanel>
+                        </Border>
+
+                        <!-- Seek scatter graph -->
+                        <Border Background="{Binding PanelBackground}" Padding="12" CornerRadius="8"
+                                IsVisible="{Binding IsSeekChart}">
+                            <StackPanel Spacing="6">
+                                <TextBlock Text="Seek latence" FontWeight="Bold" FontSize="12"/>
+                                <Grid ColumnDefinitions="Auto,*" RowDefinitions="Auto,Auto" RowSpacing="6" ColumnSpacing="8">
+                                    <Grid Grid.Row="0" Grid.Column="0" RowDefinitions="Auto,*,Auto" Height="220" MinWidth="46">
+                                        <TextBlock Grid.Row="0" Text="{Binding SeekChartMaxLabel}" FontSize="9" Foreground="{DynamicResource ThemeTextMutedBrush}"/>
+                                        <TextBlock Grid.Row="1" Text="{Binding SeekChartMidLabel}" FontSize="9" Foreground="{DynamicResource ThemeTextMutedBrush}" VerticalAlignment="Center"/>
+                                        <TextBlock Grid.Row="2" Text="{Binding SeekChartMinLabel}" FontSize="9" Foreground="{DynamicResource ThemeTextMutedBrush}" VerticalAlignment="Bottom"/>
+                                    </Grid>
+                                    <Viewbox Grid.Row="0" Grid.Column="1" Stretch="Fill" StretchDirection="Both" MinHeight="220">
+                                        <Canvas Width="920" Height="260" Background="#FFFFFFFF" ClipToBounds="True">
+                                            <Rectangle Canvas.Left="56" Canvas.Top="18" Width="830" Height="208" Stroke="#FFCBD5E1" StrokeThickness="1" Fill="#00FFFFFF"/>
+                                            <Line StartPoint="56,70" EndPoint="886,70" Stroke="#FFE2E8F0" StrokeThickness="1"/>
+                                            <Line StartPoint="56,122" EndPoint="886,122" Stroke="#FFE2E8F0" StrokeThickness="1"/>
+                                            <Line StartPoint="56,174" EndPoint="886,174" Stroke="#FFE2E8F0" StrokeThickness="1"/>
+                                            <ItemsControl ItemsSource="{Binding SeekScatterPoints}">
+                                                <ItemsControl.ItemsPanel>
+                                                    <ItemsPanelTemplate>
+                                                        <Canvas/>
+                                                    </ItemsPanelTemplate>
+                                                </ItemsControl.ItemsPanel>
+                                                <ItemsControl.ItemTemplate>
+                                                    <DataTemplate>
+                                                        <Ellipse Width="3" Height="3" Fill="#FF1D4ED8">
+                                                            <Ellipse.RenderTransform>
+                                                                <TranslateTransform X="{Binding X}" Y="{Binding Y}"/>
+                                                            </Ellipse.RenderTransform>
+                                                        </Ellipse>
+                                                    </DataTemplate>
+                                                </ItemsControl.ItemTemplate>
+                                            </ItemsControl>
+                                        </Canvas>
+                                    </Viewbox>
+                                    <Grid Grid.Row="1" Grid.Column="1" ColumnDefinitions="Auto,*,Auto,*,Auto">
+                                        <TextBlock Grid.Column="0" Text="{Binding SeekChartXAxisStartLabel}" FontSize="9" Foreground="{DynamicResource ThemeTextMutedBrush}"/>
+                                        <TextBlock Grid.Column="2" Text="{Binding SeekChartXAxisMidLabel}" FontSize="9" Foreground="{DynamicResource ThemeTextMutedBrush}" HorizontalAlignment="Center"/>
+                                        <TextBlock Grid.Column="4" Text="{Binding SeekChartXAxisEndLabel}" FontSize="9" Foreground="{DynamicResource ThemeTextMutedBrush}" HorizontalAlignment="Right"/>
+                                    </Grid>
+                                </Grid>
+                                <StackPanel Orientation="Horizontal" Spacing="5">
+                                    <Border Width="10" Height="10" Background="#FF1D4ED8" CornerRadius="5"/>
+                                    <TextBlock Text="Seek latence" FontSize="10"/>
                                 </StackPanel>
                             </StackPanel>
                         </Border>
