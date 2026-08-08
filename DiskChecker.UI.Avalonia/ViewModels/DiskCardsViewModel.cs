@@ -217,6 +217,8 @@ public partial class DiskCardsViewModel : ViewModelBase, INavigableViewModel
                 {
                     Id = card.Id,
                     ModelName = card.ModelName,
+                    Manufacturer = card.Manufacturer,
+                    ModelFamily = card.ModelFamily,
                     SerialNumber = storedSerial,
                     DevicePath = card.DevicePath,
                     DiskType = card.DiskType,

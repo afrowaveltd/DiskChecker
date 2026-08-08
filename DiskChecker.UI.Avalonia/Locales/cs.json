@@ -1064,6 +1064,7 @@
   "DiskCardsView.LastTest": "Poslední test",
   "DiskCardsView.Loading": "Načítám karty...",
   "DiskCardsView.LockedOnly": "Pouze zamčené",
+  "DiskCardsView.Manufacturer": "Výrobce",
   "DiskCardsView.Model": "Model",
   "DiskCardsView.NoCards": "Žádné karty disků",
   "DiskCardsView.Refresh": "Obnovit",

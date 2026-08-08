@@ -15,6 +15,18 @@ public class DiskCard
     /// Disk model name (e.g., "Samsung SSD 870 EVO 500GB")
     /// </summary>
     public string ModelName { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Manufacturer name extracted from SMART DeviceModel (e.g., "Samsung", "Seagate", "WDC").
+    /// When SMART is unavailable, this can be set manually.
+    /// </summary>
+    public string Manufacturer { get; set; } = string.Empty;
+
+    /// <summary>
+    /// SMART model family (e.g., "Samsung based SSDs", "Seagate BarraCuda").
+    /// Populated from SMART data when available.
+    /// </summary>
+    public string? ModelFamily { get; set; }
     
     /// <summary>
     /// Serial number - unique identifier
@@ -149,12 +161,18 @@ public class DiskCard
     }
 
     /// <summary>
-    /// Best-effort manufacturer extracted from model name.
+    /// Display-friendly manufacturer. Uses stored Manufacturer field if set,
+    /// otherwise falls back to extracting from ModelName.
     /// </summary>
-    public string Manufacturer
+    public string ManufacturerDisplay
     {
         get
         {
+            if (!string.IsNullOrWhiteSpace(Manufacturer))
+            {
+                return Manufacturer;
+            }
+
             if (string.IsNullOrWhiteSpace(ModelName))
             {
                 return "Neznámý";

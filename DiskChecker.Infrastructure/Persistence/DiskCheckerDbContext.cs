@@ -64,6 +64,8 @@ public class DiskCheckerDbContext : DbContext
             entity.HasKey(e => e.Id);
             
             entity.Property(e => e.ModelName).HasMaxLength(256).IsRequired();
+            entity.Property(e => e.Manufacturer).HasMaxLength(128);
+            entity.Property(e => e.ModelFamily).HasMaxLength(256);
             entity.Property(e => e.SerialNumber).HasMaxLength(128).IsRequired();
             entity.Property(e => e.DevicePath).HasMaxLength(512);
             entity.Property(e => e.DiskType).HasMaxLength(32);

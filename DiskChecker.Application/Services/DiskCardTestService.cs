@@ -130,9 +130,12 @@ public class DiskCardTestService
 
       if(card == null)
       {
+         var manufacturer = ManufacturerExtractor.ExtractManufacturer(smartaData);
          card = new DiskCard
          {
             ModelName = preferredModelName,
+            Manufacturer = manufacturer,
+            ModelFamily = smartaData?.ModelFamily,
             SerialNumber = serialKey,
             DevicePath = drive.Path,
             DiskType = DetermineDiskType(drive),
@@ -188,6 +191,23 @@ public class DiskCardTestService
       {
          card.ModelName = preferredModelName;
          cardChanged = true;
+      }
+
+      // Update manufacturer from SMART when available (SMART is the authoritative source)
+      if(smartaData != null)
+      {
+         var smartManufacturer = ManufacturerExtractor.ExtractManufacturer(smartaData);
+         if(!string.IsNullOrWhiteSpace(smartManufacturer) && !string.Equals(card.Manufacturer, smartManufacturer, StringComparison.Ordinal))
+         {
+            card.Manufacturer = smartManufacturer;
+            cardChanged = true;
+         }
+
+         if(!string.IsNullOrWhiteSpace(smartaData.ModelFamily) && !string.Equals(card.ModelFamily, smartaData.ModelFamily, StringComparison.Ordinal))
+         {
+            card.ModelFamily = smartaData.ModelFamily;
+            cardChanged = true;
+         }
       }
 
       if(!string.Equals(card.FirmwareVersion, preferredFirmwareVersion, StringComparison.Ordinal))

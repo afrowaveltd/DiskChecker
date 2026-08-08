@@ -1064,6 +1064,7 @@
   "DiskCardsView.LastTest": "Last Test",
   "DiskCardsView.Loading": "Loading cards...",
   "DiskCardsView.LockedOnly": "Locked Only",
+  "DiskCardsView.Manufacturer": "Manufacturer",
   "DiskCardsView.Model": "Model",
   "DiskCardsView.NoCards": "No disk cards",
   "DiskCardsView.Refresh": "Refresh",

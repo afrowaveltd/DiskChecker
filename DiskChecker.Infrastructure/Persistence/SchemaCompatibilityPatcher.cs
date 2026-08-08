@@ -69,6 +69,8 @@ public static class SchemaCompatibilityPatcher
         {
             EnsureColumn(dbContext, "DiskCards", "PowerOnHours");
             EnsureColumn(dbContext, "DiskCards", "PowerCycleCount");
+            EnsureColumn(dbContext, "DiskCards", "Manufacturer");
+            EnsureColumn(dbContext, "DiskCards", "ModelFamily");
             EnsureIndex(dbContext, "IX_DiskCards_DevicePath", "DiskCards", "DevicePath");
         }
 
@@ -289,6 +291,18 @@ public static class SchemaCompatibilityPatcher
         if (tableName == "DiskCards" && columnName == "PowerCycleCount")
         {
             dbContext.Database.ExecuteSqlRaw("ALTER TABLE DiskCards ADD COLUMN PowerCycleCount INTEGER NULL;");
+            return;
+        }
+
+        if (tableName == "DiskCards" && columnName == "Manufacturer")
+        {
+            dbContext.Database.ExecuteSqlRaw("ALTER TABLE DiskCards ADD COLUMN Manufacturer TEXT NOT NULL DEFAULT '';");
+            return;
+        }
+
+        if (tableName == "DiskCards" && columnName == "ModelFamily")
+        {
+            dbContext.Database.ExecuteSqlRaw("ALTER TABLE DiskCards ADD COLUMN ModelFamily TEXT NULL;");
             return;
         }
 

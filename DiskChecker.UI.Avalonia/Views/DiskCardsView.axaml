@@ -100,6 +100,7 @@
                           DoubleTapped="CardsDataGrid_DoubleTapped">
                     <DataGrid.Columns>
                         <DataGridTextColumn Header="{Binding L[DiskCardsView.Model]}" Binding="{Binding ModelName}" Width="170"/>
+                        <DataGridTextColumn Header="{Binding L[DiskCardsView.Manufacturer]}" Binding="{Binding ManufacturerDisplay}" Width="110"/>
                         <DataGridTextColumn Header="{Binding L[DiskCardsView.SerialNumber]}" Binding="{Binding SerialNumber}" Width="150"/>
                         <DataGridTextColumn Header="{Binding L[DiskCardsView.Capacity]}" Binding="{Binding Capacity, StringFormat='{}{0:#,0} B'}" Width="110"/>
                         <DataGridTextColumn Header="{Binding L[DiskCardsView.Grade]}" Binding="{Binding OverallGrade}" Width="60"/>
