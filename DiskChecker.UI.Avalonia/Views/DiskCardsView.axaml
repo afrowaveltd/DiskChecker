@@ -97,7 +97,9 @@
                           RowBackground="{DynamicResource ThemeCardBackgroundBrush}"
                           HorizontalGridLinesBrush="{DynamicResource ThemeBorderLightBrush}"
                           VerticalGridLinesBrush="{DynamicResource ThemeBorderLightBrush}"
-                          DoubleTapped="CardsDataGrid_DoubleTapped">
+                          DoubleTapped="CardsDataGrid_DoubleTapped"
+                          CanUserResizeColumns="True"
+                          CanUserSortColumns="True">
                     <DataGrid.Columns>
                         <DataGridTextColumn Header="{Binding L[DiskCardsView.Model]}" Binding="{Binding ModelName}" Width="170"/>
                         <DataGridTextColumn Header="{Binding L[DiskCardsView.Manufacturer]}" Binding="{Binding ManufacturerDisplay}" Width="110"/>
@@ -107,7 +109,7 @@
                         <DataGridTextColumn Header="{Binding L[DiskCardsView.Score]}" Binding="{Binding OverallScore, StringFormat={}{0:F0}}" Width="60"/>
                         <DataGridTextColumn Header="{Binding L[DiskCardsView.Hours]}" Binding="{Binding PowerOnHours, StringFormat='{}{0:#,0}'}" Width="75"/>
                         <DataGridTextColumn Header="{Binding L[DiskCardsView.Starts]}" Binding="{Binding PowerCycleCount, StringFormat='{}{0:#,0}'}" Width="75"/>
-                        <DataGridTemplateColumn Header="{Binding L[DiskCardsView.Volumes]}" Width="*">
+                        <DataGridTemplateColumn Header="{Binding L[DiskCardsView.Volumes]}" Width="*" CanUserSort="False">
                             <DataGridTemplateColumn.CellTemplate>
                                 <DataTemplate>
                                     <ScrollViewer HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Disabled">
@@ -143,7 +145,7 @@
                         </DataGridTemplateColumn>
                         <DataGridTextColumn Header="{Binding L[DiskCardsView.Tests]}" Binding="{Binding TestCount}" Width="60"/>
                         <DataGridTextColumn Header="{Binding L[DiskCardsView.LastTest]}" Binding="{Binding LastTestedAt, StringFormat={}{0:dd.MM.yyyy HH:mm}}" Width="130"/>
-                        <DataGridTemplateColumn Header="{Binding L[DiskCardsView.Actions]}" Width="210">
+                        <DataGridTemplateColumn Header="{Binding L[DiskCardsView.Actions]}" Width="210" CanUserSort="False">
                             <DataGridTemplateColumn.CellTemplate>
                                 <DataTemplate>
                                     <StackPanel Orientation="Horizontal" Spacing="4">

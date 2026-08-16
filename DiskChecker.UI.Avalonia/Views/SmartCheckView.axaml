@@ -564,13 +564,15 @@
                                      GridLinesVisibility="Horizontal"
                                      Background="{DynamicResource ThemeCardBackgroundBrush}"
                                      BorderBrush="{DynamicResource ThemeBorderBrush}"
-                                     BorderThickness="1">
+                                     BorderThickness="1"
+                                     CanUserResizeColumns="True"
+                                     CanUserSortColumns="True">
                             <DataGrid.Columns>
                                 <DataGridTextColumn Header="#" Binding="{Binding Number}" Width="25"/>
-                                <DataGridTextColumn Header="Typ" Binding="{Binding TestTypeName}" Width="80"/>
-                                <DataGridTextColumn Header="Stav" Binding="{Binding StatusName}" Width="*"/>
-                                <DataGridTextColumn Header="Hod." Binding="{Binding FormattedHours}" Width="50"/>
-                                <DataGridTextColumn Header="Progress" Binding="{Binding FormattedProgress}" Width="55"/>
+                                <DataGridTextColumn Header="Typ" Binding="{Binding TestTypeName}" SortMemberPath="Type" Width="80"/>
+                                <DataGridTextColumn Header="Stav" Binding="{Binding StatusName}" SortMemberPath="Status" Width="*"/>
+                                <DataGridTextColumn Header="Hod." Binding="{Binding FormattedHours}" SortMemberPath="LifeTimeHours" Width="50"/>
+                                <DataGridTextColumn Header="Progress" Binding="{Binding FormattedProgress}" SortMemberPath="RemainingPercent" Width="55"/>
                             </DataGrid.Columns>
                         </DataGrid>
                     </Grid>

@@ -144,13 +144,15 @@
                               IsReadOnly="True"
                               HeadersVisibility="Column"
                               GridLinesVisibility="Horizontal"
-                              FontSize="12">
+                              FontSize="12"
+                              CanUserResizeColumns="True"
+                              CanUserSortColumns="True">
                         <DataGrid.Columns>
                             <DataGridTextColumn Header="{Binding L[DiskCardDetailView.Date]}" Binding="{Binding TestedAt, StringFormat={}{0:dd.MM.yyyy HH:mm}}" Width="130"/>
                             <DataGridTextColumn Header="{Binding L[DiskCardDetailView.TestType]}" Binding="{Binding TestType}" Width="120"/>
                             <DataGridTextColumn Header="{Binding L[DiskCardDetailView.Grade]}" Binding="{Binding Grade}" Width="60"/>
                             <DataGridTextColumn Header="{Binding L[DiskCardDetailView.Score]}" Binding="{Binding Score, StringFormat={}{0:F0}}" Width="60"/>
-                            <dg:DataGridTemplateColumn Header="{Binding L[DiskCardDetailView.Signals]}" Width="170">
+                            <dg:DataGridTemplateColumn Header="{Binding L[DiskCardDetailView.Signals]}" Width="170" CanUserSort="False">
                                 <dg:DataGridTemplateColumn.CellTemplate>
                                     <DataTemplate>
                                         <Border Background="{Binding DiagnosticBadgeBackground}"
@@ -193,7 +195,9 @@
                               IsReadOnly="True"
                               HeadersVisibility="Column"
                               GridLinesVisibility="Horizontal"
-                              FontSize="12">
+                              FontSize="12"
+                              CanUserResizeColumns="True"
+                              CanUserSortColumns="True">
                         <DataGrid.Columns>
                             <DataGridTextColumn Header="{Binding L[DiskCardDetailView.Date]}" Binding="{Binding TestedAt, StringFormat={}{0:dd.MM.yyyy HH:mm}}" Width="130"/>
                             <DataGridTextColumn Header="{Binding L[DiskCardDetailView.Grade]}" Binding="{Binding Grade}" Width="65"/>
@@ -314,7 +318,9 @@
                               Foreground="{DynamicResource ThemeTextPrimaryBrush}"
                               RowBackground="{DynamicResource ThemeCardBackgroundBrush}"
                               HorizontalGridLinesBrush="{DynamicResource ThemeBorderLightBrush}"
-                              VerticalGridLinesBrush="{DynamicResource ThemeBorderLightBrush}">
+                              VerticalGridLinesBrush="{DynamicResource ThemeBorderLightBrush}"
+                              CanUserResizeColumns="True"
+                              CanUserSortColumns="True">
                         <DataGrid.Columns>
                             <DataGridTextColumn Header="{Binding L[DiskCardDetailView.CertNumber]}" Binding="{Binding CertificateNumber}" Width="140" FontFamily="Consolas"/>
                             <DataGridTextColumn Header="{Binding L[DiskCardDetailView.Grade]}" Binding="{Binding Grade}" Width="60"/>

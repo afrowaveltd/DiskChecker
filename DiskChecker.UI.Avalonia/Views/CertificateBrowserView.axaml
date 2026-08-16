@@ -95,16 +95,18 @@
                               Foreground="{DynamicResource ThemeTextPrimaryBrush}"
                               RowBackground="{DynamicResource ThemeCardBackgroundBrush}"
                               HorizontalGridLinesBrush="{DynamicResource ThemeBorderLightBrush}"
-                              VerticalGridLinesBrush="{DynamicResource ThemeBorderLightBrush}">
+                              VerticalGridLinesBrush="{DynamicResource ThemeBorderLightBrush}"
+                              CanUserResizeColumns="True"
+                              CanUserSortColumns="True">
                         <DataGrid.Columns>
                             <DataGridTextColumn Header="{Binding L[Certificate.Number]}" Binding="{Binding CertificateNumber}" Width="140" FontFamily="Consolas"/>
                             <DataGridTextColumn Header="Model" Binding="{Binding DiskModel}" Width="150"/>
                             <DataGridTextColumn Header="{Binding L[CertificateBrowser.SerialNumber]}" Binding="{Binding SerialNumber}" Width="130" FontFamily="Consolas"/>
                             <DataGridTextColumn Header="{Binding L[Certificate.Grade]}" Binding="{Binding Grade}" Width="55"/>
-                            <DataGridTextColumn Header="{Binding L[Certificate.Score]}" Binding="{Binding ScoreText}" Width="50"/>
+                            <DataGridTextColumn Header="{Binding L[Certificate.Score]}" Binding="{Binding ScoreText}" SortMemberPath="Score" Width="50"/>
                             <DataGridTextColumn Header="{Binding L[Certificate.TestType]}" Binding="{Binding TestType}" Width="100"/>
-                            <DataGridTextColumn Header="{Binding L[CertificateBrowser.Generated]}" Binding="{Binding GeneratedAtText}" Width="120"/>
-                            <DataGridTextColumn Header="{Binding L[Certificate.Recommended]}" Binding="{Binding RecommendedText}" Width="80"/>
+                            <DataGridTextColumn Header="{Binding L[CertificateBrowser.Generated]}" Binding="{Binding GeneratedAtText}" SortMemberPath="GeneratedAt" Width="120"/>
+                            <DataGridTextColumn Header="{Binding L[Certificate.Recommended]}" Binding="{Binding RecommendedText}" SortMemberPath="Recommended" Width="80"/>
                         </DataGrid.Columns>
                     </DataGrid>
 
