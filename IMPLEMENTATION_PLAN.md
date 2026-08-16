@@ -67,6 +67,6 @@ so the viewer never appears.
 - Keep Windows behavior unchanged.
 
 ## Progress
-- [ ] Implement `TryOpenAsSudoUser` in DocumentLauncher
-- [ ] Build & verify
-- [ ] Commit & push
+- [x] Implement `TryOpenAsSudoUser` in DocumentLauncher
+- [x] Build & verify (0 errors)
+- [x] Commit & push (76caf1e)
