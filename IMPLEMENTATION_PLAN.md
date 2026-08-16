@@ -39,4 +39,34 @@ out of scope.
 - [x] CertificateBrowserView.axaml
 - [x] SmartCheckView.axaml
 - [x] Build & verify (0 errors)
+- [x] Commit & push
+
+---
+
+# Implementation Plan: Open generated PDF in default app under sudo (Linux)
+
+## Goal
+When the app runs under `sudo` on Linux, opening a generated PDF (or label) in the
+default system application fails because `xdg-open` runs as root and cannot reach the
+desktop user's session (missing `DISPLAY`/`XAUTHORITY`/DBus context). The file should
+instead be opened under the account of the currently logged-in user.
+
+## Root cause
+`DocumentLauncher.OpenFile` uses `Process.Start(UseShellExecute = true)`, which on Linux
+invokes `xdg-open` as the current (root) user. Under `sudo`, `SUDO_USER`/`SUDO_UID` are
+set, but the desktop session environment (`XAUTHORITY`, `DISPLAY`, DBus) is not inherited,
+so the viewer never appears.
+
+## Approach
+- In `DocumentLauncher.OpenFile`, before the generic shell open, detect `SUDO_USER`
+  (non-root) on non-Windows platforms.
+- Resolve the original user's X authority file (`/run/user/<uid>/gdm/Xauthority`,
+  `/run/user/<uid>/xauth_*`, `~/.Xauthority`).
+- Launch `xdg-open <file>` as the original user via `runuser -u <user> -- env ... xdg-open`
+  (fallback to `su <user> -c ...`), passing `DISPLAY` and `XAUTHORITY`.
+- Keep Windows behavior unchanged.
+
+## Progress
+- [ ] Implement `TryOpenAsSudoUser` in DocumentLauncher
+- [ ] Build & verify
 - [ ] Commit & push
