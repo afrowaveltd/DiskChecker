@@ -67,56 +67,70 @@ internal static class DocumentLauncher
         var display = Environment.GetEnvironmentVariable("DISPLAY");
         var xauthority = ResolveXAuthority(sudoUid, sudoUser);
 
-        // Build the environment prefix for the child process. We only forward the
-        // variables that are actually available so we don't pass empty values.
-        var env = new StringBuilder();
-        if (!string.IsNullOrWhiteSpace(display))
-            env.Append("DISPLAY=").Append(display).Append(' ');
-        if (!string.IsNullOrWhiteSpace(xauthority))
-            env.Append("XAUTHORITY=").Append(xauthority).Append(' ');
-
-        var escapedPath = filePath.Replace("'", "'\\''");
-
         // Prefer runuser (no password prompt, available on most systemd distros).
-        if (TryRun("runuser", BuildRunuserArgs(sudoUser, env, escapedPath), errors))
+        if (TryRunAsUser("runuser", sudoUser, display, xauthority, filePath, errors))
             return true;
 
         // Fallback to su.
-        if (TryRun("su", BuildSuArgs(sudoUser, env, escapedPath), errors))
+        if (TryRunAsUser("su", sudoUser, display, xauthority, filePath, errors))
             return true;
 
         return false;
     }
 
-    private static string BuildRunuserArgs(string sudoUser, StringBuilder env, string escapedPath)
-    {
-        // runuser -u <user> -- env <ENV...> xdg-open '<path>'
-        var args = new StringBuilder();
-        args.Append("-u ").Append(sudoUser).Append(" -- env ");
-        args.Append(env);
-        args.Append("xdg-open '").Append(escapedPath).Append('\'');
-        return args.ToString();
-    }
-
-    private static string BuildSuArgs(string sudoUser, StringBuilder env, string escapedPath)
-    {
-        // su <user> -c "env <ENV...> xdg-open '<path>'"
-        var command = new StringBuilder();
-        command.Append("env ").Append(env).Append("xdg-open '").Append(escapedPath).Append('\'');
-        return $"{sudoUser} -c \"{command.ToString().Replace("\"", "\\\"")}\"";
-    }
-
-    private static bool TryRun(string fileName, string arguments, StringBuilder errors)
+    /// <summary>
+    /// Runs <c>xdg-open &lt;file&gt;</c> as the given user, forwarding the desktop
+    /// session environment. Uses <see cref="ProcessStartInfo.ArgumentList"/> so each
+    /// argument is passed verbatim (no shell quoting, no literal quote characters).
+    /// </summary>
+    private static bool TryRunAsUser(string tool, string sudoUser, string? display, string? xauthority, string filePath, StringBuilder errors)
     {
         try
         {
             var psi = new ProcessStartInfo
             {
-                FileName = fileName,
-                Arguments = arguments,
+                FileName = tool,
                 UseShellExecute = false,
                 CreateNoWindow = true
             };
+
+            if (tool == "runuser")
+            {
+                // runuser -u <user> -- env [DISPLAY=..] [XAUTHORITY=..] xdg-open <file>
+                psi.ArgumentList.Add("-u");
+                psi.ArgumentList.Add(sudoUser);
+                psi.ArgumentList.Add("--");
+                psi.ArgumentList.Add("env");
+            }
+            else
+            {
+                // su <user> -c <command>  (command is built below and passed as one arg)
+                psi.ArgumentList.Add(sudoUser);
+                psi.ArgumentList.Add("-c");
+            }
+
+            if (tool == "runuser")
+            {
+                if (!string.IsNullOrWhiteSpace(display))
+                    psi.ArgumentList.Add($"DISPLAY={display}");
+                if (!string.IsNullOrWhiteSpace(xauthority))
+                    psi.ArgumentList.Add($"XAUTHORITY={xauthority}");
+                psi.ArgumentList.Add("xdg-open");
+                psi.ArgumentList.Add(filePath);
+            }
+            else
+            {
+                // su runs the command through a shell, so build a single command string.
+                var command = new StringBuilder();
+                command.Append("env");
+                if (!string.IsNullOrWhiteSpace(display))
+                    command.Append(" DISPLAY='").Append(display.Replace("'", "'\\''")).Append('\'');
+                if (!string.IsNullOrWhiteSpace(xauthority))
+                    command.Append(" XAUTHORITY='").Append(xauthority.Replace("'", "'\\''")).Append('\'');
+                command.Append(" xdg-open '").Append(filePath.Replace("'", "'\\''")).Append('\'');
+                psi.ArgumentList.Add(command.ToString());
+            }
+
             using var process = Process.Start(psi);
             if (process == null)
                 return false;
@@ -127,12 +141,12 @@ internal static class DocumentLauncher
         }
         catch (Win32Exception ex)
         {
-            errors.Append($"{fileName} selhal: {ex.Message}. ");
+            errors.Append($"{tool} selhal: {ex.Message}. ");
             return false;
         }
         catch (InvalidOperationException ex)
         {
-            errors.Append($"{fileName} selhal: {ex.Message}. ");
+            errors.Append($"{tool} selhal: {ex.Message}. ");
             return false;
         }
     }
