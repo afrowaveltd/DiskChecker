@@ -78,7 +78,7 @@ public static class WindowsSmartJsonParser
                 continue;
             }
 
-            if (id == 5 || name.Contains("Reallocated", StringComparison.OrdinalIgnoreCase))
+            if (id == 5 || name.Contains("Reallocated_Sector", StringComparison.OrdinalIgnoreCase))
             {
                 smartaData.ReallocatedSectorCount = (int)value.Value;
             }

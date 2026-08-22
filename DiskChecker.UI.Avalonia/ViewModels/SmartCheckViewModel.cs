@@ -1478,7 +1478,7 @@ private async Task AbortTestAsync()
     {
         var attrs = (providerAttributes?.Count > 0 ? providerAttributes : smartData.Attributes) ?? new List<SmartaAttributeItem>();
 
-        smartData.ReallocatedSectorCount = MaxKnownCounter(smartData.ReallocatedSectorCount, FindRawCounter(attrs, 5, "Reallocated"));
+        smartData.ReallocatedSectorCount = MaxKnownCounter(smartData.ReallocatedSectorCount, FindRawCounter(attrs, 5, "Reallocated_Sector"));
         smartData.PendingSectorCount = MaxKnownCounter(smartData.PendingSectorCount, FindRawCounter(attrs, 197, "Pending"));
         smartData.UncorrectableErrorCount = MaxKnownCounter(smartData.UncorrectableErrorCount, FindRawCounter(attrs, 198, "Uncorrect"));
         smartData.MediaErrors = MaxKnownCounter(smartData.MediaErrors, FindRawCounter(attrs, 198, "Media"));
@@ -1486,8 +1486,25 @@ private async Task AbortTestAsync()
 
     private static int? FindRawCounter(IEnumerable<SmartaAttributeItem> attrs, int id, string nameFragment)
     {
-        var match = attrs
-            .Where(a => a.Id == id || a.Name.Contains(nameFragment, StringComparison.OrdinalIgnoreCase))
+        var list = attrs as IReadOnlyList<SmartaAttributeItem> ?? attrs.ToList();
+
+        // Prefer an exact attribute-ID match. This is critical for reallocated sectors:
+        // ID 5 (Reallocated_Sector_Ct) is the real counter, while ID 196
+        // (Reallocated_Event_Count) is a different metric that is non-zero even on
+        // healthy drives. A name-only match would otherwise pick the larger ID 196 raw
+        // value and report the wrong number.
+        var exact = list
+            .Where(a => a.Id == id)
+            .OrderByDescending(a => a.RawValue)
+            .FirstOrDefault();
+
+        if (exact != null)
+        {
+            return (int)Math.Min(exact.RawValue, int.MaxValue);
+        }
+
+        var match = list
+            .Where(a => a.Name.Contains(nameFragment, StringComparison.OrdinalIgnoreCase))
             .OrderByDescending(a => a.RawValue)
             .FirstOrDefault();
 
