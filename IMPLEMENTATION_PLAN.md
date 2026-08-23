@@ -53,3 +53,34 @@ class of crash when navigating away mid-operation:
 - `dotnet build DiskChecker.slnx` → 0 errors.
 - `dotnet test` could not run in this environment (`Exec format error` on the test host exe —
   pre-existing environment limitation, unrelated to this change).
+
+---
+
+## FullStroke Seek Test Grading (user request #2)
+
+### Requirement
+Grade FullStroke seek tests by absolute average latency, less strict than the
+consistency/reliability score used for other test types:
+- avg < 15ms → A
+- avg < 20ms → B
+- avg < 25ms → C
+- avg < 30ms → D
+- avg >= 30ms → E
+- failure (aborted / incomplete / errors / no samples) → F
+
+### Change
+- `SeekTestViewModel.CalculateSeekGrade` now branches on `result.TestType`:
+  `FullStroke` → new `CalculateFullStrokeGrade`, other types → existing score-based switch.
+- New `CalculateFullStrokeGrade`:
+  - returns "F" if `!IsCompleted || WasAborted || ErrorCount > 0` or no successful samples;
+  - otherwise grades by `AverageLatencyMs` (falling back to sample average) against the thresholds above.
+
+### Tests
+- Added `SeekTestGradeTests` in `tests/DiskChecker.Tests/SeekTestTests.cs` invoking the private
+  `CalculateSeekGrade` via reflection, covering all thresholds (A–E) and failure cases (aborted,
+  not completed, errors, no samples).
+
+### Verification
+- `dotnet build DiskChecker.slnx` → 0 errors.
+- `dotnet test` still cannot run in this environment (`Exec format error` on test host exe —
+  pre-existing limitation).

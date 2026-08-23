@@ -1136,3 +1136,99 @@ public class SeekTestStatisticsTests
         return (double)method!.Invoke(null, new object[] { sorted, percentile })!;
     }
 }
+
+/// <summary>
+/// Tests for FullStroke seek test grading by average latency thresholds.
+/// </summary>
+public class SeekTestGradeTests
+{
+    private static string InvokeGrade(SeekTestResult result)
+    {
+        var method = typeof(DiskChecker.UI.Avalonia.ViewModels.SeekTestViewModel)
+            .GetMethod("CalculateSeekGrade",
+                System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static);
+
+        Assert.NotNull(method);
+        return (string)method!.Invoke(null, new object[] { result })!;
+    }
+
+    private static SeekTestResult FullStrokeResult(double avgLatencyMs, bool isCompleted = true, bool wasAborted = false, int errorCount = 0)
+    {
+        return new SeekTestResult
+        {
+            TestType = SeekTestType.FullStroke,
+            IsCompleted = isCompleted,
+            WasAborted = wasAborted,
+            ErrorCount = errorCount,
+            AverageLatencyMs = avgLatencyMs,
+            Samples = new List<SeekLatencySample>
+            {
+                new() { LatencyMs = avgLatencyMs, HasError = false }
+            }
+        };
+    }
+
+    [Fact]
+    public void FullStroke_Under15ms_IsA()
+    {
+        Assert.Equal("A", InvokeGrade(FullStrokeResult(14.9)));
+    }
+
+    [Fact]
+    public void FullStroke_Under20ms_IsB()
+    {
+        Assert.Equal("B", InvokeGrade(FullStrokeResult(19.9)));
+    }
+
+    [Fact]
+    public void FullStroke_Under25ms_IsC()
+    {
+        Assert.Equal("C", InvokeGrade(FullStrokeResult(24.9)));
+    }
+
+    [Fact]
+    public void FullStroke_Under30ms_IsD()
+    {
+        Assert.Equal("D", InvokeGrade(FullStrokeResult(29.9)));
+    }
+
+    [Fact]
+    public void FullStroke_30msOrMore_IsE()
+    {
+        Assert.Equal("E", InvokeGrade(FullStrokeResult(30.0)));
+        Assert.Equal("E", InvokeGrade(FullStrokeResult(45.0)));
+    }
+
+    [Fact]
+    public void FullStroke_Aborted_IsF()
+    {
+        Assert.Equal("F", InvokeGrade(FullStrokeResult(10.0, wasAborted: true)));
+    }
+
+    [Fact]
+    public void FullStroke_NotCompleted_IsF()
+    {
+        Assert.Equal("F", InvokeGrade(FullStrokeResult(10.0, isCompleted: false)));
+    }
+
+    [Fact]
+    public void FullStroke_WithErrors_IsF()
+    {
+        Assert.Equal("F", InvokeGrade(FullStrokeResult(10.0, errorCount: 1)));
+    }
+
+    [Fact]
+    public void FullStroke_NoSamples_IsF()
+    {
+        var result = new SeekTestResult
+        {
+            TestType = SeekTestType.FullStroke,
+            IsCompleted = true,
+            WasAborted = false,
+            ErrorCount = 0,
+            AverageLatencyMs = 0,
+            Samples = new List<SeekLatencySample>()
+        };
+        Assert.Equal("F", InvokeGrade(result));
+    }
+}

@@ -875,12 +875,16 @@ public partial class SeekTestViewModel : ViewModelBase, INavigableViewModel, IDi
     }
 
     /// <summary>
-    /// Calculates seek test grade based on consistency and reliability,
-    /// NOT absolute latency. A 5400 RPM disk with stable 35ms seeks
-    /// deserves an A just as much as a 7200 RPM disk with stable 12ms seeks.
+    /// Calculates seek test grade. FullStroke tests are graded by absolute
+    /// average latency thresholds (user preference): <15ms A, <20ms B,
+    /// <25ms C, <30ms D, >=30ms E, failure F. Other test types use the
+    /// consistency/reliability score.
     /// </summary>
     private static string CalculateSeekGrade(SeekTestResult result)
     {
+        if (result.TestType == SeekTestType.FullStroke)
+            return CalculateFullStrokeGrade(result);
+
         var score = CalculateSeekScore(result);
         return score switch
         {
@@ -891,6 +895,32 @@ public partial class SeekTestViewModel : ViewModelBase, INavigableViewModel, IDi
             >= 40 => "E",
             _ => "F"
         };
+    }
+
+    /// <summary>
+    /// Grades a FullStroke seek test purely by average latency:
+    /// <15ms = A, <20ms = B, <25ms = C, <30ms = D, >=30ms = E.
+    /// A failed test (aborted, incomplete, or with errors) is graded F.
+    /// </summary>
+    private static string CalculateFullStrokeGrade(SeekTestResult result)
+    {
+        // Failure: aborted, not completed, or any seek errors.
+        if (!result.IsCompleted || result.WasAborted || result.ErrorCount > 0)
+            return "F";
+
+        var successful = result.Samples.Where(s => !s.HasError && s.LatencyMs > 0).ToList();
+        if (successful.Count == 0)
+            return "F";
+
+        var avg = result.AverageLatencyMs > 0
+            ? result.AverageLatencyMs
+            : successful.Average(s => s.LatencyMs);
+
+        if (avg < 15) return "A";
+        if (avg < 20) return "B";
+        if (avg < 25) return "C";
+        if (avg < 30) return "D";
+        return "E";
     }
 
     /// <summary>
