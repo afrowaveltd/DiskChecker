@@ -844,6 +844,7 @@ public partial class SeekTestViewModel : ViewModelBase, INavigableViewModel, IDi
                 Grade = CalculateSeekGrade(result),
                 Score = CalculateSeekScore(result),
                 Notes = string.Format(L.Get("SeekTest.SessionNotes"), SelectedTestType, result.SeekCount, result.AverageLatencyMs),
+                SmartBefore = result.SmartaData,
                 SeekResultsJson = JsonSerializer.Serialize(result)
             };
 

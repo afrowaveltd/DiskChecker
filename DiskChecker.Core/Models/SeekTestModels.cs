@@ -267,6 +267,13 @@ public class SeekTestResult
     /// </summary>
     public long? PowerOnHours { get; set; }
 
+    /// <summary>
+    /// Full SMART snapshot captured before the seek test. Carried through so the
+    /// certificate generator can populate SMART parameters (power-on hours, power
+    /// cycles, reallocated/pending sectors, health) on the generated certificate.
+    /// </summary>
+    public SmartaData? SmartaData { get; set; }
+
     // === Test Configuration ===
 
     /// <summary>

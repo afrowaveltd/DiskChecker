@@ -125,6 +125,7 @@ public class SeekTestService
         result.DrivePath = request.Drive.Path;
         result.DriveTotalBytes = request.Drive.TotalSize;
         result.PowerOnHours = smartaData?.PowerOnHours;
+        result.SmartaData = smartaData;
         result.Recommendation = recommendation;
 
         return result;
