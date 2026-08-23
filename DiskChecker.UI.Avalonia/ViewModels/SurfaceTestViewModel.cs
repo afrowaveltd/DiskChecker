@@ -111,6 +111,7 @@ public partial class SurfaceTestViewModel : ViewModelBase, INavigableViewModel, 
    private int _selectedZoomIndex = 1; // Default 5 min
    private int _currentPhase; // 0 = Write, 1 = Read (default is 0)
    private CancellationTokenSource? _testCancellation;
+   private bool _disposed;
    private double _writeBucketStart = -1;
    private double _writeBucketSum;
    private int _writeBucketCount;
@@ -869,7 +870,11 @@ public partial class SurfaceTestViewModel : ViewModelBase, INavigableViewModel, 
          return;
       }
 
-      Dispatcher.UIThread.Post(() => AddSpeedPointCore(speed, dataPercent, phase, totalElapsed));
+      Dispatcher.UIThread.Post(() =>
+      {
+         if(_disposed) return;
+         AddSpeedPointCore(speed, dataPercent, phase, totalElapsed);
+      });
    }
 
    private void AddSpeedPointCore(double speed, double dataPercent, int phase, TimeSpan? totalElapsed = null)
@@ -1414,7 +1419,11 @@ public partial class SurfaceTestViewModel : ViewModelBase, INavigableViewModel, 
             return;
          }
 
-         Dispatcher.UIThread.Post(ApplyProgress);
+         Dispatcher.UIThread.Post(() =>
+         {
+            if(_disposed) return;
+            ApplyProgress();
+         });
       });
 
       // Note: Sanitization cannot be safely cancelled once started
@@ -2155,6 +2164,8 @@ public partial class SurfaceTestViewModel : ViewModelBase, INavigableViewModel, 
 
    public void Dispose()
    {
+      if(_disposed) return;
+      _disposed = true;
       _testCancellation?.Dispose();
       GC.SuppressFinalize(this);
    }

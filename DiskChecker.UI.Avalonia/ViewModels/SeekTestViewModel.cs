@@ -712,6 +712,11 @@ public partial class SeekTestViewModel : ViewModelBase, INavigableViewModel, IDi
                 {
                     Dispatcher.UIThread.Post(() =>
                     {
+                        // Guard: the view model may have been disposed after navigation
+                        // (SeekTestViewModel is transient and IDisposable). Pending posts
+                        // must not touch chart data on a detached/destroyed chart surface.
+                        if (_disposed) return;
+
                         // Guard: don't touch chart data after final chart is built
                         if (_isFinalChartBuilt) return;
 
@@ -1223,6 +1228,10 @@ public partial class SeekTestViewModel : ViewModelBase, INavigableViewModel, IDi
         // This forces LiveCharts2 to detect the delta and render.
         Dispatcher.UIThread.Post(() =>
         {
+            // Guard: the view model may have been disposed after navigation. Pending
+            // posts must not touch chart data on a detached/destroyed chart surface.
+            if (_disposed) return;
+
             // Step 1: clear with fresh references
 #pragma warning disable CA1825
             FinalLatencySeries = new ISeries[0];

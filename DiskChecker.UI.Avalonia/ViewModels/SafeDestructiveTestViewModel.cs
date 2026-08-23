@@ -1462,6 +1462,7 @@ public partial class SafeDestructiveTestViewModel : ViewModelBase, INavigableVie
              {
                 Dispatcher.UIThread.Post(() =>
                    {
+                       if (_disposed) return;
                     OverallProgress = 90 + p.ProgressPercent * 0.10;
                     OverallProgressText = $"{OverallProgress:F0}%";
                     StatusMessage = p.Phase;

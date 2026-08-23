@@ -910,6 +910,7 @@ public partial class AbsoluteDestructiveTestViewModel : ViewModelBase, INavigabl
 
                     Dispatcher.UIThread.Post(() =>
                     {
+                        if (_disposed) return;
                         CurrentPhaseProgress = p.ProgressPercent;
                         Phases[1].ProgressPercent = p.ProgressPercent;
                         Phases[1].Detail = FormatSanitizationProgressDetail(p);
@@ -1008,6 +1009,7 @@ public partial class AbsoluteDestructiveTestViewModel : ViewModelBase, INavigabl
 
                     Dispatcher.UIThread.Post(() =>
                     {
+                        if (_disposed) return;
                         CurrentPhaseProgress = p.ProgressPercent;
                         Phases[5].ProgressPercent = p.ProgressPercent;
                         Phases[5].Detail = FormatSanitizationProgressDetail(p);
@@ -1092,6 +1094,7 @@ public partial class AbsoluteDestructiveTestViewModel : ViewModelBase, INavigabl
                         {
                             Dispatcher.UIThread.Post(() =>
                             {
+                                if (_disposed) return;
                                 Phases[7].Detail = p.Phase;
                                 Phases[7].ProgressPercent = p.ProgressPercent;
                             });
@@ -1190,6 +1193,7 @@ public partial class AbsoluteDestructiveTestViewModel : ViewModelBase, INavigabl
                 {
                     Dispatcher.UIThread.Post(() =>
                     {
+                        if (_disposed) return;
                         CurrentPhaseProgress = progress.PercentComplete;
                         Phases[index].ProgressPercent = progress.PercentComplete;
                         Phases[index].Detail = $"{progress.SeeksCompleted}/{progress.TotalSeeks} seeků";
@@ -1246,6 +1250,7 @@ public partial class AbsoluteDestructiveTestViewModel : ViewModelBase, INavigabl
             await Task.Delay(500, ct);
             Dispatcher.UIThread.Post(() =>
             {
+                if (_disposed) return;
                 var remaining = end - DateTime.UtcNow;
                 StatusMessage = L.Get("DestructiveTest.Status.TempStabilizing", remaining.TotalSeconds.ToString("F0"));
             });
@@ -1256,6 +1261,7 @@ public partial class AbsoluteDestructiveTestViewModel : ViewModelBase, INavigabl
     {
         Dispatcher.UIThread.Post(() =>
         {
+            if (_disposed) return;
             Phases[index].Status = status;
             Phases[index].Detail = detail;
             if (status == TestPhaseStatus.Completed)
@@ -1328,6 +1334,7 @@ public partial class AbsoluteDestructiveTestViewModel : ViewModelBase, INavigabl
     {
         Dispatcher.UIThread.Post(() =>
         {
+            if (_disposed) return;
             CurrentTemperature = temp;
             if (temp < MinTemperature) MinTemperature = temp;
             if (temp > MaxTemperature) MaxTemperature = temp;

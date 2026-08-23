@@ -1,44 +1,55 @@
-# Implementation Plan: Fix Seagate reallocated-sector count (ID 5 vs ID 196)
+# Implementation Plan: Fix crash after Seek Test → navigate to Disk Cards
 
 ## Goal
-On Seagate (and other) drives, the "přemapované sektory" (reallocated sectors) value is
-wrong: it shows the RAW *event* count instead of the actual reallocated sector count.
-
-- **ID 5** = `Reallocated_Sector_Ct` → the real number of reallocated sectors (what we want).
-- **ID 196** = `Reallocated_Event_Count` → number of reallocation *events*; this is
-  non-zero even on healthy drives and must NOT be used as the reallocated-sector count.
+Fix an intermittent crash (Windows + Linux) that occurs after a Seek Test completes and the
+user navigates to "Karty disků" (Disk Cards). Also review navigation robustness in general.
 
 ## Root cause
-Two places match the reallocated counter by the broad name fragment `"Reallocated"`,
-which also matches `Reallocated_Event_Count` (ID 196):
+`SeekTestViewModel` is registered as **Transient** and implements `IDisposable`. When the user
+navigates away, `NavigationService.NavigateTo<T>()` disposes the current DI scope, which disposes
+the `SeekTestViewModel` (and its scoped `DiskCardRepository`/`DbContext`).
 
-1. `DiskChecker.UI.Avalonia/ViewModels/SmartCheckViewModel.cs`
-   - `MergeCriticalCountersFromAttributes` → `FindRawCounter(attrs, 5, "Reallocated")`.
-   - `FindRawCounter` filters `a.Id == id || a.Name.Contains(nameFragment)` and then
-     `OrderByDescending(a => a.RawValue).First()`. Because ID 196's raw value is usually
-     larger than ID 5's, it picks ID 196 and overwrites the correct value.
-2. `DiskChecker.Infrastructure/Hardware/WindowsSmartJsonParser.cs`
-   - `PopulateAttributes` uses `id == 5 || name.Contains("Reallocated")`, so a later
-     ID 196 entry overwrites the ID 5 value.
+However, the Seek Test uses `Dispatcher.UIThread.Post(...)` in two places that can still fire
+**after** the view model has been disposed:
+
+1. The real-time progress callback (invoked from the background seek loop) posts to the UI thread
+   and mutates `LatencyChartValues` / `LatestSample` / chart axes.
+2. `BuildFinalChart(...)` posts a two-step assignment of `FinalLatencySeries` / `FinalLatencyXAxes`
+   / `FinalLatencyYAxes` to force a LiveCharts2 SkiaSharp redraw.
+
+When the user navigates to Disk Cards immediately after the test finishes, the pending
+`Dispatcher.UIThread.Post` callbacks run against a disposed view model whose `CartesianChart`
+controls are being detached from the visual tree. LiveCharts2 SkiaSharp then throws while trying
+to re-render a destroyed chart surface — an intermittent (race-condition) crash, hence
+"ne vždy, ale velmi často".
+
+The `_isFinalChartBuilt` flag only guards against progress callbacks corrupting the *final* chart;
+it does **not** guard against the view model being disposed.
 
 ## Fix
-- `FindRawCounter`: prefer an **exact ID match** first; only fall back to name matching
-  when no attribute with the exact ID exists. Also narrow the reallocated name fragment
-  from `"Reallocated"` to `"Reallocated_Sector"` so the fallback never matches ID 196.
-- `WindowsSmartJsonParser.PopulateAttributes`: match `id == 5` or
-  `name.Contains("Reallocated_Sector")` (not the generic `"Reallocated"`).
+- Add a `_disposed` guard to every `Dispatcher.UIThread.Post` callback in `SeekTestViewModel`
+  (progress callback + `BuildFinalChart`), so they become no-ops after `Dispose()`.
+- `Dispose()` already sets `_disposed = true` first, so pending posts are safely ignored.
+
+## Navigation robustness review (same latent pattern)
+The same "transient IDisposable ViewModel + unguarded `Dispatcher.UIThread.Post`" pattern exists
+in other test/operation ViewModels. Applied the same `_disposed` guard to prevent the same
+class of crash when navigating away mid-operation:
+
+- `SurfaceTestViewModel` — added `_disposed` field + guard in `AddSpeedPoint` and the sanitization
+  `ApplyProgress` post; made `Dispose()` idempotent.
+- `AbsoluteDestructiveTestViewModel` — guarded 7 `Dispatcher.UIThread.Post` callbacks.
+- `SafeDestructiveTestViewModel` — guarded 1 `Dispatcher.UIThread.Post` callback.
+- `RestoreViewModel` — guarded 1 `Dispatcher.UIThread.Post` callback.
 
 ## Progress
 - [x] Analyze root cause
-- [x] Fix SmartCheckViewModel.FindRawCounter / MergeCriticalCountersFromAttributes
-- [x] Fix WindowsSmartJsonParser.PopulateAttributes
-- [x] Add regression tests (ReallocatedSectorDetectionTests.cs, 4 tests)
+- [x] Guard SeekTestViewModel progress callback post with `_disposed`
+- [x] Guard SeekTestViewModel BuildFinalChart post with `_disposed`
+- [x] Harden SurfaceTestViewModel / AbsoluteDestructiveTestViewModel / SafeDestructiveTestViewModel / RestoreViewModel
 - [x] Build & verify (0 errors)
 
 ## Verification
-- `dotnet build` → 0 errors.
-- New tests pass: `ReallocatedSectorDetectionTests` (4/4).
-- Full suite: 329 total, 25 failed — all failures are pre-existing
-  `CertificateGenerator`/`CertificateExportService` tests failing with
-  `UnauthorizedAccessException` on `/home/sa-admin/.config/DiskChecker/Certificates`
-  (environment permission issue, unrelated to this change).
+- `dotnet build DiskChecker.slnx` → 0 errors.
+- `dotnet test` could not run in this environment (`Exec format error` on the test host exe —
+  pre-existing environment limitation, unrelated to this change).

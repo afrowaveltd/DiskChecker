@@ -255,7 +255,11 @@ public partial class RestoreViewModel : ViewModelBase, INavigableViewModel, IDis
             var backup = CreateDiscoveredBackupFromManifest(manifestPath);
             if (backup == null) return;
 
-            Dispatcher.UIThread.Post(() => AddDiscoveredBackupIfNew(backup));
+            Dispatcher.UIThread.Post(() =>
+            {
+                if (_disposed) return;
+                AddDiscoveredBackupIfNew(backup);
+            });
         }
         catch { }
     }
