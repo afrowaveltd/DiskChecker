@@ -10,6 +10,12 @@ namespace DiskChecker.Core.Services;
 /// </summary>
 public class QualityCalculator : IQualityCalculator
 {
+    private const string HistoricalThermalFailureExplanation =
+        "SMART zaznamenal v minulosti překročení povoleného teplotního limitu. " +
+        "Tato událost je historická a zůstává zaznamenána. " +
+        "Aktuální měření a kompletní fyzické testy však neprokázaly chybu média ani aktuální kritický stav disku. " +
+        "Hodnocení bylo proto sníženo kvůli historii tepelného namáhání, nikoli klasifikováno jako aktuální selhání.";
+
     private enum MediaCategory
     {
         Hdd,
@@ -53,6 +59,12 @@ public class QualityCalculator : IQualityCalculator
             score = Math.Min(score, 34);
             warnings.Add("Critical SMART failure detected");
             return new QualityRating(QualityGrade.F, score) { Warnings = warnings };
+        }
+
+        if (IsHistoricalTemperatureOnlyFailure(smartaData))
+        {
+            score = Math.Clamp(score - 15, 0, 100);
+            warnings.Add(HistoricalThermalFailureExplanation);
         }
 
         var grade = score switch
@@ -399,6 +411,11 @@ public class QualityCalculator : IQualityCalculator
 
     private static bool HasCriticalSmartFailure(SmartaData smartaData)
     {
+        if (IsHistoricalTemperatureOnlyFailure(smartaData))
+        {
+            return false;
+        }
+
         return smartaData.IsFailing ||
                smartaData.Attributes.Any(a => !a.IsOk && !string.IsNullOrWhiteSpace(a.WhenFailed)) ||
                smartaData.PendingSectorCount is > 0 ||
@@ -407,6 +424,70 @@ public class QualityCalculator : IQualityCalculator
                smartaData.ReallocatedSectorCount is > 50 ||
                smartaData.PercentageUsed is >= 100 ||
                smartaData.AvailableSpare is <= 1;
+    }
+
+    /// <summary>
+    /// Returns true only when the sole SMART failure is a historical temperature
+    /// threshold crossing (e.g. Airflow_Temperature_Cel / attribute 190 with
+    /// WHEN_FAILED = In_the_past) and there are no active critical media or
+    /// mechanical indicators. This is intentionally narrow: historical failures of
+    /// other critical attributes are NOT exempted.
+    /// </summary>
+    public static bool IsHistoricalTemperatureOnlyFailure(SmartaData smartaData)
+    {
+        if (!smartaData.IsHealthy)
+        {
+            return false;
+        }
+
+        // Active critical indicators always take priority over the exemption.
+        if (smartaData.PendingSectorCount is > 0 ||
+            smartaData.UncorrectableErrorCount is > 0 ||
+            smartaData.MediaErrors is > 0 ||
+            smartaData.ReallocatedSectorCount is > 50 ||
+            smartaData.PercentageUsed is >= 100 ||
+            smartaData.AvailableSpare is <= 1)
+        {
+            return false;
+        }
+
+        var failingAttributes = smartaData.Attributes
+            .Where(a => !a.IsOk && !string.IsNullOrWhiteSpace(a.WhenFailed))
+            .ToList();
+
+        if (failingAttributes.Count == 0)
+        {
+            return false;
+        }
+
+        // Every failing attribute must be a temperature attribute that failed only
+        // in the past and is not currently below threshold.
+        foreach (var attr in failingAttributes)
+        {
+            if (!IsTemperatureAttribute(attr.Id))
+            {
+                return false;
+            }
+
+            if (!attr.WhenFailed.Contains("In_the_past", StringComparison.OrdinalIgnoreCase))
+            {
+                return false;
+            }
+
+            // Currently still below threshold -> treat as active, not historical.
+            if (attr.Threshold > 0 && attr.Value < attr.Threshold)
+            {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    private static bool IsTemperatureAttribute(int attributeId)
+    {
+        // 190 = Airflow_Temperature_Cel, 194 = Temperature_Celsius.
+        return attributeId is 190 or 194;
     }
 
     private static QualityGrade MaxGrade(QualityGrade current, QualityGrade minimum)

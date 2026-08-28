@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.ObjectModel;
 using System.Linq;
 using System.Text.Json;
@@ -925,6 +925,33 @@ public partial class SeekTestViewModel : ViewModelBase, INavigableViewModel, IDi
     }
 
     /// <summary>
+    /// Calculates a FullStroke seek test score (0-100) that is consistent with
+    /// the letter grade. The score is mapped to the A-E bands (A=80-100, B=60-80,
+    /// C=40-60, D=20-40, E=1-20) with linear interpolation within each band based
+    /// on average latency. A failed test (aborted, incomplete, or with errors) is 0.
+    /// </summary>
+    private static int CalculateFullStrokeScore(SeekTestResult result)
+    {
+        // Failure: aborted, not completed, or any seek errors -> F = 0.
+        if (!result.IsCompleted || result.WasAborted || result.ErrorCount > 0)
+            return 0;
+
+        var successful = result.Samples.Where(s => !s.HasError && s.LatencyMs > 0).ToList();
+        if (successful.Count == 0)
+            return 0;
+
+        var avg = result.AverageLatencyMs > 0
+            ? result.AverageLatencyMs
+            : successful.Average(s => s.LatencyMs);
+
+        if (avg < 15) return (int)Math.Round(100 - (avg / 15.0) * 20.0);        // A: 80-100
+        if (avg < 20) return (int)Math.Round(80 - ((avg - 15) / 5.0) * 20.0);  // B: 60-80
+        if (avg < 25) return (int)Math.Round(60 - ((avg - 20) / 5.0) * 20.0);  // C: 40-60
+        if (avg < 30) return (int)Math.Round(40 - ((avg - 25) / 5.0) * 20.0);  // D: 20-40
+        return Math.Max(1, (int)Math.Round(20 - (avg - 30) * 0.5));            // E: 1-20
+    }
+
+    /// <summary>
     /// Calculates seek test score (0-100) based on consistency metrics:
     /// CV (coefficient of variation), tail ratio (P99/median),
     /// outlier rate, and error rate. Absolute latency only penalizes
@@ -932,6 +959,11 @@ public partial class SeekTestViewModel : ViewModelBase, INavigableViewModel, IDi
     /// </summary>
     private static int CalculateSeekScore(SeekTestResult result)
     {
+        // FullStroke is graded by absolute latency; keep the numeric score
+        // consistent with that grade (A=80-100 ... E=1-20, F=0).
+        if (result.TestType == SeekTestType.FullStroke)
+            return CalculateFullStrokeScore(result);
+
         var successful = result.Samples.Where(s => !s.HasError && s.LatencyMs > 0).ToList();
         if (successful.Count == 0)
             return result.ErrorCount > 0 ? 0 : 50; // no data = neutral

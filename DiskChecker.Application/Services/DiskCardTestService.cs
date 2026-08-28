@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Runtime.InteropServices;
@@ -775,6 +775,13 @@ public class DiskCardTestService
    private static TestResult DetermineSmartResult(SmartaData smartaData)
    {
       ArgumentNullException.ThrowIfNull(smartaData);
+
+      // A historical temperature-only threshold crossing is a warning, not an
+      // active failure. It must not force TestResult.Fail on its own.
+      if (QualityCalculator.IsHistoricalTemperatureOnlyFailure(smartaData))
+      {
+         return TestResult.Warning;
+      }
 
       if (smartaData.IsFailing || !smartaData.IsHealthy ||
           smartaData.UncorrectableErrorCount is > 0 ||
@@ -1571,6 +1578,11 @@ public class DiskCardTestService
 
    private static bool HasSmartFailure(SmartaData smartaData)
    {
+      if(QualityCalculator.IsHistoricalTemperatureOnlyFailure(smartaData))
+      {
+         return false;
+      }
+
       return smartaData.Attributes.Any(a => !a.IsOk && !string.IsNullOrWhiteSpace(a.WhenFailed));
    }
 

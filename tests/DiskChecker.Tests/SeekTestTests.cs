@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
@@ -1152,6 +1152,16 @@ public class SeekTestGradeTests
         return (string)method!.Invoke(null, new object[] { result })!;
     }
 
+    private static int InvokeScore(SeekTestResult result)
+    {
+        var method = typeof(DiskChecker.UI.Avalonia.ViewModels.SeekTestViewModel)
+            .GetMethod("CalculateSeekScore",
+                System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static);
+
+        Assert.NotNull(method);
+        return (int)method!.Invoke(null, new object[] { result })!;
+    }
+
     private static SeekTestResult FullStrokeResult(double avgLatencyMs, bool isCompleted = true, bool wasAborted = false, int errorCount = 0)
     {
         return new SeekTestResult
@@ -1230,5 +1240,52 @@ public class SeekTestGradeTests
             Samples = new List<SeekLatencySample>()
         };
         Assert.Equal("F", InvokeGrade(result));
+    }
+
+    [Fact]
+    public void FullStroke_Score_MatchesGradeBands()
+    {
+        // A band: 80-100
+        Assert.InRange(InvokeScore(FullStrokeResult(7.5)), 80, 100);
+        Assert.InRange(InvokeScore(FullStrokeResult(14.9)), 80, 100);
+
+        // B band: 60-80
+        Assert.InRange(InvokeScore(FullStrokeResult(15.1)), 60, 80);
+        Assert.InRange(InvokeScore(FullStrokeResult(19.9)), 60, 80);
+
+        // C band: 40-60
+        Assert.InRange(InvokeScore(FullStrokeResult(20.1)), 40, 60);
+        Assert.InRange(InvokeScore(FullStrokeResult(24.9)), 40, 60);
+
+        // D band: 20-40
+        Assert.InRange(InvokeScore(FullStrokeResult(25.1)), 20, 40);
+        Assert.InRange(InvokeScore(FullStrokeResult(29.9)), 20, 40);
+
+        // E band: 1-20
+        Assert.InRange(InvokeScore(FullStrokeResult(30.0)), 1, 20);
+        Assert.InRange(InvokeScore(FullStrokeResult(45.0)), 1, 20);
+    }
+
+    [Fact]
+    public void FullStroke_Score_Failure_IsZero()
+    {
+        Assert.Equal(0, InvokeScore(FullStrokeResult(10.0, wasAborted: true)));
+        Assert.Equal(0, InvokeScore(FullStrokeResult(10.0, isCompleted: false)));
+        Assert.Equal(0, InvokeScore(FullStrokeResult(10.0, errorCount: 1)));
+    }
+
+    [Fact]
+    public void FullStroke_Score_NoSamples_IsZero()
+    {
+        var result = new SeekTestResult
+        {
+            TestType = SeekTestType.FullStroke,
+            IsCompleted = true,
+            WasAborted = false,
+            ErrorCount = 0,
+            AverageLatencyMs = 0,
+            Samples = new List<SeekLatencySample>()
+        };
+        Assert.Equal(0, InvokeScore(result));
     }
 }
