@@ -147,3 +147,48 @@ No changes to the data service, repository, or models are required — the
   - `AnalysisSelectionTests` → 5/5 passed.
   - Pre-existing `CertificateGeneratorTests` failures are unrelated (permission denied on `/home/sa-admin/.config/DiskChecker/Certificates`).
 - Test project compiles cleanly (0 errors).
+
+---
+
+# Implementation Plan: Analysis card — blank charts (culture-invariant point strings)
+
+## Goal
+The "Analýza" card showed four blank white chart windows even though the disk
+selection and measurement list worked. The chart polylines were empty because the
+point strings were formatted with the **current culture** (cs-CZ uses a comma as the
+decimal separator), producing ambiguous strings like `123,4,56,7` that
+`PointsStringConverter` (which parses with `InvariantCulture` and splits on comma)
+could not parse.
+
+## Root cause
+Four places built polyline point strings with interpolated `:F1` format specifiers
+that honor the current culture:
+
+1. `AnalysisViewModel.BuildTelemetryPolyline` → `ThroughputProgress*Points` / `ThroughputTime*Points`
+2. `AnalysisViewModel.BuildSeekPolyline` → `SeekLatencyPoints`
+3. `AnalysisViewModel.BuildTemperaturePolyline` → `TemperaturePoints`
+4. `SmartTrendService.BuildChartData` → SMART trend `PolylinePoints`
+
+The `CertificateViewModel` already used `FormattableString.Invariant(...)`, which is
+why the certificate charts rendered correctly while the analysis charts were blank.
+
+## Fix (minimal, backward compatible)
+Wrapped each point-string interpolation in `FormattableString.Invariant(...)` so the
+decimal separator is always `.` regardless of the thread culture. No model, service,
+or XAML changes were required.
+
+## Progress
+- [x] Fix `BuildTelemetryPolyline` (AnalysisViewModel)
+- [x] Fix `BuildSeekPolyline` (AnalysisViewModel)
+- [x] Fix `BuildTemperaturePolyline` (AnalysisViewModel)
+- [x] Fix `BuildChartData` (SmartTrendService)
+- [x] Add regression tests (`AnalysisChartCultureTests.cs`, `SmartTrendChartCultureTests.cs`)
+- [x] Build & verify
+
+## Verification
+- `dotnet build DiskChecker.slnx` → 0 errors.
+- Tests run via `dotnet exec .../DiskChecker.Tests.dll`:
+  - `AnalysisChartCultureTests` → 3/3 passed.
+  - `SmartTrendChartCultureTests` → 1/1 passed.
+  - `AnalysisSelectionTests` → 5/5 passed (unchanged).
+- Test project compiles cleanly (0 errors).

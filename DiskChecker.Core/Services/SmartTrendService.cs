@@ -120,7 +120,7 @@ public class SmartTrendService
         {
             var x = validPoints.Count == 1 ? width / 2 : i / (double)(validPoints.Count - 1) * width;
             var y = height - ((p.Value!.Value - paddedMin) / paddedRange * height);
-            return $"{x:F1},{y:F1}";
+            return FormattableString.Invariant($"{x:F1},{y:F1}");
         });
 
         return new SmartTrendChartData

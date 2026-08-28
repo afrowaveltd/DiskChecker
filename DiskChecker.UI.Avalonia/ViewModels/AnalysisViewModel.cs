@@ -424,7 +424,7 @@ public partial class AnalysisViewModel : ViewModelBase
                     : Math.Clamp(s.ProgressPercent, 0, 100) / 100.0;
             var speed = s.IsStalled ? 0 : Math.Max(0, s.SpeedMBps);
             var yRatio = speed / Math.Max(1, maxSpeed);
-            return $"{xRatio * width:F1},{height - yRatio * height:F1}";
+            return FormattableString.Invariant($"{xRatio * width:F1},{height - yRatio * height:F1}");
         }));
     }
 
@@ -437,7 +437,7 @@ public partial class AnalysisViewModel : ViewModelBase
         {
             var x = (s.Index - 1) / (double)Math.Max(1, maxIndex - 1) * width;
             var y = height - (s.LatencyMs / Math.Max(1, maxLatency) * height);
-            return $"{x:F1},{y:F1}";
+            return FormattableString.Invariant($"{x:F1},{y:F1}");
         }));
     }
 
@@ -449,7 +449,7 @@ public partial class AnalysisViewModel : ViewModelBase
         {
             var x = samples.Count == 1 ? 0 : i / (double)(samples.Count - 1) * width;
             var y = height - ((s.TemperatureCelsius - minTemp) / (double)range * height);
-            return $"{x:F1},{y:F1}";
+            return FormattableString.Invariant($"{x:F1},{y:F1}");
         }));
     }
 
