@@ -68,6 +68,7 @@ public partial class AnalysisViewModel : ViewModelBase
 
         RefreshWorkspaceCommand = new AsyncRelayCommand(LoadWorkspaceAsync, () => !IsLoadingAnalysis);
         LoadSelectedAnalysisCommand = new AsyncRelayCommand(LoadSelectedAnalysisAsync, () => SelectedSummary != null && !IsLoadingAnalysis);
+        SelectSummaryCommand = new RelayCommand<TestAnalysisSummary>(SelectSummary);
         SelectAnomalyCommand = new RelayCommand<AnalysisAnomalyListItem>(SelectAnomaly);
         SelectStallCommand = new RelayCommand<AnalysisStallListItem>(SelectStall);
         ResetZoomCommand = new RelayCommand(ResetZoom);
@@ -315,6 +316,7 @@ public partial class AnalysisViewModel : ViewModelBase
 
     public IAsyncRelayCommand RefreshWorkspaceCommand { get; }
     public IAsyncRelayCommand LoadSelectedAnalysisCommand { get; }
+    public IRelayCommand<TestAnalysisSummary> SelectSummaryCommand { get; }
     public IRelayCommand<AnalysisAnomalyListItem> SelectAnomalyCommand { get; }
     public IRelayCommand<AnalysisStallListItem> SelectStallCommand { get; }
     public IRelayCommand ResetZoomCommand { get; }
@@ -449,6 +451,12 @@ public partial class AnalysisViewModel : ViewModelBase
             var y = height - ((s.TemperatureCelsius - minTemp) / (double)range * height);
             return $"{x:F1},{y:F1}";
         }));
+    }
+
+    private void SelectSummary(TestAnalysisSummary? summary)
+    {
+        if (summary == null) return;
+        SelectedSummary = summary;
     }
 
     private void SelectAnomaly(AnalysisAnomalyListItem? item)

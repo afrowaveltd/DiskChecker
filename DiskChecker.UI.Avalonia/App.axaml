@@ -42,5 +42,8 @@
         <converters:EnumDisplayConverter x:Key="EnumDisplayConverter"/>
         <converters:BytesToHumanReadableConverter x:Key="BytesToHRConverter"/>
             <converters:PointsStringConverter x:Key="PointsStringConverter"/>
+        <converters:SelectedSummaryBrushConverter x:Key="SelectedSummaryBrushConverter"/>
+        <converters:SelectedSummaryBorderConverter x:Key="SelectedSummaryBorderConverter"/>
+        <converters:SelectedSummaryThicknessConverter x:Key="SelectedSummaryThicknessConverter"/>
     </Application.Resources>
 </Application>

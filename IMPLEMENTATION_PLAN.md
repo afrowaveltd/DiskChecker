@@ -97,3 +97,53 @@ In `DiskChecker.UI.Avalonia/ViewModels/SeekTestViewModel.cs`:
 - `dotnet build DiskChecker.slnx` → 0 errors.
 - `dotnet test` cannot run in this environment (`Exec format error` on test host exe — pre-existing).
 - Test project compiles cleanly (0 errors).
+
+---
+
+# Implementation Plan: Analysis card — measurement selection wiring
+
+## Goal
+The "Analýza" (Analysis) card lists available measurements in a left-hand panel,
+but clicking a measurement does nothing. The detail analysis (telemetry charts,
+anomalies, stalls, seek, temperature, SMART trends) never loads for the clicked
+item because the list buttons do not pass the clicked `TestAnalysisSummary` to the
+view model.
+
+## Root cause
+In `DiskChecker.UI.Avalonia/Views/AnalysisView.axaml`, the measurement list
+`ItemsControl` renders a `Button` per summary whose `Command` is
+`LoadSelectedAnalysisCommand` (a parameterless `AsyncRelayCommand`), but:
+
+1. There is no `CommandParameter="{Binding}"`, so the clicked summary is never
+   forwarded to the view model.
+2. There is no `SelectedItem` binding on the `ItemsControl`, so `SelectedSummary`
+   is never set from the UI.
+3. `LoadSelectedAnalysisCommand` is parameterless and only re-loads whatever
+   `SelectedSummary` already is (which is only ever set programmatically to the
+   first item during `LoadWorkspaceAsync`).
+
+As a result, the only measurement that can ever be inspected is the first one,
+and clicking any other row has no effect.
+
+## Fix (minimal, backward compatible)
+Add a parameterized `SelectSummaryCommand` (`IRelayCommand<TestAnalysisSummary>`)
+to `AnalysisViewModel` that sets `SelectedSummary` (whose setter already triggers
+`LoadSelectedAnalysisAsync`). Wire it in the XAML with `CommandParameter="{Binding}"`
+and add a visual "selected" highlight so the active row is obvious.
+
+No changes to the data service, repository, or models are required — the
+`SelectedSummary` setter already performs the load.
+
+## Progress
+- [x] Add `SelectSummaryCommand` to `AnalysisViewModel`
+- [x] Wire `CommandParameter` + selected highlight in `AnalysisView.axaml`
+- [x] Add tests for selection behavior (`AnalysisSelectionTests.cs`)
+- [x] Build & verify
+
+## Verification
+- `dotnet build DiskChecker.slnx` → 0 errors.
+- `dotnet test` cannot run via the standard runner in this environment (`Exec format error` on the Windows test host exe — pre-existing).
+- Tests run successfully via `dotnet exec .../DiskChecker.Tests.dll`:
+  - `AnalysisSelectionTests` → 5/5 passed.
+  - Pre-existing `CertificateGeneratorTests` failures are unrelated (permission denied on `/home/sa-admin/.config/DiskChecker/Certificates`).
+- Test project compiles cleanly (0 errors).
