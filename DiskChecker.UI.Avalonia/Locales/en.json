@@ -2485,5 +2485,7 @@
   "Workload": "Workload",
   "Write": "Write",
   "WriteShort": "WRITE",
-  "WriteSpeed": "Write Speed"
+  "WriteSpeed": "Write Speed",
+  "AnalysisView.SmartBefore": "SMART before test",
+  "AnalysisView.SmartAfter": "SMART after test"
 }

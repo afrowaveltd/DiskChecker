@@ -31,19 +31,117 @@ public class TestAnalysisDataService : ITestAnalysisDataService
         var stallsTask = _repository.GetStallEventsAsync(testSessionId);
         var seekTask = _repository.GetSeekSamplesAsync(testSessionId);
         var temperaturesTask = _repository.GetTemperatureSampleSeriesAsync(testSessionId);
+        var speedSamplesTask = _repository.GetSpeedSampleSeriesAsync(testSessionId);
 
-        await Task.WhenAll(telemetryTask, anomaliesTask, stallsTask, seekTask, temperaturesTask);
+        await Task.WhenAll(telemetryTask, anomaliesTask, stallsTask, seekTask, temperaturesTask, speedSamplesTask);
+
+        var telemetry = telemetryTask.Result;
+        var temperatures = temperaturesTask.Result;
+
+        // Fallback: legacy owned speed samples (QuickRead/FullRead/FullWrite/SurfaceScan)
+        // are stored in TestSessions_WriteSamples / TestSessions_ReadSamples, not in
+        // TestTelemetrySamples. Convert them so the throughput charts render for those
+        // test types too.
+        if (telemetry.Count == 0)
+        {
+            var (writeSamples, readSamples) = speedSamplesTask.Result;
+            telemetry = ConvertLegacySpeedSamples(testSessionId, writeSamples, readSamples);
+        }
+
+        // Fallback: per-sample temperature was historically not persisted; only the
+        // session-level Start/Max/Average columns are populated. Synthesize a minimal
+        // temperature line so the temperature chart is not blank.
+        if (temperatures.Count == 0)
+        {
+            temperatures = SynthesizeTemperatureSamples(session);
+        }
 
         return new TestAnalysisData
         {
             Session = session,
-            TelemetrySamples = telemetryTask.Result,
+            TelemetrySamples = telemetry,
             AnomalyEvents = anomaliesTask.Result,
             StallEvents = stallsTask.Result,
             SeekSamples = seekTask.Result,
-            TemperatureSamples = temperaturesTask.Result,
+            TemperatureSamples = temperatures,
             SmartReport = BuildSmartAnalysisReport(session)
         };
+    }
+
+    private static List<TestTelemetrySample> ConvertLegacySpeedSamples(
+        int testSessionId,
+        List<SpeedSample> writeSamples,
+        List<SpeedSample> readSamples)
+    {
+        var result = new List<TestTelemetrySample>(writeSamples.Count + readSamples.Count);
+
+        var writeIndex = 0;
+        foreach (var s in writeSamples.OrderBy(s => s.ProgressPercent))
+        {
+            result.Add(new TestTelemetrySample
+            {
+                TestSessionId = testSessionId,
+                Phase = TelemetrySamplePhase.Write,
+                SequenceIndex = writeIndex++,
+                TimestampUtc = s.Timestamp == default ? DateTime.UtcNow : s.Timestamp,
+                ProgressPercent = s.ProgressPercent,
+                BytesProcessed = s.BytesProcessed,
+                SpeedMBps = s.SpeedMBps,
+                IsStalled = s.IsStalled,
+                IsAnomaly = false
+            });
+        }
+
+        var readIndex = 0;
+        foreach (var s in readSamples.OrderBy(s => s.ProgressPercent))
+        {
+            result.Add(new TestTelemetrySample
+            {
+                TestSessionId = testSessionId,
+                Phase = TelemetrySamplePhase.Read,
+                SequenceIndex = readIndex++,
+                TimestampUtc = s.Timestamp == default ? DateTime.UtcNow : s.Timestamp,
+                ProgressPercent = s.ProgressPercent,
+                BytesProcessed = s.BytesProcessed,
+                SpeedMBps = s.SpeedMBps,
+                IsStalled = s.IsStalled,
+                IsAnomaly = false
+            });
+        }
+
+        return result;
+    }
+
+    private static List<TemperatureSample> SynthesizeTemperatureSamples(TestSession session)
+    {
+        var result = new List<TemperatureSample>();
+
+        var start = session.StartTemperature ?? (int?)session.AverageTemperature ?? session.MaxTemperature;
+        var end = session.MaxTemperature ?? (int?)session.AverageTemperature ?? session.StartTemperature;
+
+        if (start.HasValue)
+        {
+            result.Add(new TemperatureSample
+            {
+                Timestamp = session.StartedAt,
+                TemperatureCelsius = start.Value,
+                Phase = "Start",
+                ProgressPercent = 0
+            });
+        }
+
+        if (end.HasValue)
+        {
+            result.Add(new TemperatureSample
+            {
+                Timestamp = session.CompletedAt ?? session.StartedAt,
+                TemperatureCelsius = end.Value,
+                Phase = "End",
+                ProgressPercent = 100
+            });
+        }
+
+        return result;
     }
 
     public async Task<List<TestAnalysisSummary>> GetDiskAnalysisSummariesAsync(int diskCardId, CancellationToken cancellationToken = default)

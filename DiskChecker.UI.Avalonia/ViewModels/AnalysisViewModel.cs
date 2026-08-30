@@ -5,6 +5,7 @@ using DiskChecker.Core.Models;
 using DiskChecker.Core.Services;
 using DiskChecker.UI.Avalonia.Services.Interfaces;
 using System;
+using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Linq;
 using System.Threading.Tasks;
@@ -106,6 +107,9 @@ public partial class AnalysisViewModel : ViewModelBase
                 OnPropertyChanged(nameof(FullEventsLine));
                 OnPropertyChanged(nameof(SmartAnalysisLine));
                 OnPropertyChanged(nameof(SmartAnalysisDetails));
+                OnPropertyChanged(nameof(SmartBeforeText));
+                OnPropertyChanged(nameof(SmartAfterText));
+                OnPropertyChanged(nameof(HasSmartSnapshotText));
             }
         }
     }
@@ -311,6 +315,44 @@ public partial class AnalysisViewModel : ViewModelBase
             .OrderByDescending(d => d.Severity)
             .Take(8)
             .Select(d => $"{d.Severity}: {d.Name} {FormatNullable(d.Before)} -> {FormatNullable(d.After)} (Δ {FormatNullable(d.Delta)}) - {d.Note}"));
+
+    /// <summary>Full SMART snapshot text (before test).</summary>
+    public string SmartBeforeText => BuildSmartSnapshotText(AnalysisData?.SmartReport?.Before);
+
+    /// <summary>Full SMART snapshot text (after test).</summary>
+    public string SmartAfterText => BuildSmartSnapshotText(AnalysisData?.SmartReport?.After);
+
+    /// <summary>Whether any SMART snapshot is available for display.</summary>
+    public bool HasSmartSnapshotText =>
+        AnalysisData?.SmartReport?.Before != null || AnalysisData?.SmartReport?.After != null;
+
+    private static string BuildSmartSnapshotText(SmartAnalysisSnapshot? s)
+    {
+        if (s == null) return string.Empty;
+
+        var lines = new List<string>
+        {
+            $"Stav: {(s.IsFailing ? "⚠ SELHÁNÍ" : s.IsHealthy ? "✅ Zdravý" : "⚠ Pozor")}",
+            $"Teplota: {FormatNullable(s.Temperature)} °C",
+            $"Power-on hours: {FormatNullable(s.PowerOnHours)} h",
+            $"Power cycles: {s.PowerCycleCount:N0}",
+            $"Reallocated: {FormatNullable(s.ReallocatedSectorCount)}",
+            $"Pending: {FormatNullable(s.PendingSectorCount)}",
+            $"Uncorrectable: {FormatNullable(s.UncorrectableErrorCount)}",
+            $"Wear leveling: {FormatNullable(s.WearLevelingCount)}",
+            $"Available spare: {FormatNullable(s.AvailableSpare)} %",
+            $"Percentage used: {FormatNullable(s.PercentageUsed)} %",
+            $"Media errors: {FormatNullable(s.MediaErrors)}",
+            $"Unsafe shutdowns: {FormatNullable(s.UnsafeShutdowns)}"
+        };
+
+        if (!string.IsNullOrWhiteSpace(s.FailurePrediction))
+        {
+            lines.Add($"Predikce: {s.FailurePrediction}");
+        }
+
+        return string.Join(Environment.NewLine, lines);
+    }
 
     private static string FormatNullable(long? value) => value.HasValue ? value.Value.ToString("N0") : "n/a";
 

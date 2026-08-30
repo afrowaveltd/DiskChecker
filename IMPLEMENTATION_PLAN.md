@@ -192,3 +192,53 @@ or XAML changes were required.
   - `SmartTrendChartCultureTests` → 1/1 passed.
   - `AnalysisSelectionTests` → 5/5 passed (unchanged).
 - Test project compiles cleanly (0 errors).
+
+---
+
+# Implementation Plan: Analysis card — comprehensive data loading & SMART text
+
+## Goal
+The "Analýza" card only rendered the Seek test charts; all other test types
+(QuickRead, FullRead, FullWrite, SurfaceScan, Sanitization) showed blank charts.
+The user wants the card to comprehensively access stored data, show all available
+metrics, and add text fields (e.g. for SMART).
+
+## Root cause
+`TestAnalysisDataService.GetAnalysisDataAsync` only loaded:
+- `TestTelemetrySamples` (only Sanitization sessions 6/18 have these),
+- `SeekSamples` (only Seek sessions),
+- `TestSessions_TemperatureSamples` (empty for all sessions),
+- anomalies/stalls.
+
+It never loaded the **legacy owned speed samples** (`TestSessions_WriteSamples` /
+`TestSessions_ReadSamples`), which hold the throughput data for QuickRead/FullRead/
+FullWrite/SurfaceScan sessions (4,5,7,8,12,14,16,20). So those charts were empty.
+
+Temperature samples were also empty because per-sample temperature was never
+persisted to `TestSessions_TemperatureSamples`; only the session-level
+`StartTemperature`/`MaxTemperature`/`AverageTemperature` columns are populated.
+
+## Fix
+1. In `GetAnalysisDataAsync`, also load legacy write/read samples via
+   `GetSpeedSampleSeriesAsync` and convert them to `TestTelemetrySample` (fallback
+   when telemetry is empty), so the existing ViewModel chart logic works unchanged.
+2. Synthesize a temperature line from session-level temperature metrics when no
+   per-sample temperature data exists.
+3. Add comprehensive SMART text fields to the ViewModel and wire them in XAML.
+
+## Progress
+- [x] Load legacy write/read samples in `TestAnalysisDataService`
+- [x] Synthesize temperature samples from session metrics
+- [x] Add SMART snapshot text fields to `AnalysisViewModel`
+- [x] Wire SMART text fields in `AnalysisView.axaml`
+- [x] Add tests (`TestAnalysisDataServiceTests.cs`)
+- [x] Build & verify
+
+## Verification
+- `dotnet build DiskChecker.slnx` → 0 errors.
+- Tests run via `dotnet exec .../DiskChecker.Tests.dll`:
+  - `TestAnalysisDataServiceTests` → 3/3 passed.
+  - `AnalysisSelectionTests` → 5/5 passed (unchanged).
+  - `AnalysisChartCultureTests` → 3/3 passed (unchanged).
+  - `SmartTrendChartCultureTests` → 1/1 passed (unchanged).
+- Test project compiles cleanly (0 errors).

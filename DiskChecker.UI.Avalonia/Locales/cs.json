@@ -2485,5 +2485,7 @@
   "Workload": "Zátěž",
   "Write": "Zápis",
   "WriteShort": "ZÁPIS",
-  "WriteSpeed": "Rychlost zápisu"
+  "WriteSpeed": "Rychlost zápisu",
+  "AnalysisView.SmartBefore": "SMART před testem",
+  "AnalysisView.SmartAfter": "SMART po testu"
 }
