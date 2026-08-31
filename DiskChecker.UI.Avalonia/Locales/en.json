@@ -2487,5 +2487,8 @@
   "WriteShort": "WRITE",
   "WriteSpeed": "Write Speed",
   "AnalysisView.SmartBefore": "SMART before test",
-  "AnalysisView.SmartAfter": "SMART after test"
+  "AnalysisView.SmartAfter": "SMART after test",
+  "DestructiveTest.TempWarningTitle": "⚠️ High disk temperature",
+  "DestructiveTest.TempWarningMessage": "Disk temperature reached {0}°C (safe limit {1}°C). Do you want to stop the test?",
+  "SafeDestructive.Temperature": "🌡 Temperature"
 }

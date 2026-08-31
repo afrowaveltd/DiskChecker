@@ -242,3 +242,78 @@ persisted to `TestSessions_TemperatureSamples`; only the session-level
   - `AnalysisChartCultureTests` → 3/3 passed (unchanged).
   - `SmartTrendChartCultureTests` → 1/1 passed (unchanged).
 - Test project compiles cleanly (0 errors).
+
+
+---
+# Implementation Plan: Live temperature monitoring during destructive tests
+
+## Goal
+Integrate live disk temperature monitoring into the Sanitization (Absolute
+Destructive) and Safe Destructive tests, so temperature is sampled continuously
+during the write/read phases — without interrupting the test — and add an
+automatic over-temperature warning with an offer to stop the test. Keep full
+backward compatibility (older sessions without per-sample temperature must still
+work via the existing session-level fallback).
+
+## Background / root cause
+Today temperature is only captured at discrete checkpoints. During the long
+sanitization write/read loops the view models only re-report the baseline
+temperature, so the live value never changes while the disk is actually heating up.
+The Safe Destructive view model has a `TestCurrentTemperatureText` property that is
+never populated, and no temperature UI at all.
+
+Reading the SMART temperature attribute is a low-priority firmware query serviced
+between I/O operations; it does not block or distort the sanitization. The correct
+approach is a background sampler that polls temperature on a timer.
+
+## Design decisions
+1. New reusable service `DiskTemperatureMonitor` (implements `IDiskTemperatureMonitor`).
+   - Wraps `ISmartaProvider.GetTemperatureOnlyAsync`.
+   - Background loop at a configurable interval (default 5 s).
+   - Exposes current/min/max temperature, a safe threshold, and events.
+   - Threshold resolution: SMART attribute 194/190 threshold, else device-type
+     default (HDD 60 °C, SSD/NVMe 70 °C).
+   - Swallows read failures and keeps the last known value.
+2. Wire into `AbsoluteDestructiveTestViewModel` (start/stop, live value, warning).
+3. Wire into `SafeDestructiveTestViewModel` (start/stop, live value, warning, UI).
+4. Backward compatible: no model/DB changes; monitor is additive; session-level
+   fallback in `TestAnalysisDataService` still applies when no samples exist.
+5. Localization keys added to cs.json and en.json.
+
+## Files changed
+- NEW `DiskChecker.Core/Interfaces/IDiskTemperatureMonitor.cs`
+- NEW `DiskChecker.Application/Services/DiskTemperatureMonitor.cs`
+- `DiskChecker.UI.Avalonia/ViewModels/AbsoluteDestructiveTestViewModel.cs`
+- `DiskChecker.UI.Avalonia/ViewModels/SafeDestructiveTestViewModel.cs`
+- `DiskChecker.UI.Avalonia/Views/SafeDestructiveTestView.axaml`
+- `DiskChecker.UI.Avalonia/Locales/cs.json`, `en.json`
+- `DiskChecker.UI.Avalonia/App.axaml.cs`
+- NEW `tests/DiskChecker.Tests/DiskTemperatureMonitorTests.cs`
+
+## Progress
+- [x] Add `IDiskTemperatureMonitor` interface (Core/Interfaces)
+- [x] Add `DiskTemperatureMonitor` service (Application/Services)
+- [x] Register `IDiskTemperatureMonitor` in `App.axaml.cs`
+- [x] Wire live monitoring into `AbsoluteDestructiveTestViewModel`
+- [x] Wire live monitoring into `SafeDestructiveTestViewModel`
+- [x] Add temperature readout to `SafeDestructiveTestView.axaml`
+- [x] Add localization keys (cs.json, en.json)
+- [x] Add tests (`DiskTemperatureMonitorTests.cs`)
+- [x] Build & verify
+
+## Verification
+- `dotnet build DiskChecker.slnx` → 0 errors.
+- Tests run via `dotnet exec .../DiskChecker.Tests.dll`:
+  - `DiskTemperatureMonitorTests` → 8/8 passed.
+  - Pre-existing `CertificateGeneratorTests` / `CertificateExportServiceTests`
+    failures (25) are unrelated (permission denied on
+    `/home/sa-admin/.config/DiskChecker/Certificates`).
+- Test project compiles cleanly (0 errors).
+
+## Notes
+- `Stop()` was renamed to `StopMonitoring()` to satisfy CA1716 (reserved keyword).
+- `CA1848` (LoggerMessage delegates) suppressed with a file-level pragma, matching
+  the existing pattern in `CertificateExportService.cs`.
+- The monitor is fully additive: when SMART is unsupported or the provider returns
+  null, no samples are recorded and the existing session-level temperature fallback
+  in `TestAnalysisDataService` continues to work unchanged.

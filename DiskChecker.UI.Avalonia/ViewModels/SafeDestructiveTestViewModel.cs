@@ -61,6 +61,7 @@ public partial class SafeDestructiveTestViewModel : ViewModelBase, INavigableVie
    private readonly ICertificateGenerator _certificateGenerator;
    private readonly TestCompletionNotificationService _notificationService;
    private readonly IPowerManagementService _powerManagementService;
+   private readonly IDiskTemperatureMonitor _temperatureMonitor;
 
    // ──────────────────────────────────────────────
    //  Cancellation
@@ -129,6 +130,9 @@ public partial class SafeDestructiveTestViewModel : ViewModelBase, INavigableVie
    [ObservableProperty] private string _testPhaseDetail = string.Empty;
    [ObservableProperty] private string _testCurrentSpeedText = string.Empty;
    [ObservableProperty] private string _testCurrentTemperatureText = string.Empty;
+   [ObservableProperty] private int _currentTemperature;
+   [ObservableProperty] private int _minTemperature = int.MaxValue;
+   [ObservableProperty] private int _maxTemperature;
    [ObservableProperty] private string _testElapsedText = string.Empty;
    [ObservableProperty] private string _testEtaText = string.Empty;
 
@@ -300,7 +304,8 @@ public partial class SafeDestructiveTestViewModel : ViewModelBase, INavigableVie
        IDiskCardRepository diskCardRepository,
        ICertificateGenerator certificateGenerator,
        TestCompletionNotificationService notificationService,
-       IPowerManagementService powerManagementService)
+       IPowerManagementService powerManagementService,
+       IDiskTemperatureMonitor temperatureMonitor)
    {
       _navigationService = navigationService;
       _selectedDiskService = selectedDiskService;
@@ -313,6 +318,9 @@ public partial class SafeDestructiveTestViewModel : ViewModelBase, INavigableVie
       _certificateGenerator = certificateGenerator;
       _notificationService = notificationService;
       _powerManagementService = powerManagementService;
+      _temperatureMonitor = temperatureMonitor;
+      _temperatureMonitor.TemperatureChanged += OnMonitorTemperatureChanged;
+      _temperatureMonitor.ThresholdExceeded += OnMonitorThresholdExceeded;
       StatusMessage = L.Get("SafeDestructive.Status.ReadySelectBackupTarget");
 
       StartWorkflowCommand = new AsyncRelayCommand(StartWorkflowAsync, () => Phase == SafeDestructivePhase.Ready && SelectedDrive != null && HasEnoughBackupSpace);
@@ -947,6 +955,13 @@ public partial class SafeDestructiveTestViewModel : ViewModelBase, INavigableVie
 
       if(SelectedDrive == null) return;
 
+      // Start live temperature monitoring (non-blocking SMART polling)
+      _temperatureMonitor.Start(
+         SelectedDrive.Path,
+         SelectedDrive.SupportsSmart,
+         _smartBefore?.DeviceType,
+         ResolveSmartTemperatureThreshold(_smartBefore));
+
       // Build test phases
       TestPhases.Clear();
       var phases = new[]
@@ -1014,6 +1029,7 @@ public partial class SafeDestructiveTestViewModel : ViewModelBase, INavigableVie
          _smartAfter = null;
       }
 
+      _temperatureMonitor.StopMonitoring();
       StatusMessage = L.Get("SafeDestructive.Status.TestDoneRestoring");
    }
 
@@ -1708,6 +1724,7 @@ public partial class SafeDestructiveTestViewModel : ViewModelBase, INavigableVie
             StartTemperature = _smartBefore?.Temperature,
             MaxTemperature = Math.Max(_smartBefore?.Temperature ?? 0, _smartAfter?.Temperature ?? 0),
             AverageTemperature = ((_smartBefore?.Temperature ?? 0) + (_smartAfter?.Temperature ?? 0)) / 2.0,
+            TemperatureSamples = _temperatureMonitor.GetSamples().ToList(),
             Result = TestResult.Pass,
             Grade = Certificate.Grade,
             Score = Certificate.Score,
@@ -2292,6 +2309,44 @@ public partial class SafeDestructiveTestViewModel : ViewModelBase, INavigableVie
    //  Cancel / GoBack
    // ──────────────────────────────────────────────
 
+   private void OnMonitorTemperatureChanged(object? sender, int temperature)
+   {
+      Dispatcher.UIThread.Post(() =>
+      {
+         if(_disposed) return;
+         CurrentTemperature = temperature;
+         if(temperature < MinTemperature) MinTemperature = temperature;
+         if(temperature > MaxTemperature) MaxTemperature = temperature;
+         TestCurrentTemperatureText = temperature + "°C";
+      });
+   }
+
+   private void OnMonitorThresholdExceeded(object? sender, int threshold)
+   {
+      _ = Dispatcher.UIThread.InvokeAsync(async () =>
+      {
+         if(_disposed) return;
+         var stop = await _dialogService.ShowConfirmationAsync(
+            L.Get("DestructiveTest.TempWarningTitle"),
+            string.Format(L.Get("DestructiveTest.TempWarningMessage"), CurrentTemperature, threshold));
+         if(stop)
+         {
+            _cts?.Cancel();
+         }
+      });
+   }
+
+   private static int? ResolveSmartTemperatureThreshold(SmartaData? smart)
+   {
+      if(smart == null) return null;
+      foreach(var attr in smart.Attributes)
+      {
+         if((attr.Id == 194 || attr.Id == 190) && attr.Threshold > 0)
+            return attr.Threshold;
+      }
+      return null;
+   }
+
    private void Cancel()
    {
       _cts?.Cancel();
@@ -2326,6 +2381,7 @@ public partial class SafeDestructiveTestViewModel : ViewModelBase, INavigableVie
       if(_disposed) return;
       _disposed = true;
       _cts?.Cancel();
+      _temperatureMonitor.StopMonitoring();
       _powerSession?.Dispose();
       _powerSession = null;
       _cts?.Dispose();

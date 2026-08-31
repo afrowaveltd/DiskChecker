@@ -242,6 +242,24 @@
                             </StackPanel>
                         </Grid>
 
+                        <!-- Live temperature -->
+                        <Grid ColumnDefinitions="Auto,Auto,Auto,*" IsVisible="{Binding CurrentTemperature, Converter={StaticResource IntToBoolConverter}}">
+                            <TextBlock Grid.Column="0" Text="🌡" FontSize="12" VerticalAlignment="Center"/>
+                            <TextBlock Grid.Column="1" Text="{Binding CurrentTemperature, StringFormat='{}{0}°C'}"
+                                       FontSize="14" FontWeight="Bold" Margin="4,0"
+                                       Foreground="{DynamicResource ThemeTextPrimaryBrush}"
+                                       VerticalAlignment="Center"/>
+                            <TextBlock Grid.Column="2" FontSize="10" Margin="8,0,0,0"
+                                       Foreground="{DynamicResource ThemeTextMutedBrush}"
+                                       VerticalAlignment="Center">
+                                <Run Text="{Binding L[DestructiveTestView.TempMin]}"/>
+                                <Run Text="{Binding MinTemperature}"/>
+                                <Run Text="{Binding L[DestructiveTestView.TempMax]}"/>
+                                <Run Text="{Binding MaxTemperature}"/>
+                                <Run Text="°C"/>
+                            </TextBlock>
+                        </Grid>
+
                         <!-- Phase list -->
                         <ItemsControl ItemsSource="{Binding TestPhases}">
                             <ItemsControl.ItemTemplate>
