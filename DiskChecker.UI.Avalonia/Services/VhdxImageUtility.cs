@@ -118,6 +118,8 @@ public static class VhdxImageUtility
 
             long virtualDiskSize = 0;
             bool fixedFileParameters = false;
+            Span<byte> sizeBytes = stackalloc byte[8];
+            Span<byte> paramBytes = stackalloc byte[8];
             for (int i = 0; i < metadataEntryCount; i++)
             {
                 var entry = entries.Slice(i * 32, 32);
@@ -129,7 +131,6 @@ public static class VhdxImageUtility
                 {
                     if (itemLength != 8) return false;
                     fs.Position = (long)metadataOffset + itemOffset;
-                    Span<byte> sizeBytes = stackalloc byte[8];
                     fs.ReadExactly(sizeBytes);
                     virtualDiskSize = checked((long)BitConverter.ToUInt64(sizeBytes));
                 }
@@ -137,7 +138,6 @@ public static class VhdxImageUtility
                 {
                     if (itemLength != 8) return false;
                     fs.Position = (long)metadataOffset + itemOffset;
-                    Span<byte> paramBytes = stackalloc byte[8];
                     fs.ReadExactly(paramBytes);
                     fixedFileParameters = BitConverter.ToUInt32(paramBytes[..4]) == LogicalBlockSize &&
                         BitConverter.ToUInt32(paramBytes.Slice(4, 4)) == 1;
