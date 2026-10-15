@@ -100,7 +100,7 @@ public static class VhdxImageUtility
                     batRegionLength = BitConverter.ToUInt32(entry.Slice(24, 4));
                 }
             }
-            if (batOffset != BatRegionOffset || batRegionLength == 0 ||
+            if (batOffset != (ulong)BatRegionOffset || batRegionLength == 0 ||
                 batRegionLength % LogicalBlockSize != 0 ||
                 metadataOffset != batOffset + batRegionLength ||
                 metadataOffset + LogicalBlockSize > (ulong)fs.Length) return false;
