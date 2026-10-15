@@ -16,6 +16,9 @@ public static class VhdxImageUtility
 {
     public const int LogicalBlockSize = 1024 * 1024;
     public const int PhysicalSectorSize = 4096;
+    private const long BatRegionOffset = 2L * LogicalBlockSize; // header + reserved log
+    private static readonly byte[] BatRegionGuid = { 0x66, 0x77, 0xC2, 0x2D, 0x23, 0xF6, 0x00, 0x42, 0x9D, 0x64, 0x11, 0x5E, 0x9B, 0xFD, 0x4A, 0x08 };
+    private static readonly byte[] MetadataRegionGuid = { 0x06, 0xA2, 0x7C, 0x8B, 0x90, 0x47, 0x9A, 0x4B, 0xB8, 0xFE, 0x57, 0x5F, 0x05, 0x0F, 0x88, 0x6E };
 
     public static long RoundUp(long value, long alignment)
     {
@@ -28,14 +31,10 @@ public static class VhdxImageUtility
     {
         var diskSizeRounded = RoundUp(diskSizeBytes, LogicalBlockSize);
         var chunkCount = diskSizeRounded / LogicalBlockSize;
-        var batSize = RoundUp(chunkCount * 8, PhysicalSectorSize);
-
-        // Fixed writer layout:
-        // 0..64 KiB file identifier, 64..128 KiB header 1 gap,
-        // 128..192 KiB header 2 gap, 192..256 KiB full 64 KiB region table,
-        // then BAT and 1 MiB metadata region.
-        var metadataEnd = 256L * 1024 + batSize + 1024L * 1024;
-        return RoundUp(metadataEnd, LogicalBlockSize);
+        var batSize = RoundUp(checked(chunkCount * 8), LogicalBlockSize);
+        // The 1 MiB header is followed by the 1 MiB empty log, a BAT
+        // aligned to 1 MiB, and the 1 MiB metadata region.
+        return checked(BatRegionOffset + batSize + LogicalBlockSize);
     }
 
     public static long CalculateRequiredFileBytes(long diskSizeBytes)
@@ -75,16 +74,23 @@ public static class VhdxImageUtility
 
             var entryCount = BitConverter.ToUInt32(region.Slice(8, 4));
             ulong metadataOffset = 0;
+            ulong batOffset = 0;
+            uint batRegionLength = 0;
             for (int i = 0; i < Math.Min(entryCount, 2047); i++)
             {
                 var entry = region.Slice(16 + i * 32, 32);
-                if (entry[..16].SequenceEqual(new byte[] { 0xCF, 0x3E, 0x98, 0x8B, 0x1D, 0x8B, 0x43, 0xCC, 0xAD, 0xE4, 0xBC, 0xD5, 0x5A, 0xEF, 0x5C, 0x6E }))
-                {
+                if (entry[..16].SequenceEqual(MetadataRegionGuid))
                     metadataOffset = BitConverter.ToUInt64(entry.Slice(16, 8));
-                    break;
+                else if (entry[..16].SequenceEqual(BatRegionGuid))
+                {
+                    batOffset = BitConverter.ToUInt64(entry.Slice(16, 8));
+                    batRegionLength = BitConverter.ToUInt32(entry.Slice(24, 4));
                 }
             }
-            if (metadataOffset == 0 || (long)metadataOffset >= fs.Length) return false;
+            if (batOffset != BatRegionOffset || batRegionLength == 0 ||
+                batRegionLength % LogicalBlockSize != 0 ||
+                metadataOffset != batOffset + batRegionLength ||
+                metadataOffset + LogicalBlockSize > (ulong)fs.Length) return false;
 
             fs.Position = (long)metadataOffset;
             Span<byte> metadataHeader = stackalloc byte[32];
@@ -97,23 +103,51 @@ public static class VhdxImageUtility
             fs.ReadExactly(entries);
 
             long virtualDiskSize = 0;
+            bool fixedFileParameters = false;
             for (int i = 0; i < metadataEntryCount; i++)
             {
                 var entry = entries.Slice(i * 32, 32);
+                var itemOffset = BitConverter.ToUInt32(entry.Slice(16, 4));
+                var itemLength = BitConverter.ToUInt32(entry.Slice(20, 4));
+                if (itemOffset < 64 * 1024 || (ulong)itemOffset + itemLength > LogicalBlockSize)
+                    return false;
                 if (entry[..16].SequenceEqual(new byte[] { 0x24, 0x42, 0xA5, 0x2F, 0x1B, 0xCD, 0x76, 0x48, 0xB2, 0x11, 0x5D, 0xBE, 0xD8, 0x3B, 0xF4, 0xB8 }))
                 {
-                    var itemOffset = BitConverter.ToUInt32(entry.Slice(16, 4));
+                    if (itemLength != 8) return false;
                     fs.Position = (long)metadataOffset + itemOffset;
                     Span<byte> sizeBytes = stackalloc byte[8];
                     fs.ReadExactly(sizeBytes);
-                    virtualDiskSize = (long)BitConverter.ToUInt64(sizeBytes);
-                    break;
+                    virtualDiskSize = checked((long)BitConverter.ToUInt64(sizeBytes));
+                }
+                else if (entry[..16].SequenceEqual(new byte[] { 0x37, 0x67, 0xA1, 0xCA, 0x36, 0xFA, 0x43, 0x4D, 0xB3, 0xB6, 0x33, 0xF0, 0xAA, 0x44, 0xE7, 0x6B }))
+                {
+                    if (itemLength != 8) return false;
+                    fs.Position = (long)metadataOffset + itemOffset;
+                    Span<byte> paramBytes = stackalloc byte[8];
+                    fs.ReadExactly(paramBytes);
+                    fixedFileParameters = BitConverter.ToUInt32(paramBytes[..4]) == LogicalBlockSize &&
+                        BitConverter.ToUInt32(paramBytes.Slice(4, 4)) == 1;
                 }
             }
 
-            if (virtualDiskSize <= 0) return false;
+            if (virtualDiskSize <= 0 || virtualDiskSize % 512 != 0 || !fixedFileParameters) return false;
             var dataStart = CalculateDataStartOffset(virtualDiskSize);
-            info = new VhdxImageInfo(virtualDiskSize, dataStart, CalculateRequiredFileBytes(virtualDiskSize));
+            var required = CalculateRequiredFileBytes(virtualDiskSize);
+            if (dataStart != (long)metadataOffset + LogicalBlockSize || fs.Length < required ||
+                batRegionLength != RoundUp((RoundUp(virtualDiskSize, LogicalBlockSize) / LogicalBlockSize) * 8, LogicalBlockSize))
+                return false;
+
+            // Only contiguous, fully-present fixed images are restorable by a raw copy.
+            fs.Position = (long)batOffset;
+            var count = RoundUp(virtualDiskSize, LogicalBlockSize) / LogicalBlockSize;
+            for (long i = 0; i < count; i++)
+            {
+                Span<byte> batEntryBytes = stackalloc byte[8];
+                fs.ReadExactly(batEntryBytes);
+                var expected = (((ulong)(dataStart / LogicalBlockSize + i)) << 20) | 6UL;
+                if (BitConverter.ToUInt64(batEntryBytes) != expected) return false;
+            }
+            info = new VhdxImageInfo(virtualDiskSize, dataStart, required);
             return true;
         }
         catch
@@ -127,7 +161,9 @@ public static class VhdxImageUtility
     {
         var diskSizeRounded = RoundUp(diskSizeBytes, LogicalBlockSize);
         var chunkCount = diskSizeRounded / LogicalBlockSize;
-        var batSize = RoundUp(chunkCount * 8, PhysicalSectorSize);
+        if (diskSizeBytes <= 0 || diskSizeBytes % 512 != 0)
+            throw new ArgumentOutOfRangeException(nameof(diskSizeBytes), "VHDX disk size must be a positive multiple of 512 bytes.");
+        var batSize = RoundUp(checked(chunkCount * 8), LogicalBlockSize);
         var dataStartOffset = CalculateDataStartOffset(diskSizeBytes);
         var requiredFileBytes = CalculateRequiredFileBytes(diskSizeBytes);
 
@@ -143,9 +179,10 @@ public static class VhdxImageUtility
         WriteHeaderAt(writer, 1);
         while (fs.Position < 192L * 1024) writer.Write((byte)0);
 
-        WriteRegionTable(writer, batSize);
+        WriteRegionTable(writer, batSize); // 192 KiB region table
+        WriteRegionTable(writer, batSize); // 256 KiB redundant region table
 
-        while (fs.Position < 256L * 1024) writer.Write((byte)0);
+        while (fs.Position < BatRegionOffset) writer.Write((byte)0);
 
         var fileOffsetInSectors = dataStartOffset / LogicalBlockSize;
         for (long i = 0; i < chunkCount; i++)
@@ -154,10 +191,10 @@ public static class VhdxImageUtility
             writer.Write(batEntry);
         }
 
-        var batEnd = 256L * 1024 + batSize;
+        var batEnd = BatRegionOffset + batSize;
         while (fs.Position < batEnd) writer.Write((byte)0);
 
-        WriteMetadataAt(writer, diskSizeRounded);
+        WriteMetadataAt(writer, diskSizeBytes);
         while (fs.Position < dataStartOffset) writer.Write((byte)0);
 
         // Critical for Windows validation: the file must contain the complete rounded
@@ -173,15 +210,13 @@ public static class VhdxImageUtility
         table[0] = 0x72; table[1] = 0x65; table[2] = 0x67; table[3] = 0x69; // regi
         BitConverter.GetBytes((uint)2).CopyTo(table, 8);
 
-        var batGuid = new byte[] { 0xE9, 0x77, 0xC2, 0x2D, 0x79, 0x0F, 0xE9, 0x41, 0x9E, 0x2E, 0x7A, 0x1D, 0x5A, 0x1C, 0xB5, 0xD3 };
-        Array.Copy(batGuid, 0, table, 16, 16);
-        BitConverter.GetBytes((ulong)(256L * 1024)).CopyTo(table, 32);
-        BitConverter.GetBytes((uint)batSize).CopyTo(table, 40);
+        Array.Copy(BatRegionGuid, 0, table, 16, 16);
+        BitConverter.GetBytes((ulong)BatRegionOffset).CopyTo(table, 32);
+        BitConverter.GetBytes(checked((uint)batSize)).CopyTo(table, 40);
         BitConverter.GetBytes((uint)1).CopyTo(table, 44);
 
-        var metadataGuid = new byte[] { 0xCF, 0x3E, 0x98, 0x8B, 0x1D, 0x8B, 0x43, 0xCC, 0xAD, 0xE4, 0xBC, 0xD5, 0x5A, 0xEF, 0x5C, 0x6E };
-        Array.Copy(metadataGuid, 0, table, 48, 16);
-        BitConverter.GetBytes((ulong)(256L * 1024 + batSize)).CopyTo(table, 64);
+        Array.Copy(MetadataRegionGuid, 0, table, 48, 16);
+        BitConverter.GetBytes((ulong)(BatRegionOffset + batSize)).CopyTo(table, 64);
         BitConverter.GetBytes((uint)(1024L * 1024)).CopyTo(table, 72);
         BitConverter.GetBytes((uint)1).CopyTo(table, 76);
 
@@ -203,10 +238,9 @@ public static class VhdxImageUtility
         bw.Write(new byte[16]);
         bw.Write((ushort)0);
         bw.Write((ushort)1);
-        bw.Write((uint)0);
-        bw.Write((ulong)0);
-        bw.Write((uint)0);
-        bw.Write(new byte[4012]);
+        bw.Write((uint)LogicalBlockSize); // reserved, empty 1 MiB log
+        bw.Write((ulong)LogicalBlockSize); // log begins at 1 MiB
+        bw.Write(new byte[4016]);
 
         var header = ms.ToArray();
         BitConverter.GetBytes(Crc32(header)).CopyTo(header, 4);
@@ -241,9 +275,13 @@ public static class VhdxImageUtility
         byte[] entries = new byte[160];
         writer.Write(entries);
 
+        // Metadata items must start AFTER the reserved 64 KiB metadata table.
+        while (writer.BaseStream.Position < metadataStart + 64L * 1024)
+            writer.Write((byte)0);
+
         long item0Pos = writer.BaseStream.Position;
         writer.Write((uint)LogicalBlockSize);
-        writer.Write((uint)0);
+        writer.Write((uint)1); // LeaveBlocksAllocated: fixed image
         WriteMetadataEntry(entries, 0, new byte[] { 0x37, 0x67, 0xA1, 0xCA, 0x36, 0xFA, 0x43, 0x4D, 0xB3, 0xB6, 0x33, 0xF0, 0xAA, 0x44, 0xE7, 0x6B }, (uint)(item0Pos - metadataStart), 8, false, false);
 
         long item1Pos = writer.BaseStream.Position;
@@ -277,7 +315,7 @@ public static class VhdxImageUtility
         Array.Copy(guid, 0, buffer, baseOffset, 16);
         BitConverter.GetBytes(offset).CopyTo(buffer, baseOffset + 16);
         BitConverter.GetBytes(length).CopyTo(buffer, baseOffset + 20);
-        buffer[baseOffset + 24] = isUser ? (byte)1 : (byte)0;
-        buffer[baseOffset + 25] = isVirtualDisk ? (byte)1 : (byte)0;
+        // Metadata entry flags (one little-endian 32-bit field): User=1, VirtualDisk=2, Required=4.
+        buffer[baseOffset + 24] = (byte)((isUser ? 1 : 0) | (isVirtualDisk ? 2 : 0) | 4);
     }
 }
