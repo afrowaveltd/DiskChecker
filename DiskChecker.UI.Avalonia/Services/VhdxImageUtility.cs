@@ -99,6 +99,7 @@ public static class VhdxImageUtility
                 return false;
 
             var metadataEntryCount = BitConverter.ToUInt16(metadataHeader.Slice(10, 2));
+            if (metadataEntryCount > 2047) return false;
             Span<byte> entries = stackalloc byte[metadataEntryCount * 32];
             fs.ReadExactly(entries);
 
@@ -140,9 +141,9 @@ public static class VhdxImageUtility
             // Only contiguous, fully-present fixed images are restorable by a raw copy.
             fs.Position = (long)batOffset;
             var count = RoundUp(virtualDiskSize, LogicalBlockSize) / LogicalBlockSize;
+            Span<byte> batEntryBytes = stackalloc byte[8];
             for (long i = 0; i < count; i++)
             {
-                Span<byte> batEntryBytes = stackalloc byte[8];
                 fs.ReadExactly(batEntryBytes);
                 var expected = (((ulong)(dataStart / LogicalBlockSize + i)) << 20) | 6UL;
                 if (BitConverter.ToUInt64(batEntryBytes) != expected) return false;
