@@ -928,6 +928,12 @@ public partial class SafeDestructiveTestViewModel : ViewModelBase, INavigableVie
       using var manifestStream = File.OpenWrite(_backupManifestPath);
       await JsonSerializer.SerializeAsync(manifestStream, manifest, _jsonOptions, ct);
 
+      // A readable image with zero-filled source failures is NOT a lossless backup.
+      // Never start an automatic destructive test when any source bytes were unreadable.
+      if (unreadableBytes > 0)
+         throw new InvalidOperationException($"Záloha obsahuje {FormatBytesLong(unreadableBytes)} náhradních nul za nečitelné bloky. Obraz byl zachován pro záchranu dat, ale destruktivní test je zakázán: původní data nelze bezpečně obnovit.");
+
+
       await VerifyBackupImageAsync(_backupImagePath, _backupDataStartOffset, _backupTotalBytes, _backupSha256, ct);
 
       Log(string.Format(L.Get("SafeDestructive.Log.BackupCompletedVerified"), FormatBytesLong(bytesRead)));
@@ -1321,6 +1327,12 @@ public partial class SafeDestructiveTestViewModel : ViewModelBase, INavigableVie
       };
       using var manifestStream = File.OpenWrite(_backupManifestPath);
       await JsonSerializer.SerializeAsync(manifestStream, manifest, _jsonOptions, ct);
+
+      // A readable image with zero-filled source failures is NOT a lossless backup.
+      // Never start an automatic destructive test when any source bytes were unreadable.
+      if (unreadableBytes > 0)
+         throw new InvalidOperationException($"Záloha obsahuje {FormatBytesLong(unreadableBytes)} náhradních nul za nečitelné bloky. Obraz byl zachován pro záchranu dat, ale destruktivní test je zakázán: původní data nelze bezpečně obnovit.");
+
 
       await VerifyBackupImageAsync(_backupImagePath, _backupDataStartOffset, _backupTotalBytes, _backupSha256, ct);
       VhdxBackupVerified = true;
