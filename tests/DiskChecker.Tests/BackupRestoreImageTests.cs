@@ -1,4 +1,5 @@
 using System;
+using System.Diagnostics;
 using System.IO;
 using System.Reflection;
 using System.Security.Cryptography;
@@ -78,6 +79,41 @@ public class BackupRestoreImageTests : IDisposable
         Assert.True(VhdxImageUtility.TryReadInfo(path, out var image));
         Assert.Equal(expectedDataOffset, image.DataStartOffset);
         Assert.Equal(bytes, image.VirtualDiskSizeBytes);
+    }
+
+    [Fact]
+    public async Task FixedVhdx_WhenQemuImgIsInstalled_OpensAndConvertsToRaw()
+    {
+        // qemu-img independently validates the VHDX layout. On CI it is installed
+        // explicitly; local Windows test runs without QEMU can skip this integration check.
+        const string qemu = "/usr/bin/qemu-img";
+        if (!OperatingSystem.IsLinux() || !File.Exists(qemu)) return;
+
+        const long bytes = 4L * 1024 * 1024;
+        var image = Path.Combine(_fixtureDir, "qemu-smoke.vhdx");
+        var raw = Path.Combine(_fixtureDir, "qemu-output.raw");
+        await VhdxImageUtility.WriteFixedHeaderAsync(image, bytes, CancellationToken.None);
+        await RunQemuAsync("info", "-f", "vhdx", image);
+        await RunQemuAsync("convert", "-f", "vhdx", "-O", "raw", image, raw);
+        Assert.Equal(bytes, new FileInfo(raw).Length);
+    }
+
+    private static async Task RunQemuAsync(params string[] args)
+    {
+        var psi = new ProcessStartInfo("/usr/bin/qemu-img")
+        {
+            UseShellExecute = false,
+            RedirectStandardError = true,
+            RedirectStandardOutput = true
+        };
+        foreach (var arg in args) psi.ArgumentList.Add(arg);
+        using var process = Process.Start(psi) ?? throw new InvalidOperationException("qemu-img failed to start.");
+        var outputTask = process.StandardOutput.ReadToEndAsync();
+        var errorTask = process.StandardError.ReadToEndAsync();
+        await process.WaitForExitAsync();
+        var output = await outputTask;
+        var error = await errorTask;
+        Assert.True(process.ExitCode == 0, $"qemu-img {string.Join(" ", args)} failed: {output} {error}");
     }
 
     [Fact]
