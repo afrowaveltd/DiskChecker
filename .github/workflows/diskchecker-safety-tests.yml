@@ -14,6 +14,8 @@ jobs:
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: 10.0.x
+      - name: Install independent VHDX validator
+        run: sudo apt-get update -qq && sudo apt-get install -y qemu-utils
       - name: Restore
         run: dotnet restore tests/DiskChecker.Tests/DiskChecker.Tests.csproj
       - name: Compile
