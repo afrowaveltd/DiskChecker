@@ -38,6 +38,64 @@ public class BackupRestoreImageTests : IDisposable
     }
 
     [Fact]
+    public async Task FixedVhdx_UsesAlignedRegionsAndSpecGuids()
+    {
+        const long bytes = 4L * 1024 * 1024;
+        var path = Path.Combine(_fixtureDir, "layout.vhdx");
+        await VhdxImageUtility.WriteFixedHeaderAsync(path, bytes, CancellationToken.None);
+
+        using var fs = File.OpenRead(path);
+        using var reader = new BinaryReader(fs);
+        fs.Position = 192L * 1024;
+        var regionA = reader.ReadBytes(64 * 1024);
+        fs.Position = 256L * 1024;
+        var regionB = reader.ReadBytes(64 * 1024);
+        Assert.Equal(regionA, regionB);
+
+        var expectedBatGuid = new byte[] { 0x66, 0x77, 0xC2, 0x2D, 0x23, 0xF6, 0x00, 0x42, 0x9D, 0x64, 0x11, 0x5E, 0x9B, 0xFD, 0x4A, 0x08 };
+        var expectedMetadataGuid = new byte[] { 0x06, 0xA2, 0x7C, 0x8B, 0x90, 0x47, 0x9A, 0x4B, 0xB8, 0xFE, 0x57, 0x5F, 0x05, 0x0F, 0x88, 0x6E };
+        Assert.Equal(expectedBatGuid, regionA.AsSpan(16, 16).ToArray());
+        Assert.Equal(expectedMetadataGuid, regionA.AsSpan(48, 16).ToArray());
+        var batOffset = BitConverter.ToUInt64(regionA, 32);
+        var metadataOffset = BitConverter.ToUInt64(regionA, 64);
+        Assert.Equal(2UL * 1024 * 1024, batOffset);
+        Assert.Equal(3UL * 1024 * 1024, metadataOffset);
+        Assert.Equal((uint)(1024 * 1024), BitConverter.ToUInt32(regionA, 40));
+
+        fs.Position = (long)metadataOffset + 32;
+        var metadataEntry = reader.ReadBytes(32);
+        var fileParametersOffset = BitConverter.ToUInt32(metadataEntry, 16);
+        Assert.True(fileParametersOffset >= 64 * 1024);
+        Assert.Equal((byte)4, metadataEntry[24]); // IsRequired
+        fs.Position = (long)metadataOffset + fileParametersOffset;
+        Assert.Equal((uint)(1024 * 1024), reader.ReadUInt32());
+        Assert.Equal(1U, reader.ReadUInt32()); // LeaveBlocksAllocated
+
+        fs.Position = (long)batOffset;
+        var firstBatEntry = reader.ReadUInt64();
+        var expectedDataOffset = VhdxImageUtility.CalculateDataStartOffset(bytes);
+        Assert.Equal((((ulong)expectedDataOffset / (1024UL * 1024)) << 20) | 6UL, firstBatEntry);
+        Assert.True(VhdxImageUtility.TryReadInfo(path, out var image));
+        Assert.Equal(expectedDataOffset, image.DataStartOffset);
+        Assert.Equal(bytes, image.VirtualDiskSizeBytes);
+    }
+
+    [Fact]
+    public async Task FixedVhdx_CorruptBatEntry_IsRejectedBeforeRestore()
+    {
+        var path = Path.Combine(_fixtureDir, "corrupt-bat.vhdx");
+        await VhdxImageUtility.WriteFixedHeaderAsync(path, 2L * 1024 * 1024, CancellationToken.None);
+        Assert.True(VhdxImageUtility.TryReadInfo(path, out _));
+
+        using (var fs = new FileStream(path, FileMode.Open, FileAccess.Write))
+        {
+            fs.Position = 2L * 1024 * 1024;
+            fs.Write(new byte[8]);
+        }
+        Assert.False(VhdxImageUtility.TryReadInfo(path, out _));
+    }
+
+    [Fact]
     public async Task VhdxPayloadRoundTrip_FromGenerated500MbImg_RestoresOriginalBytes()
     {
         var sourceBytes = 500L * 1024 * 1024;
