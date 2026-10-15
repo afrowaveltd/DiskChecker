@@ -67,10 +67,23 @@ public static class VhdxImageUtility
             // This writer stores BAT at 256 KiB and metadata immediately after the BAT.
             // Parse region table enough to find metadata offset/length. Fall back to the
             // current writer layout if any optional field is missing.
+            // Validate the active header CRC-32C and the region-table CRC-32C,
+            // rather than accepting signatures alone.
+            fs.Position = 64L * 1024;
+            Span<byte> header = stackalloc byte[4096];
+            fs.ReadExactly(header);
+            if (!header[..4].SequenceEqual(new byte[] { 0x68, 0x65, 0x61, 0x64 })) return false;
+            var headerCrc = BitConverter.ToUInt32(header.Slice(4, 4));
+            header.Slice(4, 4).Clear();
+            if (Crc32(header.ToArray()) != headerCrc) return false;
+
             fs.Position = 192L * 1024;
             Span<byte> region = stackalloc byte[64 * 1024];
             fs.ReadExactly(region);
             if (!region[..4].SequenceEqual(new byte[] { 0x72, 0x65, 0x67, 0x69 })) return false;
+            var regionCrc = BitConverter.ToUInt32(region.Slice(4, 4));
+            region.Slice(4, 4).Clear();
+            if (Crc32(region.ToArray()) != regionCrc) return false;
 
             var entryCount = BitConverter.ToUInt32(region.Slice(8, 4));
             ulong metadataOffset = 0;
