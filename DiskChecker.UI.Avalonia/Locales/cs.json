@@ -2273,6 +2273,7 @@
   "SurfaceTest.SmartSource.ConfirmTitle": "Použít dřívější SMART měření?",
   "SurfaceTest.SmartSource.Live": "SMART: aktuální měření přes tento adaptér",
   "SurfaceTest.SmartSource.NotMeasured": "SMART: dosud nezjištěno",
+  "SurfaceTest.SmartSource.SerialConflict": "POZOR: nový adaptér hlásí odlišné sériové číslo ({0})! Může to být číslo adaptéru, ale také JINÝ DISK. Pokračujte pouze tehdy, pokud jste osobně ověřil fyzickou totožnost disku.",
   "SurfaceTest.SmartSource.Unavailable": "SMART: tento adaptér neumožňuje čtení; test pokračuje bez SMART",
   "SurfaceTest.Speed": "Rychlost testu",
   "SurfaceTest.Starting": "Spouštím test povrchu...",
