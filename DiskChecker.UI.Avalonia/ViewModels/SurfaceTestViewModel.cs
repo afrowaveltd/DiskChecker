@@ -99,6 +99,11 @@ public partial class SurfaceTestViewModel : ViewModelBase, INavigableViewModel, 
    private string _statusMessage = string.Empty;
    private bool _isTesting;
    private CoreDriveInfo? _selectedDrive;
+   private string? _borrowedSmartProvenance;
+   private string _smartSourceInfo = "SMART: —";
+   private bool _hasLiveSmartTemperature;
+   public string SmartSourceInfo { get => _smartSourceInfo; private set => SetProperty(ref _smartSourceInfo, value); }
+   public string SmartTemperatureText => _hasLiveSmartTemperature && CurrentTemperature > 0 ? $"{CurrentTemperature}°C" : "N/A";
    private bool _isLocked;
    private bool _isLoadingDrives;
 
@@ -423,7 +428,10 @@ public partial class SurfaceTestViewModel : ViewModelBase, INavigableViewModel, 
       set
       {
          if(SetProperty(ref _currentTemperature, value))
+         {
             NotifyGaugeChanged();
+            OnPropertyChanged(nameof(SmartTemperatureText));
+         }
       }
    }
    public int MinTemperature => _minTemperature == int.MaxValue ? 0 : _minTemperature;
@@ -687,6 +695,10 @@ public partial class SurfaceTestViewModel : ViewModelBase, INavigableViewModel, 
       {
          if(SetProperty(ref _selectedDrive, value))
          {
+            _borrowedSmartProvenance = null;
+            _hasLiveSmartTemperature = false;
+            SmartSourceInfo = L.Get("SurfaceTest.SmartSource.NotMeasured");
+            OnPropertyChanged(nameof(SmartTemperatureText));
             // Update IsLocked when disk selection changes
             if(value != null)
             {
@@ -1289,21 +1301,54 @@ public partial class SurfaceTestViewModel : ViewModelBase, INavigableViewModel, 
       var cancellationToken = _testCancellation.Token;
 
       ResetTestState();
+      _borrowedSmartProvenance = null;
+      _hasLiveSmartTemperature = false;
+      SmartSourceInfo = L.Get("SurfaceTest.SmartSource.NotMeasured");
+      OnPropertyChanged(nameof(SmartTemperatureText));
       IsTesting = true;
       SetStatusMessage(profile.IsDestructive ? L.Get("Sanitize.Starting") : L.Get("SurfaceTest.Starting"));
 
       try
       {
          var smartSnapshot = await CaptureSmartSnapshotAsync(cancellationToken);
+         if(smartSnapshot != null)
+         {
+            SmartSourceInfo = L.Get("SurfaceTest.SmartSource.Live");
+            _hasLiveSmartTemperature = smartSnapshot.Temperature is > 0;
+         }
+         else if(SelectedDrive != null)
+         {
+            SmartSourceInfo = L.Get("SurfaceTest.SmartSource.Unavailable");
+            // Explicit opt-in: capacity alone DOES NOT prove device identity.
+            var recent = await _cardTestService.FindLatestReusableSmartAsync(SelectedDrive, cancellationToken);
+            if(recent != null)
+            {
+               var prompt = string.Format(L.Get("SurfaceTest.SmartSource.Confirm"),
+                   recent.SourceModel, recent.SourceSerial ?? "?",
+                   recent.MeasuredAtUtc.ToLocalTime().ToString("g"),
+                   recent.CapacityBytes, SelectedDrive.Name ?? SelectedDrive.Path);
+               var accepted = await _dialogService.ShowConfirmationAsync(
+                   L.Get("SurfaceTest.SmartSource.ConfirmTitle"), prompt);
+               cancellationToken.ThrowIfCancellationRequested();
+               if(accepted)
+               {
+                  smartSnapshot = recent.Data;
+                  _borrowedSmartProvenance = $"SMART PREVZATO (rucne potvrzeno): source-session={recent.SourceSessionId}, source-card={recent.SourceDiskCardId}, measured-utc={recent.MeasuredAtUtc:O}, source-model={recent.SourceModel}, source-serial={recent.SourceSerial ?? "?"}, capacity={recent.CapacityBytes} B; nejde o aktualni SMART mereni";
+                  SmartSourceInfo = string.Format(L.Get("SurfaceTest.SmartSource.Borrowed"),
+                      recent.MeasuredAtUtc.ToLocalTime().ToString("g"), recent.SourceModel);
+               }
+            }
+         }
 
-         // Set initial temperature from SMART snapshot (if available)
-         if (smartSnapshot?.Temperature > 0)
+         // Never present an old SMART temperature as current telemetry.
+         if(_hasLiveSmartTemperature && smartSnapshot?.Temperature > 0)
          {
             CurrentTemperature = smartSnapshot.Temperature.Value;
             _minTemperature = smartSnapshot.Temperature.Value;
             _maxTemperature = smartSnapshot.Temperature.Value;
             NotifyGaugeChanged();
          }
+         OnPropertyChanged(nameof(SmartTemperatureText));
 
          if(profile.IsDestructive)
          {
@@ -1851,11 +1896,14 @@ public partial class SurfaceTestViewModel : ViewModelBase, INavigableViewModel, 
 
          // Save to disk card
          System.Diagnostics.Debug.WriteLine($"[SurfaceTest] Getting or creating disk card...");
-         var card = await _cardTestService.GetOrCreateCardAsync(SelectedDrive!, smartSnapshot, cancellationToken);
+         // Reused SMART must NOT rewrite identity or metadata of the target disk.
+         var card = await _cardTestService.GetOrCreateCardAsync(SelectedDrive!,
+             _borrowedSmartProvenance == null ? smartSnapshot : null, cancellationToken);
          System.Diagnostics.Debug.WriteLine($"[SurfaceTest] Card created/found: ID={card.Id}, Model={card.ModelName}");
 
          System.Diagnostics.Debug.WriteLine($"[SurfaceTest] Saving surface test result...");
-         var testSession = await _cardTestService.SaveSurfaceTestAsync(card, result, smartSnapshot, cancellationToken);
+         var testSession = await _cardTestService.SaveSurfaceTestAsync(card, result, smartSnapshot,
+             cancellationToken, borrowedSmartProvenance: _borrowedSmartProvenance);
          System.Diagnostics.Debug.WriteLine($"[SurfaceTest] Test result saved successfully");
 
          await TrySendCompletionEmailAsync(result, card, testSession, cancellationToken);
@@ -1967,6 +2015,8 @@ public partial class SurfaceTestViewModel : ViewModelBase, INavigableViewModel, 
          return null;
       }
 
+      if(!SelectedDrive.SupportsSmart) return null;
+
       try
       {
          var snapshot = await _smartCheckService.GetSmartaDataWithRetryAsync(SelectedDrive, cancellationToken: cancellationToken);
@@ -2013,6 +2063,11 @@ public partial class SurfaceTestViewModel : ViewModelBase, INavigableViewModel, 
       try
       {
          var data = await _smartCheckService.GetSmartaDataSnapshotAsync(SelectedDrive, CancellationToken.None);
+         if(data?.Temperature > 0)
+         {
+            _hasLiveSmartTemperature = true;
+            OnPropertyChanged(nameof(SmartTemperatureText));
+         }
          if (data?.Temperature > 0 && data.Temperature.Value != CurrentTemperature)
          {
             CurrentTemperature = data.Temperature.Value;
