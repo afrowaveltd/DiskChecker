@@ -1496,6 +1496,25 @@ public class DiskCardRepository : IDiskCardRepository
           certificate.Id, certificate.TestSessionId);
    }
 
+   /// <summary>
+   /// Targeted update: does not attach/traverse large SMART attribute collections
+   /// and cannot accidentally overwrite the original algorithmic evaluation.
+   /// </summary>
+   public async Task<bool> UpdateCertificateTechnicianAssessmentAsync(int certificateId, string? assessment)
+   {
+      ArgumentOutOfRangeException.ThrowIfNegativeOrZero(certificateId);
+      var trimmed = string.IsNullOrWhiteSpace(assessment) ? null : assessment.Trim();
+      if(trimmed?.Length > 2000)
+         throw new ArgumentException("Technician assessment cannot exceed 2000 characters.", nameof(assessment));
+
+      var rows = await _context.DiskCertificates
+          .Where(c => c.Id == certificateId)
+          .ExecuteUpdateAsync(setters => setters
+              .SetProperty(c => c.TechnicianAssessment, trimmed)
+              .SetProperty(c => c.TechnicianAssessmentUpdatedAtUtc, DateTime.UtcNow));
+      return rows == 1;
+   }
+
    // ========== Comparisons ==========
 
    public async Task<List<DiskCard>> GetBestDisksAsync(int count = 10)
