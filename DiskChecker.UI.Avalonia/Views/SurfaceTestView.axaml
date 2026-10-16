@@ -57,7 +57,8 @@
 
         <!-- ========== DISK SELECTION ========== -->
         <Border Grid.Row="1" Padding="16,6">
-            <Grid ColumnDefinitions="*,Auto,Auto">
+            <!-- Disk selector and SMART status must occupy dedicated rows. -->
+            <Grid ColumnDefinitions="*,Auto,Auto" RowDefinitions="Auto,Auto" RowSpacing="4">
                  <!-- Disk Selection Card -->
                 <Border Background="{DynamicResource ThemeCardBackgroundBrush}" 
                         BorderBrush="{DynamicResource ThemeBorderBrush}"
@@ -83,12 +84,15 @@
                                     </DataTemplate>
                                 </ComboBox.ItemTemplate>
                             </ComboBox>
+                            <TextBlock Text="{Binding SmartSourceInfo}" FontSize="10"
+                                       Foreground="{DynamicResource ThemeTextSecondaryBrush}"
+                                       TextWrapping="Wrap" Margin="0,4,0,0"/>
                         </StackPanel>
                     </Grid>
                 </Border>
                 
                 <!-- Disk Partitions -->
-                <Border Grid.Row="2" Margin="0,6,0,0" Padding="12" CornerRadius="8"
+                <Border Grid.Row="1" Grid.ColumnSpan="3" Margin="0,6,0,0" Padding="12" CornerRadius="8"
                         Background="{DynamicResource ThemeSecondaryBackgroundBrush}"
                         BorderBrush="{DynamicResource ThemeBorderBrush}"
                         BorderThickness="1"
