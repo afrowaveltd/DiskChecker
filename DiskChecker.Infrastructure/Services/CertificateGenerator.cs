@@ -37,6 +37,10 @@ public class CertificateGenerator : ICertificateGenerator
     // Certificate JPEG dimensions (A4 at 150 DPI, extended for all content)
     private const int CertWidth = 1240;
     private const int CertHeight = 2400;
+    // A post-test assessment is appended to the original PDF, not squeezed
+    // into or substituted for algorithmic recommendations and scoring reasons.
+    private static int GetCertificateHeight(DiskCertificate cert) =>
+        CertHeight + (string.IsNullOrWhiteSpace(cert.TechnicianAssessment) ? 0 : 1200);
 
     // Font family fallback chain (cross-platform)
     private const string FontSansSerif = "DejaVu Sans";
@@ -361,7 +365,7 @@ public class CertificateGenerator : ICertificateGenerator
         var jpegBytes = await RenderCertificateJpegAsync(certificate, CancellationToken.None);
         try
         {
-            pdfBytes = BuildImagePdfDocument(jpegBytes, CertWidth, CertHeight);
+            pdfBytes = BuildImagePdfDocument(jpegBytes, CertWidth, GetCertificateHeight(certificate));
         }
         finally
         {
@@ -385,7 +389,7 @@ public class CertificateGenerator : ICertificateGenerator
 
         return Task.Run(() =>
         {
-            using var surface = SKSurface.Create(new SKImageInfo(CertWidth, CertHeight));
+            using var surface = SKSurface.Create(new SKImageInfo(CertWidth, GetCertificateHeight(cert)));
             var canvas = surface.Canvas;
             canvas.Clear(SKColors.White);
             cancellationToken.ThrowIfCancellationRequested();
@@ -939,6 +943,28 @@ public class CertificateGenerator : ICertificateGenerator
                 canvas.DrawRect(48, y, CertWidth - 96, notesHeight, panelPaint);
                 canvas.DrawRect(48, y, CertWidth - 96, notesHeight, borderPaint);
                 DrawTextWrapped(canvas, cert.Notes, 64, y + 16, CertWidth - 130, notesHeight - 20, valueFont, textPaint);
+                y += (int)notesHeight + 34;
+            }
+            else
+            {
+                y += 170;
+            }
+
+            // A separate, clearly marked human interpretation accompanies but NEVER
+            // overrides the automatically calculated score and recommendation.
+            if(!string.IsNullOrWhiteSpace(cert.TechnicianAssessment))
+            {
+                y += 22;
+                DrawText(canvas,
+                    _locale?.GetString("CertificatePdf.TechnicianAssessment", "Komentář technika (ručně doplněno)")
+                        ?? "Komentář technika (ručně doplněno)",
+                    48, y, sectionFont, accentPaint);
+                y += 34;
+                const float assessmentHeight = 1050;
+                canvas.DrawRect(48, y, CertWidth - 96, assessmentHeight, panelPaint);
+                canvas.DrawRect(48, y, CertWidth - 96, assessmentHeight, borderPaint);
+                DrawTextWrapped(canvas, cert.TechnicianAssessment, 64, y + 16,
+                    CertWidth - 130, assessmentHeight - 35, valueFont, textPaint);
             }
 
             cancellationToken.ThrowIfCancellationRequested();
