@@ -131,7 +131,7 @@
                     <Border Background="{DynamicResource ThemeWarningBackgroundBrush}" CornerRadius="6" Padding="10,4">
                         <StackPanel Orientation="Horizontal" Spacing="4">
                             <TextBlock Text="🌡" FontSize="14"/>
-                            <TextBlock Text="{Binding CurrentTemperature, StringFormat='{}{0}°C'}" FontSize="13" FontWeight="Bold" Foreground="{DynamicResource ThemeWarningTextBrush}"/>
+                            <TextBlock Text="{Binding SmartTemperatureText}" FontSize="13" FontWeight="Bold" Foreground="{DynamicResource ThemeWarningTextBrush}"/>
                         </StackPanel>
                     </Border>
                     <Border Background="{DynamicResource ThemeWarningBackgroundBrush}" CornerRadius="6" Padding="10,4"
