@@ -1511,7 +1511,9 @@ public class DiskCardRepository : IDiskCardRepository
           .Where(c => c.Id == certificateId)
           .ExecuteUpdateAsync(setters => setters
               .SetProperty(c => c.TechnicianAssessment, trimmed)
-              .SetProperty(c => c.TechnicianAssessmentUpdatedAtUtc, DateTime.UtcNow));
+              .SetProperty(c => c.TechnicianAssessmentUpdatedAtUtc, DateTime.UtcNow)
+              .SetProperty(c => c.PdfGenerated, false)
+              .SetProperty(c => c.PdfPath, (string?)null));
       return rows == 1;
    }
 
