@@ -175,6 +175,7 @@
                             <DataGridTextColumn Header="{Binding L[DiskCardDetailView.Throttle]}" Binding="{Binding ThermalThrottlingText}" Width="90"/>
                             <DataGridTextColumn Header="{Binding L[DiskCardDetailView.Duration]}" Binding="{Binding Duration, StringFormat={}{0} min}" Width="70"/>
                             <DataGridTextColumn Header="{Binding L[DiskCardDetailView.Notes]}" Binding="{Binding Notes}" Width="*"/>
+                            <DataGridTextColumn Header="{Binding L[CertificateView.TechnicianAssessment.Title]}" Binding="{Binding TechnicianAssessment}" Width="2*"/>
                         </DataGrid.Columns>
                     </DataGrid>
                 </Grid>
