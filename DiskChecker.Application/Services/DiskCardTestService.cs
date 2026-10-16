@@ -463,12 +463,19 @@ public class DiskCardTestService
    /// <summary>
    /// Save a surface test result to a disk card.
    /// </summary>
-   public async Task<TestSession> SaveSurfaceTestAsync(
+   public Task<TestSession> SaveSurfaceTestAsync(
        DiskCard card,
        SurfaceTestResult result,
        SmartaData? smartaData = null,
-       CancellationToken cancellationToken = default,
-       string? borrowedSmartProvenance = null)
+       CancellationToken cancellationToken = default)
+       => SaveSurfaceTestAsync(card, result, smartaData, null, cancellationToken);
+
+   public async Task<TestSession> SaveSurfaceTestAsync(
+       DiskCard card,
+       SurfaceTestResult result,
+       SmartaData? smartaData,
+       string? borrowedSmartProvenance,
+       CancellationToken cancellationToken = default)
    {
       ArgumentNullException.ThrowIfNull(card);
       ArgumentNullException.ThrowIfNull(result);
@@ -627,15 +634,25 @@ public class DiskCardTestService
    /// <summary>
    /// Save a sanitization result to a disk card.
    /// </summary>
-   public async Task<TestSession> SaveSanitizationAsync(
+   public Task<TestSession> SaveSanitizationAsync(
        DiskCard card,
        SanitizationResult result,
        IEnumerable<SpeedSample>? writeSamples = null,
        IEnumerable<SpeedSample>? readSamples = null,
        SmartaData? smartaData = null,
        SmartaData? smartAfter = null,
-       CancellationToken cancellationToken = default,
-       string? borrowedSmartProvenance = null)
+       CancellationToken cancellationToken = default)
+       => SaveSanitizationAsync(card, result, writeSamples, readSamples, smartaData, smartAfter, null, cancellationToken);
+
+   public async Task<TestSession> SaveSanitizationAsync(
+       DiskCard card,
+       SanitizationResult result,
+       IEnumerable<SpeedSample>? writeSamples,
+       IEnumerable<SpeedSample>? readSamples,
+       SmartaData? smartaData,
+       SmartaData? smartAfter,
+       string? borrowedSmartProvenance,
+       CancellationToken cancellationToken = default)
    {
       ArgumentNullException.ThrowIfNull(card);
       ArgumentNullException.ThrowIfNull(result);
