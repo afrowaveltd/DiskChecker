@@ -1592,7 +1592,7 @@ public partial class SurfaceTestViewModel : ViewModelBase, INavigableViewModel, 
                   return allSamples;
                });
 
-               await _cardTestService.SaveSanitizationAsync(card, result, writeSamples, readSamples, smartSnapshot, smartAfterSnapshot, cancellationToken, _borrowedSmartProvenance);
+               await _cardTestService.SaveSanitizationAsync(card, result, writeSamples, readSamples, smartSnapshot, smartAfterSnapshot, _borrowedSmartProvenance, cancellationToken);
                 
                StatusMessage = L.Get("SurfaceTest.Status.SanitizeSaved", card.ModelName, (writeSamples.Count + readSamples.Count).ToString());
                SetStatusMessage(L.Get("SurfaceTest.Status.SanitizeSavedSimple", card.ModelName));
@@ -1655,7 +1655,7 @@ public partial class SurfaceTestViewModel : ViewModelBase, INavigableViewModel, 
             var card = await _cardTestService.GetOrCreateCardAsync(SelectedDrive!, _borrowedSmartProvenance == null ? smartSnapshot : null, cancellationToken);
             var writeSamples = await CaptureSanitizationSamplesAsync(WriteSpeedHistory, SelectedDrive!.TotalSize);
             var readSamples = await CaptureSanitizationSamplesAsync(ReadSpeedHistory, SelectedDrive!.TotalSize);
-            var session = await _cardTestService.SaveSanitizationAsync(card, result, writeSamples, readSamples, smartSnapshot, null, cancellationToken, _borrowedSmartProvenance);
+            var session = await _cardTestService.SaveSanitizationAsync(card, result, writeSamples, readSamples, smartSnapshot, null, _borrowedSmartProvenance, cancellationToken);
             _selectedDiskService.SelectedDisk = SelectedDrive;
             _selectedDiskService.SelectedDiskDisplayName = SelectedDrive.Name;
             _selectedDiskService.SelectedTestSessionId = session.Id;
@@ -1903,7 +1903,7 @@ public partial class SurfaceTestViewModel : ViewModelBase, INavigableViewModel, 
 
          System.Diagnostics.Debug.WriteLine($"[SurfaceTest] Saving surface test result...");
          var testSession = await _cardTestService.SaveSurfaceTestAsync(card, result, smartSnapshot,
-             cancellationToken, borrowedSmartProvenance: _borrowedSmartProvenance);
+             _borrowedSmartProvenance, cancellationToken);
          System.Diagnostics.Debug.WriteLine($"[SurfaceTest] Test result saved successfully");
 
          await TrySendCompletionEmailAsync(result, card, testSession, cancellationToken);
