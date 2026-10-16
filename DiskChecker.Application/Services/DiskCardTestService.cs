@@ -634,7 +634,8 @@ public class DiskCardTestService
        IEnumerable<SpeedSample>? readSamples = null,
        SmartaData? smartaData = null,
        SmartaData? smartAfter = null,
-       CancellationToken cancellationToken = default)
+       CancellationToken cancellationToken = default,
+       string? borrowedSmartProvenance = null)
    {
       ArgumentNullException.ThrowIfNull(card);
       ArgumentNullException.ThrowIfNull(result);
@@ -688,6 +689,9 @@ public class DiskCardTestService
              result.ErrorMessage
           }.Where(v => !string.IsNullOrWhiteSpace(v)))
           : breakdown.Findings.Count > 0 ? string.Join("; ", breakdown.Findings) : null;
+
+      if(!string.IsNullOrWhiteSpace(borrowedSmartProvenance))
+         sessionNotes = string.IsNullOrWhiteSpace(sessionNotes) ? borrowedSmartProvenance : sessionNotes + "; " + borrowedSmartProvenance;
 
       var session = new TestSession
       {
@@ -747,16 +751,17 @@ public class DiskCardTestService
 
       _dbContext.TestSessions.Add(session);
 
-      // Update disk card
+      // Update disk card, but never treat manually borrowed historical SMART
+      // as live identity or operating-hour information from this adapter.
       ReactivateCardForTesting(card);
       card.TestCount++;
       card.LastTestedAt = DateTime.UtcNow;
-      if(session.SmartBefore?.PowerOnHours is { } poh)
+      if(string.IsNullOrWhiteSpace(borrowedSmartProvenance))
       {
-         card.PowerOnHours = poh;
+         if(session.SmartBefore?.PowerOnHours is { } poh)
+            card.PowerOnHours = poh;
+         card.PowerCycleCount = session.SmartBefore?.PowerCycleCount ?? card.PowerCycleCount;
       }
-
-      card.PowerCycleCount = session.SmartBefore?.PowerCycleCount ?? card.PowerCycleCount;
       await UpdateCardGradeAsync(card, cancellationToken);
 
       await _dbContext.SaveChangesAsync(cancellationToken);
