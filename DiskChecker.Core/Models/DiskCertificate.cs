@@ -246,6 +246,15 @@ public class DiskCertificate
     /// Additional notes
     /// </summary>
     public string? Notes { get; set; }
+
+    /// <summary>
+    /// Explicitly authored technician interpretation attached after the test.
+    /// Never replaces automatic scoring, SMART telemetry or the original reasons.
+    /// </summary>
+    public string? TechnicianAssessment { get; set; }
+
+    /// <summary>When the technician last updated their interpretation (UTC).</summary>
+    public DateTime? TechnicianAssessmentUpdatedAtUtc { get; set; }
     
     // ========== Seek Test Metrics (Absolute Destructive Test) ==========
 
