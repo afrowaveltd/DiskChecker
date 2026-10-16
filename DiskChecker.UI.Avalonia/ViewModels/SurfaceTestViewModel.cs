@@ -1516,7 +1516,7 @@ public partial class SurfaceTestViewModel : ViewModelBase, INavigableViewModel, 
             string? errorContext = null;
             try
             {
-               var card = await _cardTestService.GetOrCreateCardAsync(SelectedDrive!, smartSnapshot, cancellationToken);
+               var card = await _cardTestService.GetOrCreateCardAsync(SelectedDrive!, _borrowedSmartProvenance == null ? smartSnapshot : null, cancellationToken);
 
                // Downsample samples before saving to database to prevent memory/transaction issues
                // SQLite has practical limits on transaction size and entity tracking
@@ -1592,7 +1592,7 @@ public partial class SurfaceTestViewModel : ViewModelBase, INavigableViewModel, 
                   return allSamples;
                });
 
-               await _cardTestService.SaveSanitizationAsync(card, result, writeSamples, readSamples, smartSnapshot, smartAfterSnapshot, cancellationToken);
+               await _cardTestService.SaveSanitizationAsync(card, result, writeSamples, readSamples, smartSnapshot, smartAfterSnapshot, cancellationToken, _borrowedSmartProvenance);
                 
                StatusMessage = L.Get("SurfaceTest.Status.SanitizeSaved", card.ModelName, (writeSamples.Count + readSamples.Count).ToString());
                SetStatusMessage(L.Get("SurfaceTest.Status.SanitizeSavedSimple", card.ModelName));
@@ -1652,10 +1652,10 @@ public partial class SurfaceTestViewModel : ViewModelBase, INavigableViewModel, 
          string? errorContext = null;
          try
          {
-            var card = await _cardTestService.GetOrCreateCardAsync(SelectedDrive!, smartSnapshot, cancellationToken);
+            var card = await _cardTestService.GetOrCreateCardAsync(SelectedDrive!, _borrowedSmartProvenance == null ? smartSnapshot : null, cancellationToken);
             var writeSamples = await CaptureSanitizationSamplesAsync(WriteSpeedHistory, SelectedDrive!.TotalSize);
             var readSamples = await CaptureSanitizationSamplesAsync(ReadSpeedHistory, SelectedDrive!.TotalSize);
-            var session = await _cardTestService.SaveSanitizationAsync(card, result, writeSamples, readSamples, smartSnapshot, null, cancellationToken);
+            var session = await _cardTestService.SaveSanitizationAsync(card, result, writeSamples, readSamples, smartSnapshot, null, cancellationToken, _borrowedSmartProvenance);
             _selectedDiskService.SelectedDisk = SelectedDrive;
             _selectedDiskService.SelectedDiskDisplayName = SelectedDrive.Name;
             _selectedDiskService.SelectedTestSessionId = session.Id;
