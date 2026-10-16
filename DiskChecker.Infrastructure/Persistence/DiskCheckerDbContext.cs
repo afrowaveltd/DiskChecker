@@ -192,6 +192,7 @@ public class DiskCheckerDbContext : DbContext
             entity.Property(e => e.PdfPath).HasMaxLength(512);
             entity.Property(e => e.Notes).HasMaxLength(2000);
             entity.Property(e => e.RecommendationNotes).HasMaxLength(1024);
+            entity.Property(e => e.TechnicianAssessment).HasMaxLength(2000);
 
             entity.HasIndex(e => e.CertificateNumber).IsUnique();
             entity.HasIndex(e => e.DiskCardId);
