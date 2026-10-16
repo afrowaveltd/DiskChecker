@@ -107,6 +107,19 @@ public class SmartAdapterHandoffTests
     }
 
     [Fact]
+    public async Task ConflictingBridgeSerial_RequiresExplicitWarning_NotAutomaticRejection()
+    {
+        await using var db = CreateContext();
+        await SeedSmartAsync(db, 160_041_885_696, "REAL-SN-1234");
+        var candidate = await CreateService(db).FindLatestReusableSmartAsync(
+            new CoreDriveInfo { TotalSize = 160_041_885_696,
+                SerialNumber = "USB-BRIDGE-SERIAL-456", SupportsSmart = false },
+            TestContext.Current.CancellationToken);
+        Assert.NotNull(candidate);
+        Assert.True(candidate.ConflictingSerial);
+    }
+
+    [Fact]
     public async Task OldSmartBeyondThirtyDays_NotOfferedAsRecent()
     {
         await using var db = CreateContext();
