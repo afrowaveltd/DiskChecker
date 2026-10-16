@@ -3,6 +3,11 @@ using System.Linq;
 using System.Threading.Tasks;
 using DiskChecker.Core.Models;
 using DiskChecker.Infrastructure.Persistence;
+using DiskChecker.Infrastructure.Services;
+using DiskChecker.Core.Interfaces;
+using NSubstitute;
+using System.IO;
+using System.Text;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Xunit;
@@ -82,6 +87,43 @@ public class TechnicianAssessmentTests
         var repo = new DiskCardRepository(context);
         await Assert.ThrowsAsync<ArgumentException>(
             () => repo.UpdateCertificateTechnicianAssessmentAsync(1, new string('X', 2001)));
+    }
+
+    [Fact]
+    public async Task Pdf_WithManualAssessment_CreatesTwoA4PagesAndKeepsOriginalGrade()
+    {
+        var folder = Path.Combine(Path.GetTempPath(), "DiskChecker-Cert-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(folder);
+        try
+        {
+            var settings = Substitute.For<ISettingsService>();
+            settings.GetCertificatePathAsync().Returns(folder);
+            var generator = new CertificateGenerator(settingsService: settings);
+            var certificate = new DiskCertificate
+            {
+                CertificateNumber = "CERT-TECH-TEST",
+                SerialNumber = "IDE-1234",
+                DiskModel = "IDE Disk",
+                GeneratedAt = DateTime.UtcNow,
+                Grade = "F",
+                Score = 13,
+                RecommendationNotes = "Automatic SMART result: F",
+                TechnicianAssessment = "Earlier historical overtemperature alert. Current read-only scan had no errors."
+            };
+
+            var pdf = await generator.GeneratePdfAsync(certificate);
+            var data = await File.ReadAllBytesAsync(pdf, TestContext.Current.CancellationToken);
+            var text = Encoding.Latin1.GetString(data);
+            Assert.StartsWith("%PDF-1.4", text, StringComparison.Ordinal);
+            Assert.Contains("/Count 2", text, StringComparison.Ordinal);
+            Assert.Contains("/Width 1240 /Height 2400", text, StringComparison.Ordinal);
+            Assert.Equal("F", certificate.Grade);
+            Assert.Equal(13, certificate.Score);
+        }
+        finally
+        {
+            if(Directory.Exists(folder)) Directory.Delete(folder, recursive: true);
+        }
     }
 
     [Fact]
