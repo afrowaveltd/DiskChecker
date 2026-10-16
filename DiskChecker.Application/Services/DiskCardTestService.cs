@@ -14,6 +14,20 @@ using Microsoft.Extensions.Logging;
 namespace DiskChecker.Application.Services;
 
 /// <summary>
+/// An existing, completed SMART measurement proposed for explicit manual reuse
+/// when another disk adapter cannot provide SMART. It is not live telemetry.
+/// </summary>
+public sealed record ReusableSmartSnapshot(
+   int SourceSessionId,
+   int SourceDiskCardId,
+   DateTime MeasuredAtUtc,
+   string SourceModel,
+   string? SourceSerial,
+   long CapacityBytes,
+   SmartaData Data,
+   bool ConflictingSerial);
+
+/// <summary>
 /// Service for saving test results to disk cards. Ensures all tests (SMART, surface, sanitization) are properly
 /// recorded.
 /// </summary>
@@ -242,6 +256,91 @@ public class DiskCardTestService
    }
 
    /// <summary>
+   /// Find the most recent completed SMART check with exactly the same device
+   /// capacity. Do NOT infer disk identity from capacity: callers MUST ask the
+   /// user to confirm this is the same physical disk after moving adapters.
+   /// Only original SMART checks are candidates (never previously borrowed data).
+   /// </summary>
+   public async Task<ReusableSmartSnapshot?> FindLatestReusableSmartAsync(
+       CoreDriveInfo target,
+       CancellationToken cancellationToken = default)
+   {
+      ArgumentNullException.ThrowIfNull(target);
+      if(target.TotalSize <= 0) return null;
+
+      // Recent measurement only: a snapshot taken months ago must not be
+      // silently presented as an adequate current health assessment.
+      var cutoff = DateTime.UtcNow.AddDays(-30);
+      var candidates = await _dbContext.TestSessions
+          .AsNoTracking()
+          .Where(s => s.Status == TestStatus.Completed &&
+              (s.TestType == TestType.SmartShort ||
+               s.TestType == TestType.SmartExtended ||
+               s.TestType == TestType.SmartConveyance) &&
+              s.SmartBeforeJson != null &&
+              s.CompletedAt != null &&
+              s.CompletedAt >= cutoff)
+          .OrderByDescending(s => s.CompletedAt)
+          .Take(100)
+          .Select(s => new
+          {
+             s.Id,
+             s.DiskCardId,
+             s.CompletedAt,
+             s.SmartBeforeJson,
+             DiskModel = s.DiskCard!.ModelName,
+             DiskSerial = s.DiskCard.SerialNumber,
+             DiskCapacity = s.DiskCard.Capacity
+          })
+          .ToListAsync(cancellationToken);
+
+      foreach(var candidate in candidates)
+      {
+         SmartaData? data;
+         try
+         {
+            data = System.Text.Json.JsonSerializer.Deserialize<SmartaData>(candidate.SmartBeforeJson!);
+         }
+         catch(System.Text.Json.JsonException)
+         {
+            continue;
+         }
+         if(data == null) continue;
+
+         // Use physical capacity from SMART if present, otherwise the recorded
+         // disk card's capacity. Equal GB/TB display strings are insufficient.
+         var sourceCapacity = data.TotalSize is > 0 ? data.TotalSize.Value : candidate.DiskCapacity;
+         if(sourceCapacity != target.TotalSize) continue;
+
+         // A bridge lacking SMART can expose its own serial instead of the
+         // IDE drive's serial. Such a mismatch is a red flag requiring an
+         // EXTRA human warning, not conclusive proof of a different disk.
+         var conflictingSerial = DriveIdentityResolver.IsReliableSerialNumber(target.SerialNumber) &&
+             DriveIdentityResolver.IsReliableSerialNumber(data.SerialNumber) &&
+             !string.Equals(
+                 DriveIdentityResolver.NormalizeSerial(target.SerialNumber!),
+                 DriveIdentityResolver.NormalizeSerial(data.SerialNumber),
+                 StringComparison.OrdinalIgnoreCase);
+
+         // When the destination adapter is actually capable of reliable SMART,
+         // two conflicting serials are too risky to suggest.
+         if(conflictingSerial && target.SupportsSmart) continue;
+
+         return new ReusableSmartSnapshot(
+             candidate.Id,
+             candidate.DiskCardId,
+             candidate.CompletedAt!.Value,
+             candidate.DiskModel,
+             data.SerialNumber,
+             sourceCapacity,
+             data,
+             conflictingSerial);
+      }
+
+      return null;
+   }
+
+   /// <summary>
    /// Save a SMART check result to a disk card.
    /// </summary>
    public async Task<TestSession> SaveSmartCheckAsync(
@@ -368,10 +467,18 @@ public class DiskCardTestService
    /// <summary>
    /// Save a surface test result to a disk card.
    /// </summary>
-   public async Task<TestSession> SaveSurfaceTestAsync(
+   public Task<TestSession> SaveSurfaceTestAsync(
        DiskCard card,
        SurfaceTestResult result,
        SmartaData? smartaData = null,
+       CancellationToken cancellationToken = default)
+       => SaveSurfaceTestAsync(card, result, smartaData, null, cancellationToken);
+
+   public async Task<TestSession> SaveSurfaceTestAsync(
+       DiskCard card,
+       SurfaceTestResult result,
+       SmartaData? smartaData,
+       string? borrowedSmartProvenance,
        CancellationToken cancellationToken = default)
    {
       ArgumentNullException.ThrowIfNull(card);
@@ -493,18 +600,29 @@ public class DiskCardTestService
 
       ApplySmartSnapshot(session, smartaData);
 
+      if(!string.IsNullOrWhiteSpace(borrowedSmartProvenance))
+      {
+         // Persist the origin with the test, rather than claiming a fresh
+         // measurement from the current adapter.
+         session.Notes = string.IsNullOrWhiteSpace(session.Notes)
+             ? borrowedSmartProvenance
+             : session.Notes + "; " + borrowedSmartProvenance;
+      }
+
       _dbContext.TestSessions.Add(session);
 
       // Update disk card
       ReactivateCardForTesting(card);
       card.TestCount++;
       card.LastTestedAt = DateTime.UtcNow;
-      if(session.SmartBefore?.PowerOnHours is { } poh)
+      // Historical SMART borrowed across an adapter is evidence attached to
+      // this test, not newly measured card telemetry.
+      if(string.IsNullOrWhiteSpace(borrowedSmartProvenance))
       {
-         card.PowerOnHours = poh;
+         if(session.SmartBefore?.PowerOnHours is { } poh)
+            card.PowerOnHours = poh;
+         card.PowerCycleCount = session.SmartBefore?.PowerCycleCount ?? card.PowerCycleCount;
       }
-
-      card.PowerCycleCount = session.SmartBefore?.PowerCycleCount ?? card.PowerCycleCount;
       await UpdateCardGradeAsync(card, cancellationToken);
 
       await _dbContext.SaveChangesAsync(cancellationToken);
@@ -520,13 +638,24 @@ public class DiskCardTestService
    /// <summary>
    /// Save a sanitization result to a disk card.
    /// </summary>
-   public async Task<TestSession> SaveSanitizationAsync(
+   public Task<TestSession> SaveSanitizationAsync(
        DiskCard card,
        SanitizationResult result,
        IEnumerable<SpeedSample>? writeSamples = null,
        IEnumerable<SpeedSample>? readSamples = null,
        SmartaData? smartaData = null,
        SmartaData? smartAfter = null,
+       CancellationToken cancellationToken = default)
+       => SaveSanitizationAsync(card, result, writeSamples, readSamples, smartaData, smartAfter, null, cancellationToken);
+
+   public async Task<TestSession> SaveSanitizationAsync(
+       DiskCard card,
+       SanitizationResult result,
+       IEnumerable<SpeedSample>? writeSamples,
+       IEnumerable<SpeedSample>? readSamples,
+       SmartaData? smartaData,
+       SmartaData? smartAfter,
+       string? borrowedSmartProvenance,
        CancellationToken cancellationToken = default)
    {
       ArgumentNullException.ThrowIfNull(card);
@@ -581,6 +710,9 @@ public class DiskCardTestService
              result.ErrorMessage
           }.Where(v => !string.IsNullOrWhiteSpace(v)))
           : breakdown.Findings.Count > 0 ? string.Join("; ", breakdown.Findings) : null;
+
+      if(!string.IsNullOrWhiteSpace(borrowedSmartProvenance))
+         sessionNotes = string.IsNullOrWhiteSpace(sessionNotes) ? borrowedSmartProvenance : sessionNotes + "; " + borrowedSmartProvenance;
 
       var session = new TestSession
       {
@@ -640,16 +772,17 @@ public class DiskCardTestService
 
       _dbContext.TestSessions.Add(session);
 
-      // Update disk card
+      // Update disk card, but never treat manually borrowed historical SMART
+      // as live identity or operating-hour information from this adapter.
       ReactivateCardForTesting(card);
       card.TestCount++;
       card.LastTestedAt = DateTime.UtcNow;
-      if(session.SmartBefore?.PowerOnHours is { } poh)
+      if(string.IsNullOrWhiteSpace(borrowedSmartProvenance))
       {
-         card.PowerOnHours = poh;
+         if(session.SmartBefore?.PowerOnHours is { } poh)
+            card.PowerOnHours = poh;
+         card.PowerCycleCount = session.SmartBefore?.PowerCycleCount ?? card.PowerCycleCount;
       }
-
-      card.PowerCycleCount = session.SmartBefore?.PowerCycleCount ?? card.PowerCycleCount;
       await UpdateCardGradeAsync(card, cancellationToken);
 
       await _dbContext.SaveChangesAsync(cancellationToken);
