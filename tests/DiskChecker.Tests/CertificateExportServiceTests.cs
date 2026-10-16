@@ -205,7 +205,9 @@ public class CertificateExportServiceTests
         var sessionId = CreateDiskCardAndSession(repo, speedSampleCount: 5000, tempSampleCount: 1000);
 
         var progressReports = new List<CertificateExportProgress>();
-        var progress = new Progress<CertificateExportProgress>(p => progressReports.Add(p));
+        // Progress<T> posts callbacks asynchronously; test completion must not race
+        // with delivery of its final 100% notification.
+        var progress = new ImmediateProgress<CertificateExportProgress>(p => progressReports.Add(p));
 
         var result = await service.ExportCertificateAsync(sessionId, progress, TestContext.Current.CancellationToken);
 
@@ -237,5 +239,11 @@ public class CertificateExportServiceTests
 
         // Should fail with cancellation message
         Assert.False(result.IsSuccess);
+    }
+    private sealed class ImmediateProgress<T> : IProgress<T>
+    {
+        private readonly Action<T> _report;
+        public ImmediateProgress(Action<T> report) => _report = report;
+        public void Report(T value) => _report(value);
     }
 }
