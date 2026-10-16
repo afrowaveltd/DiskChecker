@@ -126,6 +126,8 @@ public static class SchemaCompatibilityPatcher
             EnsureColumn(dbContext, "DiskCertificates", "SmartDeltaSummary");
             EnsureColumn(dbContext, "DiskCertificates", "Recommended");
             EnsureColumn(dbContext, "DiskCertificates", "RecommendationNotes");
+            EnsureColumn(dbContext, "DiskCertificates", "TechnicianAssessment");
+            EnsureColumn(dbContext, "DiskCertificates", "TechnicianAssessmentUpdatedAtUtc");
             EnsureColumn(dbContext, "DiskCertificates", "Status");
         }
     }
@@ -437,6 +439,12 @@ public static class SchemaCompatibilityPatcher
                 return;
             case "RecommendationNotes":
                 dbContext.Database.ExecuteSqlRaw("ALTER TABLE DiskCertificates ADD COLUMN RecommendationNotes TEXT NULL;");
+                return;
+            case "TechnicianAssessment":
+                dbContext.Database.ExecuteSqlRaw("ALTER TABLE DiskCertificates ADD COLUMN TechnicianAssessment TEXT NULL;");
+                return;
+            case "TechnicianAssessmentUpdatedAtUtc":
+                dbContext.Database.ExecuteSqlRaw("ALTER TABLE DiskCertificates ADD COLUMN TechnicianAssessmentUpdatedAtUtc TEXT NULL;");
                 return;
             case "Status":
                 dbContext.Database.ExecuteSqlRaw("ALTER TABLE DiskCertificates ADD COLUMN Status INTEGER NOT NULL DEFAULT 0;");

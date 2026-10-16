@@ -41,6 +41,7 @@ public partial class CertificateViewModel : ViewModelBase, INavigableViewModel
    private readonly ISelectedDiskService _selectedDiskService;
 
    private DiskCertificate? _certificate;
+   private string _technicianAssessmentDraft = string.Empty;
    private bool _isLoading;
    private bool _isPrinting;
    private string _statusMessage = string.Empty;
@@ -134,6 +135,7 @@ public partial class CertificateViewModel : ViewModelBase, INavigableViewModel
             OnPropertyChanged(nameof(SmartPassed));
             OnPropertyChanged(nameof(Recommended));
             OnPropertyChanged(nameof(RecommendationText));
+            TechnicianAssessmentDraft = value?.TechnicianAssessment ?? string.Empty;
             OnPropertyChanged(nameof(ScoringReasonsText));
             OnPropertyChanged(nameof(DiagnosticHighlightsText));
             OnPropertyChanged(nameof(HasDiagnosticHighlights));
@@ -591,6 +593,51 @@ public partial class CertificateViewModel : ViewModelBase, INavigableViewModel
 
    #region Commands
 
+   /// <summary>Editable explanation by the operator; not part of automatic grading.</summary>
+   public string TechnicianAssessmentDraft
+   {
+      get => _technicianAssessmentDraft;
+      set => SetProperty(ref _technicianAssessmentDraft, value);
+   }
+
+   [RelayCommand]
+   private async Task SaveTechnicianAssessmentAsync()
+   {
+      var cert = Certificate;
+      if(cert == null || cert.Id <= 0)
+      {
+         await _dialogService.ShowWarningAsync(L.Get("Common.Warning"), L.Get("CertificateView.TechnicianAssessment.SaveFirst"));
+         return;
+      }
+
+      var text = TechnicianAssessmentDraft.Trim();
+      if(text.Length > 2000)
+      {
+         await _dialogService.ShowWarningAsync(L.Get("Common.Warning"), L.Get("CertificateView.TechnicianAssessment.TooLong"));
+         return;
+      }
+
+      try
+      {
+         IsLoading = true;
+         if(!await _diskCardRepository.UpdateCertificateTechnicianAssessmentAsync(cert.Id, text))
+            throw new InvalidOperationException(L.Get("CertificateView.TechnicianAssessment.Missing"));
+         cert.TechnicianAssessment = string.IsNullOrEmpty(text) ? null : text;
+         cert.TechnicianAssessmentUpdatedAtUtc = DateTime.UtcNow;
+         // The old exported PDF is now out of date. Next export/print renders the note.
+         cert.PdfGenerated = false;
+         StatusMessage = L.Get("CertificateView.TechnicianAssessment.Saved");
+      }
+      catch(Exception ex)
+      {
+         await _dialogService.ShowErrorAsync(L.Get("Common.Error"), ex.Message);
+      }
+      finally
+      {
+         IsLoading = false;
+      }
+   }
+
    [RelayCommand]
    private async Task GenerateNewCertificateAsync()
    {
@@ -1017,7 +1064,10 @@ public partial class CertificateViewModel : ViewModelBase, INavigableViewModel
                if(sessionCard != null)
                {
                   card = sessionCard;
-                  latestCert = await _certificateGenerator.GenerateCertificateAsync(_selectedSession, sessionCard);
+                  // Never replace an existing persisted certificate with a freshly
+                  // computed in-memory one: doing so discards operator annotations.
+                  if(latestCert.Id <= 0)
+                     latestCert = await _certificateGenerator.GenerateCertificateAsync(_selectedSession, sessionCard);
                }
             }
             else if(latestCert.DiskCardId > 0)

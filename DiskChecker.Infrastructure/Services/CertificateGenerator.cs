@@ -38,6 +38,7 @@ public class CertificateGenerator : ICertificateGenerator
     private const int CertWidth = 1240;
     private const int CertHeight = 2400;
 
+
     // Font family fallback chain (cross-platform)
     private const string FontSansSerif = "DejaVu Sans";
     private const string FontSansSerifFallback = "Noto Sans";
@@ -355,18 +356,19 @@ public class CertificateGenerator : ICertificateGenerator
 
         var filePath = Path.Combine(_certificatesDirectory, fileName);
 
-        // Render JPEG → build PDF → write to file.
-        // JPEG bytes are released before PDF bytes to minimize peak memory.
+        // Preserve the original A4 certificate resolution. A technician's
+        // interpretation is printed on a separate A4 addendum rather than
+        // shrinking the original pages/text to fit a very tall image.
         byte[] pdfBytes;
         var jpegBytes = await RenderCertificateJpegAsync(certificate, CancellationToken.None);
-        try
+        if(string.IsNullOrWhiteSpace(certificate.TechnicianAssessment))
         {
             pdfBytes = BuildImagePdfDocument(jpegBytes, CertWidth, CertHeight);
         }
-        finally
+        else
         {
-            // Allow JPEG to be GC-collected while we write PDF to disk
-            jpegBytes = null;
+            var addendumBytes = await RenderTechnicianAssessmentJpegAsync(certificate);
+            pdfBytes = BuildTwoPageImagePdfDocument(jpegBytes, addendumBytes, CertWidth, CertHeight);
         }
         await File.WriteAllBytesAsync(filePath, pdfBytes);
         TryAssignOwnershipToSudoUser(filePath);
@@ -951,6 +953,45 @@ public class CertificateGenerator : ICertificateGenerator
     }
 
     /// <summary>
+    /// Second A4 page for an optional manual interpretation. The first page
+    /// retains the original algorithmically calculated grade and conclusions.
+    /// </summary>
+    private Task<byte[]> RenderTechnicianAssessmentJpegAsync(DiskCertificate cert)
+    {
+        return Task.Run(() =>
+        {
+            using var surface = SKSurface.Create(new SKImageInfo(CertWidth, CertHeight));
+            var canvas = surface.Canvas;
+            canvas.Clear(SKColors.White);
+            using var titleFont = ResolveFont(32, bold: true);
+            using var valueFont = ResolveFont(19, bold: false);
+            using var labelFont = ResolveFont(18, bold: true);
+            using var titlePaint = new SKPaint { Color = new SKColor(15, 76, 129), IsAntialias = true };
+            using var textPaint = new SKPaint { Color = SKColors.Black, IsAntialias = true };
+            using var border = new SKPaint { Color = new SKColor(210, 215, 223), Style = SKPaintStyle.Stroke, StrokeWidth = 2f };
+            canvas.DrawRect(24, 24, CertWidth - 48, CertHeight - 48, border);
+
+            DrawText(canvas, _locale?.GetString("CertificatePdf.TechnicianAssessment", "Komentář technika (ručně doplněno)")
+                ?? "Komentář technika (ručně doplněno)", 60, 64, titleFont, titlePaint);
+            DrawText(canvas, $"{cert.DiskModel} / {cert.SerialNumber}", 60, 122, valueFont, textPaint);
+            DrawText(canvas, $"{cert.CertificateNumber} · {cert.GeneratedAt:dd.MM.yyyy}", 60, 162, valueFont, textPaint);
+            DrawText(canvas, $"Automatická známka: {cert.Grade} ({cert.Score:F0}/100)", 60, 215, labelFont, textPaint);
+            DrawText(canvas, "Tato ruční poznámka nemění původní SMART a automatické hodnocení.", 60, 260, valueFont, textPaint);
+
+            canvas.DrawRect(56, 310, CertWidth - 112, 1800, border);
+            DrawTextWrapped(canvas, cert.TechnicianAssessment ?? "", 76, 336,
+                CertWidth - 160, 1720, valueFont, textPaint);
+
+            if(cert.TechnicianAssessmentUpdatedAtUtc.HasValue)
+                DrawText(canvas, $"Upraveno: {cert.TechnicianAssessmentUpdatedAtUtc.Value.ToLocalTime():dd.MM.yyyy HH:mm}",
+                    60, 2200, valueFont, textPaint);
+            using var image = surface.Snapshot();
+            using var data = image.Encode(SKEncodedImageFormat.Jpeg, 92);
+            return data.ToArray();
+        });
+    }
+
+    /// <summary>
     /// Resolves a font with cross-platform fallback chain.
     /// First tries embedded DejaVu Sans (works everywhere), then system fonts.
     /// </summary>
@@ -1138,6 +1179,61 @@ public class CertificateGenerator : ICertificateGenerator
         writer.Write("%%EOF");
         writer.Flush();
 
+        return ms.ToArray();
+    }
+
+    private static byte[] BuildTwoPageImagePdfDocument(byte[] firstJpeg, byte[] secondJpeg, int width, int height)
+    {
+        using var ms = new MemoryStream(firstJpeg.Length + secondJpeg.Length + 4096);
+        using var writer = new StreamWriter(ms, System.Text.Encoding.ASCII, leaveOpen: true);
+        var offsets = new List<long> { 0 };
+
+        void TextObject(int id, string body)
+        {
+            writer.Flush();
+            offsets.Add(ms.Position);
+            writer.Write($"{id} 0 obj\n{body}\nendobj\n");
+        }
+
+        void ContentObject(int id, string imageName)
+        {
+            var content = System.Text.Encoding.ASCII.GetBytes($"q\n595 0 0 842 0 0 cm\n/{imageName} Do\nQ\n");
+            writer.Flush();
+            offsets.Add(ms.Position);
+            writer.Write($"{id} 0 obj\n<< /Length {content.Length} >>\nstream\n");
+            writer.Flush();
+            ms.Write(content);
+            writer.Write("endstream\nendobj\n");
+        }
+
+        void ImageObject(int id, byte[] jpeg)
+        {
+            writer.Flush();
+            offsets.Add(ms.Position);
+            writer.Write($"{id} 0 obj\n<< /Type /XObject /Subtype /Image /Width {width} /Height {height} /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /DCTDecode /Length {jpeg.Length} >>\nstream\n");
+            writer.Flush();
+            ms.Write(jpeg);
+            writer.Write("\nendstream\nendobj\n");
+        }
+
+        writer.Write("%PDF-1.4\n");
+        TextObject(1, "<< /Type /Catalog /Pages 2 0 R >>");
+        TextObject(2, "<< /Type /Pages /Kids [3 0 R 6 0 R] /Count 2 >>");
+        TextObject(3, "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << /XObject << /Im1 5 0 R >> >> /Contents 4 0 R >>");
+        ContentObject(4, "Im1");
+        ImageObject(5, firstJpeg);
+        TextObject(6, "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << /XObject << /Im2 8 0 R >> >> /Contents 7 0 R >>");
+        ContentObject(7, "Im2");
+        ImageObject(8, secondJpeg);
+
+        writer.Flush();
+        var xrefStart = ms.Position;
+        writer.Write($"xref\n0 {offsets.Count}\n");
+        writer.Write("0000000000 65535 f \n");
+        for(var i = 1; i < offsets.Count; i++)
+            writer.Write($"{offsets[i]:D10} 00000 n \n");
+        writer.Write($"trailer\n<< /Size {offsets.Count} /Root 1 0 R >>\nstartxref\n{xrefStart}\n%%EOF");
+        writer.Flush();
         return ms.ToArray();
     }
 
