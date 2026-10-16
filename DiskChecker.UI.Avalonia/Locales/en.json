@@ -2273,6 +2273,7 @@
   "SurfaceTest.SmartSource.ConfirmTitle": "Reuse a previous SMART measurement?",
   "SurfaceTest.SmartSource.Live": "SMART: current reading from this adapter",
   "SurfaceTest.SmartSource.NotMeasured": "SMART: not measured yet",
+  "SurfaceTest.SmartSource.SerialConflict": "WARNING: the new adapter reports a different serial number ({0})! This may be the bridge serial, but it could indicate A DIFFERENT DISK. Continue only if you personally verified the physical disk is the same.",
   "SurfaceTest.SmartSource.Unavailable": "SMART: unavailable with this adapter; test proceeds without SMART",
   "SurfaceTest.Speed": "Test Speed",
   "SurfaceTest.Starting": "Starting surface test...",
