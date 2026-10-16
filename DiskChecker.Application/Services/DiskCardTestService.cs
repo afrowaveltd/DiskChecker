@@ -24,7 +24,8 @@ public sealed record ReusableSmartSnapshot(
    string SourceModel,
    string? SourceSerial,
    long CapacityBytes,
-   SmartaData Data);
+   SmartaData Data,
+   bool ConflictingSerial);
 
 /// <summary>
 /// Service for saving test results to disk cards. Ensures all tests (SMART, surface, sanitization) are properly
@@ -311,17 +312,19 @@ public class DiskCardTestService
          var sourceCapacity = data.TotalSize is > 0 ? data.TotalSize.Value : candidate.DiskCapacity;
          if(sourceCapacity != target.TotalSize) continue;
 
-         // If BOTH adapters provide reliable physical serials and disagree,
-         // this is not an eligible automatic suggestion.
-         if(DriveIdentityResolver.IsReliableSerialNumber(target.SerialNumber) &&
-            DriveIdentityResolver.IsReliableSerialNumber(data.SerialNumber) &&
-            !string.Equals(
-                DriveIdentityResolver.NormalizeSerial(target.SerialNumber!),
-                DriveIdentityResolver.NormalizeSerial(data.SerialNumber),
-                StringComparison.OrdinalIgnoreCase))
-         {
-            continue;
-         }
+         // A bridge lacking SMART can expose its own serial instead of the
+         // IDE drive's serial. Such a mismatch is a red flag requiring an
+         // EXTRA human warning, not conclusive proof of a different disk.
+         var conflictingSerial = DriveIdentityResolver.IsReliableSerialNumber(target.SerialNumber) &&
+             DriveIdentityResolver.IsReliableSerialNumber(data.SerialNumber) &&
+             !string.Equals(
+                 DriveIdentityResolver.NormalizeSerial(target.SerialNumber!),
+                 DriveIdentityResolver.NormalizeSerial(data.SerialNumber),
+                 StringComparison.OrdinalIgnoreCase);
+
+         // When the destination adapter is actually capable of reliable SMART,
+         // two conflicting serials are too risky to suggest.
+         if(conflictingSerial && target.SupportsSmart) continue;
 
          return new ReusableSmartSnapshot(
              candidate.Id,
@@ -330,7 +333,8 @@ public class DiskCardTestService
              candidate.DiskModel,
              data.SerialNumber,
              sourceCapacity,
-             data);
+             data,
+             conflictingSerial);
       }
 
       return null;
