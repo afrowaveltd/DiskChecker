@@ -1326,7 +1326,11 @@ public partial class SurfaceTestViewModel : ViewModelBase, INavigableViewModel, 
                var prompt = string.Format(L.Get("SurfaceTest.SmartSource.Confirm"),
                    recent.SourceModel, recent.SourceSerial ?? "?",
                    recent.MeasuredAtUtc.ToLocalTime().ToString("g"),
-                   recent.CapacityBytes, SelectedDrive.Name ?? SelectedDrive.Path);
+                   recent.CapacityBytes, SelectedDrive.Name ?? SelectedDrive.Path) +
+                   (recent.ConflictingSerial
+                       ? "\n\n" + string.Format(L.Get("SurfaceTest.SmartSource.SerialConflict"),
+                           SelectedDrive.SerialNumber ?? "?")
+                       : "");
                var accepted = await _dialogService.ShowConfirmationAsync(
                    L.Get("SurfaceTest.SmartSource.ConfirmTitle"), prompt);
                cancellationToken.ThrowIfCancellationRequested();
