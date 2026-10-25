@@ -155,6 +155,12 @@ public interface IDiskCardRepository
     Task UpdateCertificateAsync(DiskCertificate certificate);
 
     /// <summary>
+    /// Update only the technician-authored interpretation, preserving the immutable
+    /// scoring, telemetry and automatic assessment stored in the certificate.
+    /// </summary>
+    Task<bool> UpdateCertificateTechnicianAssessmentAsync(int certificateId, string? assessment);
+
+    /// <summary>
     /// Vyčistí change tracker DbContextu.  Používá se před přidáním nového
     /// certifikátu, aby se předešlo konfliktům sledování vlastněných entit
     /// (SmartAttributeSummary) s certifikáty načtenými v předchozích operacích.

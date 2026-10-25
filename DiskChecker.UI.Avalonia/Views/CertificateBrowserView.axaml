@@ -468,6 +468,23 @@
                             </StackPanel>
                         </Border>
 
+                        <!-- Explicit operator comment: original grade and recommendation remain unchanged. -->
+                        <Border Background="{Binding PanelBackground}" Padding="10" CornerRadius="8">
+                            <StackPanel Spacing="6">
+                                <TextBlock Text="{Binding L[CertificateView.TechnicianAssessment.Title]}" FontWeight="Bold" FontSize="13"/>
+                                <TextBlock Text="{Binding L[CertificateView.TechnicianAssessment.Hint]}" TextWrapping="Wrap"
+                                           Foreground="{DynamicResource ThemeTextMutedBrush}" FontSize="11"/>
+                                <TextBox Text="{Binding TechnicianAssessmentDraft, Mode=TwoWay}"
+                                         AcceptsReturn="True" TextWrapping="Wrap" MinHeight="90" MaxHeight="180"
+                                         MaxLength="2000"
+                                         Watermark="{Binding L[CertificateView.TechnicianAssessment.Watermark]}"/>
+                                <Button Content="{Binding L[CertificateView.TechnicianAssessment.Save]}"
+                                        Command="{Binding SaveTechnicianAssessmentCommand}"
+                                        IsEnabled="{Binding HasSelectedCertificate}"
+                                        HorizontalAlignment="Left" Padding="12,6"/>
+                            </StackPanel>
+                        </Border>
+
                         <!-- Notes -->
                         <Border Background="{Binding PanelBackground}" Padding="10" CornerRadius="8"
                                 IsVisible="{Binding Notes, Converter={StaticResource NotNullConverter}}">
