@@ -724,6 +724,21 @@ public partial class SafeDestructiveTestViewModel : ViewModelBase, INavigableVie
          if(!_backupVerified)
             throw new InvalidOperationException(L.Get("SafeDestructive.Error.BackupNotVerified"));
 
+         // A rescue/round-trip image mode must NEVER execute the destructive
+         // sanitization workflow or write back onto an at-risk source disk.
+         // Image verification has already compared the full SHA-256 hash.
+         if(SelectedMode == SafeDestructiveMode.ImageRoundTrip)
+         {
+            Phase = SafeDestructivePhase.Completed;
+            CurrentPhaseName = "Ověřená záchranná záloha";
+            CurrentPhaseIcon = "✅";
+            OverallProgress = 100;
+            OverallProgressText = "Celkem 100%";
+            StatusMessage = "Záloha vytvořena a ověřena. Zdrojový disk nebyl přepsán.";
+            Log("Ověřen obraz disku; destruktivní test ani obnova na zdroj nebyly spuštěny.");
+            return;
+         }
+
          // ── Phase 2: Destructive Test ──
          _destructivePhaseStarted = true;
          await RunTestPhaseAsync(ct);
@@ -927,6 +942,12 @@ public partial class SafeDestructiveTestViewModel : ViewModelBase, INavigableVie
       };
       using var manifestStream = File.OpenWrite(_backupManifestPath);
       await JsonSerializer.SerializeAsync(manifestStream, manifest, _jsonOptions, ct);
+
+      // A readable image with zero-filled source failures is NOT a lossless backup.
+      // Never start an automatic destructive test when any source bytes were unreadable.
+      if (unreadableBytes > 0)
+         throw new InvalidOperationException($"Záloha obsahuje {FormatBytesLong(unreadableBytes)} náhradních nul za nečitelné bloky. Obraz byl zachován pro záchranu dat, ale destruktivní test je zakázán: původní data nelze bezpečně obnovit.");
+
 
       await VerifyBackupImageAsync(_backupImagePath, _backupDataStartOffset, _backupTotalBytes, _backupSha256, ct);
 
@@ -1321,6 +1342,12 @@ public partial class SafeDestructiveTestViewModel : ViewModelBase, INavigableVie
       };
       using var manifestStream = File.OpenWrite(_backupManifestPath);
       await JsonSerializer.SerializeAsync(manifestStream, manifest, _jsonOptions, ct);
+
+      // A readable image with zero-filled source failures is NOT a lossless backup.
+      // Never start an automatic destructive test when any source bytes were unreadable.
+      if (unreadableBytes > 0)
+         throw new InvalidOperationException($"Záloha obsahuje {FormatBytesLong(unreadableBytes)} náhradních nul za nečitelné bloky. Obraz byl zachován pro záchranu dat, ale destruktivní test je zakázán: původní data nelze bezpečně obnovit.");
+
 
       await VerifyBackupImageAsync(_backupImagePath, _backupDataStartOffset, _backupTotalBytes, _backupSha256, ct);
       VhdxBackupVerified = true;

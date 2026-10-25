@@ -451,8 +451,11 @@ public partial class RestoreViewModel : ViewModelBase, INavigableViewModel, IDis
         long totalBytes;
         long parts = 1;
 
-        if (isVhdx && VhdxImageUtility.TryReadInfo(imagePath, out var info))
+        if (isVhdx)
+        {
+            if (!VhdxImageUtility.TryReadInfo(imagePath, out var info)) return null;
             totalBytes = info.VirtualDiskSizeBytes;
+        }
         else
             totalBytes = new FileInfo(imagePath).Length;
 
@@ -804,30 +807,14 @@ public partial class RestoreViewModel : ViewModelBase, INavigableViewModel, IDis
 
         if (isVhdx)
         {
-            // Read DataStartOffset from manifest
-            try
-            {
-                using var doc = JsonDocument.Parse(File.ReadAllText(SelectedBackup.ManifestPath));
-                if (doc.RootElement.TryGetProperty("DataStartOffset", out var dso))
-                    vhdxDataOffset = dso.GetInt64();
-            }
-            catch { }
-
-            if (vhdxDataOffset <= 0)
-            {
-                // Fallback: calculate from VHDx file structure
-                // Data starts after: 1MB header area + BAT + 1MB metadata, aligned to 1MB
-                var firstPart = allParts[0];
-                var fi = new FileInfo(firstPart);
-                long totalSize = fi.Length;
-                const int logicalSectorSize = 1048576;
-                long chunkCount = ((totalSize + logicalSectorSize - 1) / logicalSectorSize);
-                long batSize = ((chunkCount * 8 + 4096 - 1) / 4096) * 4096;
-                long metadataEnd = 256L * 1024 + batSize + 1024L * 1024;
-                vhdxDataOffset = ((metadataEnd + logicalSectorSize - 1) / logicalSectorSize) * logicalSectorSize;
-            }
-
-            _restoreLog.Add($"[{DateTime.Now:HH:mm:ss}] VHDx obnova — data začínají na offsetu {FormatBytesLong(vhdxDataOffset)}");
+            // Only our validated contiguous fixed-layout VHDX images can be restored
+            // by sequential raw copying. Never guess offsets from container length.
+            if (allParts.Count != 1 || !VhdxImageUtility.TryReadInfo(allParts[0], out var info))
+                throw new InvalidDataException("VHDx není platný podporovaný fixed obraz. Obnova je zablokována kvůli ochraně cílového disku.");
+            if (SelectedBackup.TotalBytes <= 0 || SelectedBackup.TotalBytes > info.VirtualDiskSizeBytes)
+                throw new InvalidDataException("Manifest VHDx obsahuje neplatnou velikost virtuálního disku.");
+            vhdxDataOffset = info.DataStartOffset;
+            _restoreLog.Add($"[{DateTime.Now:HH:mm:ss}] Ověřený fixed VHDx — začátek dat {FormatBytesLong(vhdxDataOffset)}");
         }
 
         const int bufferSize = 1024 * 1024; // 1MB buffer
@@ -846,7 +833,8 @@ public partial class RestoreViewModel : ViewModelBase, INavigableViewModel, IDis
             }
         }
 
-        using var targetStream = new FileStream(targetPath, FileMode.OpenOrCreate, FileAccess.Write,
+        // Physical target must already exist (never silently create a /dev regular file).
+        using var targetStream = new FileStream(targetPath, isBlockDeviceTarget ? FileMode.Open : FileMode.OpenOrCreate, FileAccess.Write,
             FileShare.None, bufferSize, FileOptions.SequentialScan);
 
         long totalSourceDataBytes = 0;
@@ -1067,7 +1055,7 @@ public partial class RestoreViewModel : ViewModelBase, INavigableViewModel, IDis
                                       targetPath.StartsWith(@"\.\", StringComparison.OrdinalIgnoreCase);
 
             var targetInfo = new FileInfo(targetPath);
-            if (!isBlockDeviceTarget && targetInfo.Exists && targetInfo.Length >= totalSourceBytes)
+            if (isBlockDeviceTarget || (targetInfo.Exists && targetInfo.Length >= totalSourceBytes))
             {
                 var expectedFromParts = await ComputeImageDataSha256Async(SelectedBackup, allParts, totalSourceBytes, ct);
                 var actualFromTarget = await ComputeFileRegionSha256Async(targetPath, 0, totalSourceBytes, ct);
@@ -1076,13 +1064,6 @@ public partial class RestoreViewModel : ViewModelBase, INavigableViewModel, IDis
                     ? $"✅ Raw/VHDx obnova ověřena porovnáním se zálohou — {FormatBytesLong(totalSourceBytes)}"
                     : "❌ Obnovený soubor nesouhlasí s daty v záloze.";
                 _restoreLog.Add($"[VERIFY] target={actualFromTarget}, backup={expectedFromParts}");
-                return;
-            }
-
-            if (isBlockDeviceTarget)
-            {
-                IsVerifyOk = true;
-                VerifyResult = $"✅ Legacy raw obnova dokončena — zapsáno {FormatBytesLong(totalSourceBytes)} na blokové zařízení (záloha nemá SHA-256).";
                 return;
             }
 
@@ -1104,9 +1085,13 @@ public partial class RestoreViewModel : ViewModelBase, INavigableViewModel, IDis
         var buffer = new byte[bufferSize];
         using var hash = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
         var isVhdx = backup.Mode == "VHDx obraz";
-        var dataOffset = TryReadManifestLong(backup.ManifestPath, "DataStartOffset") ?? 0;
-        if (isVhdx && dataOffset <= 0 && parts.Count > 0 && VhdxImageUtility.TryReadInfo(parts[0], out var info))
+        long dataOffset = 0;
+        if (isVhdx)
+        {
+            if (parts.Count != 1 || !VhdxImageUtility.TryReadInfo(parts[0], out var info))
+                throw new InvalidDataException("Nelze ověřit nepodporovaný nebo poškozený VHDx.");
             dataOffset = info.DataStartOffset;
+        }
 
         long remaining = bytesToHash;
         foreach (var partPath in parts)
