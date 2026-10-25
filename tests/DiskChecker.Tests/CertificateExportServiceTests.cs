@@ -205,7 +205,9 @@ public class CertificateExportServiceTests
         var sessionId = CreateDiskCardAndSession(repo, speedSampleCount: 5000, tempSampleCount: 1000);
 
         var progressReports = new List<CertificateExportProgress>();
-        var progress = new Progress<CertificateExportProgress>(p => progressReports.Add(p));
+        // Progress<T> posts callbacks asynchronously to a SynchronizationContext.
+        // A deterministic test must capture Report synchronously before asserting.
+        var progress = new SynchronousProgress<CertificateExportProgress>(p => progressReports.Add(p));
 
         var result = await service.ExportCertificateAsync(sessionId, progress, TestContext.Current.CancellationToken);
 
@@ -237,5 +239,13 @@ public class CertificateExportServiceTests
 
         // Should fail with cancellation message
         Assert.False(result.IsSuccess);
+    }
+    private sealed class SynchronousProgress<T> : IProgress<T>
+    {
+        private readonly Action<T> _report;
+
+        public SynchronousProgress(Action<T> report) => _report = report;
+
+        public void Report(T value) => _report(value);
     }
 }
