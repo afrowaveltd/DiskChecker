@@ -6,6 +6,9 @@ on:
     branches:
       - "fix/vhdx-layout-and-restore-safety-20261015"
 
+permissions:
+  contents: read
+
 jobs:
   dotnet-tests:
     runs-on: ubuntu-latest
