@@ -2496,5 +2496,8 @@
   "WriteShort": "ZÁPIS",
   "WriteSpeed": "Rychlost zápisu",
   "AnalysisView.SmartBefore": "SMART před testem",
-  "AnalysisView.SmartAfter": "SMART po testu"
+  "AnalysisView.SmartAfter": "SMART po testu",
+  "DestructiveTest.TempWarningTitle": "⚠️ Vysoká teplota disku",
+  "DestructiveTest.TempWarningMessage": "Teplota disku dosáhla {0}°C (bezpečný limit {1}°C). Chcete test zastavit?",
+  "SafeDestructive.Temperature": "🌡 Teplota"
 }

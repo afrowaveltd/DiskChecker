@@ -253,6 +253,7 @@ public partial class App : global::Avalonia.Application
         services.AddScoped<IDiskComparisonService, DiskComparisonService>();
         services.AddScoped<ICertificateGenerator, CertificateGenerator>();
         services.AddScoped<IMetricsCollector>(provider => provider.GetRequiredService<MetricsCollector>());
+        services.AddTransient<IDiskTemperatureMonitor, DiskTemperatureMonitor>();
         
         // View models - existing
         services.AddSingleton<MainWindowViewModel>();

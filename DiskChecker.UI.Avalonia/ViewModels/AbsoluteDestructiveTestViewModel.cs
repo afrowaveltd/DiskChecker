@@ -78,6 +78,7 @@ public partial class AbsoluteDestructiveTestViewModel : ViewModelBase, INavigabl
     private readonly ICertificateGenerator _certificateGenerator;
     private readonly TestCompletionNotificationService _notificationService;
     private readonly IPowerManagementService _powerManagementService;
+    private readonly IDiskTemperatureMonitor _temperatureMonitor;
 
     // ──────────────────────────────────────────────
     //  State
@@ -264,7 +265,8 @@ public partial class AbsoluteDestructiveTestViewModel : ViewModelBase, INavigabl
         IDiskCardRepository diskCardRepository,
         ICertificateGenerator certificateGenerator,
         TestCompletionNotificationService notificationService,
-        IPowerManagementService powerManagementService)
+        IPowerManagementService powerManagementService,
+        IDiskTemperatureMonitor temperatureMonitor)
     {
         _navigationService = navigationService;
         _selectedDiskService = selectedDiskService;
@@ -277,6 +279,9 @@ public partial class AbsoluteDestructiveTestViewModel : ViewModelBase, INavigabl
         _certificateGenerator = certificateGenerator;
         _notificationService = notificationService;
         _powerManagementService = powerManagementService;
+        _temperatureMonitor = temperatureMonitor;
+        _temperatureMonitor.TemperatureChanged += OnMonitorTemperatureChanged;
+        _temperatureMonitor.ThresholdExceeded += OnMonitorThresholdExceeded;
 
         // Build manual profiles
         ManualProfiles.Add(new() { Profile = ManualTestProfile.Conservative, Name = L.Get("DestructiveTest.Profile.Conservative"), Description = L.Get("DestructiveTest.Profile.ConservativeDesc"), SeekCount = 800 });
@@ -614,6 +619,7 @@ public partial class AbsoluteDestructiveTestViewModel : ViewModelBase, INavigabl
             }
 
             IsTesting = false;
+            _temperatureMonitor.StopMonitoring();
             _testCancellation?.Dispose();
             _testCancellation = null;
         }
@@ -857,6 +863,13 @@ public partial class AbsoluteDestructiveTestViewModel : ViewModelBase, INavigabl
             var temp = _smartBaseline?.Temperature ?? await ReadTemperatureAsync(ct);
             UpdateTemperature(temp);
 
+            // Start live temperature monitoring (non-blocking SMART polling)
+            _temperatureMonitor.Start(
+                SelectedDrive!.Path,
+                SelectedDrive.SupportsSmart,
+                _smartBaseline?.DeviceType,
+                ResolveSmartTemperatureThreshold(_smartBaseline));
+
             // Validate disk is not SSD (seek tests are for HDDs)
             if (_smartBaseline?.DeviceType?.Contains("nvme", StringComparison.OrdinalIgnoreCase) == true ||
                 _smartBaseline?.DeviceType?.Contains("ssd", StringComparison.OrdinalIgnoreCase) == true)
@@ -914,7 +927,7 @@ public partial class AbsoluteDestructiveTestViewModel : ViewModelBase, INavigabl
                         CurrentPhaseProgress = p.ProgressPercent;
                         Phases[1].ProgressPercent = p.ProgressPercent;
                         Phases[1].Detail = FormatSanitizationProgressDetail(p);
-                        UpdateTemperature(_smartBaseline?.Temperature ?? 30);
+                        UpdateTemperature(_temperatureMonitor.CurrentTemperature ?? _smartBaseline?.Temperature ?? 30);
                         UpdateOverallProgress();
 
                         // Feed into sanitization chart (pass 1)
@@ -1330,6 +1343,18 @@ public partial class AbsoluteDestructiveTestViewModel : ViewModelBase, INavigabl
         }
     }
 
+    private static int? ResolveSmartTemperatureThreshold(SmartaData? smart)
+    {
+        if (smart == null) return null;
+        // Prefer the temperature attribute threshold (ID 194 or 190) when present.
+        foreach (var attr in smart.Attributes)
+        {
+            if ((attr.Id == 194 || attr.Id == 190) && attr.Threshold > 0)
+                return attr.Threshold;
+        }
+        return null;
+    }
+
     private void UpdateTemperature(int temp)
     {
         Dispatcher.UIThread.Post(() =>
@@ -1338,6 +1363,27 @@ public partial class AbsoluteDestructiveTestViewModel : ViewModelBase, INavigabl
             CurrentTemperature = temp;
             if (temp < MinTemperature) MinTemperature = temp;
             if (temp > MaxTemperature) MaxTemperature = temp;
+        });
+    }
+
+    private void OnMonitorTemperatureChanged(object? sender, int temperature)
+    {
+        UpdateTemperature(temperature);
+    }
+
+    private void OnMonitorThresholdExceeded(object? sender, int threshold)
+    {
+        // Fire-and-forget: show a warning and offer to stop the test.
+        _ = Dispatcher.UIThread.InvokeAsync(async () =>
+        {
+            if (_disposed) return;
+            var stop = await _dialogService.ShowConfirmationAsync(
+                L.Get("DestructiveTest.TempWarningTitle"),
+                string.Format(L.Get("DestructiveTest.TempWarningMessage"), CurrentTemperature, threshold));
+            if (stop)
+            {
+                _testCancellation?.Cancel();
+            }
         });
     }
 
@@ -1777,6 +1823,7 @@ public partial class AbsoluteDestructiveTestViewModel : ViewModelBase, INavigabl
                 StartTemperature = _smartBaseline?.Temperature,
                 MaxTemperature = MaxTemperature,
                 AverageTemperature = (MinTemperature + MaxTemperature) / 2.0,
+                TemperatureSamples = _temperatureMonitor.GetSamples().ToList(),
                 Result = TestResult.Pass,
                 Grade = Certificate?.Grade ?? "?",
                 Score = Certificate?.Score ?? 0,
@@ -2221,6 +2268,7 @@ public partial class AbsoluteDestructiveTestViewModel : ViewModelBase, INavigabl
         _disposed = true;
         _testCancellation?.Cancel();
         _testCancellation?.Dispose();
+        _temperatureMonitor.StopMonitoring();
         _powerSession?.Dispose();
         GC.SuppressFinalize(this);
     }
