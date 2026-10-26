@@ -68,6 +68,7 @@ public class WindowsSmartaProvider : ISmartaProvider, IAdvancedSmartaProvider
     {
         DeviceModel = "SMART_NOT_AVAILABLE",
         IsHealthy = false,
+        IsSmartAvailable = false,
         IsFromCache = true
     };
 
@@ -406,6 +407,17 @@ public class WindowsSmartaProvider : ISmartaProvider, IAdvancedSmartaProvider
                     using var doc = JsonDocument.Parse(output);
                     var root = doc.RootElement;
 
+                    // smartctl tells us directly when the device has no SMART support.
+                    // This wins over any model_name, because USB bridges happily answer
+                    // -i with a model name while exposing no SMART attributes at all.
+                    if (root.TryGetProperty("smart_support", out var smartSupport) &&
+                        smartSupport.ValueKind == JsonValueKind.Object &&
+                        smartSupport.TryGetProperty("available", out var available) &&
+                        available.ValueKind == JsonValueKind.False)
+                    {
+                        return false;
+                    }
+
                     if (root.TryGetProperty("model_name", out var model) && model.ValueKind == JsonValueKind.String)
                     {
                         var modelStr = model.GetString();
@@ -650,6 +662,15 @@ public class WindowsSmartaProvider : ISmartaProvider, IAdvancedSmartaProvider
 
             var result = SmartctlJsonParser.Parse(execution.Value.Output);
             if (result == null)
+            {
+                return null;
+            }
+
+            // smartctl explicitly reported that the device does not expose SMART at all
+            // (USB flash drives, USB-SATA bridges without passthrough, RAID controllers...).
+            // There is nothing to grade, so return null; the caller caches NoSmartSentinel
+            // and the UI must show N/A instead of a made-up grade.
+            if (result.SmartAvailable == false)
             {
                 return null;
             }

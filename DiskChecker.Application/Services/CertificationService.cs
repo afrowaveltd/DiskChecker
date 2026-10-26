@@ -27,6 +27,11 @@ public class CertificationService
         }
 
         var qualityRating = _qualityCalculator.CalculateQuality(smartaData);
+        if (qualityRating == null)
+        {
+            return "Error: Unable to evaluate SMART quality for the specified drive.";
+        }
+
         var testDate = DateTime.UtcNow;
 
         return qualityRating.GenerateCertificate(smartaData, testDate);

@@ -16,6 +16,9 @@ public static class VhdxImageUtility
 {
     public const int LogicalBlockSize = 1024 * 1024;
     public const int PhysicalSectorSize = 4096;
+    // A sector bitmap covers 2^23 logical sectors: 4096 payload blocks at
+    // 512-byte sectors / 1 MiB blocks. Even fixed images reserve its BAT slot.
+    private const long ChunkRatio = (1L << 23) * 512 / LogicalBlockSize;
     private const long BatRegionOffset = 2L * LogicalBlockSize; // header + reserved log
     private static readonly byte[] BatRegionGuid = { 0x66, 0x77, 0xC2, 0x2D, 0x23, 0xF6, 0x00, 0x42, 0x9D, 0x64, 0x11, 0x5E, 0x9B, 0xFD, 0x4A, 0x08 };
     private static readonly byte[] MetadataRegionGuid = { 0x06, 0xA2, 0x7C, 0x8B, 0x90, 0x47, 0x9A, 0x4B, 0xB8, 0xFE, 0x57, 0x5F, 0x05, 0x0F, 0x88, 0x6E };
@@ -24,21 +27,24 @@ public static class VhdxImageUtility
     {
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(alignment);
         ArgumentOutOfRangeException.ThrowIfNegative(value);
-        return ((value + alignment - 1) / alignment) * alignment;
+        return checked(((value + alignment - 1) / alignment) * alignment);
     }
+
+    private static long CalculateBatSize(long payloadBlockCount)
+        => RoundUp(checked((payloadBlockCount + (payloadBlockCount - 1) / ChunkRatio) * 8), LogicalBlockSize);
 
     public static long CalculateDataStartOffset(long diskSizeBytes)
     {
         var diskSizeRounded = RoundUp(diskSizeBytes, LogicalBlockSize);
         var chunkCount = diskSizeRounded / LogicalBlockSize;
-        var batSize = RoundUp(checked(chunkCount * 8), LogicalBlockSize);
+        var batSize = CalculateBatSize(chunkCount);
         // The 1 MiB header is followed by the 1 MiB empty log, a BAT
         // aligned to 1 MiB, and the 1 MiB metadata region.
         return checked(BatRegionOffset + batSize + LogicalBlockSize);
     }
 
     public static long CalculateRequiredFileBytes(long diskSizeBytes)
-        => CalculateDataStartOffset(diskSizeBytes) + RoundUp(diskSizeBytes, LogicalBlockSize);
+        => checked(CalculateDataStartOffset(diskSizeBytes) + RoundUp(diskSizeBytes, LogicalBlockSize));
 
     public static void ValidateFixedImageLength(string path, long diskSizeBytes)
     {
@@ -49,6 +55,8 @@ public static class VhdxImageUtility
             throw new InvalidOperationException(
                 $"VHDx soubor je příliš malý: má {actual} B, ale pro virtuální disk {diskSizeBytes} B musí mít alespoň {required} B.");
         }
+        if (!TryReadInfo(path, out var info) || info.VirtualDiskSizeBytes != diskSizeBytes)
+            throw new InvalidOperationException("VHDX header, metadata or block allocation table is invalid.");
     }
 
     public static bool TryReadInfo(string path, out VhdxImageInfo info)
@@ -64,9 +72,7 @@ public static class VhdxImageUtility
             if (!sig.SequenceEqual(new byte[] { 0x76, 0x68, 0x64, 0x78, 0x66, 0x69, 0x6C, 0x65 }))
                 return false;
 
-            // This writer stores BAT at 256 KiB and metadata immediately after the BAT.
-            // Parse region table enough to find metadata offset/length. Fall back to the
-            // current writer layout if any optional field is missing.
+            // Parse the aligned BAT/metadata layout emitted by this writer.
             // Validate the active header CRC-32C and the region-table CRC-32C,
             // rather than accepting signatures alone.
             fs.Position = 64L * 1024;
@@ -148,7 +154,7 @@ public static class VhdxImageUtility
             var dataStart = CalculateDataStartOffset(virtualDiskSize);
             var required = CalculateRequiredFileBytes(virtualDiskSize);
             if (dataStart != (long)metadataOffset + LogicalBlockSize || fs.Length < required ||
-                batRegionLength != RoundUp((RoundUp(virtualDiskSize, LogicalBlockSize) / LogicalBlockSize) * 8, LogicalBlockSize))
+                batRegionLength != CalculateBatSize(RoundUp(virtualDiskSize, LogicalBlockSize) / LogicalBlockSize))
                 return false;
 
             // Only contiguous, fully-present fixed images are restorable by a raw copy.
@@ -157,6 +163,12 @@ public static class VhdxImageUtility
             Span<byte> batEntryBytes = stackalloc byte[8];
             for (long i = 0; i < count; i++)
             {
+                if (i > 0 && i % ChunkRatio == 0)
+                {
+                    fs.ReadExactly(batEntryBytes);
+                    // Fixed images do not allocate sector bitmap blocks.
+                    if (BitConverter.ToUInt64(batEntryBytes) != 0) return false;
+                }
                 fs.ReadExactly(batEntryBytes);
                 var expected = (((ulong)(dataStart / LogicalBlockSize + i)) << 20) | 6UL;
                 if (BitConverter.ToUInt64(batEntryBytes) != expected) return false;
@@ -177,7 +189,7 @@ public static class VhdxImageUtility
         var chunkCount = diskSizeRounded / LogicalBlockSize;
         if (diskSizeBytes <= 0 || diskSizeBytes % 512 != 0)
             throw new ArgumentOutOfRangeException(nameof(diskSizeBytes), "VHDX disk size must be a positive multiple of 512 bytes.");
-        var batSize = RoundUp(checked(chunkCount * 8), LogicalBlockSize);
+        var batSize = CalculateBatSize(chunkCount);
         var dataStartOffset = CalculateDataStartOffset(diskSizeBytes);
         var requiredFileBytes = CalculateRequiredFileBytes(diskSizeBytes);
 
@@ -188,9 +200,11 @@ public static class VhdxImageUtility
         writer.Write((uint)0);
         writer.Write(new byte[65536 - 12]);
 
-        WriteHeaderAt(writer, 0);
+        var fileWriteGuid = Guid.NewGuid();
+        var dataWriteGuid = Guid.NewGuid();
+        WriteHeaderAt(writer, 0, fileWriteGuid, dataWriteGuid);
         while (fs.Position < 128L * 1024) writer.Write((byte)0);
-        WriteHeaderAt(writer, 1);
+        WriteHeaderAt(writer, 1, fileWriteGuid, dataWriteGuid);
         while (fs.Position < 192L * 1024) writer.Write((byte)0);
 
         WriteRegionTable(writer, batSize); // 192 KiB region table
@@ -201,6 +215,8 @@ public static class VhdxImageUtility
         var fileOffsetInSectors = dataStartOffset / LogicalBlockSize;
         for (long i = 0; i < chunkCount; i++)
         {
+            ct.ThrowIfCancellationRequested();
+            if (i > 0 && i % ChunkRatio == 0) writer.Write(0UL);
             var batEntry = (6UL << 0) | ((ulong)(fileOffsetInSectors + i) << 20);
             writer.Write(batEntry);
         }
@@ -239,7 +255,7 @@ public static class VhdxImageUtility
         writer.Write(table);
     }
 
-    private static void WriteHeaderAt(BinaryWriter writer, ulong sequenceNumber)
+    private static void WriteHeaderAt(BinaryWriter writer, ulong sequenceNumber, Guid fileWriteGuid, Guid dataWriteGuid)
     {
         using var ms = new MemoryStream(4096);
         using var bw = new BinaryWriter(ms);
@@ -247,8 +263,8 @@ public static class VhdxImageUtility
         bw.Write(new byte[] { 0x68, 0x65, 0x61, 0x64 }); // head
         bw.Write((uint)0);
         bw.Write(sequenceNumber);
-        bw.Write(Guid.NewGuid().ToByteArray());
-        bw.Write(Guid.NewGuid().ToByteArray());
+        bw.Write(fileWriteGuid.ToByteArray());
+        bw.Write(dataWriteGuid.ToByteArray());
         bw.Write(new byte[16]);
         bw.Write((ushort)0);
         bw.Write((ushort)1);

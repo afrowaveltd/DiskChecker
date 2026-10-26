@@ -317,3 +317,108 @@ approach is a background sampler that polls temperature on a timer.
 - The monitor is fully additive: when SMART is unsupported or the provider returns
   null, no samples are recorded and the existing session-level temperature fallback
   in `TestAnalysisDataService` continues to work unchanged.
+
+---
+
+# Implementation Plan: Non-SMART disks must not show grade A
+
+## Goal
+Disks that do not expose SMART data must never be graded. In the disk list the
+grade badge must stay empty / show `N/A` instead of a misleading `A`.
+
+## Root cause
+`SmartctlJsonParser` parsed `smart_support.enabled` but ignored
+`smart_support.available`. For devices without SMART (USB flash drives,
+USB-SATA bridges without passthrough, RAID controllers) smartctl returns JSON
+like:
+
+```json
+{ "model_name": "USB DISK 3.0",
+  "smart_support": { "available": false, "enabled": false } }
+```
+
+The parser produced a non-null `SmartCheckResult` with `SmartStatusKnown == false`,
+no attributes and no metrics. `ToSmartaData` then mapped "health unknown" to
+`IsHealthy = true`, so `QualityCalculator` saw a penalty-free dataset and returned
+**grade A**. In addition:
+
+- `IsSmartSupportedAsync` returned `true` whenever a `model_name` was present,
+  so the unavailable state was never propagated to `CoreDriveInfo.SupportsSmart`.
+- `QualityCalculator.CalculateQuality(null)` manufactured a grade A rating
+  ("neutral"), which any caller could display as a real grade.
+
+## Fix
+1. `SmartCheckResult.SmartAvailable` (`bool?`) + parse
+   `smart_support.available`.
+2. `SmartaData.IsSmartAvailable` (default `true`) filled from the parser.
+3. `LinuxSmartaProvider` / `WindowsSmartaProvider`:
+   - `GetSmartaDataAsync` returns `null` when smartctl explicitly reports
+     SMART as unavailable (negative result cached via `NoSmartSentinel`, so
+     `SupportsSmart` becomes `false` and the device is not queried again).
+   - `ProbeSmartSupportLightweightAsync` returns `false` for
+     `smart_support.available == false`, even when `model_name` is present.
+4. `IQualityCalculator.CalculateQuality` now returns `QualityRating?` and
+   returns `null` for missing SMART data or `IsSmartAvailable == false`.
+   All call sites handle `null`; the UI renders `N/A`.
+5. `DiskSelectionViewModel`:
+   - disks with unavailable SMART show `N/A` (never `A`),
+   - `SMART` unavailable system disk shows `N/A`,
+   - unknown disks are no longer counted as "needs attention" in the dashboard.
+6. Tests for parser, calculator, service and the disk list view model.
+
+## Progress
+- [x] Parser + models (`SmartAvailable`, `IsSmartAvailable`)
+      - `SmartCheckResult.SmartAvailable` (`bool?`), parsed from `smart_support.available`
+      - `SmartaData.IsSmartAvailable` (default `true`), filled in `ToSmartaData`
+- [x] Providers (Linux/Windows): null for unavailable SMART, probe fix
+      - `NoSmartSentinel.IsSmartAvailable = false`
+      - `ExecuteSmartctlForSmartDataAsync` returns `null` when `available == false`
+        (negative cache → `IsSmartSupportedAsync` returns `false` → `SupportsSmart = false`)
+      - `ProbeSmartSupportLightweightAsync` returns `false` when `available == false`
+        even if `model_name` is present
+- [x] `QualityCalculator` nullable contract + call sites
+      - `IQualityCalculator.CalculateQuality` → `QualityRating?`
+      - `null` for missing data and for `IsSmartAvailable == false`
+      - handled in `CertificationService`, `DiskCardTestService.ApplySmartQuality`,
+        `DiskCheckerService`, `SmartCheckService`, `DiskSelectionViewModel`,
+        `SmartCheckViewModel`
+- [x] UI: disk list shows `N/A`, dashboard counters
+      - `DiskStatusCardItem.GradeColor` (gray for `N/A`, F red, A green) used by the view
+        instead of an always-green badge
+      - system disk quick report shows `N/A` when SMART is unavailable
+      - dashboard `HealthSummary` counts only gradeable disks; unknown disks are no longer
+        reported as "needs attention"
+- [x] Tests — `tests/DiskChecker.Tests/NonSmartGradeTests.cs` (17 tests)
+      - parser: `smart_support.available` true/false/missing → `SmartAvailable` / `IsSmartAvailable`
+      - calculator: null data → null, unavailable SMART → null, healthy → A, failing → F
+      - `SmartCheckService`: unavailable SMART → `null`, nothing persisted
+      - `DiskSelectionViewModel.LoadDriveAsync`: non-SMART → `N/A`, unavailable data → `N/A`,
+        healthy disk → still `A`
+      - `LinuxSmartaProvider` end-to-end against a fake `smartctl` binary:
+        unavailable → `null` + `IsSmartSupportedAsync == false`, available → gradable data
+- [x] Build & full test run
+      - `dotnet build DiskChecker.slnx` → 0 errors (only NuGet security-advisory warnings)
+      - full suite: **400 tests, 0 failed** (383 pre-existing + 17 new)
+
+## Verification
+- `dotnet build DiskChecker.slnx`
+- `dotnet test` (or `dotnet exec` runner if the host binary cannot launch)
+- Note: the test host executable fails in this environment (`Exec format error`), so the
+  suite is run with
+  `HOME=/tmp/dchome-test dotnet exec tests/DiskChecker.Tests/bin/Debug/net10.0/DiskChecker.Tests.dll`.
+  A writable `HOME` is required — the certificate tests otherwise fail with
+  `UnauthorizedAccessException` on `~/.config/DiskChecker/Certificates` (unrelated to this fix).
+
+## Result
+A device whose `smartctl` output contains `"smart_support": { "available": false }` is now
+explicitly treated as "no SMART": the provider returns `null` (and caches that fact), the
+quality calculator returns `null`, and the disk list shows `N/A` in a neutral gray badge
+instead of a misleading `A`. Disks with real SMART data are graded exactly as before.
+
+## Final verification (2026-10-26)
+- `dotnet build DiskChecker.slnx` → `Počet chyb: 0` (20 warningů = jen NuGet advisory NU1902/NU1903).
+- `HOME=/tmp/dchome-test dotnet exec tests/DiskChecker.Tests/bin/Debug/net10.0/DiskChecker.Tests.dll`
+  → `DiskChecker.Tests  Total: 400, Errors: 0, Failed: 0, Skipped: 0`.
+- `git status` – beze změn v `DiskChecker.db` (testy nezapisují do produkční DB).
+- Ukázka z logu testu (`LinuxSmartaProvider` s fake `smartctl`):
+  `smart_support.available=false ... device has no SMART, returning null`.

@@ -32,29 +32,32 @@ public class NavigationService : INavigationService
 
     public void NavigateTo<T>() where T : ViewModelBase
     {
-        // Dispose the current scope - this also disposes any IDisposable services
-        // (including transient ViewModels) that were resolved from it. Do NOT call
-        // disposable.Dispose() manually first to avoid double-disposal.
-        _currentScope?.Dispose();
-
         var scope = _serviceProvider.CreateScope();
-        var viewModel = scope.ServiceProvider.GetService<T>() ?? Activator.CreateInstance<T>();
-
-        if (viewModel is null)
+        T viewModel;
+        try
+        {
+            viewModel = scope.ServiceProvider.GetService<T>() ?? Activator.CreateInstance<T>();
+            if (viewModel is INavigableViewModel navigableViewModel)
+                navigableViewModel.OnNavigatedTo();
+        }
+        catch
         {
             scope.Dispose();
-            throw new InvalidOperationException($"Unable to create ViewModel instance for type {typeof(T).FullName}.");
+            throw;
         }
 
+        var previousScope = _currentScope;
         _currentScope = scope;
         CurrentViewModel = viewModel;
-
-        // Notify navigation
-        if (viewModel is INavigableViewModel navigableViewModel)
+        try
         {
-            navigableViewModel.OnNavigatedTo();
+            // Replace/detach the old view before disposing its bound services.
+            Navigated?.Invoke(this, new AppNavigationEventArgs { ViewModel = viewModel });
         }
-
-        Navigated?.Invoke(this, new AppNavigationEventArgs { ViewModel = viewModel });
+        finally
+        {
+            // DI owns transient IDisposable view models: dispose exactly once.
+            previousScope?.Dispose();
+        }
     }
 }

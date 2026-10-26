@@ -9,9 +9,6 @@ on:
     branches:
       - "fix/vhdx-layout-and-restore-safety-20261015"
 
-permissions:
-  contents: read
-
 jobs:
   dotnet-tests:
     runs-on: ubuntu-latest
@@ -20,8 +17,8 @@ jobs:
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: 10.0.x
-      - name: Install independent VHDX validator
-        run: sudo apt-get update -qq && sudo apt-get install -y qemu-utils
+      - name: Install VHDX validator and headless rendering dependencies
+        run: sudo apt-get update -qq && sudo apt-get install -y qemu-utils libfontconfig1 fonts-dejavu-core
       - name: Restore
         run: dotnet restore tests/DiskChecker.Tests/DiskChecker.Tests.csproj
       - name: Compile

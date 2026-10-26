@@ -56,6 +56,7 @@ public class LinuxSmartaProvider : ISmartaProvider, IAdvancedSmartaProvider
     {
         DeviceModel = "SMART_NOT_AVAILABLE",
         IsHealthy = false,
+        IsSmartAvailable = false,
         IsFromCache = true
     };
 
@@ -340,6 +341,17 @@ public class LinuxSmartaProvider : ISmartaProvider, IAdvancedSmartaProvider
                     using var doc = JsonDocument.Parse(result.Value.Output);
                     var root = doc.RootElement;
 
+                    // smartctl tells us directly when the device has no SMART support.
+                    // This wins over any model_name, because USB bridges happily answer
+                    // -i with a model name while exposing no SMART attributes at all.
+                    if (root.TryGetProperty("smart_support", out var smartSupport) &&
+                        smartSupport.ValueKind == JsonValueKind.Object &&
+                        smartSupport.TryGetProperty("available", out var available) &&
+                        available.ValueKind == JsonValueKind.False)
+                    {
+                        return false;
+                    }
+
                     // Check for model_name (ATA/SATA) or scsi_model_name (SCSI) or nvme info
                     if (root.TryGetProperty("model_name", out var model) && model.ValueKind == JsonValueKind.String)
                     {
@@ -579,6 +591,16 @@ public class LinuxSmartaProvider : ISmartaProvider, IAdvancedSmartaProvider
             if (result == null)
             {
                 Console.WriteLine("[LinuxSmartaProvider] ERROR: Parser returned null");
+                return null;
+            }
+
+            // smartctl explicitly reported that the device does not expose SMART at all
+            // (USB flash drives, USB-SATA bridges without passthrough, RAID controllers...).
+            // There is nothing to grade, so return null; the caller caches NoSmartSentinel
+            // and the UI must show N/A instead of a made-up grade.
+            if (result.SmartAvailable == false)
+            {
+                Console.WriteLine($"[LinuxSmartaProvider] smart_support.available=false for {devicePath} — device has no SMART, returning null");
                 return null;
             }
             

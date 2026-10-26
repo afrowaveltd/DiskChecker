@@ -252,6 +252,26 @@ Kombinuje zálohu, destruktivní test a obnovu do jednoho workflow:
 |-------|-------|---------|
 | **Souborová** | Kopíruje vybrané složky | Když je FS čitelný (NTFS, EXT4...) |
 | **Raw image** | Bitová kopie celého disku | BitLocker, neznámý FS, poškozený FS |
+| **VHDX obraz (pevný)** | Celý disk v jednom standardním kontejneru | Připojení ve Windows nebo přes QEMU v Linuxu |
+
+### Cílová úložiště v Linuxu
+
+- V zálohování i bezpečném destruktivním workflow se nabízejí připojené souborové systémy na diskových zařízeních.
+- Podporovány jsou také svazky nad LVM, šifrováním a RAID. Zdrojový fyzický disk a jeho svazky jsou z cílů vyřazeny.
+- Snap/loop obrazy, optická média, RAM/zram, swap a virtuální systémové přípojné body se nezobrazují. Zařízení pouze pro čtení se nenabízejí.
+- Více přípojných bodů stejného zařízení se započítá pouze jednou, aby se nenavyšovalo dostupné místo.
+- Pokud načtení přes `lsblk` selže, běžné zálohování oznámí chybu inicializace; nepoužije neodfiltrovaný seznam všech přípojných bodů.
+
+### VHDX a jeho připojení
+
+- Vytváří se **pevný VHDX**, nikoli dynamický obraz. Na jednom cíli musí být místo pro celý zdrojový disk a metadata; VHDX se nerozděluje na části.
+- Virtuální kapacita odpovídá přesně zdrojovému disku. Na celé MiB se zaokrouhluje jen datová oblast kontejneru.
+- Před oznámením dokončení se kontroluje velikost kontejneru, hlavička, metadata a tabulka přidělení bloků. Bezpečné destruktivní workflow navíc ověřuje kontrolní součet dat.
+- Windows: obraz lze připojit přes Správu disků → **Akce → Připojit virtuální pevný disk**.
+- Linux: `qemu-img info -f vhdx disk_image.vhdx` ověří otevření kontejneru. Pro připojení disku lze použít `sudo modprobe nbd max_part=16` a `sudo qemu-nbd --read-only --format=vhdx --connect=/dev/nbd0 disk_image.vhdx`, následně připojit příslušný oddíl. Po odpojení oddílu ukončete spojení příkazem `sudo qemu-nbd --disconnect=/dev/nbd0`.
+- Připojený virtuální disk obsahuje původní souborový systém i případné šifrování zdroje; například BitLocker bude vyžadovat odemknutí.
+
+Technické příčiny oprav a regresní ověření popisuje [záznam oprav záloh a navigace](BACKUP_NAVIGATION_FIXES_CS.md).
 
 ### Výběr složek
 

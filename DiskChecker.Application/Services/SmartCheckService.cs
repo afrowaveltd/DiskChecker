@@ -70,6 +70,13 @@ public class SmartCheckService
         }
 
         var rating = _qualityCalculator.CalculateQuality(smartaData);
+        if (rating == null)
+        {
+            // Device exposes no gradable SMART information — do not persist a made-up grade.
+            LogSmartDataUnavailable(_logger, drive.Path, null);
+            return null;
+        }
+
         IReadOnlyList<SmartaAttributeItem> attributes = Array.Empty<SmartaAttributeItem>();
         SmartaSelfTestStatus? selfTestStatus = null;
         IReadOnlyList<SmartaSelfTestEntry> selfTestLog = Array.Empty<SmartaSelfTestEntry>();

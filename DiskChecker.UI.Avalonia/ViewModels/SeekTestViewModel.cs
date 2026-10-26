@@ -133,6 +133,7 @@ public partial class SeekTestViewModel : ViewModelBase, INavigableViewModel, IDi
     public ObservableCollection<SeekTestTypeOption> TestTypeOptions { get; } = new();
 
     private CancellationTokenSource? _testCancellation;
+    private CancellationTokenSource? _recommendationCancellation;
     private bool _disposed;
     private bool _isFinalChartBuilt; // guards against progress callbacks corrupting final chart
 
@@ -527,6 +528,7 @@ public partial class SeekTestViewModel : ViewModelBase, INavigableViewModel, IDi
 
     public void OnNavigatedTo()
     {
+        if (_disposed) return;
         var drive = _selectedDiskService.SelectedDisk;
         if (drive != null)
         {
@@ -546,14 +548,20 @@ public partial class SeekTestViewModel : ViewModelBase, INavigableViewModel, IDi
 
     private async Task LoadRecommendationAsync()
     {
-        if (SelectedDrive == null) return;
+        if (_disposed || SelectedDrive == null) return;
+
+        _recommendationCancellation?.Cancel();
+        var cancellation = new CancellationTokenSource();
+        _recommendationCancellation = cancellation;
+        var drive = SelectedDrive;
 
         IsLoadingRecommendation = true;
         StatusMessage = L.Get("SeekTest.Status.AnalyzingSmart");
 
         try
         {
-            var rec = await _seekTestService.GetRecommendationAsync(SelectedDrive);
+            var rec = await _seekTestService.GetRecommendationAsync(drive, cancellation.Token);
+            if (_disposed || cancellation.IsCancellationRequested || SelectedDrive != drive) return;
 
             var typeName = rec.RecommendedType switch
             {
@@ -589,15 +597,25 @@ public partial class SeekTestViewModel : ViewModelBase, INavigableViewModel, IDi
                 StatusMessage = string.Format(L.Get("SeekTest.Status.RecommendationLoaded"), rec.RecommendedSeekCount, rec.RecommendedType);
             }
         }
+        catch (OperationCanceledException) when (cancellation.IsCancellationRequested)
+        {
+            // Navigation or a newer recommendation superseded this request.
+        }
         catch (Exception ex)
         {
+            if (_disposed || cancellation.IsCancellationRequested) return;
             RecommendationText = L.Get("SeekTest.RecommendationLoadFailed");
             RecommendationRationale = string.Format(L.Get("SeekTest.ErrorWithMessage"), ex.Message);
             StatusMessage = L.Get("SeekTest.Status.RecommendationLoadFailed");
         }
         finally
         {
-            IsLoadingRecommendation = false;
+            if (ReferenceEquals(_recommendationCancellation, cancellation))
+            {
+                _recommendationCancellation = null;
+                if (!_disposed) IsLoadingRecommendation = false;
+            }
+            cancellation.Dispose();
         }
     }
 
@@ -607,7 +625,7 @@ public partial class SeekTestViewModel : ViewModelBase, INavigableViewModel, IDi
 
     private async Task StartTestAsync()
     {
-        if (SelectedDrive == null || SelectedSeekCount <= 0) return;
+        if (_disposed || SelectedDrive == null || SelectedSeekCount <= 0) return;
 
         if (IsForcedFragileDiskOverride)
         {
@@ -628,6 +646,7 @@ public partial class SeekTestViewModel : ViewModelBase, INavigableViewModel, IDi
             if (!confirmed) return;
         }
 
+        if (_disposed) return;
         IsTesting = true;
         HasResults = false;
         ProgressPercent = 0;
@@ -641,15 +660,9 @@ public partial class SeekTestViewModel : ViewModelBase, INavigableViewModel, IDi
         IsPrePositioned = false;
         StatusMessage = L.Get("SeekTest.Status.Starting");
 
-        // Clear final chart from previous test so only the real-time chart shows during testing.
-        // We intentionally use new T[0] instead of Array.Empty<T>() because LiveCharts2
-        // SkiaSharp needs a fresh reference to detect the change; Array.Empty returns a singleton.
-#pragma warning disable CA1825
-        FinalLatencySeries = new ISeries[0];
+        // Keep valid axes while clearing the previous result.
+        FinalLatencySeries = Array.Empty<ISeries>();
         FinalChartPointCount = 0;
-        FinalLatencyXAxes = new Axis[0];
-        FinalLatencyYAxes = new Axis[0];
-#pragma warning restore CA1825
 
         // Initialize real-time chart
         LatencyChartValues.Clear();
@@ -690,7 +703,8 @@ public partial class SeekTestViewModel : ViewModelBase, INavigableViewModel, IDi
         };
         ChartPointCount = 0;
 
-        _testCancellation = new CancellationTokenSource();
+        var cancellation = new CancellationTokenSource();
+        _testCancellation = cancellation;
         _isFinalChartBuilt = false;
         var startTime = DateTime.UtcNow;
 
@@ -715,7 +729,7 @@ public partial class SeekTestViewModel : ViewModelBase, INavigableViewModel, IDi
                         // Guard: the view model may have been disposed after navigation
                         // (SeekTestViewModel is transient and IDisposable). Pending posts
                         // must not touch chart data on a detached/destroyed chart surface.
-                        if (_disposed) return;
+                        if (_disposed || cancellation.IsCancellationRequested) return;
 
                         // Guard: don't touch chart data after final chart is built
                         if (_isFinalChartBuilt) return;
@@ -759,7 +773,9 @@ public partial class SeekTestViewModel : ViewModelBase, INavigableViewModel, IDi
                         StatusMessage = string.Format(L.Get("SeekTest.Status.Running"), progress.SeeksCompleted, progress.TotalSeeks, progress.PercentComplete);
                     });
                 },
-                _testCancellation.Token);
+                cancellation.Token);
+
+            if (_disposed) return;
 
             // Populate results
             HasResults = true;
@@ -798,21 +814,23 @@ public partial class SeekTestViewModel : ViewModelBase, INavigableViewModel, IDi
         }
         catch (OperationCanceledException)
         {
+            if (_disposed) return;
             StatusMessage = L.Get("SeekTest.Status.CancelledByUser");
             HasResults = true;
             ResultSummary = L.Get("SeekTest.Result.CancelledByUser");
         }
         catch (Exception ex)
         {
+            if (_disposed) return;
             StatusMessage = string.Format(L.Get("SeekTest.Status.TestError"), ex.Message);
             HasResults = true;
             ResultSummary = string.Format(L.Get("SeekTest.Result.Error"), ex.Message);
         }
         finally
         {
-            IsTesting = false;
-            _testCancellation?.Dispose();
-            _testCancellation = null;
+            if (!_disposed) IsTesting = false;
+            if (ReferenceEquals(_testCancellation, cancellation)) _testCancellation = null;
+            cancellation.Dispose();
         }
     }
 
@@ -823,11 +841,12 @@ public partial class SeekTestViewModel : ViewModelBase, INavigableViewModel, IDi
     {
         try
         {
-            if (SelectedDrive == null) return;
+            if (_disposed || SelectedDrive == null) return;
 
             // Use GetOrCreateCardAsync for proper identity resolution (SMART serial,
             // legacy key, path fallback with model/capacity matching).
             var card = await _cardTestService.GetOrCreateCardAsync(SelectedDrive);
+            if (_disposed) return;
 
             var session = new TestSession
             {
@@ -849,9 +868,12 @@ public partial class SeekTestViewModel : ViewModelBase, INavigableViewModel, IDi
             };
 
             session = await _diskCardRepository.CreateTestSessionAsync(session);
+            if (_disposed) return;
             await _diskCardRepository.CreateSeekSamplesAsync(session.Id, result.TestType, result.Samples);
+            if (_disposed) return;
 
             var cert = await _certificateGenerator.GenerateCertificateAsync(session, card);
+            if (_disposed) return;
             cert.CertificateNumber = $"SEEK-{DateTime.UtcNow:yyyyMMdd}-{Guid.NewGuid():N}"[..24];
             cert.TestType = $"Seek test ({SelectedTestType})";
             cert.SeekAvgLatencyMs = result.AverageLatencyMs;
@@ -867,11 +889,11 @@ public partial class SeekTestViewModel : ViewModelBase, INavigableViewModel, IDi
             cert.Notes = session.Notes;
             await _diskCardRepository.CreateCertificateAsync(cert);
 
-            StatusMessage = string.Format(L.Get("SeekTest.Status.CertificateSaved"), cert.CertificateNumber);
+            if (!_disposed) StatusMessage = string.Format(L.Get("SeekTest.Status.CertificateSaved"), cert.CertificateNumber);
         }
         catch (Exception ex)
         {
-            StatusMessage = string.Format(L.Get("SeekTest.Status.CertificateSaveFailed"), ex.Message);
+            if (!_disposed) StatusMessage = string.Format(L.Get("SeekTest.Status.CertificateSaveFailed"), ex.Message);
         }
     }
 
@@ -1220,43 +1242,9 @@ public partial class SeekTestViewModel : ViewModelBase, INavigableViewModel, IDi
             LineSmoothness = 0
         });
 
-        LatencySeries = seriesList.ToArray();
-
-        // Store all points for chart values (for count display)
-        var allPoints = successful.Select(s => new ObservablePoint(s.Index, s.LatencyMs)).ToList();
-        LatencyChartValues = new ObservableCollection<ObservablePoint>(allPoints);
-        ChartPointCount = allPoints.Count;
-
-        LatencyXAxes = new Axis[]
-        {
-            new Axis
-            {
-                Name = L.Get("SeekTest.Axis.SeekNumber"),
-                NameTextSize = 10,
-                TextSize = 9,
-                MinLimit = 0,
-                MaxLimit = successful.Count + 1,
-                Labeler = v => v.ToString("F0")
-            }
-        };
-
         var yMax = max * 1.15; // 15% headroom
-        LatencyYAxes = new Axis[]
-        {
-            new Axis
-            {
-                Name = L.Get("SeekTest.Axis.LatencyMs"),
-                NameTextSize = 10,
-                TextSize = 9,
-                MinLimit = 0,
-                MaxLimit = yMax,
-                Labeler = v => $"{v:F1}"
-            }
-        };
-
-        // Also populate final chart properties (separate bindings for the results section).
-        // LiveCharts2 SkiaSharp sometimes fails to pick up series/axes changes when set
-        // directly. A two-step assignment via Dispatcher forces a redraw.
+        // Each chart owns its own series, paints and axes. Sharing these with the
+        // live chart lets unloading one chart invalidate the other's Skia resources.
         var finalSeries = seriesList.ToArray();
         var finalXAxes = new Axis[]
         {
@@ -1283,31 +1271,12 @@ public partial class SeekTestViewModel : ViewModelBase, INavigableViewModel, IDi
             }
         };
 
-        // BuildFinalChart runs on a background thread (async command). SkiaSharp
-        // requires changes from the UI thread to trigger a redraw. We use
-        // Dispatcher.UIThread.Post with a two-step assignment:
-        //   1. Clear to new T[0] (fresh reference, NOT Array.Empty singleton)
-        //   2. Set real data
-        // This forces LiveCharts2 to detect the delta and render.
-        Dispatcher.UIThread.Post(() =>
-        {
-            // Guard: the view model may have been disposed after navigation. Pending
-            // posts must not touch chart data on a detached/destroyed chart surface.
-            if (_disposed) return;
-
-            // Step 1: clear with fresh references
-#pragma warning disable CA1825
-            FinalLatencySeries = new ISeries[0];
-            FinalLatencyXAxes = new Axis[0];
-            FinalLatencyYAxes = new Axis[0];
-#pragma warning restore CA1825
-
-            // Step 2: set real data – chart detects the delta and redraws
-            FinalLatencySeries = finalSeries;
-            FinalLatencyXAxes = finalXAxes;
-            FinalLatencyYAxes = finalYAxes;
-            FinalChartPointCount = allPoints.Count;
-        });
+        // Async commands resume on the Avalonia UI context. Publish once, with
+        // valid axes, instead of queuing a second update that can outlive the view.
+        FinalLatencyXAxes = finalXAxes;
+        FinalLatencyYAxes = finalYAxes;
+        FinalLatencySeries = finalSeries;
+        FinalChartPointCount = successful.Count;
     }
 
     private async Task AbortTestAsync()
@@ -1343,9 +1312,10 @@ public partial class SeekTestViewModel : ViewModelBase, INavigableViewModel, IDi
         if (_disposed) return;
         _disposed = true;
 
-        var cts = Interlocked.Exchange(ref _testCancellation, null);
-        try { cts?.Cancel(); } catch (ObjectDisposedException) { }
-        cts?.Dispose();
+        // Each async operation owns/disposes its CTS in finally. Disposing it here
+        // races executors which still need to register cancellation callbacks.
+        _testCancellation?.Cancel();
+        _recommendationCancellation?.Cancel();
 
         GC.SuppressFinalize(this);
     }

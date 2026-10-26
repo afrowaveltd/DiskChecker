@@ -38,6 +38,21 @@ public partial class DiskStatusCardItem : ViewModelBase
     public string GradeText { get; set; } = "?";
     
     /// <summary>
+    /// Color of the grade badge. A missing grade (disk without SMART data, shown as
+    /// "N/A") is rendered in a neutral gray so it cannot be mistaken for a good grade.
+    /// </summary>
+    public string GradeColor => GradeText switch
+    {
+        "A" => "#27AE60",
+        "B" => "#2ECC71",
+        "C" => "#F39C12",
+        "D" => "#E67E22",
+        "E" => "#E74C3C",
+        "F" => "#C0392B",
+        _ => "#6C757D"
+    };
+
+    /// <summary>
     /// Formatted temperature text (e.g., "45°C").
     /// </summary>
     public string TemperatureText { get; set; } = "N/A";

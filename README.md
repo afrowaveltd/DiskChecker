@@ -87,11 +87,12 @@ DiskChecker je dnes více než jednoduchá SMART utilita. Obsahuje kompletní ap
 - **Porovnání disků**
   - Porovnání vybraných diskových karet a jejich výkonových/zdravotních metrik.
 - **Záloha a obnova**
-  - **Tři režimy zálohy**: souborová, RAW obraz (sektory), VHDx dynamický obraz.
+  - **Tři režimy zálohy**: souborová, RAW obraz (sektory), pevný VHDX obraz.
   - **VHDx** – standardní Microsoft formát, mountovatelný ve Windows nativně i v Linuxu přes `qemu-nbd`.
   - **Odolnost vůči chybám** – nečitelné sektory jsou nahrazeny nulami, záloha pokračuje; ochrana proti katastrofickému selhání (limit po sobě jdoucích chyb).
   - **Větší bloky** (1 MiB) pro rychlejší přenos.
   - UI pro výběr cílového umístění s přehledem volného místa.
+  - Linux: připojené souborové systémy na diskových zařízeních včetně LVM/šifrování/RAID; bez Snap/loop a virtuálních systémových přípojných bodů.
   - Obnova ze zálohy včetně verifikace.
 - **E-mailová oznámení**
   - Uložení SMTP nastavení.
@@ -292,7 +293,7 @@ Pro NVMe disky se automaticky používá standardizovaný atribut `PercentageUse
 |-------|-------|---------|
 | **Souborová** | Kopíruje vybrané složky a soubory | Běžná záloha dat |
 | **RAW obraz** | Čte sektory přímo z disku (1 MiB bloky) | Kompletní bitová kopie disku |
-| **VHDx dynamický** | Vytváří standardní VHDx obraz (Microsoft formát) | Mountovatelný ve Windows i Linuxu, roste podle dat |
+| **VHDX pevný** | Vytváří standardní VHDX obraz celého disku (Microsoft formát) | Připojitelný ve Windows i Linuxu; vyžaduje celý disk + metadata na jednom cíli |
 
 Všechny režimy jsou odolné vůči chybám čtení – nečitelné sektory jsou nahrazeny nulami a záloha pokračuje. Při více než 64 po sobě jdoucích chybách se operace přeruší (ochrana proti katastrofickému selhání disku).
 

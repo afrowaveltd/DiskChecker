@@ -18,6 +18,15 @@ namespace DiskChecker.Core.Models
         public long? TotalSize { get; set; }
         
         // SMART status
+
+        /// <summary>
+        /// False when smartctl explicitly reported that the device does not expose SMART
+        /// (<c>smart_support.available == false</c>), e.g. USB flash drives or USB bridges
+        /// without SMART passthrough. Such a device must not receive a quality grade.
+        /// Defaults to <c>true</c> for unknown/legacy data to preserve previous behaviour.
+        /// </summary>
+        public bool IsSmartAvailable { get; set; } = true;
+
         public bool IsHealthy { get; set; }
         public bool SmartEnabled { get; set; }
         

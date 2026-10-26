@@ -517,9 +517,12 @@ public partial class BackupViewModel : ViewModelBase, INavigableViewModel, IDisp
             using var process = System.Diagnostics.Process.Start(psi);
             if (process == null) return null;
 
-            var output = await process.StandardOutput.ReadToEndAsync();
+            var outputTask = process.StandardOutput.ReadToEndAsync();
+            var errorTask = process.StandardError.ReadToEndAsync();
             await process.WaitForExitAsync();
-            return output;
+            var output = await outputTask;
+            await errorTask;
+            return process.ExitCode == 0 ? output : null;
         }
         catch
         {
@@ -531,89 +534,49 @@ public partial class BackupViewModel : ViewModelBase, INavigableViewModel, IDisp
     {
         TargetDrives.Clear();
 
-        var allDrives = System.IO.DriveInfo.GetDrives()
-            .Where(d => d.IsReady && d.DriveType != DriveType.CDRom && d.DriveType != DriveType.Ram)
-            .ToList();
+        IEnumerable<System.IO.DriveInfo> allDrives;
+        if (OperatingSystem.IsLinux())
+        {
+            var json = await ExecuteCommandAsync("lsblk", "--json --paths --output NAME,KNAME,PATH,TYPE,FSTYPE,RO,MOUNTPOINTS,MAJ:MIN");
+            if (string.IsNullOrWhiteSpace(json))
+                throw new IOException("Nelze načíst disková úložiště pomocí lsblk.");
+            allDrives = LinuxBackupTargetDiscovery.GetMountPoints(json, SourceDrive?.Path)
+                .Select(path => new System.IO.DriveInfo(path));
+        }
+        else
+        {
+            allDrives = System.IO.DriveInfo.GetDrives()
+                .Where(d => d.IsReady && d.DriveType != DriveType.CDRom && d.DriveType != DriveType.Ram);
+        }
 
         await CalculateSystemReserveAsync();
 
         foreach (var drive in allDrives)
         {
-            // Exclude the source drive. On Linux, SourceDrive.Path is /dev/sdX
-            // and DriveInfo.Name is a mount point like / or /home, so a simple
-            // StartsWith won't work. We need to check via lsblk whether this
-            // mount point belongs to the source device.
-            if (SourceDrive != null && await IsDriveOnSourceDeviceAsync(drive, SourceDrive))
+            // Linux source ancestry has already been excluded from the lsblk tree.
+            if (!OperatingSystem.IsLinux() && SourceDrive != null &&
+                (drive.Name.StartsWith(SourceDrive.Path, StringComparison.OrdinalIgnoreCase) ||
+                 SourceDrive.Path.StartsWith(drive.Name, StringComparison.OrdinalIgnoreCase)))
                 continue;
 
-            TargetDrives.Add(new BackupTargetItem
+            try
             {
-                DrivePath = drive.Name,
-                DisplayName = $"{drive.Name} ({drive.VolumeLabel}) — {drive.DriveFormat}",
-                TotalFreeSpace = drive.AvailableFreeSpace,
-                FreeSpaceText = FormatBytesLong(drive.AvailableFreeSpace),
-                IsSelected = false,
-                AllocatedBytes = 0
-            });
+                if (!drive.IsReady || drive.AvailableFreeSpace <= 0) continue;
+                TargetDrives.Add(new BackupTargetItem
+                {
+                    DrivePath = drive.Name,
+                    DisplayName = $"{drive.Name} ({drive.VolumeLabel}) — {drive.DriveFormat}",
+                    TotalFreeSpace = drive.AvailableFreeSpace,
+                    FreeSpaceText = FormatBytesLong(drive.AvailableFreeSpace),
+                    IsSelected = false,
+                    AllocatedBytes = 0
+                });
+            }
+            catch (IOException) { /* A removable target may disappear during discovery. */ }
+            catch (UnauthorizedAccessException) { /* Inaccessible filesystems cannot be targets. */ }
         }
 
         await Task.CompletedTask;
-    }
-
-    /// <summary>
-    /// Checks whether a DriveInfo mount point belongs to the source physical device.
-    /// On Linux, uses lsblk to resolve the mount point to a physical device.
-    /// On Windows, uses simple path prefix matching.
-    /// </summary>
-    private static async Task<bool> IsDriveOnSourceDeviceAsync(System.IO.DriveInfo drive, CoreDriveInfo sourceDrive)
-    {
-        if (RuntimeInformation.IsOSPlatform(OSPlatform.Linux))
-        {
-            try
-            {
-                // Resolve the mount point to its physical device via lsblk
-                var mountPoint = drive.RootDirectory.FullName.TrimEnd('/');
-                var lsblkOutput = await ExecuteCommandAsync("lsblk", $"-J -o NAME,MOUNTPOINT");
-
-                if (!string.IsNullOrEmpty(lsblkOutput))
-                {
-                    using var doc = JsonDocument.Parse(lsblkOutput);
-                    if (doc.RootElement.TryGetProperty("blockdevices", out var devices))
-                    {
-                        foreach (var device in devices.EnumerateArray())
-                        {
-                            if (device.TryGetProperty("children", out var children))
-                            {
-                                foreach (var child in children.EnumerateArray())
-                                {
-                                    var mp = child.TryGetProperty("mountpoint", out var mpProp)
-                                        ? mpProp.GetString()?.TrimEnd('/')
-                                        : null;
-
-                                    if (mp != null && string.Equals(mp, mountPoint, StringComparison.OrdinalIgnoreCase))
-                                    {
-                                        var parentName = device.TryGetProperty("name", out var nameProp)
-                                            ? nameProp.GetString()
-                                            : null;
-                                        if (parentName != null)
-                                        {
-                                            var parentPath = $"/dev/{parentName}";
-                                            if (string.Equals(parentPath, sourceDrive.Path, StringComparison.OrdinalIgnoreCase))
-                                                return true;
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-            catch { /* if lsblk fails, fall through to simple check */ }
-        }
-
-        // Windows / fallback: simple path prefix matching
-        return drive.Name.StartsWith(sourceDrive.Path, StringComparison.OrdinalIgnoreCase) ||
-               sourceDrive.Path.StartsWith(drive.Name, StringComparison.OrdinalIgnoreCase);
     }
 
     private async Task CalculateSystemReserveAsync()
@@ -958,8 +921,6 @@ public partial class BackupViewModel : ViewModelBase, INavigableViewModel, IDisp
         var selectedCount = Math.Max(1, TargetDrives.Count(t => t.IsSelected));
         return Math.Max(0, target.TotalFreeSpace - (SystemReserveBytes / selectedCount));
     }
-
-    private static long CalculateRequiredVhdxBytes(long diskSizeBytes) => VhdxImageUtility.CalculateRequiredFileBytes(diskSizeBytes);
 
     private void DistributeAllocation()
     {
@@ -1401,11 +1362,11 @@ public partial class BackupViewModel : ViewModelBase, INavigableViewModel, IDisp
     }
 
     /// <summary>
-    /// Creates a VHDx dynamic image of the source disk. VHDx is a modern, resilient
+    /// Creates a fixed VHDX image of the source disk. VHDX is a modern, resilient
     /// format that can be mounted read-only on Windows (native) and Linux (via qemu-nbd/libguestfs).
-    /// The image is sparse — only written sectors consume space on the target.
+    /// All payload blocks are present and the virtual size matches the source exactly.
     /// </summary>
-        private async Task RunVhdxBackupAsync(CancellationToken ct)
+    private async Task RunVhdxBackupAsync(CancellationToken ct)
     {
         if (SourceDrive == null) throw new InvalidOperationException("Zdrojový disk není vybrán.");
 
@@ -1457,6 +1418,7 @@ public partial class BackupViewModel : ViewModelBase, INavigableViewModel, IDisp
 
                 try
                 {
+                    deviceStream.Position = bytesRead;
                     bytesReadNow = await deviceStream.ReadAsync(buffer.AsMemory(0, bytesToRead), ct);
                 }
                 catch (IOException)
@@ -1514,6 +1476,9 @@ public partial class BackupViewModel : ViewModelBase, INavigableViewModel, IDisp
             throw;
         }
 
+        vhdxStream.Dispose();
+        VhdxImageUtility.ValidateFixedImageLength(vhdxPath, totalSize);
+
         // Write manifest
         var manifestPath = Path.Combine(backupRoot, "backup_manifest.json");
         var manifest = new
@@ -1527,7 +1492,7 @@ public partial class BackupViewModel : ViewModelBase, INavigableViewModel, IDisp
             TotalBytes = bytesRead,
             BlockSize = blockSize,
             ImageFileBytes = new FileInfo(vhdxPath).Length,
-            VirtualDiskBytes = VhdxImageUtility.RoundUp(bytesRead, blockSize),
+            VirtualDiskBytes = totalSize,
             Parts = 1,
             PartFiles = new[] { Path.GetFileName(vhdxPath) },
             PartPaths = new[] { vhdxPath },
@@ -1537,216 +1502,6 @@ public partial class BackupViewModel : ViewModelBase, INavigableViewModel, IDisp
         using var manifestStream = File.OpenWrite(manifestPath);
         await JsonSerializer.SerializeAsync(manifestStream, manifest, _jsonOptions, ct);
         _backupLog.Add($"[{DateTime.Now:HH:mm:ss}] VHDx záloha dokončena: {FormatBytesLong(bytesRead)} v jednom platném VHDx souboru");
-    }
-private static long RoundUp(long value, long alignment) => VhdxImageUtility.RoundUp(value, alignment);
-
-    private static long CalculateVhdxDataStartOffset(long diskSizeBytes) => VhdxImageUtility.CalculateDataStartOffset(diskSizeBytes);
-
-    private static async Task WriteVhdxHeaderAsync(string path, long diskSizeBytes, CancellationToken ct)
-    {
-        const int logicalSectorSize = 1048576; // 1 MiB
-        const int physicalSectorSize = 4096;
-
-        long diskSizeRounded = RoundUp(diskSizeBytes, logicalSectorSize);
-        long chunkCount = diskSizeRounded / logicalSectorSize;
-        long batSize = RoundUp(chunkCount * 8, physicalSectorSize);
-        long dataStartOffset = CalculateVhdxDataStartOffset(diskSizeBytes);
-
-        using var fs = new FileStream(path, FileMode.Create, FileAccess.Write, FileShare.None, 4096, FileOptions.SequentialScan);
-        using var writer = new BinaryWriter(fs);
-
-        // 1. File Type Identifier (at 0) — "vhdxfile" signature
-        writer.Write(new byte[] { 0x76, 0x68, 0x64, 0x78, 0x66, 0x69, 0x6C, 0x65 });
-        writer.Write((uint)0); // CreatorVersion
-        writer.Write(new byte[65536 - 12]); // Pad to 64 KB
-
-        // 2. Header 1 (at 64 KB) — sequence 0
-        long header1Pos = fs.Position;
-        WriteVhdxHeaderAt(writer, 0, logicalSectorSize, physicalSectorSize);
-
-        // Pad from end of Header 1 (64KB + 4KB = 68KB) to Header 2 position (128KB)
-        while (fs.Position < 128L * 1024)
-            writer.Write((byte)0);
-
-        // 3. Header 2 (at 128 KB) — sequence 1
-        long header2Pos = fs.Position;
-        WriteVhdxHeaderAt(writer, 1, logicalSectorSize, physicalSectorSize);
-
-        // Pad from end of Header 2 (128KB + 4KB = 132KB) to Region Table position (192KB)
-        while (fs.Position < 192L * 1024)
-            writer.Write((byte)0);
-
-        // 4. Region Table (at 192 KB)
-        long regionTablePos = fs.Position;
-        writer.Write(new byte[] { 0x72, 0x65, 0x67, 0x69 }); // "regi"
-        writer.Write((uint)0); // Checksum (simplified — 0 is acceptable)
-        writer.Write((uint)2); // EntryCount = 2 (BAT + Metadata)
-        writer.Write(new byte[4]); // Reserved (header = 16 bytes total)
-
-        // Entry 0: BAT — GUID {2DC277E9-0F79-41E9-9E2E-7A1D5A1CB5D3}
-        writer.Write(new byte[] { 0xE9, 0x77, 0xC2, 0x2D, 0x79, 0x0F, 0xE9, 0x41, 0x9E, 0x2E, 0x7A, 0x1D, 0x5A, 0x1C, 0xB5, 0xD3 });
-        writer.Write((ulong)(256L * 1024)); // FileOffset (BAT at 256 KB)
-        writer.Write((uint)batSize); // Length
-        writer.Write((uint)1); // Required
-        // Entry is exactly 32 bytes (16+8+4+4), no padding
-
-        // Entry 1: Metadata — GUID {8B983ECF-8B1D-CC43-ADE4-BCD55AEF5C6E}
-        writer.Write(new byte[] { 0xCF, 0x3E, 0x98, 0x8B, 0x1D, 0x8B, 0x43, 0xCC, 0xAD, 0xE4, 0xBC, 0xD5, 0x5A, 0xEF, 0x5C, 0x6E });
-        writer.Write((ulong)(256L * 1024 + batSize)); // FileOffset
-        writer.Write((uint)(1024L * 1024)); // Length (1 MiB)
-        writer.Write((uint)1); // Required
-        // Entry is exactly 32 bytes (16+8+4+4), no padding
-
-        // Pad region table to 256 KB
-        while (fs.Position < 256L * 1024) writer.Write((byte)0);
-
-        // 5. BAT (at 256 KB) — Fixed VHDx: all entries = fully allocated
-        long fileOffsetInSectors = dataStartOffset / logicalSectorSize;
-        for (long i = 0; i < chunkCount; i++)
-        {
-            // State = 6 (PAYLOAD_BLOCK_FULLY_PRESENT), FileOffset at bits 20-63
-            ulong batEntry = (6UL << 0) | ((ulong)(fileOffsetInSectors + i) << 20);
-            writer.Write(batEntry);
-        }
-
-        // Pad BAT to batSize
-        long batEnd = 256L * 1024 + batSize;
-        while (fs.Position < batEnd) writer.Write((byte)0);
-
-        // 6. Metadata (1 MiB)
-        WriteVhdxMetadataAt(writer, diskSizeRounded, logicalSectorSize, physicalSectorSize);
-
-        // Pad to data start offset
-        while (fs.Position < dataStartOffset) writer.Write((byte)0);
-
-        await fs.FlushAsync(ct);
-    }
-
-    private static void WriteVhdxHeaderAt(BinaryWriter writer, ulong sequenceNumber, int logicalSectorSize, int physicalSectorSize)
-    {
-        long startPos = writer.BaseStream.Position;
-
-        // Build header in memory first (stream is write-only, can't read back)
-        using var ms = new MemoryStream(4096);
-        using var bw = new BinaryWriter(ms);
-
-        bw.Write(new byte[] { 0x68, 0x65, 0x61, 0x64 }); // "head"
-        bw.Write((uint)0); // Checksum placeholder (will be calculated)
-        bw.Write(sequenceNumber);
-        bw.Write(Guid.NewGuid().ToByteArray()); // FileWriteGuid
-        bw.Write(Guid.NewGuid().ToByteArray()); // DataWriteGuid
-        bw.Write(new byte[16]); // LogGuid (zero = no log → no log present)
-        bw.Write((ushort)0); // LogVersion = 0 (must be 0 when no log)
-        bw.Write((ushort)1); // Version = 1 (VHDx v1.0)
-        bw.Write((uint)0); // LogLength = 0 (no log)
-        bw.Write((ulong)0); // LogOffset = 0 (no log)
-        bw.Write((uint)0); // Reserved
-        bw.Write(new byte[4012]); // Pad to 4 KB
-
-        byte[] header = ms.ToArray();
-
-        // CRC32 over the 4KB block (checksum field bytes 4-7 are already zero)
-        uint crc = Crc32(header);
-
-        // Write CRC32 into the buffer at offset 4
-        header[4] = (byte)(crc & 0xFF);
-        header[5] = (byte)((crc >> 8) & 0xFF);
-        header[6] = (byte)((crc >> 16) & 0xFF);
-        header[7] = (byte)((crc >> 24) & 0xFF);
-
-        // Write the complete header to the actual stream
-        writer.Write(header);
-    }
-
-    /// <summary>CRC-32C (Castagnoli) as required by VHDX spec. Polynomial 0x1EDC6F41, reflected 0x82F63B78.</summary>
-    private static uint Crc32(byte[] data)
-    {
-        uint[] table = new uint[256];
-        for (uint i = 0; i < 256; i++)
-        {
-            uint crc = i;
-            for (int j = 0; j < 8; j++)
-                crc = (crc & 1) != 0 ? (crc >> 1) ^ 0x82F63B78 : crc >> 1;
-            table[i] = crc;
-        }
-        uint result = 0xFFFFFFFF;
-        foreach (byte b in data)
-            result = table[(result ^ b) & 0xFF] ^ (result >> 8);
-        return result ^ 0xFFFFFFFF;
-    }
-
-    private static void WriteVhdxMetadataAt(BinaryWriter writer, long diskSizeRounded, int logicalSectorSize, int physicalSectorSize)
-    {
-        long metadataStart = writer.BaseStream.Position;
-
-        // Metadata Table Header
-        writer.Write(new byte[] { 0x6D, 0x65, 0x74, 0x61, 0x64, 0x61, 0x74, 0x61 }); // "metadata"
-        writer.Write((ushort)0); // Reserved
-        writer.Write((ushort)5); // EntryCount = 5
-        writer.Write(new byte[20]); // Reserved
-
-        // Reserve space for 5 entries (5 * 32 = 160 bytes)
-        long entriesStart = writer.BaseStream.Position;
-        byte[] entries = new byte[160];
-        writer.Write(entries);
-
-        // Write metadata items and update entries
-        // Item 0: File Parameters (guid: CAA16737-FA36-4D43-B3B6-33F0AA44E76B)
-        long item0Pos = writer.BaseStream.Position;
-        writer.Write((uint)logicalSectorSize); // BlockSize
-        writer.Write((uint)0); // Flags
-        WriteMetadataEntry(entries, 0,
-            new byte[] { 0x37, 0x67, 0xA1, 0xCA, 0x36, 0xFA, 0x43, 0x4D, 0xB3, 0xB6, 0x33, 0xF0, 0xAA, 0x44, 0xE7, 0x6B },
-            (uint)(item0Pos - metadataStart), 8, false, false);
-
-        // Item 1: Virtual Disk Size (guid: 2FA54224-CD1B-4876-B211-5DBED83BF4B8)
-        long item1Pos = writer.BaseStream.Position;
-        writer.Write((ulong)diskSizeRounded);
-        WriteMetadataEntry(entries, 1,
-            new byte[] { 0x24, 0x42, 0xA5, 0x2F, 0x1B, 0xCD, 0x76, 0x48, 0xB2, 0x11, 0x5D, 0xBE, 0xD8, 0x3B, 0xF4, 0xB8 },
-            (uint)(item1Pos - metadataStart), 8, false, true);
-
-        // Item 2: Logical Sector Size (guid: 8141BF1D-A96F-4709-BA47-F233A8FAAB5F)
-        long item2Pos = writer.BaseStream.Position;
-        writer.Write((uint)512); // Standard 512-byte logical sector
-        WriteMetadataEntry(entries, 2,
-            new byte[] { 0x1D, 0xBF, 0x41, 0x81, 0x6F, 0xA9, 0x09, 0x47, 0xBA, 0x47, 0xF2, 0x33, 0xA8, 0xFA, 0xAB, 0x5F },
-            (uint)(item2Pos - metadataStart), 4, false, true);
-
-        // Item 3: Physical Sector Size (guid: CDA348C7-445D-4471-9CC9-E9885251C556)
-        long item3Pos = writer.BaseStream.Position;
-        writer.Write((uint)physicalSectorSize);
-        WriteMetadataEntry(entries, 3,
-            new byte[] { 0xC7, 0x48, 0xA3, 0xCD, 0x5D, 0x44, 0x71, 0x44, 0x9C, 0xC9, 0xE9, 0x88, 0x52, 0x51, 0xC5, 0x56 },
-            (uint)(item3Pos - metadataStart), 4, false, true);
-
-        // Item 4: Virtual Disk Id (guid: BECA12AB-B2E6-4523-93EF-C309E000C746)
-        long item4Pos = writer.BaseStream.Position;
-        writer.Write(Guid.NewGuid().ToByteArray());
-        WriteMetadataEntry(entries, 4,
-            new byte[] { 0xAB, 0x12, 0xCA, 0xBE, 0xE6, 0xB2, 0x23, 0x45, 0x93, 0xEF, 0xC3, 0x09, 0xE0, 0x00, 0xC7, 0x46 },
-            (uint)(item4Pos - metadataStart), 16, false, true);
-
-        // Write updated entries back
-        long currentPos = writer.BaseStream.Position;
-        writer.BaseStream.Position = entriesStart;
-        writer.Write(entries);
-        writer.BaseStream.Position = currentPos;
-
-        // Pad to 1 MiB
-        while (writer.BaseStream.Position < metadataStart + 1024L * 1024)
-            writer.Write((byte)0);
-    }
-
-    private static void WriteMetadataEntry(byte[] buffer, int index, byte[] guid, uint offset, uint length, bool isUser, bool isVirtualDisk)
-    {
-        int baseOffset = index * 32;
-        Array.Copy(guid, 0, buffer, baseOffset, 16);
-        BitConverter.GetBytes(offset).CopyTo(buffer, baseOffset + 16);
-        BitConverter.GetBytes(length).CopyTo(buffer, baseOffset + 20);
-        buffer[baseOffset + 24] = isUser ? (byte)1 : (byte)0;
-        buffer[baseOffset + 25] = isVirtualDisk ? (byte)1 : (byte)0;
-        // bytes 26-31 are reserved (zero)
     }
 
     private void UpdateSpeedAndEta()
@@ -1895,7 +1650,7 @@ private static long RoundUp(long value, long alignment) => VhdxImageUtility.Roun
             TotalBytes = totalBytes,
             DataStartOffset = dataStartOffset,
             ImageFileBytes = new FileInfo(vhdxPath).Length,
-            VirtualDiskBytes = VhdxImageUtility.RoundUp(totalBytes, blockSize),
+            VirtualDiskBytes = totalBytes,
             Sha256 = sha,
             ReadOnly = true,
             Note = "VHDx vytvořený z RAW zálohy. Soubor byl označen jako read-only; připojujte ideálně pouze pro čtení."

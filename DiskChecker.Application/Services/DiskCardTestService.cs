@@ -1559,6 +1559,12 @@ public class DiskCardTestService
 
       var findings = new List<string>(breakdown.Findings);
       var smartRating = _qualityCalculator.CalculateQuality(smartaData);
+      if(smartRating == null)
+      {
+         // No gradable SMART data — keep the surface-test result untouched.
+         return breakdown;
+      }
+
       var score = Math.Min(breakdown.Score, smartRating.Score);
       var grade = breakdown.Grade;
       var health = breakdown.Health;

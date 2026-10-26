@@ -749,7 +749,23 @@ public string SelectedTestType
 
             MergeCriticalCountersFromAttributes(smartData, smartData.Attributes);
             CurrentSmartData = smartData;
-            CurrentQuality = _qualityCalculator.CalculateQuality(smartData!);
+            CurrentQuality = _qualityCalculator.CalculateQuality(smartData);
+
+            if (CurrentQuality == null)
+            {
+                // No gradable SMART data (device reports SMART as unavailable) —
+                // keep the grade empty instead of showing a misleading "A".
+                StatusMessage = "SMART data nedostupná – disk neposkytuje hodnotitelná data";
+                CurrentSmartData = null;
+                await Dispatcher.UIThread.InvokeAsync(() =>
+                {
+                    SmartAttributes.Clear();
+                    CriticalAttributes.Clear();
+                    SelfTestLog.Clear();
+                });
+                UpdateComputedProperties();
+                return;
+            }
 
             await PersistSmartSnapshotAsync(SelectedDisk.Drive, smartData, CurrentQuality);
 
@@ -780,7 +796,7 @@ public string SelectedTestType
                 SelectedDisk.SmartData = smartData;
                 SelectedDisk.Quality = CurrentQuality;
                 SelectedDisk.TemperatureText = smartData?.Temperature > 0 ? $"{smartData.Temperature}°C" : "N/A";
-                SelectedDisk.GradeText = CurrentQuality?.Grade.ToString() ?? "?";
+                SelectedDisk.GradeText = CurrentQuality?.Grade.ToString() ?? "N/A";
             }
             
             // Load attributes using advanced provider

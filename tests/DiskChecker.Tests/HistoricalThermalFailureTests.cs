@@ -46,7 +46,7 @@ public class HistoricalThermalFailureTests
         var smarta = HealthyDiskWithHistoricalThermalFailure();
         var calculator = new QualityCalculator();
 
-        var rating = calculator.CalculateQuality(smarta);
+        var rating = calculator.CalculateQuality(smarta)!;
 
         Assert.NotEqual(QualityGrade.F, rating.Grade);
         Assert.True(rating.Score > 34, "Score should not be clamped to the critical-F band.");
@@ -61,7 +61,7 @@ public class HistoricalThermalFailureTests
         var smarta = HealthyDiskWithHistoricalThermalFailure();
         smarta.PendingSectorCount = 3;
 
-        var rating = new QualityCalculator().CalculateQuality(smarta);
+        var rating = new QualityCalculator().CalculateQuality(smarta)!;
 
         Assert.Equal(QualityGrade.F, rating.Grade);
     }
@@ -72,7 +72,7 @@ public class HistoricalThermalFailureTests
         var smarta = HealthyDiskWithHistoricalThermalFailure();
         smarta.UncorrectableErrorCount = 2;
 
-        var rating = new QualityCalculator().CalculateQuality(smarta);
+        var rating = new QualityCalculator().CalculateQuality(smarta)!;
 
         Assert.Equal(QualityGrade.F, rating.Grade);
     }
@@ -83,7 +83,7 @@ public class HistoricalThermalFailureTests
         var smarta = HealthyDiskWithHistoricalThermalFailure();
         smarta.ReallocatedSectorCount = 60;
 
-        var rating = new QualityCalculator().CalculateQuality(smarta);
+        var rating = new QualityCalculator().CalculateQuality(smarta)!;
 
         Assert.Equal(QualityGrade.F, rating.Grade);
     }
@@ -97,7 +97,7 @@ public class HistoricalThermalFailureTests
         smarta.Attributes[0].Threshold = 45;
         smarta.Attributes[0].WhenFailed = "FAILING_NOW";
 
-        var rating = new QualityCalculator().CalculateQuality(smarta);
+        var rating = new QualityCalculator().CalculateQuality(smarta)!;
 
         Assert.Equal(QualityGrade.F, rating.Grade);
     }
@@ -112,7 +112,7 @@ public class HistoricalThermalFailureTests
         smarta.Attributes[0].Threshold = 45;
         smarta.Attributes[0].WhenFailed = "In_the_past";
 
-        var rating = new QualityCalculator().CalculateQuality(smarta);
+        var rating = new QualityCalculator().CalculateQuality(smarta)!;
 
         Assert.Equal(QualityGrade.F, rating.Grade);
     }
@@ -135,7 +135,7 @@ public class HistoricalThermalFailureTests
             }
         };
 
-        var rating = new QualityCalculator().CalculateQuality(smarta);
+        var rating = new QualityCalculator().CalculateQuality(smarta)!;
 
         Assert.Equal(QualityGrade.F, rating.Grade);
     }
@@ -144,7 +144,7 @@ public class HistoricalThermalFailureTests
     public void HistoricalThermalFailure_IsStillReportedAsWarning()
     {
         var smarta = HealthyDiskWithHistoricalThermalFailure();
-        var rating = new QualityCalculator().CalculateQuality(smarta);
+        var rating = new QualityCalculator().CalculateQuality(smarta)!;
 
         // The original SMART warning must remain visible (never deleted/hidden).
         Assert.Contains(
@@ -165,7 +165,7 @@ public class HistoricalThermalFailureTests
         smarta.FailurePrediction =
             "⚠️ Disk měl kritické atributy v minulosti — 1 atributů pod thresholdem. Zvažte výměnu.";
 
-        var rating = new QualityCalculator().CalculateQuality(smarta);
+        var rating = new QualityCalculator().CalculateQuality(smarta)!;
         var certificate = rating.GenerateCertificate(smarta, DateTime.UtcNow);
 
         // The original SMART warning is preserved on the SmartaData (never deleted/hidden).

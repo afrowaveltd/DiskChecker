@@ -428,102 +428,30 @@ public partial class SafeDestructiveTestViewModel : ViewModelBase, INavigableVie
    {
       try
       {
-         // lsblk with filesystem info: NAME, SIZE, FSAVAIL, MOUNTPOINT, FSTYPE, MODEL, TYPE
-         var lsblkOutput = await ExecuteCommandAsync("lsblk", "-J -b -o NAME,SIZE,FSAVAIL,MOUNTPOINT,FSTYPE,MODEL,TYPE");
+         var lsblkOutput = await ExecuteCommandAsync("lsblk", "--json --paths --output NAME,KNAME,PATH,TYPE,FSTYPE,RO,MOUNTPOINTS,MAJ:MIN");
          if(string.IsNullOrEmpty(lsblkOutput)) return;
 
-         using var doc = System.Text.Json.JsonDocument.Parse(lsblkOutput);
-         if(!doc.RootElement.TryGetProperty("blockdevices", out var devices)) return;
-
-         // Determine which top-level disk is the source
-         string? sourceDiskName = null;
-         if(SelectedDrive != null)
+         foreach(var mountPoint in LinuxBackupTargetDiscovery.GetMountPoints(lsblkOutput, SelectedDrive?.Path))
          {
-            var sourceDeviceName = System.IO.Path.GetFileName(SelectedDrive.Path);
-            sourceDiskName = FindParentDiskName(devices, sourceDeviceName);
-         }
-
-         // Iterate top-level disks, collect mounted partitions as targets
-         foreach(var disk in devices.EnumerateArray())
-         {
-            var diskName = disk.TryGetProperty("name", out var dn) ? dn.GetString() : "";
-            var diskType = disk.TryGetProperty("type", out var dt) ? dt.GetString() : "";
-
-            // Skip source disk and non-disk devices (like loop, ram)
-            if(diskType != "disk") continue;
-            if(sourceDiskName != null &&
-                string.Equals(diskName, sourceDiskName, StringComparison.OrdinalIgnoreCase))
-               continue;
-
-            var diskModel = disk.TryGetProperty("model", out var dm) ? dm.GetString()?.Trim() : null;
-
-            // Check children (partitions)
-            if(disk.TryGetProperty("children", out var children))
+            try
             {
-               foreach(var part in children.EnumerateArray())
+               var drive = new System.IO.DriveInfo(mountPoint);
+               if(!drive.IsReady || drive.AvailableFreeSpace <= 0) continue;
+               BackupTargetDrives.Add(new BackupTargetItem
                {
-                  var partType = part.TryGetProperty("type", out var pt) ? pt.GetString() : "";
-                  if(partType != "part") continue;
-
-                  var mountPoint = part.TryGetProperty("mountpoint", out var mp) ? mp.GetString() : null;
-                  if(string.IsNullOrWhiteSpace(mountPoint) || mountPoint == "null") continue;
-
-                  var fsAvail = part.TryGetProperty("fsavail", out var fa) &&
-                                fa.ValueKind == System.Text.Json.JsonValueKind.Number
-                      ? fa.GetInt64() : 0;
-
-                  // Skip if fsavail is null/zero (not a mounted filesystem)
-                  if(fsAvail <= 0) continue;
-
-                  var fsType = part.TryGetProperty("fstype", out var ft) ? ft.GetString() : "";
-                  var partName = part.TryGetProperty("name", out var pn) ? pn.GetString() : "";
-
-                  var displayName = diskModel != null
-                      ? $"{diskModel} — {mountPoint} ({fsType})"
-                      : $"/dev/{diskName} — {mountPoint} ({fsType})";
-
-                  BackupTargetDrives.Add(new BackupTargetItem
-                  {
-                     DrivePath = mountPoint,
-                     DisplayName = displayName,
-                     TotalFreeSpace = fsAvail,
-                     FreeSpaceText = FormatBytesLong(fsAvail),
-                     IsSelected = false,
-                     AllocatedBytes = 0
-                  });
-               }
+                  DrivePath = mountPoint,
+                  DisplayName = $"{mountPoint} ({drive.VolumeLabel}) — {drive.DriveFormat}",
+                  TotalFreeSpace = drive.AvailableFreeSpace,
+                  FreeSpaceText = FormatBytesLong(drive.AvailableFreeSpace),
+                  IsSelected = false,
+                  AllocatedBytes = 0
+               });
             }
+            catch(IOException) { /* The target may have been unmounted. */ }
+            catch(UnauthorizedAccessException) { /* Skip inaccessible filesystems. */ }
          }
       }
       catch { /* non-critical — fall through to empty list */ }
-   }
-
-   /// <summary>
-   /// Given a device name (e.g. "sda1" or "nvme0n1p2"), finds the parent disk
-   /// name ("sda" or "nvme0n1") in the lsblk device tree.
-   /// Returns the device name itself if it's already a top-level disk.
-   /// </summary>
-   private static string? FindParentDiskName(
-       System.Text.Json.JsonElement devices,
-       string deviceName)
-   {
-      foreach(var disk in devices.EnumerateArray())
-      {
-         var diskName = disk.TryGetProperty("name", out var dn) ? dn.GetString() : "";
-         if(string.Equals(diskName, deviceName, StringComparison.OrdinalIgnoreCase))
-            return diskName; // It's already a top-level disk
-
-         if(disk.TryGetProperty("children", out var children))
-         {
-            foreach(var child in children.EnumerateArray())
-            {
-               var childName = child.TryGetProperty("name", out var cn) ? cn.GetString() : "";
-               if(string.Equals(childName, deviceName, StringComparison.OrdinalIgnoreCase))
-                  return diskName; // Found in children → parent is this disk
-            }
-         }
-      }
-      return null;
    }
 
    // ── Windows: use DriveInfo ──
@@ -1260,6 +1188,7 @@ public partial class SafeDestructiveTestViewModel : ViewModelBase, INavigableVie
 
             try
             {
+               sourceStream.Position = bytesRead;
                bytesReadNow = await sourceStream.ReadAsync(buffer.AsMemory(0, bytesToRead), ct);
             }
             catch(IOException ex) when(IsDeviceDisappearedError(ex))
@@ -1338,6 +1267,10 @@ public partial class SafeDestructiveTestViewModel : ViewModelBase, INavigableVie
       if(unreadableBytes > 0)
          Log(string.Format(L.Get("SafeDestructive.Log.UnreadableBytesReplaced"), FormatBytesLong(unreadableBytes)));
 
+      await targetStream.FlushAsync(ct);
+      targetStream.Dispose();
+      VhdxImageUtility.ValidateFixedImageLength(_backupImagePath, totalSize);
+
       // Write manifest
       var manifest = new
       {
@@ -1350,7 +1283,7 @@ public partial class SafeDestructiveTestViewModel : ViewModelBase, INavigableVie
          TotalBytes = bytesRead,
          BlockSize = blockSize,
          ImageFileBytes = new FileInfo(_backupImagePath).Length,
-         VirtualDiskBytes = VhdxImageUtility.RoundUp(bytesRead, blockSize),
+         VirtualDiskBytes = totalSize,
          UnreadableBytes = unreadableBytes,
          DataStartOffset = dataStartOffset,
          Sha256 = _backupSha256,

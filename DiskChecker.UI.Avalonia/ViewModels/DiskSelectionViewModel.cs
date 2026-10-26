@@ -236,13 +236,24 @@ public partial class DiskSelectionViewModel : ViewModelBase, INavigableViewModel
                 }
             }
             
-            // Update dashboard stats
+            // Update dashboard stats.
+            // Only gradeable disks (with real SMART data) may be counted in the health
+            // summary — a disk without SMART is unknown, not "needing attention".
+            var gradedCount = DiskCards.Count(c => c.Quality != null);
+            var unknownCount = DiskCards.Count - gradedCount;
+
             PhysicalDiskCount = DiskCards.Count;
             TotalCapacity = FormatCapacity(totalBytes);
             HealthyDiskCount = healthyCount;
-            HealthSummary = healthyCount == DiskCards.Count 
-                ? "Všechny disky v pořádku" 
-                : $"{DiskCards.Count - healthyCount} disků potřebuje pozornost";
+            HealthSummary = DiskCards.Count == 0
+                ? "Žádné disky nenalezeny"
+                : gradedCount == 0
+                    ? "SMART data nedostupná – disky nelze hodnotit"
+                    : healthyCount == gradedCount
+                        ? unknownCount > 0
+                            ? $"Hodnocené disky v pořádku ({unknownCount}× bez SMART)"
+                            : "Všechny disky v pořádku"
+                        : $"{gradedCount - healthyCount} disků potřebuje pozornost";
 
             // SINGLE SOURCE OF TRUTH: Find system disk from the already-loaded disk cards
             var systemDiskCard = DiskCards.FirstOrDefault(c => c.IsSystemDisk);
@@ -554,7 +565,8 @@ public partial class DiskSelectionViewModel : ViewModelBase, INavigableViewModel
         if (smartData != null)
         {
             var quality = _qualityCalculator.CalculateQuality(smartData);
-            SystemDiskGrade = quality.Grade.ToString();
+            // A disk without usable SMART data must not display a made-up grade.
+            SystemDiskGrade = quality?.Grade.ToString() ?? "N/A";
             SystemDiskTemperature = smartData.Temperature.HasValue && smartData.Temperature.Value > 0
                 ? $"{smartData.Temperature.Value}°C"
                 : "N/A";
@@ -568,13 +580,15 @@ public partial class DiskSelectionViewModel : ViewModelBase, INavigableViewModel
             if (smartData.PendingSectorCount > 0)
                 summaryParts.Add($"Pending: {smartData.PendingSectorCount}");
             
-            SystemDiskSummary = summaryParts.Count > 0
-                ? string.Join(" | ", summaryParts)
-                : "Stav disku: OK";
+            SystemDiskSummary = quality == null
+                ? "SMART data nedostupná – disk nelze hodnotit"
+                : summaryParts.Count > 0
+                    ? string.Join(" | ", summaryParts)
+                    : "Stav disku: OK";
         }
         else
         {
-            SystemDiskGrade = "?";
+            SystemDiskGrade = "N/A";
             SystemDiskTemperature = "N/A";
             SystemDiskSummary = "SMART data nedostupná";
         }

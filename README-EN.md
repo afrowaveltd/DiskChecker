@@ -87,11 +87,12 @@ DiskChecker is more than a simple SMART utility. It includes a complete applicat
 - **Disk Comparison**
   - Comparison of selected disk cards and their performance/health metrics.
 - **Backup and Restore**
-  - **Three backup modes**: file-based, RAW image (sectors), VHDx dynamic image.
+  - **Three backup modes**: file-based, RAW image (sectors), fixed VHDX image.
   - **VHDx** – standard Microsoft format, mountable natively on Windows and via `qemu-nbd` on Linux.
   - **Error resilience** – unreadable sectors are replaced with zeros, backup continues; protection against catastrophic failure (consecutive error limit).
   - **Larger blocks** (1 MiB) for faster transfer.
   - UI for target location selection with free space overview.
+  - Linux: mounted disk-backed filesystems, including LVM/encryption/RAID; excludes Snap/loop and virtual system mounts.
   - Restore from backup including verification.
 - **Email Notifications**
   - SMTP settings storage.
@@ -292,7 +293,7 @@ For NVMe drives, the standardized `PercentageUsed` attribute (0–100% wear) is 
 |------|-------------|---------|
 | **File-based** | Copies selected folders and files | Regular data backup |
 | **RAW image** | Reads sectors directly from disk (1 MiB blocks) | Complete bit-level disk copy |
-| **VHDx dynamic** | Creates a standard VHDx image (Microsoft format) | Mountable on Windows and Linux, grows with data |
+| **VHDX fixed** | Creates a standard whole-disk VHDX image (Microsoft format) | Mountable on Windows and Linux; requires the full disk size plus metadata on one target |
 
 All modes are resilient to read errors – unreadable sectors are replaced with zeros and the backup continues. If more than 64 consecutive errors occur, the operation is aborted (protection against catastrophic disk failure).
 

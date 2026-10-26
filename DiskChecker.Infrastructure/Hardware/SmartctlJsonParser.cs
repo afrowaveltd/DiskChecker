@@ -85,6 +85,19 @@ public static class SmartctlJsonParser
             if (root.TryGetProperty("smart_support", out var smartSupport))
             {
                 result.IsEnabled = smartSupport.TryGetProperty("enabled", out var en) && en.GetBoolean();
+
+                // "available" tells us whether the device exposes SMART at all.
+                // When it is false there is no SMART data to grade (USB flash drives,
+                // USB bridges without passthrough, RAID controllers, ...).
+                if (smartSupport.TryGetProperty("available", out var available))
+                {
+                    result.SmartAvailable = available.ValueKind switch
+                    {
+                        JsonValueKind.True => true,
+                        JsonValueKind.False => false,
+                        _ => null
+                    };
+                }
             }
             
             // Parse common metrics
@@ -981,6 +994,7 @@ public static class SmartctlJsonParser
             FirmwareVersion = result.FirmwareVersion ?? "",
             DeviceType = result.DeviceType ?? "Unknown",
             IsHealthy = result.SmartStatusKnown ? result.IsHealthy : true,
+            IsSmartAvailable = result.SmartAvailable ?? true,
             IsFailing = isFailing,
             FailurePrediction = failurePrediction,
             FailingAttributes = failingAttrs,

@@ -257,7 +257,7 @@
                                                     <TextBlock Text="{Binding L[DiskSelection.Smart]}" FontSize="9" Foreground="{DynamicResource ThemeTextMutedBrush}"
                                                               HorizontalAlignment="Center"/>
                                                     <TextBlock Text="{Binding GradeText}" FontSize="12" FontWeight="Bold"
-                                                              Foreground="{DynamicResource ThemeSuccessBrush}"
+                                                              Foreground="{Binding GradeColor}"
                                                               HorizontalAlignment="Center"/>
                                                 </StackPanel>
                                                 <StackPanel HorizontalAlignment="Right">

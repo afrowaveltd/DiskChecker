@@ -23,17 +23,21 @@ public class QualityCalculator : IQualityCalculator
         Nvme
     }
 
-    public QualityRating CalculateQuality(SmartaData? smartaData)
+    public QualityRating? CalculateQuality(SmartaData? smartaData)
     {
+        // SMART data unavailable — this is NOT a fault of the disk, but it also means
+        // the disk cannot be graded. Many USB adapters / RAID controllers don't pass
+        // SMART through. Returning null keeps the grade empty (N/A); inventing an "A"
+        // here would claim an excellent condition based on no evidence at all.
         if (smartaData == null)
         {
-            // SMART data unavailable — this is NOT a fault of the disk.
-            // Many USB adapters / RAID controllers don't pass SMART through.
-            // Return a neutral rating that does NOT penalize the score.
-            return new QualityRating(QualityGrade.A, 100)
-            {
-                Warnings = new List<string> { "SMART data nedostupná – disk může být v pořádku (např. přes USB adaptér). SMART není podmínkou pro hodnocení." }
-            };
+            return null;
+        }
+
+        // Devices that explicitly report "SMART not available" have no usable data.
+        if (!smartaData.IsSmartAvailable)
+        {
+            return null;
         }
 
         var category = GetMediaCategory(smartaData);

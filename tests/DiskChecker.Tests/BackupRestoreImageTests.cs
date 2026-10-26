@@ -1,12 +1,18 @@
 using System;
 using System.Diagnostics;
 using System.IO;
+using System.Linq;
 using System.Reflection;
 using System.Security.Cryptography;
+using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using DiskChecker.UI.Avalonia.Services;
+using DiskChecker.UI.Avalonia.Services.Interfaces;
 using DiskChecker.UI.Avalonia.ViewModels;
+using DiskChecker.Core.Interfaces;
+using DiskChecker.Core.Models;
+using NSubstitute;
 using Xunit;
 
 namespace DiskChecker.Tests;
@@ -99,8 +105,11 @@ public class BackupRestoreImageTests : IDisposable
     }
 
     private static async Task RunQemuAsync(params string[] args)
+        => await RunToolAsync("/usr/bin/qemu-img", args);
+
+    private static async Task RunToolAsync(string tool, params string[] args)
     {
-        var psi = new ProcessStartInfo("/usr/bin/qemu-img")
+        var psi = new ProcessStartInfo(tool)
         {
             UseShellExecute = false,
             RedirectStandardError = true,
@@ -113,7 +122,41 @@ public class BackupRestoreImageTests : IDisposable
         await process.WaitForExitAsync();
         var output = await outputTask;
         var error = await errorTask;
-        Assert.True(process.ExitCode == 0, $"qemu-img {string.Join(" ", args)} failed: {output} {error}");
+        Assert.True(process.ExitCode == 0, $"{tool} {string.Join(" ", args)} failed: {output} {error}");
+    }
+
+    [Theory]
+    [InlineData(4096)]
+    [InlineData(4097)]
+    [InlineData(8193)]
+    [InlineData(131072)]
+    public async Task FixedVhdx_ChunkBoundariesAreReadableByIndependentReader(int payloadBlocks)
+    {
+        // Sparse files exercise real disk sizes without allocating GiB of test data.
+        // The last case also crosses the first 1 MiB BAT-region growth boundary.
+        var bytes = (long)payloadBlocks * VhdxImageUtility.LogicalBlockSize + 512;
+        var path = Path.Combine(_fixtureDir, $"boundary-{payloadBlocks}.vhdx");
+        await VhdxImageUtility.WriteFixedHeaderAsync(path, bytes, CancellationToken.None);
+        Assert.True(VhdxImageUtility.TryReadInfo(path, out var info));
+        Assert.Equal(bytes, info.VirtualDiskSizeBytes);
+
+        var offsets = new[] { 0L, 4L * 1024 * 1024 * 1024 - 512, 4L * 1024 * 1024 * 1024, bytes - 512 };
+        using (var stream = new FileStream(path, FileMode.Open, FileAccess.Write))
+        {
+            foreach (var offset in offsets)
+            {
+                stream.Position = info.DataStartOffset + offset;
+                var marker = new byte[512];
+                Array.Fill(marker, (byte)0x5A);
+                stream.Write(marker);
+            }
+        }
+        if (!OperatingSystem.IsLinux() || !File.Exists("/usr/bin/qemu-io"))
+            Assert.Skip("Independent VHDX boundary verification requires qemu-utils on Linux.");
+
+        await RunQemuAsync("info", "-f", "vhdx", path);
+        foreach (var offset in offsets)
+            await RunToolAsync("/usr/bin/qemu-io", "-r", "-f", "vhdx", "-c", $"read -P 0x5a {offset} 512", path);
     }
 
     [Fact]
@@ -159,6 +202,41 @@ public class BackupRestoreImageTests : IDisposable
     {
         var method = typeof(RestoreViewModel).GetMethod("CreateDiscoveredBackupFromImage", BindingFlags.NonPublic | BindingFlags.Static);
         Assert.NotNull(method);
+    }
+
+    [Fact]
+    public async Task BackupWorkflow_WritesExactVirtualSizeAndIndependentlyRestorablePayload()
+    {
+        const long bytes = 4L * 1024 * 1024 + 512;
+        var source = Path.Combine(_fixtureDir, "source.img");
+        await CreateDeterministicImageAsync(source, bytes);
+        using var vm = new BackupViewModel(Substitute.For<INavigationService>(), Substitute.For<ISelectedDiskService>(),
+            Substitute.For<IDialogService>(), Substitute.For<ISmartaProvider>())
+        { SourceDrive = new CoreDriveInfo { Path = source, Name = "Fixture disk", TotalSize = bytes } };
+        vm.TargetDrives.Add(new BackupTargetItem
+        {
+            DrivePath = _fixtureDir, TotalFreeSpace = 100L * 1024 * 1024,
+            IsSelected = true, AllocatedBytes = VhdxImageUtility.CalculateRequiredFileBytes(bytes)
+        });
+
+        var method = typeof(BackupViewModel).GetMethod("RunVhdxBackupAsync", BindingFlags.NonPublic | BindingFlags.Instance)!;
+        await (Task)method.Invoke(vm, new object[] { CancellationToken.None })!;
+
+        var manifestPath = Directory.GetFiles(_fixtureDir, "backup_manifest.json", SearchOption.AllDirectories).Single();
+        using var manifest = JsonDocument.Parse(await File.ReadAllTextAsync(manifestPath, TestContext.Current.CancellationToken));
+        Assert.Equal(bytes, manifest.RootElement.GetProperty("VirtualDiskBytes").GetInt64());
+        var image = manifest.RootElement.GetProperty("MountableImage").GetString()!;
+        Assert.True(VhdxImageUtility.TryReadInfo(image, out var info));
+        Assert.Equal(bytes, info.VirtualDiskSizeBytes);
+        var expected = await Sha256Async(source, 0, bytes);
+        Assert.Equal(expected, await Sha256Async(image, info.DataStartOffset, bytes));
+        if (OperatingSystem.IsLinux() && File.Exists("/usr/bin/qemu-img"))
+        {
+            var restored = Path.Combine(_fixtureDir, "workflow-restored.raw");
+            await RunQemuAsync("convert", "-f", "vhdx", "-O", "raw", image, restored);
+            Assert.Equal(bytes, new FileInfo(restored).Length);
+            Assert.Equal(expected, await Sha256Async(restored, 0, bytes));
+        }
     }
 
     private static async Task CreateDeterministicImageAsync(string path, long bytes)

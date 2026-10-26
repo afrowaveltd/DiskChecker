@@ -29,6 +29,16 @@ namespace DiskChecker.Core.Models
         /// not as disk failure.
         /// </summary>
         public bool SmartStatusKnown { get; set; }
+
+        /// <summary>
+        /// True/False when smartctl explicitly reported whether the device exposes SMART
+        /// (<c>smart_support.available</c>). Null when smartctl did not report this field
+        /// (e.g. NVMe devices or older smartctl versions).
+        /// A device with <c>SmartAvailable == false</c> has no SMART data at all and must
+        /// not be graded — its grade has to stay empty / N/A.
+        /// </summary>
+        public bool? SmartAvailable { get; set; }
+
         public bool IsHealthy { get; set; }
         public bool IsEnabled { get; set; }
         public bool TestPassed { get; set; }
