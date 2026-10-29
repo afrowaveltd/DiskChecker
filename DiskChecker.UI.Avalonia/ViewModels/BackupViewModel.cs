@@ -100,6 +100,7 @@ public partial class BackupViewModel : ViewModelBase, INavigableViewModel, IDisp
     private string? _lastBackupManifestPath;
     private string? _imageMountVerificationMessage;
     private bool _imageMountWasVerified;
+    private long _sourceUnreadableBytes;
     private string? _completedVhdxPath;
     private string? _completedRawPath;
     private string? _convertedVhdxPath;
@@ -1021,6 +1022,7 @@ public partial class BackupViewModel : ViewModelBase, INavigableViewModel, IDisp
         _backupLog.Clear();
         _imageMountVerificationMessage = null;
         _imageMountWasVerified = false;
+        _sourceUnreadableBytes = 0;
         _completedVhdxPath = _completedRawPath = null;
         Phase = BackupPhase.Running;
         StatusMessage = "Zálohování běží...";
@@ -1045,10 +1047,13 @@ public partial class BackupViewModel : ViewModelBase, INavigableViewModel, IDisp
             }
 
             Phase = BackupPhase.Completed;
-            StatusMessage = _imageMountVerificationMessage == null
-                ? "✅ Záloha dokončena!"
-                : (_imageMountWasVerified ? "✅ Záloha dokončena. " : "⚠ Záloha vytvořena, ale připojení nebylo ověřeno. ") +
-                  _imageMountVerificationMessage;
+            var sourceStatus = _sourceUnreadableBytes > 0
+                ? $"⚠ Záloha obsahuje {_sourceUnreadableBytes:N0} B nahrazených nulami za nečitelné bloky! "
+                : "✅ Záloha vytvořena. ";
+            StatusMessage = sourceStatus + (_imageMountVerificationMessage == null
+                ? ""
+                : (_imageMountWasVerified ? "Připojení obrazu ověřeno. " :
+                   "Systémové připojení nebylo ověřeno. ") + _imageMountVerificationMessage);
             OverallProgress = 100;
         }
         catch (OperationCanceledException)
@@ -1341,6 +1346,7 @@ public partial class BackupViewModel : ViewModelBase, INavigableViewModel, IDisp
                 UpdateSpeedAndEta();
             }
 
+            _sourceUnreadableBytes = unreadableBytes;
             if (unreadableBytes > 0)
                 _backupLog.Add($"[{DateTime.Now:HH:mm:ss}] ⚠️ Celkem {FormatBytesLong(unreadableBytes)} nečitelných sektorů nahrazeno nulami.");
         }
@@ -1495,6 +1501,7 @@ public partial class BackupViewModel : ViewModelBase, INavigableViewModel, IDisp
         }
 
         vhdxStream.Dispose();
+        _sourceUnreadableBytes = unreadableBytes;
         VhdxImageUtility.ValidateFixedImageLength(vhdxPath, totalSize);
 
         // Write manifest
@@ -1511,6 +1518,7 @@ public partial class BackupViewModel : ViewModelBase, INavigableViewModel, IDisp
             BlockSize = blockSize,
             ImageFileBytes = new FileInfo(vhdxPath).Length,
             VirtualDiskBytes = totalSize,
+            UnreadableBytes = unreadableBytes,
             Parts = 1,
             PartFiles = new[] { Path.GetFileName(vhdxPath) },
             PartPaths = new[] { vhdxPath },
@@ -1539,6 +1547,7 @@ public partial class BackupViewModel : ViewModelBase, INavigableViewModel, IDisp
 
         if (attempt.Mount == null)
         {
+            await SaveMountVerificationReportAsync(imagePath, attempt, keptMounted: false);
             await _dialogService.ShowWarningAsync("Kontrola obrazu",
                 "Záloha byla uložena, ale systémové připojení se nepodařilo ověřit. " +
                 "Soubor není smazán.\\n\\n" + attempt.Message);
@@ -1548,6 +1557,7 @@ public partial class BackupViewModel : ViewModelBase, INavigableViewModel, IDisp
         if (!attempt.Mount.OwnedByDiskChecker)
         {
             _backupLog.Add($"[{DateTime.Now:HH:mm:ss}] Obraz byl připojen už před kontrolou; DiskChecker ho nebude odpojovat.");
+            await SaveMountVerificationReportAsync(imagePath, attempt, keptMounted: true);
             return;
         }
 
@@ -1582,6 +1592,41 @@ public partial class BackupViewModel : ViewModelBase, INavigableViewModel, IDisp
                 _imageMountVerificationMessage = $"Obraz ponechán připojený jen pro čtení: {attempt.Mount.AccessPath}";
                 _backupLog.Add($"[{DateTime.Now:HH:mm:ss}] Obraz ponechán připojený: {attempt.Mount.AccessPath}");
             }
+        }
+        await SaveMountVerificationReportAsync(imagePath, attempt, keptMounted: leaveMounted);
+    }
+
+    private async Task SaveMountVerificationReportAsync(
+        string imagePath, ReadOnlyImageMountService.MountAttempt attempt, bool keptMounted)
+    {
+        // Keep the verification verdict with the backup, not just in the
+        // current UI session. An OS attach is NOT a full content checksum.
+        var report = new
+        {
+            Image = Path.GetFileName(imagePath),
+            CheckedAtUtc = DateTime.UtcNow,
+            SystemMountVerified = attempt.Verified,
+            ReadOnly = attempt.Verified,
+            LeftMounted = keptMounted,
+            AccessPath = attempt.Mount?.AccessPath,
+            Description = attempt.Message,
+            VerifiedContentHash = false,
+            UnreadableSourceBytes = _sourceUnreadableBytes
+        };
+        try
+        {
+            var reportPath = imagePath + ".verification.json";
+            await File.WriteAllTextAsync(reportPath,
+                JsonSerializer.Serialize(report, _jsonOptions));
+            _backupLog.Add($"[{DateTime.Now:HH:mm:ss}] Zapsán protokol připojení: {reportPath}");
+        }
+        catch (IOException ex)
+        {
+            _backupLog.Add($"[{DateTime.Now:HH:mm:ss}] ⚠ Protokol připojení nešel uložit: {ex.Message}");
+        }
+        catch (UnauthorizedAccessException ex)
+        {
+            _backupLog.Add($"[{DateTime.Now:HH:mm:ss}] ⚠ Protokol připojení nešel uložit: {ex.Message}");
         }
     }
 
