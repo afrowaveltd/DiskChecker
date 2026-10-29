@@ -1366,6 +1366,11 @@ public partial class BackupViewModel : ViewModelBase, INavigableViewModel, IDisp
         CanConvertRawToVhdx = true;
         ConvertRawToVhdxCommand.NotifyCanExecuteChanged();
         _backupLog.Add($"[{DateTime.Now:HH:mm:ss}] Raw záloha dokončena: {FormatBytesLong(bytesRead)} v {targetIndex + 1} části(ch)");
+        // Linux can expose a single RAW .img as a read-only NBD block device.
+        // Split images cannot be attached until all parts have been joined.
+        if (OperatingSystem.IsLinux() && canCreateSingleMountableImage &&
+            createdParts.Count == 1 && bytesRead == totalSize)
+            await VerifyAndOfferMountedImageAsync(currentImagePath, ct);
     }
 
     /// <summary>
