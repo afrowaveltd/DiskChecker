@@ -84,14 +84,19 @@ public static class ReadOnlyImageMountService
         var script = "$ErrorActionPreference='Stop'; $img=" + quoted + "; " +
             "$existing=Get-DiskImage -ImagePath $img -ErrorAction SilentlyContinue; " +
             "$wasAttached=($null -ne $existing -and $existing.Attached); " +
+            "if($wasAttached -and [string]$existing.Access -ne 'ReadOnly') " +
+                "{throw 'Obraz byl již připojen pro zápis; kontrola vyžaduje read-only režim.'}; " +
+            "try { " +
             "if(-not $wasAttached){Mount-DiskImage -ImagePath $img -Access ReadOnly -ErrorAction Stop | Out-Null}; " +
             "$state=Get-DiskImage -ImagePath $img -ErrorAction Stop; " +
-            "if(-not $state.Attached){throw 'Obraz není připojen.'}; " +
+            "if(-not $state.Attached -or [string]$state.Access -ne 'ReadOnly') " +
+                "{throw 'Obraz nelze potvrdit jako read-only.'}; " +
             "$letters=@(); try { $letters=@($state | Get-Disk -ErrorAction Stop | " +
             "Get-Partition -ErrorAction Stop | Get-Volume -ErrorAction SilentlyContinue | " +
             "Where-Object { $_.DriveLetter } | ForEach-Object { [string]$_.DriveLetter + ':\\' }) } catch {}; " +
             "if($wasAttached){Write-Output ('EXISTING|' + ($letters -join ','))} " +
-            "else{Write-Output ('ATTACHED|' + ($letters -join ','))}";
+            "else{Write-Output ('ATTACHED|' + ($letters -join ','))} " +
+            "} catch { if(-not $wasAttached){Dismount-DiskImage -ImagePath $img -ErrorAction SilentlyContinue | Out-Null}; throw }";
         var response = await RunPowerShellAsync(script, ct);
         var existing = response.StartsWith("EXISTING|", StringComparison.Ordinal);
         var volumes = response.Contains('|') ? response[(response.IndexOf('|') + 1)..].Trim() : "";
