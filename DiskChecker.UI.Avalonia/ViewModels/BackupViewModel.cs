@@ -1624,6 +1624,8 @@ public partial class BackupViewModel : ViewModelBase, INavigableViewModel, IDisp
         try
         {
             StatusMessage = "Převádím RAW zálohu na VHDx...";
+            _imageMountWasVerified = false;
+            _imageMountVerificationMessage = null;
             await ConvertRawManifestToVhdxAsync(_lastBackupManifestPath, _backupCancellation?.Token ?? CancellationToken.None);
             BackupLogText = string.Join("\n", _backupLog);
             StatusMessage = _imageMountVerificationMessage == null ? "RAW záloha byla převedena na VHDx."
@@ -1708,6 +1710,7 @@ public partial class BackupViewModel : ViewModelBase, INavigableViewModel, IDisp
             }
         }
         await vhdxStream.FlushAsync(ct);
+        await vhdxStream.DisposeAsync(); // Release the writer before an OS attempts to attach the image.
         if (copied != totalBytes) throw new IOException($"Převedeno jen {FormatBytesLong(copied)} z {FormatBytesLong(totalBytes)}.");
 
         var sha = Convert.ToHexString(hash.GetHashAndReset());
