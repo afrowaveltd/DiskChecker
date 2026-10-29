@@ -882,7 +882,7 @@ public partial class SurfaceTestViewModel : ViewModelBase, INavigableViewModel, 
       var now = DateTime.UtcNow;
       var elapsed = totalElapsed ?? (now - _testStartTime);
       var xPosition = Math.Clamp(dataPercent, 0d, 100d);
-      CurrentDataPercent = xPosition;
+      CurrentDataPercent = Math.Max(CurrentDataPercent, xPosition);
 
       // Legacy recent-speed indicator; not the source of the full-disk graph.
       SpeedHistory.Add(new SpeedDataPoint { Time = SpeedHistory.Count, Speed = speed });
@@ -1323,7 +1323,8 @@ public partial class SurfaceTestViewModel : ViewModelBase, INavigableViewModel, 
             var isWritePhase = p.IsWritePhase;
             var isReadVerifyPhase = p.IsReadVerifyPhase;
 
-            CurrentDataPercent = p.ProgressPercent;
+            // Never scroll the live zoom viewport backwards on stale callbacks.
+            CurrentDataPercent = Math.Max(CurrentDataPercent, p.ProgressPercent);
             CurrentPhase = isWritePhase ? 0 : isReadVerifyPhase ? 1 : CurrentPhase;
 
             // Update phase-specific progress bars
