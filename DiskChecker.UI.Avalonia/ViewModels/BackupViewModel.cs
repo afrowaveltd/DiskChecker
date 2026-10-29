@@ -1550,7 +1550,7 @@ public partial class BackupViewModel : ViewModelBase, INavigableViewModel, IDisp
             await SaveMountVerificationReportAsync(imagePath, attempt, keptMounted: false);
             await _dialogService.ShowWarningAsync("Kontrola obrazu",
                 "Záloha byla uložena, ale systémové připojení se nepodařilo ověřit. " +
-                "Soubor není smazán.\\n\\n" + attempt.Message);
+                "Soubor není smazán.\n\n" + attempt.Message);
             return;
         }
 
@@ -1562,17 +1562,23 @@ public partial class BackupViewModel : ViewModelBase, INavigableViewModel, IDisp
         }
 
         var leaveMounted = false;
+        var actuallyMounted = false;
         try
         {
             leaveMounted = await _dialogService.ShowConfirmationAsync(
                 "Obraz je připojen jen pro čtení",
-                attempt.Message + "\\n\\n" +
-                "ANO = ponechat připojený obraz pro procházení souborů.\\n" +
-                "NE = nyní ho bezpečně odpojit.\\n\\n" +
+                attempt.Message + "\n\n" +
+                "ANO = ponechat připojený obraz pro procházení souborů.\n" +
+                "NE = nyní ho bezpečně odpojit.\n\n" +
                 "Pozor: připojení obrazu neprokazuje, že každý soubor v záloze je nepoškozený.");
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            _backupLog.Add($"[{DateTime.Now:HH:mm:ss}] ⚠ Dialog selhal, volím bezpečné odpojení: {ex.Message}");
         }
         finally
         {
+            actuallyMounted = leaveMounted;
             if (!leaveMounted)
             {
                 try
@@ -1582,6 +1588,7 @@ public partial class BackupViewModel : ViewModelBase, INavigableViewModel, IDisp
                 }
                 catch (Exception ex)
                 {
+                    actuallyMounted = true;
                     _imageMountVerificationMessage = $"Obraz ověřen, ale automatické odpojení selhalo: {ex.Message}. " +
                         $"Připojení: {attempt.Mount.AccessPath}";
                     _backupLog.Add($"[{DateTime.Now:HH:mm:ss}] ⚠ {_imageMountVerificationMessage}");
@@ -1593,7 +1600,7 @@ public partial class BackupViewModel : ViewModelBase, INavigableViewModel, IDisp
                 _backupLog.Add($"[{DateTime.Now:HH:mm:ss}] Obraz ponechán připojený: {attempt.Mount.AccessPath}");
             }
         }
-        await SaveMountVerificationReportAsync(imagePath, attempt, keptMounted: leaveMounted);
+        await SaveMountVerificationReportAsync(imagePath, attempt, keptMounted: actuallyMounted);
     }
 
     private async Task SaveMountVerificationReportAsync(
