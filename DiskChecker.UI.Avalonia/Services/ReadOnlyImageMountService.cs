@@ -84,13 +84,18 @@ public static class ReadOnlyImageMountService
         var script = "$ErrorActionPreference='Stop'; $img=" + quoted + "; " +
             "$existing=Get-DiskImage -ImagePath $img -ErrorAction SilentlyContinue; " +
             "$wasAttached=($null -ne $existing -and $existing.Attached); " +
-            "if($wasAttached -and [string]$existing.Access -ne 'ReadOnly') " +
-                "{throw 'Obraz byl již připojen pro zápis; kontrola vyžaduje read-only režim.'}; " +
+            "if($wasAttached -and [string]$existing.Access -notin @('ReadOnly','2')) " +
+                "{ $d=$existing | Get-Disk -ErrorAction SilentlyContinue; " +
+                  "if($null -eq $d -or -not $d.IsReadOnly) " +
+                  "{throw 'Obraz je již připojen pro zápis; kontrola vyžaduje read-only režim.'} }; " +
             "try { " +
             "if(-not $wasAttached){Mount-DiskImage -ImagePath $img -Access ReadOnly -ErrorAction Stop | Out-Null}; " +
             "$state=Get-DiskImage -ImagePath $img -ErrorAction Stop; " +
-            "if(-not $state.Attached -or [string]$state.Access -ne 'ReadOnly') " +
-                "{throw 'Obraz nelze potvrdit jako read-only.'}; " +
+            "if(-not $state.Attached){throw 'Obraz nelze připojit.'}; " +
+            "if([string]$state.Access -notin @('ReadOnly','2')) " +
+                "{ $d=$state | Get-Disk -ErrorAction SilentlyContinue; " +
+                  "if($null -eq $d -or -not $d.IsReadOnly) " +
+                  "{throw 'Obraz nelze potvrdit jako read-only.'} }; " +
             "$letters=@(); try { $letters=@($state | Get-Disk -ErrorAction Stop | " +
             "Get-Partition -ErrorAction Stop | Get-Volume -ErrorAction SilentlyContinue | " +
             "Where-Object { $_.DriveLetter } | ForEach-Object { [string]$_.DriveLetter + ':\\' }) } catch {}; " +
@@ -135,8 +140,19 @@ public static class ReadOnlyImageMountService
             try { await RunAsync("partprobe", new[] { device }, ct); }
             catch (Exception) { /* A valid partitionless image need not have partprobe. */ }
 
-            var sizeText = await RunAsync("blockdev", new[] { "--getsize64", device }, ct);
-            if (!long.TryParse(sizeText.Trim(), out var size) || size <= 0)
+            long size = 0;
+            for (var attempt = 0; attempt < 12 && size <= 0; attempt++)
+            {
+                try
+                {
+                    var sizeText = await RunAsync("blockdev", new[] { "--getsize64", device }, ct);
+                    long.TryParse(sizeText.Trim(), out size);
+                }
+                catch (IOException) { /* NBD partition discovery may not have completed. */ }
+                if (size <= 0)
+                    await Task.Delay(250, ct);
+            }
+            if (size <= 0)
                 throw new InvalidDataException("NBD zařízení nehlásí platnou virtuální kapacitu.");
 
             // Mount supported filesystems read-only where possible. If they
