@@ -98,6 +98,8 @@ public partial class BackupViewModel : ViewModelBase, INavigableViewModel, IDisp
     private long _totalBytesBackedUp;
     private string _currentFilePath = string.Empty;
     private string? _lastBackupManifestPath;
+    private string? _imageMountVerificationMessage;
+    private bool _imageMountWasVerified;
     private readonly List<string> _backupLog = new();
 
     // Cached JsonSerializerOptions
@@ -1014,6 +1016,8 @@ public partial class BackupViewModel : ViewModelBase, INavigableViewModel, IDisp
         _totalBytesToBackup = TotalRequiredBytes;
         _totalBytesBackedUp = 0;
         _backupLog.Clear();
+        _imageMountVerificationMessage = null;
+        _imageMountWasVerified = false;
         Phase = BackupPhase.Running;
         StatusMessage = "Zálohování běží...";
 
@@ -1033,7 +1037,10 @@ public partial class BackupViewModel : ViewModelBase, INavigableViewModel, IDisp
             }
 
             Phase = BackupPhase.Completed;
-            StatusMessage = "✅ Záloha dokončena!";
+            StatusMessage = _imageMountVerificationMessage == null
+                ? "✅ Záloha dokončena!"
+                : (_imageMountWasVerified ? "✅ Záloha dokončena. " : "⚠ Záloha vytvořena, ale připojení nebylo ověřeno. ") +
+                  _imageMountVerificationMessage;
             OverallProgress = 100;
         }
         catch (OperationCanceledException)
@@ -1501,7 +1508,70 @@ public partial class BackupViewModel : ViewModelBase, INavigableViewModel, IDisp
         };
         using var manifestStream = File.OpenWrite(manifestPath);
         await JsonSerializer.SerializeAsync(manifestStream, manifest, _jsonOptions, ct);
-        _backupLog.Add($"[{DateTime.Now:HH:mm:ss}] VHDx záloha dokončena: {FormatBytesLong(bytesRead)} v jednom platném VHDx souboru");
+        _backupLog.Add($"[{DateTime.Now:HH:mm:ss}] VHDx záloha dokončena: {FormatBytesLong(bytesRead)} v souboru s ověřenou strukturou");
+        await VerifyAndOfferMountedImageAsync(vhdxPath, ct);
+    }
+
+    /// <summary>
+    /// Mount validation is an independent step after image creation. A failed
+    /// mount never deletes the backup, nor is it misreported as verified.
+    /// The operator may leave a successful mount accessible read-only.
+    /// </summary>
+    private async Task VerifyAndOfferMountedImageAsync(string imagePath, CancellationToken ct)
+    {
+        _backupLog.Add($"[{DateTime.Now:HH:mm:ss}] Zkouším systémově připojit obraz jen pro čtení: {imagePath}");
+        CurrentFileName = "Ověřuji připojitelnost obrazu...";
+        var attempt = await ReadOnlyImageMountService.TryAttachAsync(imagePath, ct);
+        _imageMountWasVerified = attempt.Verified;
+        _imageMountVerificationMessage = attempt.Message;
+        _backupLog.Add($"[{DateTime.Now:HH:mm:ss}] {(attempt.Verified ? "✓" : "⚠")} {attempt.Message}");
+
+        if (attempt.Mount == null)
+        {
+            await _dialogService.ShowWarningAsync("Kontrola obrazu",
+                "Záloha byla uložena, ale systémové připojení se nepodařilo ověřit. " +
+                "Soubor není smazán.\\n\\n" + attempt.Message);
+            return;
+        }
+
+        if (!attempt.Mount.OwnedByDiskChecker)
+        {
+            _backupLog.Add($"[{DateTime.Now:HH:mm:ss}] Obraz byl připojen už před kontrolou; DiskChecker ho nebude odpojovat.");
+            return;
+        }
+
+        var leaveMounted = false;
+        try
+        {
+            leaveMounted = await _dialogService.ShowConfirmationAsync(
+                "Obraz je připojen jen pro čtení",
+                attempt.Message + "\\n\\n" +
+                "ANO = ponechat připojený obraz pro procházení souborů.\\n" +
+                "NE = nyní ho bezpečně odpojit.\\n\\n" +
+                "Pozor: připojení obrazu neprokazuje, že každý soubor v záloze je nepoškozený.");
+        }
+        finally
+        {
+            if (!leaveMounted)
+            {
+                try
+                {
+                    await ReadOnlyImageMountService.DetachAsync(attempt.Mount, CancellationToken.None);
+                    _backupLog.Add($"[{DateTime.Now:HH:mm:ss}] Ověřený obraz byl bezpečně odpojen.");
+                }
+                catch (Exception ex)
+                {
+                    _imageMountVerificationMessage = $"Obraz ověřen, ale automatické odpojení selhalo: {ex.Message}. " +
+                        $"Připojení: {attempt.Mount.AccessPath}";
+                    _backupLog.Add($"[{DateTime.Now:HH:mm:ss}] ⚠ {_imageMountVerificationMessage}");
+                }
+            }
+            else
+            {
+                _imageMountVerificationMessage = $"Obraz ponechán připojený jen pro čtení: {attempt.Mount.AccessPath}";
+                _backupLog.Add($"[{DateTime.Now:HH:mm:ss}] Obraz ponechán připojený: {attempt.Mount.AccessPath}");
+            }
+        }
     }
 
     private void UpdateSpeedAndEta()
@@ -1556,7 +1626,10 @@ public partial class BackupViewModel : ViewModelBase, INavigableViewModel, IDisp
             StatusMessage = "Převádím RAW zálohu na VHDx...";
             await ConvertRawManifestToVhdxAsync(_lastBackupManifestPath, _backupCancellation?.Token ?? CancellationToken.None);
             BackupLogText = string.Join("\n", _backupLog);
-            StatusMessage = "RAW záloha byla převedena na VHDx.";
+            StatusMessage = _imageMountVerificationMessage == null ? "RAW záloha byla převedena na VHDx."
+                : (_imageMountWasVerified ? "✅ VHDx vytvořen a připojení ověřeno. "
+                   : "⚠ VHDx vytvořen, systémové připojení se nepodařilo ověřit. ") +
+                  _imageMountVerificationMessage;
         }
         catch (Exception ex)
         {
@@ -1659,6 +1732,7 @@ public partial class BackupViewModel : ViewModelBase, INavigableViewModel, IDisp
         await using var manifestStream = File.Open(convertedManifestPath, FileMode.Create, FileAccess.Write, FileShare.Read);
         await JsonSerializer.SerializeAsync(manifestStream, convertedManifest, _jsonOptions, ct);
         _backupLog.Add($"[{DateTime.Now:HH:mm:ss}] RAW → VHDx hotovo: {vhdxPath} ({FormatBytesLong(totalBytes)})");
+        await VerifyAndOfferMountedImageAsync(vhdxPath, ct);
     }
 
     private void NavigateToRestore()
