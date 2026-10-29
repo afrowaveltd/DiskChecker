@@ -665,9 +665,12 @@ public class DiskCardTestService
       var persistedReadSamples = PrepareSpeedSamplesForPersistence(readSamples);
       var historicalSessions = await LoadRecentPerformanceHistoryAsync(card.Id, cancellationToken);
       var breakdown = BuildSanitizationScoreBreakdown(result, persistedWriteSamples, persistedReadSamples, smartaData, result.SmartAfter, historicalSessions);
-      var avgWriteSpeed = persistedWriteSamples.Count > 0
-          ? persistedWriteSamples.Average(s => s.SpeedMBps)
-          : result.WriteSpeedMBps;
+      // The saved graph intentionally over-represents extrema/stalls. Its
+      // arithmetic mean is not the true whole-pass throughput. Prefer the
+      // sanitization engine's bytes/time result for certificate averages.
+      var avgWriteSpeed = result.WriteSpeedMBps > 0
+          ? result.WriteSpeedMBps
+          : persistedWriteSamples.Count > 0 ? persistedWriteSamples.Average(s => s.SpeedMBps) : 0d;
       var maxWriteSpeed = persistedWriteSamples.Count > 0
           ? persistedWriteSamples.Max(s => s.SpeedMBps)
           : result.WriteSpeedMBps;
@@ -678,9 +681,9 @@ public class DiskCardTestService
           ? CalculateStandardDeviation(persistedWriteSamples.Select(s => s.SpeedMBps).ToArray())
           : 0d;
 
-      var avgReadSpeed = persistedReadSamples.Count > 0
-          ? persistedReadSamples.Average(s => s.SpeedMBps)
-          : result.ReadSpeedMBps;
+      var avgReadSpeed = result.ReadSpeedMBps > 0
+          ? result.ReadSpeedMBps
+          : persistedReadSamples.Count > 0 ? persistedReadSamples.Average(s => s.SpeedMBps) : 0d;
       var maxReadSpeed = persistedReadSamples.Count > 0
           ? persistedReadSamples.Max(s => s.SpeedMBps)
           : result.ReadSpeedMBps;
