@@ -32,6 +32,8 @@ public partial class SurfaceTestViewModel : ViewModelBase, INavigableViewModel, 
    // Preserve the full 0–100% disk range with a fixed memory budget.
    private readonly ProgressSpeedSampleBuffer _writeRetainedSamples = new(MaxGraphPoints / 4);
    private readonly ProgressSpeedSampleBuffer _readRetainedSamples = new(MaxGraphPoints / 4);
+   private DiskTelemetryArchive? _telemetryArchive;
+   private string? _telemetryArchiveWarning;
 
    private readonly INavigationService _navigationService;
    private readonly ISelectedDiskService _selectedDiskService;
@@ -1059,6 +1061,9 @@ public partial class SurfaceTestViewModel : ViewModelBase, INavigableViewModel, 
 
    private void ResetTestState()
    {
+      _telemetryArchive?.Dispose();
+      _telemetryArchive = null;
+      _telemetryArchiveWarning = null;
       ClearStickyErrorStatus();
       SpeedHistory.Clear();
       WriteSpeedHistory.Clear();
@@ -1277,11 +1282,40 @@ public partial class SurfaceTestViewModel : ViewModelBase, INavigableViewModel, 
    {
       if(SelectedDrive == null) return (null, null, null);
 
+      // Record every sample on local storage independently of the UI sampling
+      // budget. The 20-record blocks keep RAM constant and support later zoom.
+      try { _telemetryArchive = new DiskTelemetryArchive(); }
+      catch(IOException ex) { _telemetryArchiveWarning = ex.Message; }
+      catch(UnauthorizedAccessException ex) { _telemetryArchiveWarning = ex.Message; }
+
       var progress = new CallbackProgress<SanitizationProgress>(p =>
       {
          if(cancellationToken.IsCancellationRequested)
          {
             return;
+         }
+
+         if(_telemetryArchive != null && (p.IsWritePhase || p.IsReadVerifyPhase))
+         {
+            try
+            {
+               _telemetryArchive.Append(new SpeedSample
+               {
+                  Timestamp = DateTime.UtcNow,
+                  Elapsed = p.TotalElapsed,
+                  ProgressPercent = p.ProgressPercent,
+                  BytesProcessed = p.BytesProcessed,
+                  SpeedMBps = p.CurrentSpeedMBps,
+                  IsStalled = p.IsStalled,
+                  Phase = p.IsWritePhase ? "Write" : "Read"
+               });
+            }
+            catch(Exception ex) when(ex is IOException or UnauthorizedAccessException)
+            {
+               _telemetryArchiveWarning = ex.Message;
+               _telemetryArchive.Dispose();
+               _telemetryArchive = null;
+            }
          }
 
          void ApplyProgress()
@@ -1349,6 +1383,7 @@ public partial class SurfaceTestViewModel : ViewModelBase, INavigableViewModel, 
       var driveSize = SelectedDrive.TotalSize;
       var result = await Task.Run(() => _sanitizationService.SanitizeDiskAsync(
           drivePath, driveSize, true, true, "SCCM", progress, cancellationToken), cancellationToken);
+      _telemetryArchive?.Dispose(); // Flush the last partial block.
 
       SmartaData? smartAfterSnapshot = null;
       if(result.Success)
@@ -1393,8 +1428,9 @@ public partial class SurfaceTestViewModel : ViewModelBase, INavigableViewModel, 
                var writeSamples = await CaptureSanitizationSamplesAsync(_writeRetainedSamples);
                var readSamples = await CaptureSanitizationSamplesAsync(_readRetainedSamples);
 
-               await _cardTestService.SaveSanitizationAsync(card, result, writeSamples, readSamples, smartSnapshot, smartAfterSnapshot, _borrowedSmartProvenance, cancellationToken);
-                
+               var savedSession = await _cardTestService.SaveSanitizationAsync(card, result, writeSamples, readSamples, smartSnapshot, smartAfterSnapshot, _borrowedSmartProvenance, cancellationToken);
+               CommitTelemetryArchive(savedSession.SessionId);
+
                StatusMessage = L.Get("SurfaceTest.Status.SanitizeSaved", card.ModelName, (writeSamples.Count + readSamples.Count).ToString());
                SetStatusMessage(L.Get("SurfaceTest.Status.SanitizeSavedSimple", card.ModelName));
              }
@@ -1457,6 +1493,7 @@ public partial class SurfaceTestViewModel : ViewModelBase, INavigableViewModel, 
             var writeSamples = await CaptureSanitizationSamplesAsync(_writeRetainedSamples);
             var readSamples = await CaptureSanitizationSamplesAsync(_readRetainedSamples);
             var session = await _cardTestService.SaveSanitizationAsync(card, result, writeSamples, readSamples, smartSnapshot, null, _borrowedSmartProvenance, cancellationToken);
+            CommitTelemetryArchive(session.SessionId);
             _selectedDiskService.SelectedDisk = SelectedDrive;
             _selectedDiskService.SelectedDiskDisplayName = SelectedDrive.Name;
             _selectedDiskService.SelectedTestSessionId = session.Id;
@@ -1470,6 +1507,20 @@ public partial class SurfaceTestViewModel : ViewModelBase, INavigableViewModel, 
 
          SetStickyErrorStatus(message);
          return (result, null, errorContext);
+      }
+   }
+
+   private void CommitTelemetryArchive(Guid sessionGuid)
+   {
+      if (_telemetryArchive == null) return;
+      try
+      {
+         _telemetryArchive.Complete(sessionGuid);
+         _telemetryArchive = null;
+      }
+      catch (IOException ex)
+      {
+         _telemetryArchiveWarning = ex.Message;
       }
    }
 
