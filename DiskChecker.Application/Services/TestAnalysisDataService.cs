@@ -1,5 +1,6 @@
 using DiskChecker.Core.Interfaces;
 using DiskChecker.Core.Models;
+using DiskChecker.Core.Services;
 
 namespace DiskChecker.Application.Services;
 
@@ -38,6 +39,22 @@ public class TestAnalysisDataService : ITestAnalysisDataService
         var telemetry = telemetryTask.Result;
         var temperatures = temperaturesTask.Result;
 
+        // The legacy SQLite rows are only an overview. If a binary archive is
+        // available, load an extremum-preserving full-range overview without
+        // materializing all raw samples in managed memory.
+        if (DiskTelemetryArchive.Exists(session.SessionId))
+        {
+            try
+            {
+                telemetry = await Task.Run(() => DiskTelemetryArchive.Read(session.SessionId),
+                    cancellationToken);
+                foreach (var point in telemetry)
+                    point.TestSessionId = testSessionId;
+            }
+            catch (IOException) { /* Archive unavailable: fall back to SQLite. */ }
+            catch (InvalidDataException) { /* Damaged archive: use saved overview. */ }
+        }
+
         // Fallback: legacy owned speed samples (QuickRead/FullRead/FullWrite/SurfaceScan)
         // are stored in TestSessions_WriteSamples / TestSessions_ReadSamples, not in
         // TestTelemetrySamples. Convert them so the throughput charts render for those
@@ -66,6 +83,38 @@ public class TestAnalysisDataService : ITestAnalysisDataService
             TemperatureSamples = temperatures,
             SmartReport = BuildSmartAnalysisReport(session)
         };
+    }
+
+    public async Task<List<TestTelemetrySample>> GetTelemetryRangeAsync(
+        int testSessionId, double startPercent, double endPercent, CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        var session = await _repository.GetTestSessionWithoutSamplesAsync(testSessionId);
+        if (session == null) return new List<TestTelemetrySample>();
+        if (DiskTelemetryArchive.Exists(session.SessionId))
+        {
+            try
+            {
+                var result = await Task.Run(() =>
+                    DiskTelemetryArchive.Read(session.SessionId, startPercent, endPercent, 2000),
+                    cancellationToken);
+                foreach (var sample in result)
+                    sample.TestSessionId = testSessionId;
+                return result;
+            }
+            catch (IOException) { /* Fallback to persisted samples. */ }
+            catch (InvalidDataException) { /* Fallback to persisted samples. */ }
+        }
+
+        var low = Math.Clamp(Math.Min(startPercent, endPercent), 0, 100);
+        var high = Math.Clamp(Math.Max(startPercent, endPercent), 0, 100);
+        var telemetry = await _repository.GetTelemetrySamplesAsync(testSessionId);
+        if (telemetry.Count == 0)
+        {
+            var (writes, reads) = await _repository.GetSpeedSampleSeriesAsync(testSessionId);
+            telemetry = ConvertLegacySpeedSamples(testSessionId, writes, reads);
+        }
+        return telemetry.Where(s => s.ProgressPercent >= low && s.ProgressPercent <= high).ToList();
     }
 
     private static List<TestTelemetrySample> ConvertLegacySpeedSamples(
