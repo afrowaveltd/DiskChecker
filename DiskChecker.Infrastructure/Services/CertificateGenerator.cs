@@ -32,7 +32,7 @@ public class CertificateGenerator : ICertificateGenerator
 
     // Chart rendering constants
     private const int MaxChartPoints = 512;
-    private const int CertificateChartPoints = 32;
+    private const int CertificateChartPoints = 512;
 
     // Certificate JPEG dimensions (A4 at 150 DPI, extended for all content)
     private const int CertWidth = 1240;
@@ -1278,47 +1278,17 @@ public class CertificateGenerator : ICertificateGenerator
     /// </summary>
     private static List<double> DownsampleSpeedSamples(IReadOnlyList<SpeedSample>? samples, int targetPoints)
     {
-        if (samples == null || samples.Count == 0)
-            return new List<double>();
+        if (samples == null || samples.Count == 0) return new List<double>();
 
-        if (samples.Count <= targetPoints)
-        {
-            // Fast path: no downsampling needed, just extract speeds inline
-            var values = new List<double>(samples.Count);
-            // ReSharper disable once ForCanBeConvertedToForeach
-            for (var i = 0; i < samples.Count; i++)
-                values.Add(samples[i].SpeedMBps);
-            return values;
-        }
+        // Do not average away a five-second stall! Keep the first, min, max
+        // and last point of every spatial bucket, bounded by the PDF budget.
+        // Raw, higher-resolution data remains in the session .dat archive.
+        var buffer = new DiskChecker.Core.Services.ProgressSpeedSampleBuffer(
+            Math.Max(1, targetPoints / 4));
+        foreach (var sample in samples)
+            buffer.Add(sample);
 
-        // Single pass: bucket all samples (including zeros for stall markers)
-        var result = new List<double>(targetPoints);
-        var bucketSize = samples.Count / (double)targetPoints;
-        var bucketEnd = (int)Math.Floor(bucketSize);
-        var sum = 0d;
-        var count = 0;
-        var bucket = 0;
-
-        for (var i = 0; i < samples.Count; i++)
-        {
-            if (i >= bucketEnd)
-            {
-                result.Add(count > 0 ? sum / count : 0);
-                bucket++;
-                bucketEnd = (int)Math.Floor((bucket + 1) * bucketSize);
-                sum = 0d;
-                count = 0;
-            }
-
-            var speed = samples[i].SpeedMBps;
-            sum += speed;
-            count++;
-        }
-
-        if (count > 0 || result.Count < targetPoints)
-            result.Add(count > 0 ? sum / count : 0);
-
-        return result;
+        return buffer.Samples.Select(p => p.IsStalled ? 0d : p.SpeedMBps).ToList();
     }
 
     private static List<double> DownsampleSpeeds(IEnumerable<double> speeds, int targetPoints)
@@ -2191,8 +2161,13 @@ public class CertificateGenerator : ICertificateGenerator
         canvas.DrawLine(margin, margin, margin, height - margin, axisPaint);
         canvas.DrawLine(margin, height - margin, width - margin, height - margin, axisPaint);
 
-        var writeSamples = session.WriteSamples.Where(s => s.SpeedMBps > 0).ToList();
-        var readSamples = session.ReadSamples.Where(s => s.SpeedMBps > 0).ToList();
+        // Preserve zero-speed stalls instead of deleting them from the PDF.
+        var writeSamples = session.WriteSamples
+            .Where(s => s.SpeedMBps > 0 || s.IsStalled || s.ProgressPercent > 0)
+            .OrderBy(s => s.ProgressPercent).ToList();
+        var readSamples = session.ReadSamples
+            .Where(s => s.SpeedMBps > 0 || s.IsStalled || s.ProgressPercent > 0)
+            .OrderBy(s => s.ProgressPercent).ToList();
         var maxSpeed = Math.Max(
             writeSamples.Count > 0 ? writeSamples.Max(s => s.SpeedMBps) : 0,
             readSamples.Count > 0 ? readSamples.Max(s => s.SpeedMBps) : 0);
@@ -2202,10 +2177,14 @@ public class CertificateGenerator : ICertificateGenerator
         {
             if (samples.Count < 2) return;
             using var path = new SKPath();
+            var hasSpatialProgress = samples[^1].ProgressPercent - samples[0].ProgressPercent > 0.001;
             for (int i = 0; i < samples.Count; i++)
             {
-                float x = margin + (float)i / (samples.Count - 1) * chartW;
-                float y = height - margin - (float)(samples[i].SpeedMBps / maxSpeed * chartH);
+                var ratio = hasSpatialProgress
+                    ? Math.Clamp(samples[i].ProgressPercent, 0d, 100d) / 100d
+                    : i / (double)(samples.Count - 1);
+                float x = margin + (float)(ratio * chartW);
+                float y = height - margin - (float)((samples[i].IsStalled ? 0d : samples[i].SpeedMBps) / maxSpeed * chartH);
                 if (i == 0) path.MoveTo(x, y);
                 else path.LineTo(x, y);
             }
