@@ -409,8 +409,8 @@ public partial class AnalysisViewModel : ViewModelBase
         var maxSpeed = write.Concat(read).Where(s => s.SpeedMBps > 0).Select(s => s.SpeedMBps).DefaultIfEmpty(1).Max();
         ThroughputProgressWritePoints = BuildTelemetryPolyline(write, width, height, maxSpeed, useTimeAxis: false, zoomStart, zoomEnd, IsZoomActive);
         ThroughputProgressReadPoints = BuildTelemetryPolyline(read, width, height, maxSpeed, useTimeAxis: false, zoomStart, zoomEnd, IsZoomActive);
-        ThroughputTimeWritePoints = BuildTelemetryPolyline(write, width, height, maxSpeed, useTimeAxis: true);
-        ThroughputTimeReadPoints = BuildTelemetryPolyline(read, width, height, maxSpeed, useTimeAxis: true);
+        ThroughputTimeWritePoints = BuildTelemetryPolyline(write, width, height, maxSpeed, useTimeAxis: true, zoomStart, zoomEnd, IsZoomActive);
+        ThroughputTimeReadPoints = BuildTelemetryPolyline(read, width, height, maxSpeed, useTimeAxis: true, zoomStart, zoomEnd, IsZoomActive);
 
         var seekMax = AnalysisData.SeekSamples.Where(s => s.LatencyMs > 0).Select(s => s.LatencyMs).DefaultIfEmpty(1).Max();
         SeekLatencyPoints = BuildSeekPolyline(AnalysisData.SeekSamples, width, height, seekMax);
@@ -466,13 +466,16 @@ public partial class AnalysisViewModel : ViewModelBase
     {
         var valid = samples.Where(s => s.SpeedMBps > 0 || s.IsStalled).ToList();
         if (valid.Count == 0) return string.Empty;
+        var minElapsed = zoom && useTimeAxis
+            ? valid.Select(s => s.ElapsedMs ?? 0).DefaultIfEmpty(0).Min()
+            : 0d;
         var maxElapsed = valid.Select(s => s.ElapsedMs ?? 0).DefaultIfEmpty(0).Max();
-        if (useTimeAxis && maxElapsed <= 0)
-            maxElapsed = Math.Max(1, valid.Count - 1);
+        if (useTimeAxis && maxElapsed - minElapsed <= 0)
+            maxElapsed = minElapsed + Math.Max(1, valid.Count - 1);
         return string.Join(' ', valid.Select((s, i) =>
         {
             var xRatio = useTimeAxis
-                ? ((s.ElapsedMs ?? i) / Math.Max(1, maxElapsed))
+                ? Math.Clamp(((s.ElapsedMs ?? i) - minElapsed) / Math.Max(1, maxElapsed - minElapsed), 0, 1)
                 : zoom
                     ? (Math.Clamp(s.ProgressPercent, zoomStart, zoomEnd) - zoomStart) / Math.Max(0.001, zoomEnd - zoomStart)
                     : Math.Clamp(s.ProgressPercent, 0, 100) / 100.0;
