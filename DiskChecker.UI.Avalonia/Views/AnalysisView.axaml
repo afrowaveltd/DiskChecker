@@ -76,6 +76,11 @@
                             <TextBlock Text="{Binding FullEventsLine}" FontSize="11" Foreground="{DynamicResource ThemeTextSecondaryBrush}"/>
                             <TextBlock Text="{Binding ZoomText}" FontSize="11" Foreground="{DynamicResource ThemePrimaryBrush}"/>
                             <TextBlock Text="{Binding SmartAnalysisLine}" FontSize="11" Foreground="{DynamicResource ThemeTextSecondaryBrush}"/>
+                            <TextBlock Text="Výřez %" VerticalAlignment="Center" FontSize="10"/>
+                            <TextBox Width="66" Text="{Binding ManualZoomStart, Mode=TwoWay}" Watermark="Od" FontSize="11"/>
+                            <TextBlock Text="až" VerticalAlignment="Center" FontSize="10"/>
+                            <TextBox Width="66" Text="{Binding ManualZoomEnd, Mode=TwoWay}" Watermark="Do" FontSize="11"/>
+                            <Button Content="Přiblížit" Command="{Binding ApplyManualZoomCommand}" Padding="6,2" FontSize="10"/>
                             <Button Content="Reset zoom" Command="{Binding ResetZoomCommand}" Padding="6,2" FontSize="10"/>
                         </StackPanel>
                         <Grid ColumnDefinitions="*,*" Margin="0,8,0,0">
