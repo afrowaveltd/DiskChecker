@@ -96,8 +96,8 @@ public class SurfaceTestTelemetryTests
         Assert.Equal(retained.Count, vm.WriteSeriesValues.Count);
         Assert.Equal(0, retained[0].ProgressPercent);
         Assert.Equal(100, retained[^1].ProgressPercent);
-        Assert.Equal(0, vm.WriteSeriesValues[0].X);
-        Assert.Equal(100, vm.WriteSeriesValues[^1].X);
+        Assert.Equal(0d, vm.WriteSeriesValues[0].X.GetValueOrDefault());
+        Assert.Equal(100d, vm.WriteSeriesValues[^1].X.GetValueOrDefault());
         Assert.Contains(retained, x => x.SpeedMBps == 0 && x.ProgressPercent > 10);
         Assert.Contains(retained, x => x.SpeedMBps == 340 && x.ProgressPercent > 70);
     }
@@ -443,7 +443,7 @@ public class SurfaceTestTelemetryTests
         // the graph must still start at zero rather than scroll to the right.
         Assert.True(vm.WriteSeriesValues.Count <= GetMaxGraphPoints());
         Assert.Equal(0, vm.WriteSeriesValues[0].X);
-        Assert.InRange(vm.WriteSeriesValues[^1].X!.Value, 24.99, 25.01);
+        Assert.InRange(vm.WriteSeriesValues[^1].X.GetValueOrDefault(), 24.99, 25.01);
         Assert.Contains(vm.WriteSeriesValues, p => p.X > 20 && p.Y == 0);
     }
 
