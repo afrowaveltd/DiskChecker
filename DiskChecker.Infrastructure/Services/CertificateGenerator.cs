@@ -597,16 +597,16 @@ public class CertificateGenerator : ICertificateGenerator
                 {
                     // Draw all 4 series
                     DrawProfilePolyline(canvas, pass1WritePen,
-                        cert.Sanitize1WritePoints?.Where(v => v > 0).ToList() ?? new List<double>(),
+                        cert.Sanitize1WritePoints?.ToList() ?? new List<double>(),
                         maxSpeed, chartX + 30, topChartY + 14, chartW - 50, topChartH - 40);
                     DrawProfilePolyline(canvas, pass1ReadPen,
-                        cert.Sanitize1ReadPoints?.Where(v => v > 0).ToList() ?? new List<double>(),
+                        cert.Sanitize1ReadPoints?.ToList() ?? new List<double>(),
                         maxSpeed, chartX + 30, topChartY + 14, chartW - 50, topChartH - 40);
                     DrawProfilePolyline(canvas, pass2WritePen,
-                        cert.Sanitize2WritePoints?.Where(v => v > 0).ToList() ?? new List<double>(),
+                        cert.Sanitize2WritePoints?.ToList() ?? new List<double>(),
                         maxSpeed, chartX + 30, topChartY + 14, chartW - 50, topChartH - 40);
                     DrawProfilePolyline(canvas, pass2ReadPen,
-                        cert.Sanitize2ReadPoints?.Where(v => v > 0).ToList() ?? new List<double>(),
+                        cert.Sanitize2ReadPoints?.ToList() ?? new List<double>(),
                         maxSpeed, chartX + 30, topChartY + 14, chartW - 50, topChartH - 40);
                 }
                 else
@@ -1363,8 +1363,8 @@ public class CertificateGenerator : ICertificateGenerator
 
     private static (List<double> Write, List<double> Read) GetProfilePointsForChart(DiskCertificate cert)
     {
-        var write = cert.WriteProfilePoints?.Where(v => v > 0).ToList() ?? new List<double>();
-        var read = cert.ReadProfilePoints?.Where(v => v > 0).ToList() ?? new List<double>();
+        var write = cert.WriteProfilePoints?.ToList() ?? new List<double>();
+        var read = cert.ReadProfilePoints?.ToList() ?? new List<double>();
 
         // Older certificates and some absolute-destructive-test certificates were
         // persisted before chart profile points were stored. In those cases the DB
