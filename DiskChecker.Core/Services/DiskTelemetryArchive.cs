@@ -122,8 +122,12 @@ public sealed class DiskTelemetryArchive : IDisposable
 
         var start = Math.Clamp(Math.Min(startPercent, endPercent), 0d, 100d);
         var end = Math.Clamp(Math.Max(startPercent, endPercent), 0d, 100d);
-        var write = new ProgressSpeedSampleBuffer(bucketsPerPhase);
-        var read = new ProgressSpeedSampleBuffer(bucketsPerPhase);
+        // Use the entire bucket budget inside the selected zoom window,
+        // rather than allocating only 2% of it when zooming from 25–27%.
+        var windowEnd = end > start ? end : Math.Min(100d, start + 1e-9);
+        var windowStart = windowEnd > start ? start : Math.Max(0d, end - 1e-9);
+        var write = new ProgressSpeedSampleBuffer(bucketsPerPhase, windowStart, windowEnd);
+        var read = new ProgressSpeedSampleBuffer(bucketsPerPhase, windowStart, windowEnd);
 
         using var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite, 32 * 1024);
         using var reader = new BinaryReader(stream);
