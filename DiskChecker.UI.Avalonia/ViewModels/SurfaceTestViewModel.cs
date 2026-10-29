@@ -10,6 +10,7 @@ using CommunityToolkit.Mvvm.Input;
 using DiskChecker.Application.Services;
 using DiskChecker.Core.Interfaces;
 using DiskChecker.Core.Models;
+using DiskChecker.Core.Services;
 using DiskChecker.Infrastructure.Hardware.Sanitization;
 using DiskChecker.UI.Avalonia.Services.Interfaces;
 using LiveChartsCore;
@@ -25,20 +26,12 @@ public partial class SurfaceTestViewModel : ViewModelBase, INavigableViewModel, 
 {
    private const int MaxGraphPoints = 8000;
 
-   // Downsampling - track last X and Y values
-   private double _lastWriteX = double.MinValue;
-
-   private double _lastReadX = double.MinValue;
-   private double _lastWriteSpeed;
-   private double _lastReadSpeed;
-   private const double MinPointDistance = 0.1; // 0.1% distance between points = ~1000 points max
-   private const double SpeedChangeThreshold = 0.05; // 5% speed change triggers new point
    private const double GbInBytes = 1024d * 1024d * 1024d;
+   private const int PersistedProgressBuckets = 500; // 2,000 points per saved phase
 
-   // Raw telemetry - append-only, never trimmed. Used for report/certificate generation.
-   // Live graph uses WriteSeriesValues/ReadSeriesValues with MaxGraphPoints cap.
-   private readonly List<SpeedSample> _rawWriteSamples = new();
-   private readonly List<SpeedSample> _rawReadSamples = new();
+   // Preserve the full 0–100% disk range with a fixed memory budget.
+   private readonly ProgressSpeedSampleBuffer _writeRetainedSamples = new(MaxGraphPoints / 4);
+   private readonly ProgressSpeedSampleBuffer _readRetainedSamples = new(MaxGraphPoints / 4);
 
    private readonly INavigationService _navigationService;
    private readonly ISelectedDiskService _selectedDiskService;
@@ -117,12 +110,6 @@ public partial class SurfaceTestViewModel : ViewModelBase, INavigableViewModel, 
    private int _currentPhase; // 0 = Write, 1 = Read (default is 0)
    private CancellationTokenSource? _testCancellation;
    private bool _disposed;
-   private double _writeBucketStart = -1;
-   private double _writeBucketSum;
-   private int _writeBucketCount;
-   private double _readBucketStart = -1;
-   private double _readBucketSum;
-   private int _readBucketCount;
    private bool _isDataWindowZoomEnabled;
    private int _zoomWindowModeIndex; // 0 = GB, 1 = %
    private double _zoomWindowGb = 10;
@@ -605,7 +592,6 @@ public partial class SurfaceTestViewModel : ViewModelBase, INavigableViewModel, 
             return;
          }
 
-         FlushPhaseBucket(_currentPhase);
          if(SetProperty(ref _currentPhase, value))
          {
             _phaseStartedAtUtc = DateTime.UtcNow;
@@ -896,73 +882,43 @@ public partial class SurfaceTestViewModel : ViewModelBase, INavigableViewModel, 
       var xPosition = Math.Clamp(dataPercent, 0d, 100d);
       CurrentDataPercent = xPosition;
 
-      // Add to legacy collection for compatibility
+      // Legacy recent-speed indicator; not the source of the full-disk graph.
       SpeedHistory.Add(new SpeedDataPoint { Time = SpeedHistory.Count, Speed = speed });
       while(SpeedHistory.Count > 300)
          SpeedHistory.RemoveAt(0);
 
-      // Add to phase-specific collection with dataPercent
       var dataPoint = new SurfaceTestDataPoint(now, elapsed, speed, CurrentTemperature, phase, xPosition);
+      var sample = new SpeedSample
+      {
+         Timestamp = now,
+         SpeedMBps = speed,
+         ProgressPercent = xPosition,
+         BytesProcessed = (long)(xPosition / 100.0 * _currentPhaseTotalBytes),
+         Elapsed = elapsed,
+         Phase = phase == 0 ? "Write" : "Read",
+         IsStalled = speed <= 0
+      };
 
       if(phase == 0)
       {
+         // A short recent window is still useful for time-based zoom.
          AppendCapped(WriteSpeedHistory, dataPoint);
          _writePhaseMaxElapsedSeconds = Math.Max(_writePhaseMaxElapsedSeconds, xPosition);
-         AppendDownsampledPoint(
-             WriteSeriesValues,
-             xPosition,
-             speed,
-             ref _writeBucketStart,
-             ref _writeBucketSum,
-             ref _writeBucketCount);
+         AppendRetainedPoint(_writeRetainedSamples, WriteSeriesValues, sample);
          TriggerSamplePulse(isWrite: true);
       }
       else
       {
          AppendCapped(ReadSpeedHistory, dataPoint);
          _readPhaseMaxElapsedSeconds = Math.Max(_readPhaseMaxElapsedSeconds, xPosition);
-         AppendDownsampledPoint(
-             ReadSeriesValues,
-             xPosition,
-             speed,
-             ref _readBucketStart,
-             ref _readBucketSum,
-             ref _readBucketCount);
+         AppendRetainedPoint(_readRetainedSamples, ReadSeriesValues, sample);
          TriggerSamplePulse(isWrite: false);
       }
 
-      // Raw telemetry - append-only, never trimmed
-      if (phase == 0)
-      {
-         _rawWriteSamples.Add(new SpeedSample
-         {
-             Timestamp = now,
-             SpeedMBps = speed,
-             ProgressPercent = xPosition,
-             BytesProcessed = (long)(xPosition / 100.0 * _currentPhaseTotalBytes),
-             Elapsed = elapsed,
-             Phase = "Write"
-         });
-      }
-      else
-      {
-         _rawReadSamples.Add(new SpeedSample
-         {
-             Timestamp = now,
-             SpeedMBps = speed,
-             ProgressPercent = xPosition,
-             BytesProcessed = (long)(xPosition / 100.0 * _currentPhaseTotalBytes),
-             Elapsed = elapsed,
-             Phase = "Read"
-         });
-      }
-
-      // Add temperature point
       if(CurrentTemperature > 0)
-      {
          AppendCapped(TemperatureHistory, new TemperatureDataPoint(now, elapsed, CurrentTemperature));
-      }
 
+      // Statistics still process every measurement, not just retained extrema.
       UpdateStatisticsIncremental(speed);
       UpdateXAxisLimits(100);
       OnPropertyChanged(nameof(ChartPointCount));
@@ -972,106 +928,25 @@ public partial class SurfaceTestViewModel : ViewModelBase, INavigableViewModel, 
    {
       collection.Add(item);
       while(collection.Count > MaxGraphPoints)
-      {
          collection.RemoveAt(0);
-      }
    }
 
-   private void AppendDownsampledPoint(
-       ObservableCollection<ObservablePoint> target,
-       double x,
-       double y,
-       ref double bucketStart,
-       ref double bucketSum,
-       ref int bucketCount)
+   private static void AppendRetainedPoint(
+       ProgressSpeedSampleBuffer buffer,
+       ObservableCollection<ObservablePoint> chart,
+       SpeedSample sample)
    {
-      ref var lastX = ref GetLastXReference(target);
-      ref var lastSpeed = ref GetLastSpeedReference(target);
+      buffer.Add(sample);
+      // Only the newest progress bucket changes. Earlier buckets remain intact,
+      // including the first point; no RemoveAt(0) or unbounded raw list.
+      while(chart.Count > buffer.ActiveStartIndex)
+         chart.RemoveAt(chart.Count - 1);
 
-      if(target.Count == 0)
+      for(var i = buffer.ActiveStartIndex; i < buffer.Count; i++)
       {
-         AppendPoint(target, x, y, ref lastX, ref lastSpeed);
-         return;
+         var retained = buffer.Samples[i];
+         chart.Add(new ObservablePoint(retained.ProgressPercent, retained.SpeedMBps));
       }
-
-      var xDistance = Math.Abs(x - lastX);
-      var speedChange = lastSpeed <= 0 ? 1d : Math.Abs(y - lastSpeed) / lastSpeed;
-
-      if(xDistance < MinPointDistance && speedChange < SpeedChangeThreshold)
-      {
-         if(bucketStart < 0)
-         {
-            bucketStart = lastX;
-         }
-
-         bucketSum += y;
-         bucketCount++;
-         return;
-      }
-
-      FlushBucket(target, ref bucketStart, ref bucketSum, ref bucketCount, ref lastX, ref lastSpeed);
-      AppendPoint(target, x, y, ref lastX, ref lastSpeed);
-   }
-
-   private void FlushPhaseBucket(int phase)
-   {
-      if(phase == 0)
-      {
-         FlushBucket(WriteSeriesValues, ref _writeBucketStart, ref _writeBucketSum, ref _writeBucketCount, ref _lastWriteX, ref _lastWriteSpeed);
-         return;
-      }
-
-      FlushBucket(ReadSeriesValues, ref _readBucketStart, ref _readBucketSum, ref _readBucketCount, ref _lastReadX, ref _lastReadSpeed);
-   }
-
-   private static void FlushBucket(
-       ObservableCollection<ObservablePoint> target,
-       ref double bucketStart,
-       ref double bucketSum,
-       ref int bucketCount,
-       ref double lastX,
-       ref double lastSpeed)
-   {
-      if(bucketCount <= 0)
-      {
-         bucketStart = -1;
-         bucketSum = 0;
-         return;
-      }
-
-      var averagedY = bucketSum / bucketCount;
-      var bucketX = lastX == double.MinValue ? 0d : Math.Clamp(lastX + MinPointDistance, 0d, 100d);
-      AppendPoint(target, bucketX, averagedY, ref lastX, ref lastSpeed);
-      bucketStart = -1;
-      bucketSum = 0;
-      bucketCount = 0;
-   }
-
-   private static void AppendPoint(ObservableCollection<ObservablePoint> target, double x, double y, ref double lastX, ref double lastSpeed)
-   {
-      AppendCapped(target, new ObservablePoint(Math.Clamp(x, 0d, 100d), y));
-      lastX = Math.Clamp(x, 0d, 100d);
-      lastSpeed = y;
-   }
-
-   private ref double GetLastXReference(ObservableCollection<ObservablePoint> target)
-   {
-      if(ReferenceEquals(target, WriteSeriesValues))
-      {
-         return ref _lastWriteX;
-      }
-
-      return ref _lastReadX;
-   }
-
-   private ref double GetLastSpeedReference(ObservableCollection<ObservablePoint> target)
-   {
-      if(ReferenceEquals(target, WriteSeriesValues))
-      {
-         return ref _lastWriteSpeed;
-      }
-
-      return ref _lastReadSpeed;
    }
 
    private void TriggerSamplePulse(bool isWrite)
@@ -1237,16 +1112,8 @@ public partial class SurfaceTestViewModel : ViewModelBase, INavigableViewModel, 
       _writePhaseMaxElapsedSeconds = 0;
       _readPhaseMaxElapsedSeconds = 0;
 
-      _writeBucketStart = -1;
-      _writeBucketSum = 0;
-      _writeBucketCount = 0;
-      _readBucketStart = -1;
-      _readBucketSum = 0;
-      _readBucketCount = 0;
-      _lastWriteX = double.MinValue;
-      _lastReadX = double.MinValue;
-      _lastWriteSpeed = 0;
-      _lastReadSpeed = 0;
+      _writeRetainedSamples.Clear();
+      _readRetainedSamples.Clear();
       _samplePulseSequence = 0;
       IsWriteSamplePulseVisible = false;
       IsReadSamplePulseVisible = false;
@@ -1395,7 +1262,6 @@ public partial class SurfaceTestViewModel : ViewModelBase, INavigableViewModel, 
       }
       finally
       {
-         FlushPhaseBucket(_currentPhase);
          IsTesting = false;
          CurrentSpeed = 0;
          IsWriteSamplePulseVisible = false;
@@ -1522,79 +1388,10 @@ public partial class SurfaceTestViewModel : ViewModelBase, INavigableViewModel, 
             {
                var card = await _cardTestService.GetOrCreateCardAsync(SelectedDrive!, _borrowedSmartProvenance == null ? smartSnapshot : null, cancellationToken);
 
-               // Downsample samples before saving to database to prevent memory/transaction issues
-               // SQLite has practical limits on transaction size and entity tracking
-               const int MaxSamplesToSave = 2000;
-               
-               // Collect and downsample write samples
-               var writeSamples = await Dispatcher.UIThread.InvokeAsync(() =>
-               {
-                  var allSamples = new List<SpeedSample>();
-                  foreach(var point in WriteSpeedHistory)
-                  {
-                     allSamples.Add(new SpeedSample
-                     {
-                        Timestamp = point.Timestamp,
-                        SpeedMBps = point.Speed,
-                        ProgressPercent = point.DataPercent,
-                        BytesProcessed = (long)(point.DataPercent / 100.0 * SelectedDrive!.TotalSize)
-                     });
-                  }
-                  
-                  // Downsample if we have too many samples
-                  if (allSamples.Count > MaxSamplesToSave)
-                  {
-                     var step = Math.Max(1, allSamples.Count / MaxSamplesToSave);
-                     var downsampled = new List<SpeedSample>();
-                     for (int i = 0; i < allSamples.Count; i += step)
-                     {
-                        downsampled.Add(allSamples[i]);
-                     }
-                     // Always include last sample
-                     if (allSamples.Count > 0 && (allSamples.Count - 1) % step != 0)
-                     {
-                        downsampled.Add(allSamples[^1]);
-                     }
-                     return downsampled;
-                  }
-                  
-                  return allSamples;
-               });
-
-               // Collect and downsample read samples
-               var readSamples = await Dispatcher.UIThread.InvokeAsync(() =>
-               {
-                  var allSamples = new List<SpeedSample>();
-                  foreach(var point in ReadSpeedHistory)
-                  {
-                     allSamples.Add(new SpeedSample
-                     {
-                        Timestamp = point.Timestamp,
-                        SpeedMBps = point.Speed,
-                        ProgressPercent = point.DataPercent,
-                        BytesProcessed = (long)(point.DataPercent / 100.0 * SelectedDrive!.TotalSize)
-                     });
-                  }
-                  
-                  // Downsample if we have too many samples
-                  if (allSamples.Count > MaxSamplesToSave)
-                  {
-                     var step = Math.Max(1, allSamples.Count / MaxSamplesToSave);
-                     var downsampled = new List<SpeedSample>();
-                     for (int i = 0; i < allSamples.Count; i += step)
-                     {
-                        downsampled.Add(allSamples[i]);
-                     }
-                     // Always include last sample
-                     if (allSamples.Count > 0 && (allSamples.Count - 1) % step != 0)
-                     {
-                        downsampled.Add(allSamples[^1]);
-                     }
-                     return downsampled;
-                  }
-                  
-                  return allSamples;
-               });
+               // A bounded 500-bucket snapshot (<= 2,000 points per phase)
+               // retains the entire disk and the worst speed dips.
+               var writeSamples = await CaptureSanitizationSamplesAsync(_writeRetainedSamples);
+               var readSamples = await CaptureSanitizationSamplesAsync(_readRetainedSamples);
 
                await _cardTestService.SaveSanitizationAsync(card, result, writeSamples, readSamples, smartSnapshot, smartAfterSnapshot, _borrowedSmartProvenance, cancellationToken);
                 
@@ -1657,8 +1454,8 @@ public partial class SurfaceTestViewModel : ViewModelBase, INavigableViewModel, 
          try
          {
             var card = await _cardTestService.GetOrCreateCardAsync(SelectedDrive!, _borrowedSmartProvenance == null ? smartSnapshot : null, cancellationToken);
-            var writeSamples = await CaptureSanitizationSamplesAsync(WriteSpeedHistory, SelectedDrive!.TotalSize);
-            var readSamples = await CaptureSanitizationSamplesAsync(ReadSpeedHistory, SelectedDrive!.TotalSize);
+            var writeSamples = await CaptureSanitizationSamplesAsync(_writeRetainedSamples);
+            var readSamples = await CaptureSanitizationSamplesAsync(_readRetainedSamples);
             var session = await _cardTestService.SaveSanitizationAsync(card, result, writeSamples, readSamples, smartSnapshot, null, _borrowedSmartProvenance, cancellationToken);
             _selectedDiskService.SelectedDisk = SelectedDrive;
             _selectedDiskService.SelectedDiskDisplayName = SelectedDrive.Name;
@@ -1676,33 +1473,14 @@ public partial class SurfaceTestViewModel : ViewModelBase, INavigableViewModel, 
       }
    }
 
-   private async Task<List<SpeedSample>> CaptureSanitizationSamplesAsync(IEnumerable<SurfaceTestDataPoint> source, long totalBytes)
+   private async Task<List<SpeedSample>> CaptureSanitizationSamplesAsync(ProgressSpeedSampleBuffer source)
    {
-      const int MaxSamplesToSave = 2000;
       return await Dispatcher.UIThread.InvokeAsync(() =>
       {
-         var allSamples = source.Select(point => new SpeedSample
-         {
-            Timestamp = point.Timestamp,
-            SpeedMBps = point.Speed,
-            ProgressPercent = point.DataPercent,
-            BytesProcessed = (long)(point.DataPercent / 100.0 * totalBytes),
-            Phase = point.Phase == 1 ? "Read" : "Write",
-            IsStalled = point.Speed <= 0
-         }).ToList();
-
-         if (allSamples.Count <= MaxSamplesToSave)
-            return allSamples;
-
-         var step = Math.Max(1, allSamples.Count / MaxSamplesToSave);
-         var downsampled = new List<SpeedSample>();
-         for (var i = 0; i < allSamples.Count; i += step)
-            downsampled.Add(allSamples[i]);
-
-         if (allSamples.Count > 0 && downsampled[^1] != allSamples[^1])
-            downsampled.Add(allSamples[^1]);
-
-         return downsampled;
+         var persisted = new ProgressSpeedSampleBuffer(PersistedProgressBuckets);
+         foreach(var sample in source.Samples)
+            persisted.Add(sample);
+         return persisted.Samples.ToList();
       });
    }
 
@@ -1771,7 +1549,6 @@ public partial class SurfaceTestViewModel : ViewModelBase, INavigableViewModel, 
       // Read phase (50-100%)
       await Dispatcher.UIThread.InvokeAsync(() =>
       {
-         FlushPhaseBucket(0);
          CurrentPhase = 1;
       });
       _currentPhaseTotalBytes = syntheticTotalBytes;
