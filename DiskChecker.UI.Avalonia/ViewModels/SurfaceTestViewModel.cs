@@ -1458,6 +1458,12 @@ public partial class SurfaceTestViewModel : ViewModelBase, INavigableViewModel, 
          // Build success message but don't show dialog yet
          var successMessage =
              L.Get("SurfaceTest.Status.SanitizeSuccess");
+         if (!string.IsNullOrWhiteSpace(_telemetryArchiveWarning))
+         {
+            var warning = $"⚠ Detailní telemetrie nebyla kompletně uložena: {_telemetryArchiveWarning}";
+            successMessage += Environment.NewLine + warning;
+            StatusMessage = warning;
+         }
 
 
 
