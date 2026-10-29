@@ -11,6 +11,9 @@ namespace DiskChecker.Core.Services;
 public sealed class ProgressSpeedSampleBuffer
 {
     private readonly int _bucketCount;
+    private readonly double _rangeStart;
+    private readonly double _rangeEnd;
+    private double _lastProgress = double.NegativeInfinity;
     private readonly List<SpeedSample> _samples = new();
     private int _lastBucketIndex = -1;
     private int _activeStartIndex;
@@ -23,12 +26,15 @@ public sealed class ProgressSpeedSampleBuffer
     private readonly record struct OrderedSample(SpeedSample Sample, long Order);
 
     /// <param name="bucketCount">Maximum number of progress buckets; each keeps at most four samples.</param>
-    public ProgressSpeedSampleBuffer(int bucketCount = 2000)
+    public ProgressSpeedSampleBuffer(int bucketCount = 2000, double rangeStart = 0, double rangeEnd = 100)
     {
         if (bucketCount < 1)
             throw new ArgumentOutOfRangeException(nameof(bucketCount));
-
+        if (!double.IsFinite(rangeStart) || !double.IsFinite(rangeEnd) || rangeEnd <= rangeStart)
+            throw new ArgumentOutOfRangeException(nameof(rangeEnd), "The progress window must be increasing.");
         _bucketCount = bucketCount;
+        _rangeStart = rangeStart;
+        _rangeEnd = rangeEnd;
     }
 
     public int MaxSamples => checked(_bucketCount * 4);
@@ -43,8 +49,28 @@ public sealed class ProgressSpeedSampleBuffer
     {
         ArgumentNullException.ThrowIfNull(sample);
         var percent = double.IsFinite(sample.ProgressPercent)
-            ? Math.Clamp(sample.ProgressPercent, 0d, 100d) : 0d;
-        var bucketIndex = Math.Min(_bucketCount - 1, (int)(percent * _bucketCount / 100d));
+            ? Math.Clamp(sample.ProgressPercent, _rangeStart, _rangeEnd) : _rangeStart;
+        // Driver callbacks may arrive with a stale progress value. Never draw a
+        // line backwards along the disk; the on-disk raw log still keeps the
+        // original unmodified measurement for forensic analysis.
+        if (percent < _lastProgress)
+            percent = _lastProgress;
+        _lastProgress = percent;
+        if (sample.ProgressPercent != percent)
+        {
+            sample = new SpeedSample
+            {
+                Timestamp = sample.Timestamp,
+                Elapsed = sample.Elapsed,
+                ProgressPercent = percent,
+                BytesProcessed = sample.BytesProcessed,
+                SpeedMBps = sample.SpeedMBps,
+                IsStalled = sample.IsStalled,
+                Phase = sample.Phase
+            };
+        }
+        var normalized = (percent - _rangeStart) / (_rangeEnd - _rangeStart);
+        var bucketIndex = Math.Min(_bucketCount - 1, (int)(normalized * _bucketCount));
 
         // Progress is normally monotonic. Do not open new buckets if a driver
         // sends a slightly older progress value during a stalled I/O operation.
@@ -84,6 +110,7 @@ public sealed class ProgressSpeedSampleBuffer
     {
         _samples.Clear();
         _lastBucketIndex = -1;
+        _lastProgress = double.NegativeInfinity;
         _activeStartIndex = 0;
         _sequence = 0;
         _first = _minimum = _maximum = _last = default;
