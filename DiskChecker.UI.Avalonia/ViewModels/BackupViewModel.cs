@@ -100,6 +100,9 @@ public partial class BackupViewModel : ViewModelBase, INavigableViewModel, IDisp
     private string? _lastBackupManifestPath;
     private string? _imageMountVerificationMessage;
     private bool _imageMountWasVerified;
+    private string? _completedVhdxPath;
+    private string? _completedRawPath;
+    private string? _convertedVhdxPath;
     private readonly List<string> _backupLog = new();
 
     // Cached JsonSerializerOptions
@@ -1018,6 +1021,7 @@ public partial class BackupViewModel : ViewModelBase, INavigableViewModel, IDisp
         _backupLog.Clear();
         _imageMountVerificationMessage = null;
         _imageMountWasVerified = false;
+        _completedVhdxPath = _completedRawPath = null;
         Phase = BackupPhase.Running;
         StatusMessage = "Zálohování běží...";
 
@@ -1026,10 +1030,14 @@ public partial class BackupViewModel : ViewModelBase, INavigableViewModel, IDisp
             if (SelectedMode == BackupMode.RawImage)
             {
                 await RunRawBackupAsync(_backupCancellation.Token);
+                if (OperatingSystem.IsLinux() && _completedRawPath != null)
+                    await VerifyAndOfferMountedImageAsync(_completedRawPath, _backupCancellation.Token);
             }
             else if (SelectedMode == BackupMode.VhdxImage)
             {
                 await RunVhdxBackupAsync(_backupCancellation.Token);
+                if (_completedVhdxPath != null)
+                    await VerifyAndOfferMountedImageAsync(_completedVhdxPath, _backupCancellation.Token);
             }
             else
             {
@@ -1366,11 +1374,9 @@ public partial class BackupViewModel : ViewModelBase, INavigableViewModel, IDisp
         CanConvertRawToVhdx = true;
         ConvertRawToVhdxCommand.NotifyCanExecuteChanged();
         _backupLog.Add($"[{DateTime.Now:HH:mm:ss}] Raw záloha dokončena: {FormatBytesLong(bytesRead)} v {targetIndex + 1} části(ch)");
-        // Linux can expose a single RAW .img as a read-only NBD block device.
-        // Split images cannot be attached until all parts have been joined.
-        if (OperatingSystem.IsLinux() && canCreateSingleMountableImage &&
-            createdParts.Count == 1 && bytesRead == totalSize)
-            await VerifyAndOfferMountedImageAsync(currentImagePath, ct);
+        // User workflow may validate a single RAW IMG after this method exits.
+        _completedRawPath = canCreateSingleMountableImage && createdParts.Count == 1 && bytesRead == totalSize
+            ? currentImagePath : null;
     }
 
     /// <summary>
@@ -1514,7 +1520,7 @@ public partial class BackupViewModel : ViewModelBase, INavigableViewModel, IDisp
         using var manifestStream = File.OpenWrite(manifestPath);
         await JsonSerializer.SerializeAsync(manifestStream, manifest, _jsonOptions, ct);
         _backupLog.Add($"[{DateTime.Now:HH:mm:ss}] VHDx záloha dokončena: {FormatBytesLong(bytesRead)} v souboru s ověřenou strukturou");
-        await VerifyAndOfferMountedImageAsync(vhdxPath, ct);
+        _completedVhdxPath = vhdxPath;
     }
 
     /// <summary>
@@ -1631,7 +1637,10 @@ public partial class BackupViewModel : ViewModelBase, INavigableViewModel, IDisp
             StatusMessage = "Převádím RAW zálohu na VHDx...";
             _imageMountWasVerified = false;
             _imageMountVerificationMessage = null;
+            _convertedVhdxPath = null;
             await ConvertRawManifestToVhdxAsync(_lastBackupManifestPath, _backupCancellation?.Token ?? CancellationToken.None);
+            if (_convertedVhdxPath != null)
+                await VerifyAndOfferMountedImageAsync(_convertedVhdxPath, _backupCancellation?.Token ?? CancellationToken.None);
             BackupLogText = string.Join("\n", _backupLog);
             StatusMessage = _imageMountVerificationMessage == null ? "RAW záloha byla převedena na VHDx."
                 : (_imageMountWasVerified ? "✅ VHDx vytvořen a připojení ověřeno. "
@@ -1740,7 +1749,7 @@ public partial class BackupViewModel : ViewModelBase, INavigableViewModel, IDisp
         await using var manifestStream = File.Open(convertedManifestPath, FileMode.Create, FileAccess.Write, FileShare.Read);
         await JsonSerializer.SerializeAsync(manifestStream, convertedManifest, _jsonOptions, ct);
         _backupLog.Add($"[{DateTime.Now:HH:mm:ss}] RAW → VHDx hotovo: {vhdxPath} ({FormatBytesLong(totalBytes)})");
-        await VerifyAndOfferMountedImageAsync(vhdxPath, ct);
+        _convertedVhdxPath = vhdxPath;
     }
 
     private void NavigateToRestore()
