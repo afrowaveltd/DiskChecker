@@ -13,28 +13,26 @@ using Xunit;
 namespace DiskChecker.Tests;
 
 /// <summary>
-/// Tests verifying that raw telemetry is stored independently of the live graph buffer,
-/// that downsampling preserves critical information, and that the report/certificate
-/// uses the full raw data series.
+/// Tests bounded telemetry and preservation of full-disk speed profiles.
 /// </summary>
 public class SurfaceTestTelemetryTests
 {
     // ── Reflection helpers ──────────────────────────────────────────
 
-    private static List<SpeedSample> GetRawWriteSamples(SurfaceTestViewModel vm)
+    private static IReadOnlyList<SpeedSample> GetRetainedWriteSamples(SurfaceTestViewModel vm)
     {
-        var field = typeof(SurfaceTestViewModel).GetField("_rawWriteSamples",
+        var field = typeof(SurfaceTestViewModel).GetField("_writeRetainedSamples",
             BindingFlags.NonPublic | BindingFlags.Instance);
         Assert.NotNull(field);
-        return (List<SpeedSample>)field!.GetValue(vm)!;
+        return ((ProgressSpeedSampleBuffer)field!.GetValue(vm)!).Samples;
     }
 
-    private static List<SpeedSample> GetRawReadSamples(SurfaceTestViewModel vm)
+    private static IReadOnlyList<SpeedSample> GetRetainedReadSamples(SurfaceTestViewModel vm)
     {
-        var field = typeof(SurfaceTestViewModel).GetField("_rawReadSamples",
+        var field = typeof(SurfaceTestViewModel).GetField("_readRetainedSamples",
             BindingFlags.NonPublic | BindingFlags.Instance);
         Assert.NotNull(field);
-        return (List<SpeedSample>)field!.GetValue(vm)!;
+        return ((ProgressSpeedSampleBuffer)field!.GetValue(vm)!).Samples;
     }
 
     private static int GetMaxGraphPoints()
@@ -78,67 +76,46 @@ public class SurfaceTestTelemetryTests
         return (SurfaceTestViewModel)ctor.Invoke(args);
     }
 
-    // ── Test 1: Raw samples are not capped ───────────────────────────
+    // ── Tests 1–2: A pathological SSD must not consume unlimited RAM
+    // or erase the beginning of the live chart.
 
     [Fact]
-    public void RawSamples_AreNotCapped_After100kInserts()
+    public void OscillatingSsd_KeepsStartAndEnd_WithBoundedMemory()
     {
         var vm = CreateMinimalViewModel();
-
-        const int sampleCount = 100_000;
+        const int sampleCount = 20_000;
         for (int i = 0; i < sampleCount; i++)
         {
-            InvokeAddSpeedPointCore(vm, speed: 100.0 + (i % 50), dataPercent: i / 1000.0, phase: 0);
+            var speed = i % 7 == 0 ? 0 : 340;
+            InvokeAddSpeedPointCore(vm, speed, i * 100.0 / (sampleCount - 1), phase: 0);
         }
 
-        var rawWrites = GetRawWriteSamples(vm);
-        Assert.Equal(sampleCount, rawWrites.Count);
-
-        // Also verify read samples work the same way
-        for (int i = 0; i < sampleCount; i++)
-        {
-            InvokeAddSpeedPointCore(vm, speed: 80.0 + (i % 30), dataPercent: i / 1000.0, phase: 1);
-        }
-
-        var rawReads = GetRawReadSamples(vm);
-        Assert.Equal(sampleCount, rawReads.Count);
+        var retained = GetRetainedWriteSamples(vm);
+        Assert.True(retained.Count <= GetMaxGraphPoints());
+        Assert.True(vm.WriteSeriesValues.Count <= GetMaxGraphPoints());
+        Assert.Equal(retained.Count, vm.WriteSeriesValues.Count);
+        Assert.Equal(0, retained[0].ProgressPercent);
+        Assert.Equal(100, retained[^1].ProgressPercent);
+        Assert.Equal(0, vm.WriteSeriesValues[0].X);
+        Assert.Equal(100, vm.WriteSeriesValues[^1].X);
+        Assert.Contains(retained, x => x.SpeedMBps == 0 && x.ProgressPercent > 10);
+        Assert.Contains(retained, x => x.SpeedMBps == 340 && x.ProgressPercent > 70);
     }
 
-    // ── Test 2: Live graph is capped at MaxGraphPoints ───────────────
-
     [Fact]
-    public void LiveGraph_IsCapped_AtMaxGraphPoints()
+    public void OscillatingSsd_ReadPhaseIsAlsoBoundedAndComplete()
     {
         var vm = CreateMinimalViewModel();
-        var maxPoints = GetMaxGraphPoints();
-        Assert.True(maxPoints > 0, "MaxGraphPoints should be > 0");
+        const int sampleCount = 20_000;
+        for (int i = 0; i < sampleCount; i++)
+            InvokeAddSpeedPointCore(vm, i % 11 == 0 ? 12 : 400,
+                i * 100.0 / (sampleCount - 1), phase: 1);
 
-        // Insert more than MaxGraphPoints
-        const int totalSamples = 100_000;
-        for (int i = 0; i < totalSamples; i++)
-        {
-            InvokeAddSpeedPointCore(vm, speed: 100.0, dataPercent: i / 1000.0, phase: 0);
-        }
-
-        // Live graph (WriteSeriesValues) must not exceed MaxGraphPoints
-        Assert.True(vm.WriteSeriesValues.Count <= maxPoints,
-            $"WriteSeriesValues.Count={vm.WriteSeriesValues.Count} exceeds MaxGraphPoints={maxPoints}");
-
-        // Raw samples must hold everything
-        var rawWrites = GetRawWriteSamples(vm);
-        Assert.Equal(totalSamples, rawWrites.Count);
-
-        // Same for read
-        for (int i = 0; i < totalSamples; i++)
-        {
-            InvokeAddSpeedPointCore(vm, speed: 80.0, dataPercent: i / 1000.0, phase: 1);
-        }
-
-        Assert.True(vm.ReadSeriesValues.Count <= maxPoints,
-            $"ReadSeriesValues.Count={vm.ReadSeriesValues.Count} exceeds MaxGraphPoints={maxPoints}");
-
-        var rawReads = GetRawReadSamples(vm);
-        Assert.Equal(totalSamples, rawReads.Count);
+        var retained = GetRetainedReadSamples(vm);
+        Assert.True(retained.Count <= GetMaxGraphPoints());
+        Assert.Equal(retained.Count, vm.ReadSeriesValues.Count);
+        Assert.Equal(0, retained[0].ProgressPercent);
+        Assert.Equal(100, retained[^1].ProgressPercent);
     }
 
     // ── Test 3: Downsampling preserves first and last sample ─────────
@@ -435,67 +412,39 @@ public class SurfaceTestTelemetryTests
         Assert.True(result[0].SpeedMBps > 0, "First sample should have non-zero speed");
     }
 
-    // ── Integration: raw samples survive reset and are used for save ─
+    // ── Integration: write and read histories must remain independent.
 
     [Fact]
-    public void RawSamples_SurviveMultiplePhases()
+    public void RetainedSamples_KeepBothPhases()
     {
         var vm = CreateMinimalViewModel();
-
-        // Write phase: 500 samples
         for (int i = 0; i < 500; i++)
-        {
-            InvokeAddSpeedPointCore(vm, speed: 100.0, dataPercent: i / 5.0, phase: 0);
-        }
-
-        // Read phase: 500 samples
+            InvokeAddSpeedPointCore(vm, 100, i / 5.0, phase: 0);
         for (int i = 0; i < 500; i++)
-        {
-            InvokeAddSpeedPointCore(vm, speed: 80.0, dataPercent: i / 5.0, phase: 1);
-        }
+            InvokeAddSpeedPointCore(vm, 80, i / 5.0, phase: 1);
 
-        var rawWrites = GetRawWriteSamples(vm);
-        var rawReads = GetRawReadSamples(vm);
-
-        Assert.Equal(500, rawWrites.Count);
-        Assert.Equal(500, rawReads.Count);
-
-        // All write samples should have Phase = "Write"
-        Assert.All(rawWrites, s => Assert.Equal("Write", s.Phase));
-
-        // All read samples should have Phase = "Read"
-        Assert.All(rawReads, s => Assert.Equal("Read", s.Phase));
+        var writes = GetRetainedWriteSamples(vm);
+        var reads = GetRetainedReadSamples(vm);
+        Assert.Equal(500, writes.Count);
+        Assert.Equal(500, reads.Count);
+        Assert.All(writes, x => Assert.Equal("Write", x.Phase));
+        Assert.All(reads, x => Assert.Equal("Read", x.Phase));
     }
 
     [Fact]
-    public void RawSamples_AreIndependentOfLiveGraph()
+    public void RetainedSamples_MaintainEarlyGraphWhenSampleBudgetWouldHaveOverflowed()
     {
         var vm = CreateMinimalViewModel();
-        var maxPoints = GetMaxGraphPoints();
+        for (int i = 0; i < 16_000; i++)
+            InvokeAddSpeedPointCore(vm, i % 2 == 0 ? 0 : 340,
+                i * 25.0 / 15_999, phase: 0);
 
-        // Insert more than MaxGraphPoints
-        const int totalSamples = 80_000;
-        for (int i = 0; i < totalSamples; i++)
-        {
-            InvokeAddSpeedPointCore(vm, speed: 100.0 + (i % 20), dataPercent: i / 800.0, phase: 0);
-        }
-
-        // Live graph is capped
-        Assert.True(vm.WriteSeriesValues.Count <= maxPoints);
-
-        // Raw samples hold everything
-        var rawWrites = GetRawWriteSamples(vm);
-        Assert.Equal(totalSamples, rawWrites.Count);
-
-        // Verify raw samples contain data that was trimmed from live graph
-        // The first raw sample should have ProgressPercent = 0
-        Assert.Equal(0, rawWrites[0].ProgressPercent);
-
-        // Raw samples hold the full history; live graph is a subset
-        // The live graph may keep the first point (downsampling anchor),
-        // but raw samples always have more data than the live graph
-        Assert.True(rawWrites.Count > vm.WriteSeriesValues.Count,
-            $"Raw samples ({rawWrites.Count}) should exceed live graph ({vm.WriteSeriesValues.Count})");
+        // Many samples were generated in the first quarter of the disk;
+        // the graph must still start at zero rather than scroll to the right.
+        Assert.True(vm.WriteSeriesValues.Count <= GetMaxGraphPoints());
+        Assert.Equal(0, vm.WriteSeriesValues[0].X);
+        Assert.InRange(vm.WriteSeriesValues[^1].X!.Value, 24.99, 25.01);
+        Assert.Contains(vm.WriteSeriesValues, p => p.X > 20 && p.Y == 0);
     }
 
     // ── Edge cases ───────────────────────────────────────────────────
