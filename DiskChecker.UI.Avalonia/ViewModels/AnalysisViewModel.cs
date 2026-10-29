@@ -8,6 +8,7 @@ using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
 
 namespace DiskChecker.UI.Avalonia.ViewModels;
@@ -43,6 +44,9 @@ public partial class AnalysisViewModel : ViewModelBase
     private AnalysisStallListItem? _selectedStall;
     private double? _zoomStartPercent;
     private double? _zoomEndPercent;
+    private double _manualZoomStart;
+    private double _manualZoomEnd = 10;
+    private int _zoomRequestVersion;
 
     // SMART trend properties
     private SmartTrendReport? _smartTrendReport;
@@ -73,6 +77,7 @@ public partial class AnalysisViewModel : ViewModelBase
         SelectAnomalyCommand = new RelayCommand<AnalysisAnomalyListItem>(SelectAnomaly);
         SelectStallCommand = new RelayCommand<AnalysisStallListItem>(SelectStall);
         ResetZoomCommand = new RelayCommand(ResetZoom);
+        ApplyManualZoomCommand = new RelayCommand(() => SetZoom(ManualZoomStart, ManualZoomEnd, padding: false));
 
         _ = InitializeWorkspaceAsync();
     }
@@ -86,6 +91,10 @@ public partial class AnalysisViewModel : ViewModelBase
         {
             if (SetProperty(ref _selectedSummary, value))
             {
+                Interlocked.Increment(ref _zoomRequestVersion);
+                _zoomStartPercent = _zoomEndPercent = null;
+                OnPropertyChanged(nameof(IsZoomActive));
+                OnPropertyChanged(nameof(ZoomText));
                 LoadSelectedAnalysisCommand.NotifyCanExecuteChanged();
                 _ = LoadSelectedAnalysisAsync();
             }
@@ -362,6 +371,9 @@ public partial class AnalysisViewModel : ViewModelBase
     public IRelayCommand<AnalysisAnomalyListItem> SelectAnomalyCommand { get; }
     public IRelayCommand<AnalysisStallListItem> SelectStallCommand { get; }
     public IRelayCommand ResetZoomCommand { get; }
+    public IRelayCommand ApplyManualZoomCommand { get; }
+    public double ManualZoomStart { get => _manualZoomStart; set => SetProperty(ref _manualZoomStart, Math.Clamp(value, 0, 100)); }
+    public double ManualZoomEnd { get => _manualZoomEnd; set => SetProperty(ref _manualZoomEnd, Math.Clamp(value, 0, 100)); }
 
     private void RebuildChartData()
     {
@@ -517,17 +529,22 @@ public partial class AnalysisViewModel : ViewModelBase
         StatusMessage = $"Vybrán stall: {item.DisplayText}";
     }
 
-    private void SetZoom(double startPercent, double endPercent)
+    private void SetZoom(double startPercent, double endPercent, bool padding = true)
     {
-        var start = Math.Clamp(Math.Min(startPercent, endPercent) - 0.5, 0, 100);
-        var end = Math.Clamp(Math.Max(startPercent, endPercent) + 0.5, 0, 100);
-        if (end - start < 1)
-            end = Math.Min(100, start + 1);
+        var pad = padding ? 0.5 : 0d;
+        var start = Math.Clamp(Math.Min(startPercent, endPercent) - pad, 0, 100);
+        var end = Math.Clamp(Math.Max(startPercent, endPercent) + pad, 0, 100);
+        if (end - start < 0.000001)
+        {
+            start = Math.Max(0, start - 0.0005);
+            end = Math.Min(100, end + 0.0005);
+        }
         _zoomStartPercent = start;
         _zoomEndPercent = end;
         OnPropertyChanged(nameof(IsZoomActive));
         OnPropertyChanged(nameof(ZoomText));
         RebuildChartData();
+        _ = ReloadZoomTelemetryAsync();
     }
 
     private void ResetZoom()
@@ -537,6 +554,32 @@ public partial class AnalysisViewModel : ViewModelBase
         OnPropertyChanged(nameof(IsZoomActive));
         OnPropertyChanged(nameof(ZoomText));
         RebuildChartData();
+        _ = ReloadZoomTelemetryAsync();
+    }
+
+    private async Task ReloadZoomTelemetryAsync()
+    {
+        var data = AnalysisData;
+        if (data == null) return;
+        var sessionId = data.Session.Id;
+        var start = _zoomStartPercent ?? 0d;
+        var end = _zoomEndPercent ?? 100d;
+        var request = Interlocked.Increment(ref _zoomRequestVersion);
+        try
+        {
+            var highResolution = await _analysisDataService.GetTelemetryRangeAsync(
+                sessionId, start, end);
+            if (request != _zoomRequestVersion || !ReferenceEquals(data, AnalysisData))
+                return;
+            data.TelemetrySamples = highResolution;
+            OnPropertyChanged(nameof(FullTelemetryLine));
+            RebuildChartData();
+        }
+        catch (Exception ex)
+        {
+            if (request == _zoomRequestVersion)
+                StatusMessage = $"Zoom: nepodařilo se načíst detailní vzorky: {ex.Message}";
+        }
     }
 
     private async Task InitializeWorkspaceAsync()
