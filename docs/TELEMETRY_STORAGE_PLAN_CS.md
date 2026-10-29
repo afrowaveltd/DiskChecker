@@ -278,3 +278,38 @@ Anomálie nyní ukládají `StartBytesProcessed`, `EndBytesProcessed` a odvozen�
 ## Implementováno nyní: SMART analýza
 
 Přidán `SmartAnalysisReport` do `TestAnalysisData`. `TestAnalysisDataService` nyní vyhodnocuje SMART before/after snapshoty, změny kritických atributů a základní SSD wear heuristiky (`PercentageUsed`, `AvailableSpare`, `WearLevelingCount`). UI analytického pracoviště zobrazuje SMART summary a detail nejdůležitějších delta/wear položek. Interpretace SSD wear zůstává opatrná, protože vendor atributy nejsou jednotně normalizované.
+
+
+## Doplnění 2026-10-29: plná binární telemetrie pro extrémně kolísající SSD
+
+Vedle krátkého živého grafu a redukovaných SQLite řádků se nyní při sanitizačním
+testu zapisuje každý progress callback do lokálního binárního souboru `.dat`.
+To umožní v Analýze přiblížit konkrétní úsek a vrátit se k měřením, která se
+do živého grafu ani do 512bodového profilu certifikátu nevešla.
+
+- Uložení: `LocalApplicationData/DiskChecker/Telemetry/<SessionId:N>.dat`.
+- Při běhu vzniká `pending_<guid>.dat`; po vytvoření `TestSession` se
+  přesune pod jeho GUID. Nedokončené `pending` soubory jsou ponechány k případné
+  záchraně telemetrie, nezaznamenávají se jako platné session.
+- Formát `DCT1` v1: hlavička, následované bloky nejvýše **20 záznamů**.
+  Hlavička bloku obsahuje fázi, počet a minimum/maximum pozice na disku;
+  vzorek obsahuje čas, uplynulý čas, pozici, bytes, rychlost a stall flag.
+  Každý vzorek má pevnou velikost 42 B; pro 50 000 bodů jde zhruba o 2,2 MB.
+- Načítání výřezu přeskočí celé bloky mimo dané procentuální rozmezí
+  pomocí seek; průběžný paměťový buffer zachová první, minimum, maximum a
+  poslední vzorek každého dílčího úseku. Originál `.dat` se nikdy neredukuje.
+- Záznamy pro živý graf, uložené SQLite profily a PDF **nejsou** identické s
+  detailním archivem. Pro úplný průběh je autoritativní archiv.
+- Pokud soubor chybí (historické měření, přesunutá databáze), Analýza používá
+  stávající SQLite vzorky. Chyba zápisu archivu se zobrazí samostatným
+  upozorněním a nemění výsledek samotného testu.
+- PDF používá více reprezentativních bodů a zachovává krátké propady na nulu;
+  archiv obsahuje podstatně detailnější průběh.
+- Po zkopírování databáze na jiný počítač je pro přesnou Analýzu potřeba
+  přenést také příslušný `.dat` soubor do místního adresáře Telemetry.
+
+**Omezení:** zatím se archivují progress callbacky sanitizačního zápisu a
+čtení, nikoliv nezávislé submilisekundové I/O události. Přesnost je omezena
+frekvencí, s níž samotný měřicí backend dodává progress informace. Výřez
+podle procent při dlouhém zamrznutí na stejné pozici stále reprezentuje několik
+významných extrémů; pro úplné časové detaily zůstávají záznamy v `.dat`.
