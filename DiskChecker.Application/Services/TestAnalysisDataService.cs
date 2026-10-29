@@ -52,7 +52,6 @@ public class TestAnalysisDataService : ITestAnalysisDataService
                     point.TestSessionId = testSessionId;
             }
             catch (IOException) { /* Archive unavailable: fall back to SQLite. */ }
-            catch (InvalidDataException) { /* Damaged archive: use saved overview. */ }
         }
 
         // Fallback: legacy owned speed samples (QuickRead/FullRead/FullWrite/SurfaceScan)
@@ -103,7 +102,6 @@ public class TestAnalysisDataService : ITestAnalysisDataService
                 return result;
             }
             catch (IOException) { /* Fallback to persisted samples. */ }
-            catch (InvalidDataException) { /* Fallback to persisted samples. */ }
         }
 
         var low = Math.Clamp(Math.Min(startPercent, endPercent), 0, 100);
