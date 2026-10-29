@@ -9,5 +9,6 @@ namespace DiskChecker.Core.Interfaces;
 public interface ITestAnalysisDataService
 {
     Task<TestAnalysisData?> GetAnalysisDataAsync(int testSessionId, CancellationToken cancellationToken = default);
+    Task<List<TestTelemetrySample>> GetTelemetryRangeAsync(int testSessionId, double startPercent, double endPercent, CancellationToken cancellationToken = default);
     Task<List<TestAnalysisSummary>> GetDiskAnalysisSummariesAsync(int diskCardId, CancellationToken cancellationToken = default);
 }
