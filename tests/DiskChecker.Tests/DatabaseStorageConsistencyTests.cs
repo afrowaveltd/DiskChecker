@@ -110,7 +110,7 @@ public class DatabaseStorageConsistencyTests
             CreateMarkerDb(other, "OTHER");
 
             var settings = new SettingsService(folder);
-            var cs = new SqliteConnectionStringBuilder { DataSource = active }.ToString();
+            var cs = new SqliteConnectionStringBuilder { DataSource = active, Pooling = false }.ToString();
             await settings.SetDatabaseStorageSettingsAsync(new DatabaseStorageSettings
             {
                 Provider = DatabaseProviderKind.Sqlite, ConnectionString = cs
@@ -120,12 +120,15 @@ public class DatabaseStorageConsistencyTests
             services.AddSingleton(settings);
             services.AddDbContext<DiskCheckerDbContext>(o => o.UseSqlite(cs));
             services.AddScoped<BackupService>();
-            using var provider = services.BuildServiceProvider();
-            using var scope = provider.CreateScope();
-            var backup = scope.ServiceProvider.GetRequiredService<BackupService>();
             var zipPath = Path.Combine(folder, "backup.zip");
-
-            await backup.CreateBackupAsync(zipPath);
+            // Release the provider and its DbContext before deleting the test
+            // directory; Windows cannot delete SQLite files held by a connection.
+            using (var provider = services.BuildServiceProvider())
+            using (var scope = provider.CreateScope())
+            {
+                var backup = scope.ServiceProvider.GetRequiredService<BackupService>();
+                await backup.CreateBackupAsync(zipPath);
+            }
 
             using (var archive = ZipFile.OpenRead(zipPath))
             {
@@ -145,7 +148,7 @@ public class DatabaseStorageConsistencyTests
 
     private static void CreateMarkerDb(string path, string marker)
     {
-        using var conn = new SqliteConnection(new SqliteConnectionStringBuilder { DataSource = path }.ToString());
+        using var conn = new SqliteConnection(new SqliteConnectionStringBuilder { DataSource = path, Pooling = false }.ToString());
         conn.Open();
         using var command = conn.CreateCommand();
         command.CommandText = "CREATE TABLE Marker (Value TEXT NOT NULL); INSERT INTO Marker (Value) VALUES ($value);";
@@ -155,7 +158,7 @@ public class DatabaseStorageConsistencyTests
 
     private static string ReadMarker(string path)
     {
-        using var conn = new SqliteConnection(new SqliteConnectionStringBuilder { DataSource = path }.ToString());
+        using var conn = new SqliteConnection(new SqliteConnectionStringBuilder { DataSource = path, Pooling = false }.ToString());
         conn.Open();
         using var command = conn.CreateCommand();
         command.CommandText = "SELECT Value FROM Marker LIMIT 1;";
