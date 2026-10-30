@@ -15,6 +15,7 @@
 - Avalonia zachovává jednu aktivní konfiguraci DB od startu do restartu. Změna backendu v Nastavení platí až po restartu.
 - SQLite řetězce s relativní cestou se normalizují na absolutní.
 - Záloha SQLite využívá `Microsoft.Data.Sqlite.SqliteConnection.BackupDatabase` nad *aktivní* DB (včetně konzistentního WAL snapshotu), nikoliv slepou kopii souboru. Obnova vytváří předběžnou `.pre_restore_<timestamp>` zálohu aktivní DB a zachovává její konfigurovanou cestu. Pro jiné backendy zatím použijte jejich nativní zálohovací nástroje.
+- Nové ZIP zálohy se ukládají do podsložky `Backups` vedle aktuálního `settings.json` (uživatel potvrdil, že dosavadní zálohování nepoužíval).
 - Při zakládání Karty disku už není shoda `PhysicalDriveN` ani `/dev/sdX` důvodem pro sloučení různých sériových čísel.
 - Upraveny životnosti DI a přidány regresní testy.
 
