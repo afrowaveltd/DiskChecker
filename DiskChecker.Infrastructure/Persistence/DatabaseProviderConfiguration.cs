@@ -11,7 +11,8 @@ public static class DatabaseProviderConfiguration
         settings ??= DatabaseStorageSettings.Default;
         var connectionString = string.IsNullOrWhiteSpace(settings.ConnectionString)
             ? DatabaseStorageSettings.Default.ConnectionString
-            : settings.ConnectionString!;
+                ?? throw new InvalidOperationException("Default database connection string is missing.")
+            : settings.ConnectionString;
 
         switch (settings.Provider)
         {
