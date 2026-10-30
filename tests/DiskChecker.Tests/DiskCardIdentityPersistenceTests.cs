@@ -35,8 +35,15 @@ public class DiskCardIdentityPersistenceTests
         });
 
         Assert.NotEqual(first.Id, second.Id);
-        Assert.Equal(2, await db.DiskCards.CountAsync());
-        Assert.Equal("Hitachi", (await db.DiskCards.FindAsync(first.Id))!.ModelName);
-        Assert.Equal(500_000_000_000L, (await db.DiskCards.FindAsync(first.Id))!.Capacity);
+        Assert.Equal(2, await db.DiskCards.CountAsync(TestContext.Current.CancellationToken));
+        var persistedFirst = await db.DiskCards.FindAsync(
+            new object?[] { first.Id }, TestContext.Current.CancellationToken);
+        var persistedSecond = await db.DiskCards.FindAsync(
+            new object?[] { second.Id }, TestContext.Current.CancellationToken);
+        Assert.NotNull(persistedFirst);
+        Assert.NotNull(persistedSecond);
+        Assert.Equal("Hitachi", persistedFirst.ModelName);
+        Assert.Equal(500_000_000_000L, persistedFirst.Capacity);
+        Assert.Equal("WesternDigital", persistedSecond.ModelName);
     }
 }
