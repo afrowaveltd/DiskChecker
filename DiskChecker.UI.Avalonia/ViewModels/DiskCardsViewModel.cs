@@ -338,6 +338,7 @@ public partial class DiskCardsViewModel : ViewModelBase, INavigableViewModel
             };
             _selectedDiskService.SelectedDiskDisplayName = card.ModelName;
             _selectedDiskService.IsSelectedDiskLocked = card.IsLocked;
+            _selectedDiskService.SelectedDiskCardId = card.Id;
 
             _navigationService.NavigateTo<DiskCardDetailViewModel>();
             await Task.CompletedTask;
