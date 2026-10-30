@@ -23,6 +23,12 @@ public interface ISelectedDiskService
     bool IsSelectedDiskLocked { get; set; }
 
     /// <summary>
+    /// Exact persisted card selected in the disk-card list; null for live disk selection.
+    /// Never infer an existing card solely from a reused OS device path.
+    /// </summary>
+    int? SelectedDiskCardId { get; set; }
+
+    /// <summary>
     /// Gets or sets selected test session id used for contextual navigation (history/report -> certificate).
     /// </summary>
     int? SelectedTestSessionId { get; set; }
