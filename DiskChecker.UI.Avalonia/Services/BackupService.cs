@@ -43,20 +43,10 @@ public class BackupService : IBackupService
         ArgumentNullException.ThrowIfNull(settings);
         _settingsPath = settings.SettingsFilePath;
 
-        // Keep the legacy backup directory so existing backup ZIPs remain visible.
-        _defaultBackupDir = Path.Combine(GetApplicationDataDirectory(), "Backups");
+        // Keep backups under the same user-config directory as settings.
+        // The old hard-coded LocalAppData backup folder was never used in production.
+        _defaultBackupDir = Path.Combine(Path.GetDirectoryName(_settingsPath)!, "Backups");
         Directory.CreateDirectory(_defaultBackupDir);
-    }
-
-    private static string GetApplicationDataDirectory()
-    {
-        if (OperatingSystem.IsWindows())
-            return Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "DiskChecker");
-        if (OperatingSystem.IsLinux())
-            return Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "DiskChecker");
-        if (OperatingSystem.IsMacOS())
-            return Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".config", "DiskChecker");
-        return Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "DiskChecker");
     }
 
     private string GetActiveSqliteConnectionString()
