@@ -1235,7 +1235,14 @@ public partial class SurfaceTestViewModel : ViewModelBase, INavigableViewModel, 
             // Capture final temperature after sanitization
             await RefreshTemperatureAsync();
 
-            if(result?.Success == true && !string.IsNullOrWhiteSpace(successMessage))
+            // A finished disk operation is NOT proof that its test card was saved.
+            if(result?.Success == true && !string.IsNullOrWhiteSpace(errorContext))
+            {
+               await _dialogService.ShowErrorAsync(
+                  L.Get("SurfaceTest.Status.SanitizeCompleted"),
+                  L.Get("SurfaceTest.Status.SanitizeSaveFailed", errorContext));
+            }
+            else if(result?.Success == true && !string.IsNullOrWhiteSpace(successMessage))
             {
                await _dialogService.ShowSuccessAsync(L.Get("SurfaceTest.Status.SanitizeCompleted"), successMessage);
             }
