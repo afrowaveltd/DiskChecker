@@ -90,6 +90,12 @@ public class DiskCardTestService
            new EventId(4, nameof(DiskCardTestService)),
            "Saved sanitization for disk card {CardId}: Success {Success}, Errors {Errors}");
 
+   private static readonly Action<ILogger, int, Exception?> LogChartSaveFailed =
+       LoggerMessage.Define<int>(
+           LogLevel.Warning,
+           new EventId(5, nameof(DiskCardTestService)),
+           "Sanitization session {SessionId} was persisted, but optional chart generation failed");
+
    public DiskCardTestService(
        DiskCheckerDbContext dbContext,
        IQualityCalculator qualityCalculator,
@@ -790,18 +796,25 @@ public class DiskCardTestService
 
       await _dbContext.SaveChangesAsync(cancellationToken);
 
-      session.ChartImagePath = await _certificateGenerator.GenerateAndStoreChartImageAsync(session, cancellationToken);
-      if(!string.IsNullOrWhiteSpace(session.ChartImagePath))
+      // The authoritative session is already in the database. The chart is an
+      // optional representation and must not make a saved test look missing.
+      try
       {
-         // Clear change tracker to prevent tracking conflicts with owned entities (SmartAttributeSummary)
-         // from the first SaveChanges call
-         _dbContext.ChangeTracker.Clear();
-         
-         // Attach only the session entity and update only the ChartImagePath property
-         // This avoids re-tracking the entire navigation graph (SmartBefore/SmartAfter/etc.)
-         var entry = _dbContext.TestSessions.Attach(session);
-         entry.Property(s => s.ChartImagePath).IsModified = true;
-         await _dbContext.SaveChangesAsync(cancellationToken);
+         session.ChartImagePath = await _certificateGenerator.GenerateAndStoreChartImageAsync(session, cancellationToken);
+         if(!string.IsNullOrWhiteSpace(session.ChartImagePath))
+         {
+            // Reattach only the path, not the large SMART/sample graph.
+            _dbContext.ChangeTracker.Clear();
+            var entry = _dbContext.TestSessions.Attach(session);
+            entry.Property(s => s.ChartImagePath).IsModified = true;
+            await _dbContext.SaveChangesAsync(cancellationToken);
+         }
+      }
+      catch(Exception ex) when (ex is not OperationCanceledException)
+      {
+         if(_logger != null)
+            LogChartSaveFailed(_logger, session.Id, ex);
+         // The test record is durable, and the chart can be regenerated.
       }
 
       if(_logger != null)
