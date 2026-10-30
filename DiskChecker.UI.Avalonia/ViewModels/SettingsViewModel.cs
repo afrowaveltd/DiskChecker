@@ -244,11 +244,13 @@ namespace DiskChecker.UI.Avalonia.ViewModels
                 SmartProbeTimeoutSeconds = timeout;
                 SmartProbeParallelism = parallel;
                 
-                var dbLocationWarning = (_settingsService as DiskChecker.Application.Services.SettingsService)?
-                    .OtherDatabaseCandidates;
+                var dbLocationWarning = (_settingsService as DiskChecker.Application.Services.SettingsService)?.OtherDatabaseCandidates;
+                // Do not expose PostgreSQL/SQL Server credentials in status text.
+                var databaseDescription = string.Equals(DatabaseProvider, DatabaseProviderKind.Sqlite.ToString(), StringComparison.OrdinalIgnoreCase)
+                    ? DatabaseConnectionString : DatabaseProvider;
                 StatusMessage = dbLocationWarning is { Count: > 0 }
-                    ? $"Aktivní DB: {DatabaseConnectionString}. Pozor: nalezeny i další databáze: {string.Join("; ", dbLocationWarning)}. Nebyly změněny."
-                    : $"Nastavení načteno. Databáze: {DatabaseConnectionString}";
+                    ? $"Aktivní DB: {databaseDescription}. Pozor: nalezeny i další databáze: {string.Join("; ", dbLocationWarning)}. Nebyly změněny."
+                    : $"Nastavení načteno. Databáze: {databaseDescription}";
             }
             catch (InvalidOperationException ex)
             {
