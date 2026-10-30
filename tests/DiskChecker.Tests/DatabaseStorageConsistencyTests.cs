@@ -61,7 +61,7 @@ public class DatabaseStorageConsistencyTests
 
             var reopened = await new SettingsService(folder).GetDatabaseStorageSettingsAsync();
             Assert.Equal(DatabaseProviderKind.PostgreSql, reopened.Provider);
-            Assert.Contains("Database=testdb", reopened.ConnectionString, StringComparison.Ordinal);
+            Assert.Contains("Database=testdb", reopened.ConnectionString!);
         }
         finally
         {
@@ -101,9 +101,10 @@ public class DatabaseStorageConsistencyTests
 
             using (var archive = ZipFile.OpenRead(zipPath))
             {
-                var entry = Assert.NotNull(archive.GetEntry("DiskChecker.db"));
+                var entry = archive.GetEntry("DiskChecker.db");
+                Assert.NotNull(entry);
                 var extracted = Path.Combine(folder, "extracted.db");
-                entry.ExtractToFile(extracted);
+                entry!.ExtractToFile(extracted);
                 Assert.Equal("ACTIVE", ReadMarker(extracted));
             }
             Assert.Equal("OTHER", ReadMarker(other));
