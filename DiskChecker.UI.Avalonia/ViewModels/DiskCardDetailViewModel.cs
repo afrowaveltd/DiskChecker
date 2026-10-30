@@ -439,6 +439,7 @@ public partial class DiskCardDetailViewModel : ViewModelBase, INavigableViewMode
         };
         _selectedDiskService.SelectedDiskDisplayName = CurrentCard.ModelName;
         _selectedDiskService.IsSelectedDiskLocked = CurrentCard.IsLocked;
+        _selectedDiskService.SelectedDiskCardId = CurrentCard.Id;
         _selectedDiskService.SelectedTestSessionId = SelectedSession?.Id ?? TestSessions.FirstOrDefault()?.Id;
         _selectedDiskService.SelectedCertificateId = LatestCertificate?.Id;
 
