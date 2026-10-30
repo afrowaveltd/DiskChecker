@@ -45,6 +45,10 @@ public class SanitizationProgressTests
     [Fact]
     public async Task LinuxWriteAndReadVerify_ReportProgressAndVerifyZeros_OnTemporaryFile()
     {
+        // This test exercises Linux O_DIRECT/PInvoke and cannot run on Windows.
+        if (!OperatingSystem.IsLinux())
+            return;
+
         var path = Path.GetTempFileName();
         const int fileSize = 1024 * 1024;
 
