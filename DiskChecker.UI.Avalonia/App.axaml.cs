@@ -142,7 +142,7 @@ public partial class App : global::Avalonia.Application
         services.AddScoped<DiskChecker.Application.Services.TestHistoryService>();
         services.AddScoped<IHistoryService, HistoryServiceAdapter>();
         // Registered above as the single startup settings instance.
-        services.AddSingleton<SmartCheckService>();
+        services.AddScoped<SmartCheckService>();
         services.AddScoped<DiskCardTestService>();
         services.AddScoped<EmailSettingsService>();
         services.AddScoped<IEmailSettingsService, EmailSettingsService>();
@@ -175,7 +175,7 @@ public partial class App : global::Avalonia.Application
         services.AddSingleton<IBackupService, BackupService>();
         
         // Data export/import service
-        services.AddSingleton<IDataExportImportService, DataExportImportService>();
+        services.AddScoped<IDataExportImportService, DataExportImportService>();
         
         // Settings service interface
         services.AddSingleton<ISettingsService>(sp => sp.GetRequiredService<SettingsService>());
