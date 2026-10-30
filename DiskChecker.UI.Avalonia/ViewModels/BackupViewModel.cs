@@ -1423,12 +1423,12 @@ public partial class BackupViewModel : ViewModelBase, INavigableViewModel, IDisp
         using var vhdxStream = new FileStream(vhdxPath, FileMode.Open, FileAccess.Write,
             FileShare.Read, blockSize, FileOptions.SequentialScan);
 
+        long unreadableBytes = 0;
         try
         {
             using var deviceStream = new FileStream(SourceDrive.Path, FileMode.Open, FileAccess.Read,
                 FileShare.Read, blockSize, FileOptions.SequentialScan);
 
-            long unreadableBytes = 0;
             int consecutiveErrors = 0;
             const int maxConsecutiveErrors = 64;
 
