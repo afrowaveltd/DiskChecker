@@ -46,6 +46,34 @@ public class DatabaseStorageConsistencyTests
     }
 
     [Fact]
+    public async Task ChangingDatabaseSettings_DoesNotChangeStartupDatabase()
+    {
+        var folder = Path.Combine(Path.GetTempPath(), "DiskCheckerDbTests_" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(folder);
+        try
+        {
+            var settings = new SettingsService(folder);
+            var original = settings.StartupDatabaseStorageSettings.ConnectionString;
+            await settings.SetDatabaseStorageSettingsAsync(new DatabaseStorageSettings
+            {
+                Provider = DatabaseProviderKind.Sqlite,
+                ConnectionString = new SqliteConnectionStringBuilder
+                {
+                    DataSource = Path.Combine(folder, "future.db")
+                }.ToString()
+            });
+
+            Assert.Equal(original, settings.StartupDatabaseStorageSettings.ConnectionString);
+            var restarted = new SettingsService(folder);
+            Assert.NotEqual(original, restarted.StartupDatabaseStorageSettings.ConnectionString);
+        }
+        finally
+        {
+            Directory.Delete(folder, recursive: true);
+        }
+    }
+
+    [Fact]
     public async Task DatabaseSettings_PersistNonSqliteBackend()
     {
         var folder = Path.Combine(Path.GetTempPath(), "DiskCheckerDbTests_" + Guid.NewGuid().ToString("N"));
