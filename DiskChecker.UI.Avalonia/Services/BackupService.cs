@@ -81,7 +81,7 @@ public class BackupService : IBackupService
                 var snapshotPath = Path.Combine(tempDir, "DiskChecker.db");
                 using (var source = new Microsoft.Data.Sqlite.SqliteConnection(cs))
                 using (var target = new Microsoft.Data.Sqlite.SqliteConnection(
-                    new Microsoft.Data.Sqlite.SqliteConnectionStringBuilder { DataSource = snapshotPath }.ToString()))
+                    new Microsoft.Data.Sqlite.SqliteConnectionStringBuilder { DataSource = snapshotPath, Pooling = false }.ToString()))
                 {
                     source.Open();
                     target.Open();
@@ -136,7 +136,7 @@ public class BackupService : IBackupService
             await Task.Run(() =>
             {
                 using var source = new Microsoft.Data.Sqlite.SqliteConnection(
-                    new Microsoft.Data.Sqlite.SqliteConnectionStringBuilder { DataSource = importedPath }.ToString());
+                    new Microsoft.Data.Sqlite.SqliteConnectionStringBuilder { DataSource = importedPath, Pooling = false }.ToString());
                 source.Open();
                 using (var verify = source.CreateCommand())
                 {
