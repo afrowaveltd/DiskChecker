@@ -505,8 +505,21 @@ public partial class DiskCardDetailViewModel : ViewModelBase, INavigableViewMode
                 disk.FirmwareVersion);
 
             DiskCard? card = await _diskCardRepository.GetBySerialNumberAsync(identityKey)
-                           ?? await _diskCardRepository.GetBySerialNumberAsync(legacyKey)
-                           ?? await _diskCardRepository.GetByDevicePathAsync(disk.Path);
+                           ?? await _diskCardRepository.GetBySerialNumberAsync(legacyKey);
+
+            // Paths are transient OS slots, not identities. An unknown-serial drive
+            // may reuse a historical path only if model AND capacity still match.
+            if (card == null && !DriveIdentityResolver.IsReliableSerialNumber(disk.SerialNumber))
+            {
+                var byPath = await _diskCardRepository.GetByDevicePathAsync(disk.Path);
+                if (byPath != null &&
+                    !DriveIdentityResolver.IsReliableSerialNumber(byPath.SerialNumber) &&
+                    string.Equals(byPath.ModelName.Trim(), (disk.Name ?? "Unknown").Trim(), StringComparison.OrdinalIgnoreCase) &&
+                    Math.Abs((double)byPath.Capacity - disk.TotalSize) < 32d * 1024 * 1024)
+                {
+                    card = byPath;
+                }
+            }
 
             if (card == null)
             {
