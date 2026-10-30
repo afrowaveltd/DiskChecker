@@ -28,8 +28,7 @@ public sealed class ProgressSpeedSampleBuffer
     /// <param name="bucketCount">Maximum number of progress buckets; each keeps at most four samples.</param>
     public ProgressSpeedSampleBuffer(int bucketCount = 2000, double rangeStart = 0, double rangeEnd = 100)
     {
-        if (bucketCount < 1)
-            throw new ArgumentOutOfRangeException(nameof(bucketCount));
+        ArgumentOutOfRangeException.ThrowIfLessThan(bucketCount, 1);
         if (!double.IsFinite(rangeStart) || !double.IsFinite(rangeEnd) || rangeEnd <= rangeStart)
             throw new ArgumentOutOfRangeException(nameof(rangeEnd), "The progress window must be increasing.");
         _bucketCount = bucketCount;
