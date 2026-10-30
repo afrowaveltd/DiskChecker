@@ -126,13 +126,13 @@ public partial class App : global::Avalonia.Application
         // Core services
         services.AddCoreServices();
 
-        // Database context - selected in SettingsService (SQLite by default, PostgreSQL/SQL Server optional).
-        services.AddDbContext<DiskCheckerDbContext>((provider, options) =>
-        {
-            var settingsService = provider.GetRequiredService<SettingsService>();
-            var storage = settingsService.GetDatabaseStorageSettingsAsync().GetAwaiter().GetResult();
-            DatabaseProviderConfiguration.Configure(options, storage);
-        });
+        // Select exactly one DB at startup. Editing the setting while the app is
+        // running must not redirect newly-created DbContext scopes to another DB.
+        var startupSettings = new SettingsService();
+        var activeDatabase = startupSettings.GetDatabaseStorageSettingsAsync().GetAwaiter().GetResult();
+        services.AddSingleton(startupSettings);
+        services.AddDbContext<DiskCheckerDbContext>(options =>
+            DatabaseProviderConfiguration.Configure(options, activeDatabase));
 
         // Application services
         // HistoryService depends on DbContext (scoped). Register the concrete service as scoped
@@ -141,7 +141,7 @@ public partial class App : global::Avalonia.Application
         services.AddScoped<DiskChecker.Application.Services.HistoryService>();
         services.AddScoped<DiskChecker.Application.Services.TestHistoryService>();
         services.AddScoped<IHistoryService, HistoryServiceAdapter>();
-        services.AddSingleton<SettingsService>();
+        // Registered above as the single startup settings instance.
         services.AddSingleton<SmartCheckService>();
         services.AddScoped<DiskCardTestService>();
         services.AddScoped<EmailSettingsService>();
