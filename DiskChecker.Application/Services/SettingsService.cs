@@ -42,6 +42,9 @@ public class SettingsService : ISettingsService
     /// <summary>Actual settings file used by this instance, including user or test overrides.</summary>
     public string SettingsFilePath => _settingsFilePath;
 
+    /// <summary>The database selected when this settings service started; later edits need a restart.</summary>
+    public DatabaseStorageSettings StartupDatabaseStorageSettings { get; private set; } = DatabaseStorageSettings.Default;
+
     /// <summary>Other pre-existing SQLite files to review manually; never merged or deleted automatically.</summary>
     public IReadOnlyList<string> OtherDatabaseCandidates { get; private set; } = Array.Empty<string>();
     
@@ -74,6 +77,11 @@ public class SettingsService : ISettingsService
 
         LoadSettingsFromFile();
         PinDatabaseLocation(appFolder, settingsDirectoryPath != null);
+        StartupDatabaseStorageSettings = new DatabaseStorageSettings
+        {
+            Provider = _databaseStorageSettings.Provider,
+            ConnectionString = _databaseStorageSettings.ConnectionString
+        };
         LoadLockedDisksFromFile();
         LoadDarkThemeFromFile();
     }
