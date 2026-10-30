@@ -244,7 +244,11 @@ namespace DiskChecker.UI.Avalonia.ViewModels
                 SmartProbeTimeoutSeconds = timeout;
                 SmartProbeParallelism = parallel;
                 
-                StatusMessage = "Nastavení načteno";
+                var dbLocationWarning = (_settingsService as DiskChecker.Application.Services.SettingsService)?
+                    .OtherDatabaseCandidates;
+                StatusMessage = dbLocationWarning is { Count: > 0 }
+                    ? $"Aktivní DB: {DatabaseConnectionString}. Pozor: nalezeny i další databáze: {string.Join("; ", dbLocationWarning)}. Nebyly změněny."
+                    : $"Nastavení načteno. Databáze: {DatabaseConnectionString}";
             }
             catch (InvalidOperationException ex)
             {
