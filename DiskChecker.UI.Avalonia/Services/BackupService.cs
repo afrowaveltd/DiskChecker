@@ -29,198 +29,178 @@ public class BackupService : IBackupService
         WriteIndented = true
     };
 
-    private readonly string _databasePath;
+    private readonly Microsoft.Extensions.DependencyInjection.IServiceScopeFactory _scopeFactory;
     private readonly string _settingsPath;
     private readonly string _defaultBackupDir;
 
-    public BackupService()
+    public BackupService(
+        Microsoft.Extensions.DependencyInjection.IServiceScopeFactory scopeFactory,
+        DiskChecker.Application.Services.SettingsService settings)
     {
-        // Get application data directory
-        var appDataDir = GetApplicationDataDirectory();
-        _defaultBackupDir = Path.Combine(appDataDir, "Backups");
-        
-        // Database path - adjust based on actual location
-        var projectDir = AppDomain.CurrentDomain.BaseDirectory;
-        _databasePath = Path.Combine(projectDir, "DiskChecker.db");
-        
-        // Settings path
-        _settingsPath = Path.Combine(appDataDir, "settings.json");
-        
-        // Ensure backup directory exists
+        _scopeFactory = scopeFactory ?? throw new ArgumentNullException(nameof(scopeFactory));
+        ArgumentNullException.ThrowIfNull(settings);
+        _settingsPath = settings.SettingsFilePath;
+
+        // Keep the legacy backup directory so existing backup ZIPs remain visible.
+        _defaultBackupDir = Path.Combine(GetApplicationDataDirectory(), "Backups");
         Directory.CreateDirectory(_defaultBackupDir);
     }
 
     private static string GetApplicationDataDirectory()
     {
         if (OperatingSystem.IsWindows())
-        {
-            return Path.Combine(
-                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-                "DiskChecker");
-        }
-        else if (OperatingSystem.IsLinux())
-        {
-            return Path.Combine(
-                Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
-                "DiskChecker");
-        }
-        else if (OperatingSystem.IsMacOS())
-        {
-            // Try ApplicationSupport, fallback to .config
-            var home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
-            var configPath = Path.Combine(home, ".config");
-            return Path.Combine(configPath, "DiskChecker");
-        }
-        
-        return Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
-            "DiskChecker");
+            return Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "DiskChecker");
+        if (OperatingSystem.IsLinux())
+            return Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "DiskChecker");
+        if (OperatingSystem.IsMacOS())
+            return Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".config", "DiskChecker");
+        return Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "DiskChecker");
+    }
+
+    private string GetActiveSqliteConnectionString()
+    {
+        using var scope = _scopeFactory.CreateScope();
+        using var context = scope.ServiceProvider.GetRequiredService<DiskChecker.Infrastructure.Persistence.DiskCheckerDbContext>();
+        if (context.Database.GetDbConnection() is not Microsoft.Data.Sqlite.SqliteConnection connection)
+            throw new NotSupportedException("Záloha ZIP podporuje pouze SQLite. Pro PostgreSQL/SQL Server použijte nástroje příslušné databáze.");
+        return connection.ConnectionString;
     }
 
     public async Task<string> CreateBackupAsync(string destinationPath)
     {
         var timestamp = DateTime.Now.ToString("yyyyMMdd_HHmmss");
         var backupFileName = $"DiskChecker_Backup_{timestamp}.zip";
-        var fullPath = string.IsNullOrEmpty(destinationPath) 
+        var fullPath = string.IsNullOrEmpty(destinationPath)
             ? Path.Combine(_defaultBackupDir, backupFileName)
             : destinationPath;
+        var outputDir = Path.GetDirectoryName(Path.GetFullPath(fullPath));
+        if (outputDir != null) Directory.CreateDirectory(outputDir);
 
-        // Ensure directory exists
-        var directory = Path.GetDirectoryName(fullPath);
-        if (!string.IsNullOrEmpty(directory))
+        // BackupDatabase creates a consistent online SQLite snapshot including WAL
+        // contents. Copying an arbitrary .db file from the executable directory did not.
+        var cs = GetActiveSqliteConnectionString();
+        var dataSource = new Microsoft.Data.Sqlite.SqliteConnectionStringBuilder(cs).DataSource;
+        var tempDir = Path.Combine(Path.GetTempPath(), $"DiskChecker_BackupSnapshot_{Guid.NewGuid():N}");
+        Directory.CreateDirectory(tempDir);
+        try
         {
-            Directory.CreateDirectory(directory);
+            await Task.Run(() =>
+            {
+                var snapshotPath = Path.Combine(tempDir, "DiskChecker.db");
+                using (var source = new Microsoft.Data.Sqlite.SqliteConnection(cs))
+                using (var target = new Microsoft.Data.Sqlite.SqliteConnection(
+                    new Microsoft.Data.Sqlite.SqliteConnectionStringBuilder { DataSource = snapshotPath }.ToString()))
+                {
+                    source.Open();
+                    target.Open();
+                    source.BackupDatabase(target);
+                }
+
+                var metadata = new BackupMetadata
+                {
+                    Version = "1.1.0",
+                    CreatedAt = DateTime.Now,
+                    DatabasePath = dataSource,
+                    SettingsPath = _settingsPath
+                };
+
+                using var zip = ZipFile.Open(fullPath, ZipArchiveMode.Create);
+                zip.CreateEntryFromFile(snapshotPath, "DiskChecker.db");
+                if (File.Exists(_settingsPath))
+                    zip.CreateEntryFromFile(_settingsPath, "settings.json");
+                var entry = zip.CreateEntry("backup_metadata.json");
+                using var writer = new StreamWriter(entry.Open());
+                writer.Write(JsonSerializer.Serialize(metadata, _jsonOptions));
+            });
+            return fullPath;
         }
-
-        // Create backup metadata
-        var metadata = new BackupMetadata
+        finally
         {
-            Version = "1.0.0",
-            CreatedAt = DateTime.Now,
-            DatabasePath = _databasePath,
-            SettingsPath = _settingsPath
-        };
-
-        // Create ZIP file
-        await Task.Run(() =>
-        {
-            using var zipArchive = ZipFile.Open(fullPath, ZipArchiveMode.Create);
-            
-            // Add database file if it exists
-            if (File.Exists(_databasePath))
-            {
-                zipArchive.CreateEntryFromFile(_databasePath, "DiskChecker.db");
-            }
-            
-            // Add WAL and SHM files if they exist
-            var walPath = _databasePath + "-wal";
-            var shmPath = _databasePath + "-shm";
-            
-            if (File.Exists(walPath))
-            {
-                zipArchive.CreateEntryFromFile(walPath, "DiskChecker.db-wal");
-            }
-            
-            if (File.Exists(shmPath))
-            {
-                zipArchive.CreateEntryFromFile(shmPath, "DiskChecker.db-shm");
-            }
-
-            // Add settings file if it exists
-            if (File.Exists(_settingsPath))
-            {
-                zipArchive.CreateEntryFromFile(_settingsPath, "settings.json");
-            }
-
-            // Add metadata
-            var metadataJson = JsonSerializer.Serialize(metadata, _jsonOptions);
-            var metadataEntry = zipArchive.CreateEntry("backup_metadata.json");
-            using var writer = new StreamWriter(metadataEntry.Open());
-            writer.Write(metadataJson);
-        });
-
-        return fullPath;
+            Directory.Delete(tempDir, recursive: true);
+        }
     }
 
     public async Task RestoreBackupAsync(string backupPath)
     {
         if (!File.Exists(backupPath))
-        {
             throw new FileNotFoundException("Backup file not found.", backupPath);
-        }
 
-        // Validate backup file
-        using var zipArchive = ZipFile.OpenRead(backupPath);
-        
-        var dbEntry = zipArchive.GetEntry("DiskChecker.db");
-        if (dbEntry == null)
+        // Restore the *active* SQLite DB. Never overwrite a guessed application
+        // directory DB. The application must be restarted after a restore.
+        var cs = GetActiveSqliteConnectionString();
+        var livePath = new Microsoft.Data.Sqlite.SqliteConnectionStringBuilder(cs).DataSource;
+        var tempDir = Path.Combine(Path.GetTempPath(), $"DiskChecker_Restore_{Guid.NewGuid():N}");
+        Directory.CreateDirectory(tempDir);
+        try
         {
-            throw new InvalidOperationException("Invalid backup file: database not found.");
-        }
-
-        await Task.Run(() =>
-        {
-            // Extract to temporary location first
-            var tempDir = Path.Combine(Path.GetTempPath(), $"DiskChecker_Restore_{Guid.NewGuid():N}");
-            Directory.CreateDirectory(tempDir);
-            
-            try
+            using (var archive = ZipFile.OpenRead(backupPath))
             {
-                // Extract all files
-                zipArchive.ExtractToDirectory(tempDir, overwriteFiles: true);
-                
-                // Get app data directory
-                var appDataDir = GetApplicationDataDirectory();
-                Directory.CreateDirectory(appDataDir);
-                
-                // Restore database
-                var extractedDb = Path.Combine(tempDir, "DiskChecker.db");
-                if (File.Exists(extractedDb))
+                var dbEntry = archive.GetEntry("DiskChecker.db")
+                    ?? throw new InvalidDataException("Záloha neobsahuje DiskChecker.db.");
+                archive.ExtractToDirectory(tempDir, overwriteFiles: true);
+            }
+
+            var importedPath = Path.Combine(tempDir, "DiskChecker.db");
+            await Task.Run(() =>
+            {
+                using var source = new Microsoft.Data.Sqlite.SqliteConnection(
+                    new Microsoft.Data.Sqlite.SqliteConnectionStringBuilder { DataSource = importedPath }.ToString());
+                source.Open();
+                using (var verify = source.CreateCommand())
                 {
-                    // Backup current database before restoring
-                    if (File.Exists(_databasePath))
+                    verify.CommandText = "PRAGMA quick_check;";
+                    if (!string.Equals(verify.ExecuteScalar()?.ToString(), "ok", StringComparison.OrdinalIgnoreCase))
+                        throw new InvalidDataException("Obnovovaný soubor SQLite neprošel kontrolou integrity.");
+                }
+
+                // Preserve the currently active data before any replacement.
+                var preRestore = livePath + ".pre_restore_" + DateTime.UtcNow.ToString("yyyyMMdd_HHmmss");
+                using (var current = new Microsoft.Data.Sqlite.SqliteConnection(cs))
+                using (var backup = new Microsoft.Data.Sqlite.SqliteConnection(
+                    new Microsoft.Data.Sqlite.SqliteConnectionStringBuilder { DataSource = preRestore }.ToString()))
+                {
+                    current.Open();
+                    backup.Open();
+                    current.BackupDatabase(backup);
+                }
+
+                using var destination = new Microsoft.Data.Sqlite.SqliteConnection(cs);
+                destination.Open();
+                source.BackupDatabase(destination);
+            });
+
+            // Old backup settings may point to a different DB: preserve the
+            // active provider/location, while restoring unrelated preferences.
+            var importedSettings = Path.Combine(tempDir, "settings.json");
+            if (File.Exists(importedSettings))
+            {
+                var restored = System.Text.Json.Nodes.JsonNode.Parse(
+                    await File.ReadAllTextAsync(importedSettings))?.AsObject();
+                if (restored != null)
+                {
+                    if (File.Exists(_settingsPath))
                     {
-                        var preRestoreBackup = _databasePath + ".pre_restore";
-                        File.Copy(_databasePath, preRestoreBackup, overwrite: true);
+                        var current = System.Text.Json.Nodes.JsonNode.Parse(
+                            await File.ReadAllTextAsync(_settingsPath))?.AsObject();
+                        if (current != null)
+                        {
+                            foreach (var key in new[] { "DatabaseProvider", "DatabaseConnectionString" })
+                            {
+                                if (current.TryGetPropertyValue(key, out var value))
+                                    restored[key] = value?.DeepClone();
+                                else
+                                    restored.Remove(key);
+                            }
+                        }
                     }
-                    
-                    File.Copy(extractedDb, _databasePath, overwrite: true);
-                }
-
-                // Restore WAL and SHM files
-                var extractedWal = Path.Combine(tempDir, "DiskChecker.db-wal");
-                var extractedShm = Path.Combine(tempDir, "DiskChecker.db-shm");
-                
-                if (File.Exists(extractedWal))
-                {
-                    File.Copy(extractedWal, _databasePath + "-wal", overwrite: true);
-                }
-                
-                if (File.Exists(extractedShm))
-                {
-                    File.Copy(extractedShm, _databasePath + "-shm", overwrite: true);
-                }
-
-                // Restore settings
-                var extractedSettings = Path.Combine(tempDir, "settings.json");
-                if (File.Exists(extractedSettings))
-                {
-                    File.Copy(extractedSettings, _settingsPath, overwrite: true);
+                    await File.WriteAllTextAsync(_settingsPath, restored.ToJsonString(_jsonOptions));
                 }
             }
-            finally
-            {
-                // Cleanup temp directory
-                try
-                {
-                    Directory.Delete(tempDir, recursive: true);
-                }
-                catch
-                {
-                    // Ignore cleanup errors
-                }
-            }
-        });
+        }
+        finally
+        {
+            Directory.Delete(tempDir, recursive: true);
+        }
     }
 
     public string GetDefaultBackupDirectory()
