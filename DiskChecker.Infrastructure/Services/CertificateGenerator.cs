@@ -32,7 +32,8 @@ public class CertificateGenerator : ICertificateGenerator
 
     // Chart rendering constants
     private const int MaxChartPoints = 512;
-    private const int CertificateChartPoints = 512;
+    // Certificate PDF profiles are intentionally compact; live test charts use a separate budget.
+    private const int CertificateChartPoints = 32;
 
     // Certificate JPEG dimensions (A4 at 150 DPI, extended for all content)
     private const int CertWidth = 1240;
