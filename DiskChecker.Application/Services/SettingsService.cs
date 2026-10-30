@@ -1,5 +1,7 @@
 ﻿using DiskChecker.Core.Interfaces;
 using DiskChecker.Core.Models;
+using DiskChecker.Infrastructure.Persistence;
+using Microsoft.Data.Sqlite;
 using System.Text.Json;
 using System.Linq;
 
@@ -30,11 +32,15 @@ public class SettingsService : ISettingsService
     private bool _emailIncludeCertificateAttachment = true;
     private string? _certificatePath;
     private DatabaseStorageSettings _databaseStorageSettings = DatabaseStorageSettings.Default;
+    private bool _hasStoredDatabaseSettings;
     private AnalysisWorkspaceMode _analysisWorkspaceMode = AnalysisWorkspaceMode.Auto;
     
     private readonly string _settingsFilePath;
     private readonly string _lockedDisksFilePath;
     private readonly string _darkThemeFilePath;
+
+    /// <summary>Actual settings file used by this instance, including user or test overrides.</summary>
+    public string SettingsFilePath => _settingsFilePath;
     
     // Cached JsonSerializerOptions for performance
     private static readonly JsonSerializerOptions JsonOptions = new() { WriteIndented = true };
@@ -64,6 +70,7 @@ public class SettingsService : ISettingsService
         _darkThemeFilePath = Path.Combine(appFolder, "dark_theme");
 
         LoadSettingsFromFile();
+        PinDatabaseLocation(appFolder);
         LoadLockedDisksFromFile();
         LoadDarkThemeFromFile();
     }
@@ -248,11 +255,18 @@ public class SettingsService : ISettingsService
 
     public Task SetDatabaseStorageSettingsAsync(DatabaseStorageSettings settings)
     {
-        _databaseStorageSettings = settings ?? DatabaseStorageSettings.Default;
-        if (_databaseStorageSettings.Provider == DatabaseProviderKind.Sqlite && string.IsNullOrWhiteSpace(_databaseStorageSettings.ConnectionString))
+        ArgumentNullException.ThrowIfNull(settings);
+        var connectionString = string.IsNullOrWhiteSpace(settings.ConnectionString)
+            ? DatabaseStorageSettings.Default.ConnectionString
+            : settings.ConnectionString;
+        _databaseStorageSettings = new DatabaseStorageSettings
         {
-            _databaseStorageSettings.ConnectionString = DatabaseStorageSettings.Default.ConnectionString;
-        }
+            Provider = settings.Provider,
+            ConnectionString = settings.Provider == DatabaseProviderKind.Sqlite
+                ? DatabaseProviderConfiguration.NormalizeSqliteConnectionString(connectionString!)
+                : connectionString
+        };
+        _hasStoredDatabaseSettings = true;
         SaveSettingsToFile();
         return Task.CompletedTask;
     }
@@ -362,6 +376,51 @@ public class SettingsService : ISettingsService
     public Task SetSmartProbeParallelismAsync(int parallelism) { _smartProbeParallelism = Math.Max(0, parallelism); SaveSettingsToFile(); return Task.CompletedTask; }
     public Task SetSmartCacheTtlMinutesAsyncPersistent(int minutes) { _smartCacheTtlMinutes = Math.Max(1, minutes); SaveSettingsToFile(); return Task.CompletedTask; }
 
+    /// <summary>
+    /// Freeze the database path at first launch so a different working directory
+    /// cannot silently create an unrelated SQLite database on a later launch.
+    /// Existing CWD databases win for legacy compatibility; no files are moved,
+    /// combined or deleted. Explicitly configured database settings always win.
+    /// </summary>
+    private void PinDatabaseLocation(string appFolder)
+    {
+        if (_databaseStorageSettings.Provider != DatabaseProviderKind.Sqlite)
+            return;
+
+        if (!_hasStoredDatabaseSettings)
+        {
+            var inWorkingDirectory = Path.GetFullPath("DiskChecker.db");
+            var besideExecutable = Path.Combine(AppContext.BaseDirectory, "DiskChecker.db");
+            var inAppData = Path.Combine(appFolder, "DiskChecker.db");
+            var selectedPath = File.Exists(inWorkingDirectory) ? inWorkingDirectory
+                : File.Exists(besideExecutable) ? besideExecutable : inAppData;
+            _databaseStorageSettings.ConnectionString = new SqliteConnectionStringBuilder
+            {
+                DataSource = selectedPath
+            }.ToString();
+        }
+        else
+        {
+            _databaseStorageSettings.ConnectionString = DatabaseProviderConfiguration.NormalizeSqliteConnectionString(
+                _databaseStorageSettings.ConnectionString ?? DatabaseStorageSettings.Default.ConnectionString!);
+        }
+
+        // Persist the chosen location before database creation; on failure a
+        // subsequent process would otherwise be free to choose a different path.
+        SaveDatabaseLocationOrThrow();
+    }
+
+    private void SaveDatabaseLocationOrThrow()
+    {
+        SaveSettingsToFile();
+        if (!File.Exists(_settingsFilePath))
+            throw new IOException($"Nelze uložit umístění databáze do {_settingsFilePath}.");
+        using var doc = JsonDocument.Parse(File.ReadAllText(_settingsFilePath));
+        if (!doc.RootElement.TryGetProperty("DatabaseConnectionString", out var stored) ||
+            !string.Equals(stored.GetString(), _databaseStorageSettings.ConnectionString, StringComparison.Ordinal))
+            throw new IOException($"Nepodařilo se bezpečně uložit vybranou databázi do {_settingsFilePath}.");
+    }
+
     private void LoadSettingsFromFile()
     {
         try
@@ -388,6 +447,21 @@ public class SettingsService : ISettingsService
                         _emailIncludeCertificateAttachment = includeAttachment;
                     if (doc.TryGetValue("CertificatePath", out var certPathObj))
                         _certificatePath = string.IsNullOrWhiteSpace(certPathObj?.ToString()) ? null : certPathObj.ToString()!.Trim();
+                    if (doc.TryGetValue("DatabaseProvider", out var dbProviderObj) &&
+                        Enum.TryParse<DatabaseProviderKind>(dbProviderObj?.ToString(), true, out var dbProvider))
+                    {
+                        _databaseStorageSettings.Provider = dbProvider;
+                        _hasStoredDatabaseSettings = true;
+                    }
+                    if (doc.TryGetValue("DatabaseConnectionString", out var dbConnectionObj) &&
+                        !string.IsNullOrWhiteSpace(dbConnectionObj?.ToString()))
+                    {
+                        _databaseStorageSettings.ConnectionString = dbConnectionObj!.ToString();
+                        _hasStoredDatabaseSettings = true;
+                    }
+                    if (doc.TryGetValue("AnalysisWorkspaceMode", out var workspaceObj) &&
+                        Enum.TryParse<AnalysisWorkspaceMode>(workspaceObj?.ToString(), true, out var workspace))
+                        _analysisWorkspaceMode = workspace;
                 }
             }
         }
@@ -410,7 +484,10 @@ public class SettingsService : ISettingsService
                 ["ReportRecipientEmail"] = _reportRecipientEmail,
                 ["EmailSendOnlyForLongRunningTests"] = _emailSendOnlyForLongRunningTests,
                 ["EmailIncludeCertificateAttachment"] = _emailIncludeCertificateAttachment,
-                ["CertificatePath"] = _certificatePath ?? string.Empty
+                ["CertificatePath"] = _certificatePath ?? string.Empty,
+                ["DatabaseProvider"] = _databaseStorageSettings.Provider.ToString(),
+                ["DatabaseConnectionString"] = _databaseStorageSettings.ConnectionString ?? string.Empty,
+                ["AnalysisWorkspaceMode"] = _analysisWorkspaceMode.ToString()
             };
             var json = JsonSerializer.Serialize(dict, JsonOptions);
             File.WriteAllText(_settingsFilePath, json);
