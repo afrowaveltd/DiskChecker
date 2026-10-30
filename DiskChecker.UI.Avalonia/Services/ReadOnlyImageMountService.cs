@@ -146,7 +146,8 @@ public static class ReadOnlyImageMountService
                 try
                 {
                     var sizeText = await RunAsync("blockdev", new[] { "--getsize64", device }, ct);
-                    long.TryParse(sizeText.Trim(), out size);
+                    if (!long.TryParse(sizeText.Trim(), out size))
+                        size = 0;
                 }
                 catch (IOException) { /* NBD partition discovery may not have completed. */ }
                 if (size <= 0)
