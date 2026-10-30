@@ -244,13 +244,20 @@ namespace DiskChecker.UI.Avalonia.ViewModels
                 SmartProbeTimeoutSeconds = timeout;
                 SmartProbeParallelism = parallel;
                 
-                var dbLocationWarning = (_settingsService as DiskChecker.Application.Services.SettingsService)?.OtherDatabaseCandidates;
-                // Do not expose PostgreSQL/SQL Server credentials in status text.
-                var databaseDescription = string.Equals(DatabaseProvider, DatabaseProviderKind.Sqlite.ToString(), StringComparison.OrdinalIgnoreCase)
-                    ? DatabaseConnectionString : DatabaseProvider;
+                var concreteSettings = _settingsService as DiskChecker.Application.Services.SettingsService;
+                var dbLocationWarning = concreteSettings?.OtherDatabaseCandidates;
+                var active = concreteSettings?.StartupDatabaseStorageSettings ?? dbSettings;
+                // Never display non-SQLite connection strings here: they may include credentials.
+                var activeDescription = active.Provider == DatabaseProviderKind.Sqlite
+                    ? active.ConnectionString ?? "(bez cesty)"
+                    : active.Provider.ToString();
+                var pendingChanges = active.Provider != dbSettings.Provider ||
+                    !string.Equals(active.ConnectionString, dbSettings.ConnectionString, StringComparison.Ordinal);
+                var databaseMessage = $"Aktivní DB: {activeDescription}" +
+                    (pendingChanges ? ". Nastavení nové databáze se použije až po restartu." : "");
                 StatusMessage = dbLocationWarning is { Count: > 0 }
-                    ? $"Aktivní DB: {databaseDescription}. Pozor: nalezeny i další databáze: {string.Join("; ", dbLocationWarning)}. Nebyly změněny."
-                    : $"Nastavení načteno. Databáze: {databaseDescription}";
+                    ? $"{databaseMessage}. Pozor: nalezeny i další databáze: {string.Join("; ", dbLocationWarning)}. Nebyly změněny."
+                    : databaseMessage;
             }
             catch (InvalidOperationException ex)
             {
