@@ -80,7 +80,9 @@ public class DiskCardRepository : IDiskCardRepository
       card.SerialNumber = BuildSafeSerialIdentity(card);
 
       var existing = await _context.DiskCards
-          .FirstOrDefaultAsync(c => c.SerialNumber == card.SerialNumber || c.DevicePath == card.DevicePath);
+          // An OS path (PhysicalDriveN, /dev/sdX) can be reassigned to another disk.
+           // Never merge the new card into an unrelated historical card by path alone.
+           .FirstOrDefaultAsync(c => c.SerialNumber == card.SerialNumber);
       if(existing != null)
       {
          ApplyCardMetadata(existing, card);
