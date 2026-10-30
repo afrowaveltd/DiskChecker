@@ -17,7 +17,7 @@ public class ReadOnlyImageMountServiceTests
     {
         var missing = Path.Combine(Path.GetTempPath(),
             "missing-" + Guid.NewGuid().ToString("N") + ".vhdx");
-        var result = await ReadOnlyImageMountService.TryAttachAsync(missing);
+        var result = await ReadOnlyImageMountService.TryAttachAsync(missing, TestContext.Current.CancellationToken);
         Assert.False(result.Verified);
         Assert.Null(result.Mount);
         Assert.Contains("neexistuje", result.Message);
@@ -29,6 +29,6 @@ public class ReadOnlyImageMountServiceTests
         var alreadyOwnedByUser = new ReadOnlyImageMountService.MountedImage(
             "user-image.vhdx", "Z:", null, Array.Empty<string>(), false);
         // Must be a harmless no-op on every OS, including Linux CI.
-        await ReadOnlyImageMountService.DetachAsync(alreadyOwnedByUser);
+        await ReadOnlyImageMountService.DetachAsync(alreadyOwnedByUser, TestContext.Current.CancellationToken);
     }
 }
