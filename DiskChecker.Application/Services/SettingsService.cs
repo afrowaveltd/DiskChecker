@@ -41,6 +41,9 @@ public class SettingsService : ISettingsService
 
     /// <summary>Actual settings file used by this instance, including user or test overrides.</summary>
     public string SettingsFilePath => _settingsFilePath;
+
+    /// <summary>Other pre-existing SQLite files to review manually; never merged or deleted automatically.</summary>
+    public IReadOnlyList<string> OtherDatabaseCandidates { get; private set; } = Array.Empty<string>();
     
     // Cached JsonSerializerOptions for performance
     private static readonly JsonSerializerOptions JsonOptions = new() { WriteIndented = true };
@@ -70,7 +73,7 @@ public class SettingsService : ISettingsService
         _darkThemeFilePath = Path.Combine(appFolder, "dark_theme");
 
         LoadSettingsFromFile();
-        PinDatabaseLocation(appFolder);
+        PinDatabaseLocation(appFolder, settingsDirectoryPath != null);
         LoadLockedDisksFromFile();
         LoadDarkThemeFromFile();
     }
@@ -267,7 +270,7 @@ public class SettingsService : ISettingsService
                 : connectionString
         };
         _hasStoredDatabaseSettings = true;
-        SaveSettingsToFile();
+        SaveDatabaseLocationOrThrow();
         return Task.CompletedTask;
     }
 
@@ -382,17 +385,21 @@ public class SettingsService : ISettingsService
     /// Existing CWD databases win for legacy compatibility; no files are moved,
     /// combined or deleted. Explicitly configured database settings always win.
     /// </summary>
-    private void PinDatabaseLocation(string appFolder)
+    private void PinDatabaseLocation(string appFolder, bool isIsolatedSettingsDirectory)
     {
         if (_databaseStorageSettings.Provider != DatabaseProviderKind.Sqlite)
             return;
 
+        var inWorkingDirectory = Path.GetFullPath("DiskChecker.db");
+        var besideExecutable = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "DiskChecker.db"));
+        var inAppData = Path.GetFullPath(Path.Combine(appFolder, "DiskChecker.db"));
+
         if (!_hasStoredDatabaseSettings)
         {
-            var inWorkingDirectory = Path.GetFullPath("DiskChecker.db");
-            var besideExecutable = Path.Combine(AppContext.BaseDirectory, "DiskChecker.db");
-            var inAppData = Path.Combine(appFolder, "DiskChecker.db");
-            var selectedPath = File.Exists(inWorkingDirectory) ? inWorkingDirectory
+            // Test-specific settings folders must never accidentally attach a real
+            // user DB from the working directory or executable directory.
+            var selectedPath = isIsolatedSettingsDirectory ? inAppData
+                : File.Exists(inWorkingDirectory) ? inWorkingDirectory
                 : File.Exists(besideExecutable) ? besideExecutable : inAppData;
             _databaseStorageSettings.ConnectionString = new SqliteConnectionStringBuilder
             {
@@ -403,6 +410,17 @@ public class SettingsService : ISettingsService
         {
             _databaseStorageSettings.ConnectionString = DatabaseProviderConfiguration.NormalizeSqliteConnectionString(
                 _databaseStorageSettings.ConnectionString ?? DatabaseStorageSettings.Default.ConnectionString!);
+        }
+
+        var currentSource = new SqliteConnectionStringBuilder(_databaseStorageSettings.ConnectionString).DataSource;
+        if (!isIsolatedSettingsDirectory)
+        {
+            OtherDatabaseCandidates = new[] { inWorkingDirectory, besideExecutable, inAppData }
+                .Distinct(OperatingSystem.IsWindows() ? StringComparer.OrdinalIgnoreCase : StringComparer.Ordinal)
+                .Where(path => File.Exists(path) &&
+                    !string.Equals(path, currentSource, OperatingSystem.IsWindows()
+                        ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal))
+                .ToArray();
         }
 
         // Persist the chosen location before database creation; on failure a
