@@ -24,7 +24,7 @@ public class DatabaseStorageConsistencyTests
         {
             var first = new SettingsService(folder);
             var initial = await first.GetDatabaseStorageSettingsAsync();
-            var defaultPath = new SqliteConnectionStringBuilder(initial.ConnectionString).DataSource;
+            var defaultPath = new SqliteConnectionStringBuilder(initial.ConnectionString ?? throw new InvalidOperationException("Missing SQLite connection string")).DataSource;
             Assert.Equal(Path.GetFullPath(Path.Combine(folder, "DiskChecker.db")), defaultPath);
 
             var explicitPath = Path.Combine(folder, "other", "chosen.db");
@@ -37,7 +37,7 @@ public class DatabaseStorageConsistencyTests
             var restarted = new SettingsService(folder);
             var restored = await restarted.GetDatabaseStorageSettingsAsync();
             Assert.Equal(DatabaseProviderKind.Sqlite, restored.Provider);
-            Assert.Equal(explicitPath, new SqliteConnectionStringBuilder(restored.ConnectionString).DataSource);
+            Assert.Equal(explicitPath, new SqliteConnectionStringBuilder(restored.ConnectionString ?? throw new InvalidOperationException("Restored SQLite connection string missing")).DataSource);
         }
         finally
         {
