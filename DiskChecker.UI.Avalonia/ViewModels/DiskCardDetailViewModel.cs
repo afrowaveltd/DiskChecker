@@ -325,10 +325,15 @@ public partial class DiskCardDetailViewModel : ViewModelBase, INavigableViewMode
 
     public void OnNavigatedTo()
     {
-        // Load card based on selected disk service
-        if (_selectedDiskService.SelectedDisk != null)
+        // An existing card selected in the cards list must be opened by its
+        // database ID, not by a re-usable PhysicalDrive path or a display serial.
+        if (_selectedDiskService.SelectedDiskCardId is { } cardId)
         {
-            // Try to find existing card or create new one for the disk
+            _ = LoadCardAsync(cardId);
+        }
+        else if (_selectedDiskService.SelectedDisk != null)
+        {
+            // Live device selection: resolve identity only without a selected card ID.
             _ = LoadCardForDiskAsync(_selectedDiskService.SelectedDisk);
         }
     }
