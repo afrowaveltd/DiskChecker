@@ -415,7 +415,10 @@ public class SettingsService : ISettingsService
         var currentSource = new SqliteConnectionStringBuilder(_databaseStorageSettings.ConnectionString).DataSource;
         if (!isIsolatedSettingsDirectory)
         {
-            OtherDatabaseCandidates = new[] { inWorkingDirectory, besideExecutable, inAppData }
+            var localAppData = Path.GetFullPath(Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                "DiskChecker", "DiskChecker.db"));
+            OtherDatabaseCandidates = new[] { inWorkingDirectory, besideExecutable, inAppData, localAppData }
                 .Distinct(OperatingSystem.IsWindows() ? StringComparer.OrdinalIgnoreCase : StringComparer.Ordinal)
                 .Where(path => File.Exists(path) &&
                     !string.Equals(path, currentSource, OperatingSystem.IsWindows()
