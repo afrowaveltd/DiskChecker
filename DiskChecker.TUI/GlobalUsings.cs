@@ -1,0 +1,11 @@
+global using System;
+global using System.Collections.Generic;
+global using System.IO;
+global using System.Linq;
+global using System.Threading;
+global using System.Threading.Tasks;
+global using DiskChecker.Application.Services;
+global using DiskChecker.Core.Models;
+global using DiskChecker.TUI.Services;
+global using Microsoft.Extensions.DependencyInjection;
+global using Spectre.Console;

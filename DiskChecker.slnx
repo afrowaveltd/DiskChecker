@@ -13,5 +13,7 @@
     <Platform Solution="*|x64" Project="x64" />
   </Project>
   <Project Path="DiskChecker.UI.Avalonia/DiskChecker.UI.Avalonia.csproj" />
+  <Project Path="DiskChecker.TUI/DiskChecker.TUI.csproj" />
   <Project Path="tests/DiskChecker.Tests/DiskChecker.Tests.csproj" />
+  <Project Path="tests/DiskChecker.Tui.Tests/DiskChecker.Tui.Tests.csproj" />
 </Solution>

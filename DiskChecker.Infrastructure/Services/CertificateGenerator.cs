@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Buffers;
 using System.Collections.Generic;
 using System.Diagnostics;
@@ -104,9 +104,16 @@ public class CertificateGenerator : ICertificateGenerator
             }
         }
 
-        return Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
-            "DiskChecker");
+        // An empty ApplicationData folder (sandboxed or stripped environments) would
+        // otherwise produce a path relative to the current directory and scatter the
+        // Certificates/Labels/ChartCache folders wherever the process happens to run.
+        var applicationData = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
+        if (string.IsNullOrWhiteSpace(applicationData))
+        {
+            applicationData = Path.Combine(Path.GetTempPath(), "DiskChecker-Certificates");
+        }
+
+        return Path.Combine(applicationData, "DiskChecker");
     }
 
     private static string? GetOriginalUserHome(string sudoUser)

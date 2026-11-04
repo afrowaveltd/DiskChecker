@@ -2,22 +2,42 @@
 
   <PropertyGroup>
     <OutputType>Exe</OutputType>
-    <TargetFramework>net8.0-windows</TargetFramework>
+    <TargetFramework>net10.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
-    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <RootNamespace>DiskChecker.TUI</RootNamespace>
     <AssemblyName>dcheck</AssemblyName>
     <Platforms>AnyCPU;x64</Platforms>
-    <SelfContained>true</SelfContained>
-    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
-    <NoWarn>$(NoWarn);CA1848;SYSLIB0014</NoWarn>
+    <RuntimeIdentifiers>win-x64;linux-x64;linux-arm64;osx-x64;osx-arm64</RuntimeIdentifiers>
+    <InvariantGlobalization>false</InvariantGlobalization>
+    <!-- The terminal UI intentionally talks to platform specific storage APIs behind
+         OperatingSystem guards; the guard is expressed at call sites, not per assembly. -->
+    <NoWarn>$(NoWarn);CA1416;CA1848;CA1812</NoWarn>
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="Spectre.Console" Version="0.49.1" />
-    <PackageReference Include="Microsoft.EntityFrameworkCore.Sqlite" Version="8.0.14" />
-    <PackageReference Include="System.Management" Version="8.0.0" />
+    <PackageReference Include="Spectre.Console" Version="0.57.0" />
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="10.0.9" />
+    <PackageReference Include="Microsoft.Extensions.Logging" Version="10.0.9" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\DiskChecker.Core\DiskChecker.Core.csproj" />
+    <ProjectReference Include="..\DiskChecker.Application\DiskChecker.Application.csproj" />
+    <ProjectReference Include="..\DiskChecker.Infrastructure\DiskChecker.Infrastructure.csproj" />
+  </ItemGroup>
+
+  <!-- Localization strings are shared with the desktop application so both UIs
+       always speak with exactly the same vocabulary. -->
+  <ItemGroup>
+    <Content Include="..\DiskChecker.UI.Avalonia\Locales\*.json" Link="Locales\%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="..\DiskChecker.UI.Avalonia\appsettings.json" Link="appsettings.json" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleTo">
+      <_Parameter1>DiskChecker.Tui.Tests</_Parameter1>
+    </AssemblyAttribute>
   </ItemGroup>
 
 </Project>

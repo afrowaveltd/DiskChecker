@@ -109,8 +109,9 @@ DiskChecker je dnes více než jednoduchá SMART utilita. Obsahuje kompletní ap
 | `DiskChecker.Infrastructure` | Platformní a technická implementace: SMART provideři pro Windows/Linux, detekce svazků, surface/seek executory, sanitizace, SQLite persistence, repozitáře, generátor certifikátů (SkiaSharp), porovnání disků a SchemaCompatibilityPatcher. |
 | `DiskChecker.Application` | Aplikační/use-case vrstva: SMART check, diskové karty a testovací session, historie, reporty, certifikace, e-mail, nastavení, notifikace, archivace a analýza testů. |
 | `DiskChecker.UI.Avalonia` | Hlavní desktopové UI v Avalonia + MVVM. Obsahuje view modely, views, navigaci, dialogy, lokalizaci, zálohy/obnovu a registraci DI. |
-| `DiskChecker.TUI` | Samostatný terminálový/experimentální projekt mimo hlavní `.slnx` workflow. |
+| `DiskChecker.TUI` | Plnohodnotná terminálová verze (Spectre.Console) postavená na stejných vrstvách jako desktop aplikace – stejná detekce disků, SMART, testy, certifikáty, historie i databáze. |
 | `tests/DiskChecker.Tests` | Unit testy (190 testů) pro adaptivní vzorkování, analýzu anomálií, certifikáty, identitu disku, sanitizační progress, seek testy, nastavení, SMART parser/cache a další části. |
+| `tests/DiskChecker.Tui.Tests` | Testy terminálové verze – formátování, grafy, lokalizace, navigace a všechny obrazovky (skriptovaný terminál, žádné TTY). |
 
 ## Architektura
 
@@ -191,6 +192,38 @@ dotnet test
 ```
 
 Na Windows lze stejné příkazy spustit v PowerShellu/CMD. Pro diskové operace spusťte terminál jako Administrátor.
+
+## Terminálová verze (TUI)
+
+`DiskChecker.TUI` je rovnocenná terminálová obdoba desktop aplikace pro offline servisní stanice,
+vzdálené přístupy a automatizaci. Sdílí `Core`, `Application` i `Infrastructure`, takže používá
+stejnou databázi `DiskChecker.db`, stejná nastavení, stejné SMART providery i stejný generátor certifikátů.
+
+```bash
+# Spuštění terminálové verze
+dotnet run --project DiskChecker.TUI
+
+# nebo publikovaný binární soubor
+./dcheck --help
+./dcheck --db /var/lib/diskchecker/DiskChecker.db --lang en --screen smart
+```
+
+Obrazovky: výběr disků, karty disků a detail karty, test povrchu, SMART kontrola, seek test,
+absolutní destruktivní test, bezpečný destruktivní test, analýza, porovnání disků, report,
+historie, certifikáty, záloha, obnova, nastavení a o aplikaci.
+
+- Všechny akce se volí číslem v nabídce, `Ctrl+C` přeruší běžící operaci (druhé stisknutí ukončí aplikaci).
+- Bez interaktivního terminálu (např. v pipeline) aplikace čte volby ze standardního vstupu,
+  takže ji lze skriptovat: `printf '1\\n0\\n' | dcheck --screen disks`. Po uzavření vstupu se aplikace ukončí.
+- Destruktivní operace vyžadují potvrzení, systémový disk je automaticky zamčen a během testu
+  je zablokovaná navigace, aby nedošlo k opuštění obrazovky s otevřeným diskem.
+
+Testy terminálové verze:
+
+```bash
+dotnet test tests/DiskChecker.Tui.Tests   # testy terminálové verze
+./scripts/verify-tui.sh                   # build celého řešení + obě testovací sady + smoke run
+```
 
 ## Publikování
 

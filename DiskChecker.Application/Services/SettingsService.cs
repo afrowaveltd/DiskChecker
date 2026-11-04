@@ -1,4 +1,4 @@
-﻿using DiskChecker.Core.Interfaces;
+using DiskChecker.Core.Interfaces;
 using DiskChecker.Core.Models;
 using DiskChecker.Infrastructure.Persistence;
 using Microsoft.Data.Sqlite;
@@ -136,8 +136,21 @@ public class SettingsService : ISettingsService
             // Fall through to default
         }
 
-        return Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "DiskChecker");
+        // Fall back defensively when the platform reports no application data folder:
+        // Path.Combine("", "DiskChecker") would otherwise create a relative folder in the
+        // process working directory (seen in stripped container environments).
+        string applicationData = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
+        if (string.IsNullOrWhiteSpace(applicationData))
+        {
+            applicationData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
+        }
+
+        if (string.IsNullOrWhiteSpace(applicationData))
+        {
+            applicationData = Path.Combine(Path.GetTempPath(), "DiskChecker-Config");
+        }
+
+        return Path.Combine(applicationData, "DiskChecker");
     }
 
     /// <summary>
