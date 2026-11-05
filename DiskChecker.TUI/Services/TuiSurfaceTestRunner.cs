@@ -26,6 +26,8 @@ public sealed class TuiSurfaceTestReport
 {
     public long TotalBytes { get; set; }
 
+    public TuiSurfaceOperation Operation { get; set; }
+
     public long ProcessedBytes { get; set; }
 
     public int ErrorCount { get; set; }
@@ -64,7 +66,7 @@ public static class TuiSurfaceTestRunner
         ArgumentException.ThrowIfNullOrWhiteSpace(path);
         ArgumentNullException.ThrowIfNull(options);
 
-        var report = new TuiSurfaceTestReport();
+        var report = new TuiSurfaceTestReport { Operation = options.Operation };
         var started = DateTime.UtcNow;
         long limit = sizeBytes;
         if (options.MaxBytes is > 0 && options.MaxBytes < limit)
@@ -154,7 +156,9 @@ public static class TuiSurfaceTestRunner
                 }
             }
 
-            report.Completed = true;
+            report.Completed = processed == limit && report.ErrorCount == 0;
+            if (!report.Completed && report.FailureMessage is null)
+                report.FailureMessage = "Incomplete disk scan or verification.";
         }
         catch (OperationCanceledException)
         {
