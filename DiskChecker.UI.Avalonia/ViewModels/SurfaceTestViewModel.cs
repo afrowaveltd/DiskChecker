@@ -12,6 +12,7 @@ using DiskChecker.Core.Interfaces;
 using DiskChecker.Core.Models;
 using DiskChecker.Core.Services;
 using DiskChecker.Infrastructure.Hardware.Sanitization;
+using DiskChecker.Infrastructure.Hardware;
 using DiskChecker.UI.Avalonia.Services.Interfaces;
 using LiveChartsCore;
 using LiveChartsCore.Defaults;
@@ -226,7 +227,7 @@ public partial class SurfaceTestViewModel : ViewModelBase, INavigableViewModel, 
         {
             new() { Key = "Quick100MB", Name = L.Get("SurfaceTest.Profile.Quick100MB"), Description = L.Get("SurfaceTest.QuickTestDesc"), IsSelected = true },
             new() { Key = "Full1GB", Name = L.Get("SurfaceTest.Profile.Full1GB"), Description = L.Get("SurfaceTest.FullTestDesc") },
-            new() { Key = "FullDisk", Name = L.Get("SurfaceTest.Profile.FullDisk"), Description = L.Get("SurfaceTest.Profile.FullDiskDesc") },
+            new() { Key = "FullRead", Name = L.Get("SurfaceTest.Profile.FullRead"), Description = L.Get("SurfaceTest.Profile.FullReadDesc") },
             new() { Key = "Sanitize", Name = L.Get("SurfaceTest.Profile.Sanitize"), Description = L.Get("SurfaceTest.Profile.SanitizeDesc"), IsDestructive = true }
         };
 
@@ -246,7 +247,7 @@ public partial class SurfaceTestViewModel : ViewModelBase, INavigableViewModel, 
          {
             "Quick100MB" => (L.Get("SurfaceTest.Profile.Quick100MB"), L.Get("SurfaceTest.QuickTestDesc")),
             "Full1GB"    => (L.Get("SurfaceTest.Profile.Full1GB"),    L.Get("SurfaceTest.FullTestDesc")),
-            "FullDisk"   => (L.Get("SurfaceTest.Profile.FullDisk"),   L.Get("SurfaceTest.Profile.FullDiskDesc")),
+            "FullRead"   => (L.Get("SurfaceTest.Profile.FullRead"),   L.Get("SurfaceTest.Profile.FullReadDesc")),
             "Sanitize"   => (L.Get("SurfaceTest.Profile.Sanitize"),   L.Get("SurfaceTest.Profile.SanitizeDesc")),
             _ => (profile.Name, profile.Description)
          };
@@ -1549,249 +1550,88 @@ public partial class SurfaceTestViewModel : ViewModelBase, INavigableViewModel, 
       });
    }
 
+   /// <summary>Real read-only I/O, never a simulated or destructive test.</summary>
    private async Task RunTestAsync(SmartaData? smartSnapshot, CancellationToken cancellationToken)
    {
-      StatusMessage = L.Get("SurfaceTest.Starting");
-
+      var drive = SelectedDrive ?? throw new InvalidOperationException(L.Get("SurfaceTest.Error.NoDiskSelected"));
       var profile = TestProfiles.FirstOrDefault(p => p.IsSelected);
-      var testDurationMs = profile?.Key switch
+      long requestedBytes = profile?.Key switch
       {
-         "Quick100MB" => 30000,
-         "Full1GB" => 60000,
-         "FullDisk" => 120000,
-         _ => 30000
+         "Quick100MB" => Math.Min(drive.TotalSize, 100L * 1024 * 1024),
+         "Full1GB" => Math.Min(drive.TotalSize, 1024L * 1024 * 1024),
+         "FullRead" => drive.TotalSize,
+         _ => throw new InvalidOperationException("Unsupported surface test profile.")
       };
+      if(requestedBytes <= 0)
+         throw new InvalidOperationException("Disk size must be positive.");
 
-      // Track test data for saving
-      var testStartTime = DateTime.UtcNow;
-      var writeSamples = new List<(double Speed, int Temp, DateTime Time)>();
-      var readSamples = new List<(double Speed, int Temp, DateTime Time)>();
-      var minWriteSpeed = double.MaxValue;
-      var maxWriteSpeed = 0.0;
-      var minReadSpeed = double.MaxValue;
-      var maxReadSpeed = 0.0;
-
-      CurrentPhase = 0;
-      var writePhaseDuration = testDurationMs / 2;
-      var readPhaseDuration = testDurationMs / 2;
-      var syntheticTotalBytes = profile?.Key switch
-      {
-         "Quick100MB" => 100L * 1024 * 1024,
-         "Full1GB" => 1L * 1024 * 1024 * 1024,
-         "FullDisk" => Math.Max(SelectedDrive?.TotalSize ?? 0, 1L),
-         _ => 100L * 1024 * 1024
-      };
-      _currentPhaseTotalBytes = syntheticTotalBytes;
-
-      const int sampleIntervalMs = 20;
-
-      // Write phase (0-50%)
-      StatusMessage = L.Get("SurfaceTest.Status.Writing");
-      for(int i = 0; i <= writePhaseDuration; i += sampleIntervalMs)
-      {
-         cancellationToken.ThrowIfCancellationRequested();
-
-         var progress = (double)i / writePhaseDuration * 100; // 0-100% for write phase
-         WriteProgress = progress * 0.5; // 0-50% for overall progress bar
-         VerifyProgress = 0;
-         SetWriteTransferredData((long)(progress / 100d * syntheticTotalBytes), syntheticTotalBytes);
-
-         var speed = 45 + Random.Shared.NextDouble() * 15;
-         CurrentSpeed = speed;
-         CurrentTemperature = 35 + Random.Shared.Next(0, 5); // Simulation fallback
-         AddSpeedPoint(speed, progress);
-
-         writeSamples.Add((speed, CurrentTemperature, DateTime.UtcNow));
-         if ((speed > 0 || minWriteSpeed != double.MaxValue) && speed < minWriteSpeed) minWriteSpeed = speed;
-         if(speed > maxWriteSpeed) maxWriteSpeed = speed;
-
-         var remainingMs = testDurationMs - i - writePhaseDuration;
-         TimeRemaining = TimeSpan.FromMilliseconds(Math.Max(0, remainingMs)).ToString(@"mm\:ss");
-
-         await Task.Delay(sampleIntervalMs, cancellationToken);
-      }
-
-      // Read phase (50-100%)
-      await Dispatcher.UIThread.InvokeAsync(() =>
-      {
-         CurrentPhase = 1;
-      });
-      _currentPhaseTotalBytes = syntheticTotalBytes;
+      CurrentPhase = 1;
+      _currentPhaseTotalBytes = requestedBytes;
+      WriteProgress = 0;
+      VerifyProgress = 0;
+      SetWriteTransferredData(0, 0);
+      SetReadTransferredData(0, requestedBytes);
       StatusMessage = L.Get("SurfaceTest.Status.Reading");
-      for(int i = 0; i <= readPhaseDuration; i += sampleIntervalMs)
+
+      var scanProgress = new CallbackProgress<SurfaceTestProgress>(p =>
       {
-         cancellationToken.ThrowIfCancellationRequested();
+         if(cancellationToken.IsCancellationRequested) return;
+         void Apply()
+         {
+            if(_disposed || !IsTesting) return;
+            CurrentPhase = 1;
+            VerifyProgress = p.PercentComplete;
+            SetReadTransferredData(p.BytesProcessed, requestedBytes);
+            CurrentSpeed = p.CurrentThroughputMbps;
+            AddSpeedPoint(p.CurrentThroughputMbps, p.PercentComplete, p.TotalElapsed);
+            if(p.TotalElapsed is { } elapsed && p.PercentComplete > 0)
+            {
+               double remainingSeconds = elapsed.TotalSeconds * (100d - p.PercentComplete) / p.PercentComplete;
+               TimeRemaining = TimeSpan.FromSeconds(Math.Max(0, remainingSeconds)).ToString(@"hh\:mm\:ss");
+            }
+         }
+         if(Dispatcher.UIThread.CheckAccess()) Apply();
+         else Dispatcher.UIThread.Post(Apply);
+      });
 
-         var progress = (double)i / readPhaseDuration * 100; // 0-100% for read phase (same X axis as write)
-         WriteProgress = 100;
-         VerifyProgress = progress;
-         SetReadTransferredData((long)(progress / 100d * syntheticTotalBytes), syntheticTotalBytes);
+      var result = await SurfaceReadScanner.ScanAsync(
+          drive.Path, drive.TotalSize, requestedBytes, scanProgress, cancellationToken);
+      result.DriveModel = drive.Name ?? drive.Model;
+      result.DriveSerialNumber = drive.SerialNumber;
+      result.DriveInterface = drive.BusType.ToString();
+      result.CurrentTemperatureCelsius = _hasLiveSmartTemperature ? CurrentTemperature : null;
+      result.PowerOnHours = smartSnapshot?.PowerOnHours;
+      result.ReallocatedSectors = smartSnapshot?.ReallocatedSectorCount;
 
-         var speed = 50 + Random.Shared.NextDouble() * 20;
-         CurrentSpeed = speed;
-         CurrentTemperature = 35 + Random.Shared.Next(0, 5); // Simulation fallback
-         AddSpeedPoint(speed, progress);
+      CurrentPhase = 1;
+      VerifyProgress = result.TotalBytesTested * 100d / requestedBytes;
+      SetReadTransferredData(result.TotalBytesTested, requestedBytes);
+      ErrorCount = result.ErrorCount;
 
-         readSamples.Add((speed, CurrentTemperature, DateTime.UtcNow));
-         if ((speed > 0 || minReadSpeed != double.MaxValue) && speed < minReadSpeed) minReadSpeed = speed;
-         if(speed > maxReadSpeed) maxReadSpeed = speed;
-
-         var remaining = readPhaseDuration - i;
-         TimeRemaining = TimeSpan.FromMilliseconds(remaining).ToString(@"mm\:ss");
-
-         await Task.Delay(sampleIntervalMs, cancellationToken);
-      }
-
-      var testEndTime = DateTime.UtcNow;
-      var duration = testEndTime - testStartTime;
-
-      // Downsample samples to prevent database overflow (max 2000 samples per phase)
-      const int MaxSamplesToSave = 2000;
-      if (writeSamples.Count > MaxSamplesToSave)
-      {
-         var step = Math.Max(1, writeSamples.Count / MaxSamplesToSave);
-         var downsampled = new List<(double Speed, int Temp, DateTime Time)>();
-         for (int i = 0; i < writeSamples.Count; i += step)
-            downsampled.Add(writeSamples[i]);
-         if (writeSamples.Count > 0 && (writeSamples.Count - 1) % step != 0)
-            downsampled.Add(writeSamples[^1]);
-         writeSamples = downsampled;
-      }
-      
-      if (readSamples.Count > MaxSamplesToSave)
-      {
-         var step = Math.Max(1, readSamples.Count / MaxSamplesToSave);
-         var downsampled = new List<(double Speed, int Temp, DateTime Time)>();
-         for (int i = 0; i < readSamples.Count; i += step)
-            downsampled.Add(readSamples[i]);
-         if (readSamples.Count > 0 && (readSamples.Count - 1) % step != 0)
-            downsampled.Add(readSamples[^1]);
-         readSamples = downsampled;
-      }
-
-      // Calculate averages
-      var avgWriteSpeed = writeSamples.Count > 0 ? writeSamples.Average(s => s.Speed) : 0;
-      var avgReadSpeed = readSamples.Count > 0 ? readSamples.Average(s => s.Speed) : 0;
-      if(minWriteSpeed == double.MaxValue) minWriteSpeed = 0;
-      if(minReadSpeed == double.MaxValue) minReadSpeed = 0;
-
-      StatusMessage = L.Get("SurfaceTest.Status.Saving");
-
-      // Create and save test result
       try
       {
-         // Verify drive is selected
-         if(SelectedDrive == null)
-         {
-            throw new InvalidOperationException(L.Get("SurfaceTest.Error.NoDiskSelected"));
-         }
-
-         // Determine operation type based on profile
-         var operation = profile?.Key switch
-         {
-            "Quick100MB" => SurfaceTestOperation.ReadOnly,  // Read-only, no write
-            "Full1GB" => SurfaceTestOperation.WritePattern,   // Write and verify
-            "FullDisk" => SurfaceTestOperation.WritePattern,   // Full disk write and verify
-            _ => SurfaceTestOperation.ReadOnly
-         };
-
-         System.Diagnostics.Debug.WriteLine($"[SurfaceTest] Saving test result for drive: {SelectedDrive.Name ?? "Unknown"}");
-         System.Diagnostics.Debug.WriteLine($"[SurfaceTest] Serial: {SelectedDrive.SerialNumber ?? "N/A"}");
-         System.Diagnostics.Debug.WriteLine($"[SurfaceTest] Operation: {operation}");
-         System.Diagnostics.Debug.WriteLine($"[SurfaceTest] Samples: {writeSamples.Count} write + {readSamples.Count} read");
-
-         var result = new SurfaceTestResult
-         {
-            TestId = Guid.NewGuid().ToString(),
-            StartedAtUtc = testStartTime,
-            CompletedAtUtc = testEndTime,
-            DriveModel = SelectedDrive.Name ?? "Unknown",
-            DriveSerialNumber = SelectedDrive.SerialNumber ?? "",
-            DriveInterface = SelectedDrive.BusType.ToString() ?? "Unknown",
-            DriveTotalBytes = SelectedDrive.TotalSize,
-            Operation = operation,
-            TotalBytesTested = (long)(100 * 1024 * 1024),
-            ErrorCount = 0,
-            AverageSpeedMbps = (avgWriteSpeed + avgReadSpeed) / 2,
-            PeakSpeedMbps = Math.Max(maxWriteSpeed, maxReadSpeed),
-            MinSpeedMbps = Math.Min(minWriteSpeed, minReadSpeed)
-         };
-
-         // Add samples (speed is already in MB/s)
-         foreach(var sample in writeSamples)
-         {
-            result.Samples.Add(new SurfaceTestSample
-            {
-               OffsetBytes = 0,
-               BlockSizeBytes = 1024 * 1024,
-               ThroughputMbps = sample.Speed,  // Already in MB/s
-               TimestampUtc = sample.Time
-            });
-         }
-
-         foreach(var sample in readSamples)
-         {
-            result.Samples.Add(new SurfaceTestSample
-            {
-               OffsetBytes = 0,
-               BlockSizeBytes = 1024 * 1024,
-               ThroughputMbps = sample.Speed,  // Already in MB/s
-               TimestampUtc = sample.Time
-            });
-         }
-
-         // Save to disk card
-         System.Diagnostics.Debug.WriteLine($"[SurfaceTest] Getting or creating disk card...");
-         // Reused SMART must NOT rewrite identity or metadata of the target disk.
-         var card = await _cardTestService.GetOrCreateCardAsync(SelectedDrive!,
+         var card = await _cardTestService.GetOrCreateCardAsync(drive,
              _borrowedSmartProvenance == null ? smartSnapshot : null, cancellationToken);
-         System.Diagnostics.Debug.WriteLine($"[SurfaceTest] Card created/found: ID={card.Id}, Model={card.ModelName}");
-
-         System.Diagnostics.Debug.WriteLine($"[SurfaceTest] Saving surface test result...");
-         var testSession = await _cardTestService.SaveSurfaceTestAsync(card, result, smartSnapshot,
-             _borrowedSmartProvenance, cancellationToken);
-         System.Diagnostics.Debug.WriteLine($"[SurfaceTest] Test result saved successfully");
-
-         await TrySendCompletionEmailAsync(result, card, testSession, cancellationToken);
-
-         // Calculate overall stats for display
-         var overallMaxSpeed = Math.Max(maxWriteSpeed, maxReadSpeed);
-         var overallMinSpeed = Math.Min(minWriteSpeed, minReadSpeed);
-         var overallAvgSpeed = (avgWriteSpeed + avgReadSpeed) / 2;
-
-         StatusMessage = L.Get("SurfaceTest.Status.TestDoneAvg", overallAvgSpeed.ToString("F1"));
-
-         await _dialogService.ShowSuccessAsync(L.Get("SurfaceTest.Status.TestCompleted"),
-             L.Get("SurfaceTest.Status.TestSuccess"));
-
-
-
-
-
-
-
-
-
-
-
-
-
-      }
-      catch(Exception ex)
-      {
-         System.Diagnostics.Debug.WriteLine($"[SurfaceTest] ERROR saving test result: {ex.GetType().Name}");
-         System.Diagnostics.Debug.WriteLine($"[SurfaceTest] Error message: {ex.Message}");
-         System.Diagnostics.Debug.WriteLine($"[SurfaceTest] Stack trace: {ex.StackTrace}");
-
-         if(ex.InnerException != null)
+         var session = await _cardTestService.SaveSurfaceTestAsync(
+             card, result, smartSnapshot, _borrowedSmartProvenance, cancellationToken);
+         if(result.ErrorCount == 0 && result.TotalBytesTested == requestedBytes)
          {
-            System.Diagnostics.Debug.WriteLine($"[SurfaceTest] Inner exception: {ex.InnerException.Message}");
+            StatusMessage = L.Get("SurfaceTest.Status.TestCompletedAvg", result.AverageSpeedMbps.ToString("F1"));
+            await TrySendCompletionEmailAsync(result, card, session, cancellationToken);
+            await _dialogService.ShowSuccessAsync(L.Get("SurfaceTest.Status.TestCompleted"),
+                L.Get("SurfaceTest.Status.TestSuccess"));
          }
-
-         StatusMessage = string.Format(L.Get("SurfaceTest.Status.SaveError"), ex.Message);
-         await _dialogService.ShowErrorAsync(L.Get("Common.Error"), L.Get("SurfaceTest.Status.SaveErrorMessage"));
-
-
+         else
+         {
+            SetStickyErrorStatus(result.Notes ?? "Incomplete read-only scan.");
+            await _dialogService.ShowErrorAsync(L.Get("Common.Error"), StatusMessage);
+         }
+      }
+      catch(OperationCanceledException) { throw; }
+      catch(Exception ex) when(ex is IOException or InvalidOperationException or Microsoft.EntityFrameworkCore.DbUpdateException)
+      {
+         SetStickyErrorStatus("Test proběhl, ale výsledek se nepodařilo uložit: " + ex.Message);
+         await _dialogService.ShowErrorAsync(L.Get("Common.Error"), StatusMessage);
       }
    }
 
