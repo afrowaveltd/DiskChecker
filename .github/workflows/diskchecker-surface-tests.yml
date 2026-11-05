@@ -22,3 +22,9 @@ jobs:
         run: dotnet build tests/DiskChecker.Tests/DiskChecker.Tests.csproj -c Release --no-restore
       - name: Test
         run: dotnet test tests/DiskChecker.Tests/DiskChecker.Tests.csproj -c Release --no-build
+      - name: Restore TUI tests
+        run: dotnet restore tests/DiskChecker.Tui.Tests/DiskChecker.Tui.Tests.csproj
+      - name: Build TUI tests
+        run: dotnet build tests/DiskChecker.Tui.Tests/DiskChecker.Tui.Tests.csproj -c Release --no-restore
+      - name: Test TUI
+        run: dotnet test tests/DiskChecker.Tui.Tests/DiskChecker.Tui.Tests.csproj -c Release --no-build
