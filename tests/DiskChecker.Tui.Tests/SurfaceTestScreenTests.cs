@@ -92,6 +92,39 @@ public sealed class SurfaceTestScreenTests
         Assert.Contains("Sanitizace", harness.Io.Output, StringComparison.OrdinalIgnoreCase);
     }
 
+    [Theory]
+    [InlineData("0", null)]
+    [InlineData("5", 5)]
+    public async Task SanitizationPausePromptKeepsZeroDefaultAndAcceptsFiveSeconds(
+        string seconds, int? expectedPacing)
+    {
+        var provider = new FakeSmartaProvider { Data = FakeSmartaProvider.Sample() };
+        var sanitization = new FakeSanitizationService();
+        var detection = new FakeDiskDetectionService();
+        detection.Drives.Add(FakeDiskDetectionService.Sample());
+
+        using var harness = TestHarness.Create(configure: services =>
+        {
+            services.RemoveAll<ISmartaProvider>();
+            services.AddSingleton<ISmartaProvider>(provider);
+            services.RemoveAll<IDiskDetectionService>();
+            services.AddSingleton<IDiskDetectionService>(detection);
+            services.RemoveAll<IDiskSanitizationService>();
+            services.AddSingleton<IDiskSanitizationService>(sanitization);
+        });
+
+        harness.Context.Selection.SelectedDisk = detection.Drives[0];
+        harness.Io.EnqueueChoice("sanitize");
+        harness.Io.EnqueueConfirm(true);
+        harness.Io.EnqueueAsk(seconds);
+        harness.Io.EnqueueConfirm(false);
+        harness.Io.EnqueueChoice("back");
+
+        await new SurfaceTestScreen().ShowAsync(harness.Context, TestContext.Current.CancellationToken);
+        Assert.Equal(1, sanitization.SanitizeCalls);
+        Assert.Equal(expectedPacing, sanitization.LastPacingSeconds);
+    }
+
     [Fact]
     public async Task DiskPickerIsOfferedWhenNoDiskSelected()
     {
