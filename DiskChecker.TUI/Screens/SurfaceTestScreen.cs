@@ -372,6 +372,19 @@ public sealed class SurfaceTestScreen : ITuiScreen
             return;
         }
 
+        string? pauseInput = context.Dialogs.Ask(
+            "Pauza po každých 10 GiB zápisu, v sekundách (0 = bez pauzy, 1–60):", "0");
+        if (pauseInput is null)
+        {
+            _status = "Sanitizace zrušena.";
+            return;
+        }
+        if (!int.TryParse(pauseInput, out int pauseSeconds) || pauseSeconds is < 0 or > 60)
+        {
+            context.Dialogs.Warning("Neplatná prodleva", "Zadejte celé číslo od 0 do 60 sekund.");
+            return;
+        }
+
         bool createPartition = context.Dialogs.Confirm(
             "Oddíl po sanitizaci",
             "Má se po dokončení vytvořit oddíl a formátovat jej?",
@@ -428,15 +441,15 @@ public sealed class SurfaceTestScreen : ITuiScreen
 
             try
             {
+                var pacing = SanitizationWritePacing.FromSeconds(pauseSeconds);
                 result = await Task.Run(
-                    () => sanitization.SanitizeDiskAsync(
-                        _disk.Path,
-                        _disk.TotalSize,
-                        createPartition,
-                        createPartition,
-                        "DiskChecker",
-                        reporter,
-                        linked.Token),
+                    () => pacing is null
+                        ? sanitization.SanitizeDiskAsync(
+                            _disk.Path, _disk.TotalSize, createPartition, createPartition,
+                            "DiskChecker", reporter, linked.Token)
+                        : sanitization.SanitizeDiskPacedAsync(
+                            _disk.Path, _disk.TotalSize, createPartition, createPartition,
+                            "DiskChecker", pacing, reporter, linked.Token),
                     linked.Token).ConfigureAwait(false);
             }
             catch (OperationCanceledException)
