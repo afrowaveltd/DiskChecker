@@ -40,7 +40,7 @@ public class WindowsDiskSanitizationService : IDiskSanitizationService
     /// Perform full disk sanitization: write zeros, read/verify, partition, format.
     /// WARNING: This destroys ALL data on the disk!
     /// </summary>
-    public async Task<SanitizationResult> SanitizeDiskAsync(
+    public Task<SanitizationResult> SanitizeDiskAsync(
         string devicePath,
         long diskSize,
         bool createPartition = true,
@@ -48,6 +48,34 @@ public class WindowsDiskSanitizationService : IDiskSanitizationService
         string volumeLabel = "SCCM",
         IProgress<SanitizationProgress>? progress = null,
         CancellationToken cancellationToken = default)
+        => SanitizeDiskCoreAsync(devicePath, diskSize, createPartition, format, volumeLabel,
+            null, progress, cancellationToken);
+
+    public Task<SanitizationResult> SanitizeDiskPacedAsync(
+        string devicePath,
+        long diskSize,
+        bool createPartition,
+        bool format,
+        string volumeLabel,
+        SanitizationWritePacing pacing,
+        IProgress<SanitizationProgress>? progress = null,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(pacing);
+        _ = new SanitizationWritePacingController(pacing); // fail before any destructive I/O
+        return SanitizeDiskCoreAsync(devicePath, diskSize, createPartition, format, volumeLabel,
+            pacing, progress, cancellationToken);
+    }
+
+    private async Task<SanitizationResult> SanitizeDiskCoreAsync(
+        string devicePath,
+        long diskSize,
+        bool createPartition,
+        bool format,
+        string volumeLabel,
+        SanitizationWritePacing? pacing,
+        IProgress<SanitizationProgress>? progress,
+        CancellationToken cancellationToken)
     {
         var result = new SanitizationResult();
         var stopwatch = Stopwatch.StartNew();
@@ -105,7 +133,7 @@ public class WindowsDiskSanitizationService : IDiskSanitizationService
                 TotalBytes = diskSize
             });
 
-            var writeResult = await WriteZerosAsync(devicePath, diskSize, progress, cancellationToken);
+            var writeResult = await WriteZerosAsync(devicePath, diskSize, pacing, progress, cancellationToken);
             result.ErrorDetails.AddRange(writeResult.ErrorDetails);
             if (!writeResult.Success)
             {
@@ -116,6 +144,8 @@ public class WindowsDiskSanitizationService : IDiskSanitizationService
             result.BytesWritten = writeResult.BytesWritten;
             result.WriteSpeedMBps = writeResult.SpeedMBps;
             result.WriteDuration = writeResult.Duration;
+            result.WritePausedDuration = writeResult.PauseDuration;
+            result.WritePauseCount = writeResult.PauseCount;
             result.ErrorsDetected += writeResult.Errors;
 
             // Phase 3: Read and verify
@@ -419,6 +449,7 @@ offline disk";
     private async Task<SanitizationPhaseResult> WriteZerosAsync(
         string devicePath,
         long diskSize,
+        SanitizationWritePacing? pacing,
         IProgress<SanitizationProgress>? progress,
         CancellationToken cancellationToken)
     {
@@ -1558,6 +1589,8 @@ if ($disk -and $disk.PartitionStyle -eq 'GPT') {{
         public long BytesRead { get; set; }
         public double SpeedMBps { get; set; }
         public TimeSpan Duration { get; set; }
+        public TimeSpan PauseDuration { get; set; }
+        public int PauseCount { get; set; }
         public int Errors { get; set; }
         public bool PartitionFormatted { get; set; } // Whether partition was created AND formatted
         public List<SanitizationErrorDetail> ErrorDetails { get; } = new();
