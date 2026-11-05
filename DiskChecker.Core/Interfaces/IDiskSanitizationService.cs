@@ -28,6 +28,21 @@ public interface IDiskSanitizationService
         CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// Destructive sanitization with pauses every N bytes during the WRITE phase.
+    /// Implementations without explicit support must refuse paced mode.
+    /// </summary>
+    Task<SanitizationResult> SanitizeDiskPacedAsync(
+        string devicePath,
+        long diskSize,
+        bool createPartition,
+        bool format,
+        string volumeLabel,
+        SanitizationWritePacing pacing,
+        IProgress<SanitizationProgress>? progress = null,
+        CancellationToken cancellationToken = default)
+        => throw new NotSupportedException("This sanitizer does not implement paced writes.");
+
+    /// <summary>
     /// Create a GPT partition on the device and optionally format it.
     /// Does NOT write zeros or verify — only creates partition structure.
     /// </summary>
@@ -63,6 +78,12 @@ public class SanitizationResult
     /// Time spent in the zero-fill write phase, excluding partitioning/formatting.
     /// </summary>
     public TimeSpan WriteDuration { get; set; }
+
+    /// <summary>Deliberate write pauses, excluded from WriteDuration and WriteSpeedMBps.</summary>
+    public TimeSpan WritePausedDuration { get; set; }
+
+    /// <summary>Number of deliberate pauses during the zero-fill write phase.</summary>
+    public int WritePauseCount { get; set; }
 
     /// <summary>
     /// Time spent in the read/verify phase, excluding partitioning/formatting.
@@ -201,4 +222,20 @@ public enum SanitizationProgressPhase
     Other,
     Write,
     ReadVerify
+}
+
+ 
+/// <summary>
+/// Optional 10-GiB write-pacing mode for SSD cache recovery experiments.
+/// A zero-second interval is normal unpaced sanitization.
+/// </summary>
+public sealed record SanitizationWritePacing(long IntervalBytes, TimeSpan PauseDuration)
+{
+    public const long DefaultIntervalBytes = 10L * 1024 * 1024 * 1024;
+
+    public static SanitizationWritePacing? FromSeconds(int seconds) =>
+        seconds == 0 ? null :
+        seconds is < 0 or > 60
+            ? throw new ArgumentOutOfRangeException(nameof(seconds), "Allowed pause: 0-60 seconds.")
+            : new SanitizationWritePacing(DefaultIntervalBytes, TimeSpan.FromSeconds(seconds));
 }
