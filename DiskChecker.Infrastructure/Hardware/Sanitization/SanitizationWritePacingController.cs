@@ -34,8 +34,7 @@ public sealed class SanitizationWritePacingController
     /// <summary>Clamp the next write so that a pause begins at the exact byte boundary.</summary>
     public int NextWriteLength(int preferredBytes, long completedBytes, long totalBytes)
     {
-        if (preferredBytes <= 0)
-            throw new ArgumentOutOfRangeException(nameof(preferredBytes));
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(preferredBytes);
         if (completedBytes < 0 || completedBytes >= totalBytes)
             throw new ArgumentOutOfRangeException(nameof(completedBytes));
         long untilPause = _nextBoundary > completedBytes ? _nextBoundary - completedBytes : long.MaxValue;
