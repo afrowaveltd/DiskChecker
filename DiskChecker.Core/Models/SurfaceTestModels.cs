@@ -304,6 +304,9 @@ public class SurfaceTestResult
    /// </summary>
    public SurfaceTestOperation Operation { get; set; }
 
+   /// <summary>True if a read-only scan covered the complete device size.</summary>
+   public bool FullDiskRead { get; set; }
+
    // === Test Metrics ===
 
    /// <summary>
