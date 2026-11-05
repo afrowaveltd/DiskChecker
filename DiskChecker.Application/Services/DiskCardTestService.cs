@@ -490,7 +490,8 @@ public class DiskCardTestService
       ArgumentNullException.ThrowIfNull(card);
       ArgumentNullException.ThrowIfNull(result);
 
-      var testType = result.Operation == SurfaceTestOperation.ReadOnly ? TestType.QuickRead :
+      var testType = result.Operation == SurfaceTestOperation.ReadOnly
+          ? (result.FullDiskRead ? TestType.FullRead : TestType.QuickRead) :
                      result.Operation == SurfaceTestOperation.WritePattern ? TestType.FullReadWrite :
                      result.Operation == SurfaceTestOperation.WriteZeroFill ? TestType.Sanitization :
                      TestType.SurfaceScan;
@@ -498,7 +499,9 @@ public class DiskCardTestService
       var breakdown = BuildCombinedSurfaceScoreBreakdown(result, smartaData);
       if(breakdown.Findings.Count > 0)
       {
-         result.Notes = string.Join("; ", breakdown.Findings);
+         result.Notes = string.IsNullOrWhiteSpace(result.Notes)
+              ? string.Join("; ", breakdown.Findings)
+              : result.Notes + "; " + string.Join("; ", breakdown.Findings);
       }
 
       var orderedSamples = TrimLeadingZeroSpeedSamples(result.Samples.OrderBy(s => s.TimestampUtc).ToList(), s => s.ThroughputMbps);
@@ -570,19 +573,19 @@ public class DiskCardTestService
          TestType = testType,
          StartedAt = result.StartedAtUtc != default ? result.StartedAtUtc : DateTime.UtcNow,
          CompletedAt = result.CompletedAtUtc != default ? result.CompletedAtUtc : DateTime.UtcNow,
-         Status = TestStatus.Completed,
-         IsDestructive = result.Operation == SurfaceTestOperation.WriteZeroFill,
-         BytesWritten = result.Operation == SurfaceTestOperation.ReadOnly ? 0 : result.TotalBytesTested,
-         BytesRead = result.TotalBytesTested,
-         AverageWriteSpeedMBps = result.AverageSpeedMbps,
-         AverageReadSpeedMBps = result.AverageSpeedMbps,
-         MaxWriteSpeedMBps = result.PeakSpeedMbps,
-         MaxReadSpeedMBps = result.PeakSpeedMbps,
-         MinWriteSpeedMBps = result.MinSpeedMbps,
-         MinReadSpeedMBps = result.MinSpeedMbps,
-         WriteErrors = result.Operation == SurfaceTestOperation.ReadOnly ? 0 : result.ErrorCount,
-         ReadErrors = result.ErrorCount,
-         VerificationErrors = result.ErrorCount,
+         Status = result.ErrorCount == 0 ? TestStatus.Completed : TestStatus.Failed,
+          IsDestructive = result.Operation != SurfaceTestOperation.ReadOnly,
+          BytesWritten = result.Operation == SurfaceTestOperation.ReadOnly ? 0 : result.TotalBytesTested,
+          BytesRead = result.TotalBytesTested,
+          AverageWriteSpeedMBps = result.Operation == SurfaceTestOperation.ReadOnly ? 0 : result.AverageSpeedMbps,
+          AverageReadSpeedMBps = result.AverageSpeedMbps,
+          MaxWriteSpeedMBps = result.Operation == SurfaceTestOperation.ReadOnly ? 0 : result.PeakSpeedMbps,
+          MaxReadSpeedMBps = result.PeakSpeedMbps,
+          MinWriteSpeedMBps = result.Operation == SurfaceTestOperation.ReadOnly ? 0 : result.MinSpeedMbps,
+          MinReadSpeedMBps = result.MinSpeedMbps,
+          WriteErrors = result.Operation == SurfaceTestOperation.ReadOnly ? 0 : result.ErrorCount,
+          ReadErrors = result.ErrorCount,
+          VerificationErrors = result.Operation == SurfaceTestOperation.ReadOnly ? 0 : result.ErrorCount,
          Result = result.ErrorCount == 0 ? TestResult.Pass : TestResult.Fail,
          Grade = breakdown.Grade,
          Score = breakdown.Score,
