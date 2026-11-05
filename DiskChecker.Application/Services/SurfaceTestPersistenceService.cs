@@ -100,7 +100,7 @@ public class SurfaceTestPersistenceService
           SurfaceOperation = result.Operation.ToString(),
           SurfaceTechnology = DriveTechnology.Unknown.ToString(),
          SecureErasePerformed = result.SecureErasePerformed,
-         IsCompleted = result.CompletedAtUtc != default && result.ErrorCount >= 0
+         IsCompleted = result.CompletedAtUtc != default && result.ErrorCount == 0
       };
 
    foreach(var sample in result.Samples)
