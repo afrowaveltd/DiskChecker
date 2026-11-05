@@ -387,8 +387,8 @@ public sealed class DiskSelectionScreen : ITuiScreen
             board.Entries.Count.ToString(Invariant) + "[/]   " +
             Markup.Escape(context.L("Tui.DiskSelection.TotalCapacity")) + ": [bold]" +
             Markup.Escape(TuiFormats.Capacity(board.TotalCapacity)) + "[/]   " +
-            Markup.Escape(context.L("Tui.DiskSelection.Healthy")) + ": [bold]" +
-            board.HealthyCount.ToString(Invariant) + "[/]/" + board.Entries.Count.ToString(Invariant));
+            Markup.Escape(context.L("Tui.DiskSelection.Healthy")) + ": " +
+            board.HealthyCount.ToString(Invariant) + "/" + board.Entries.Count.ToString(Invariant));
         body.AppendLine(
             Markup.Escape(context.L("Tui.DiskSelection.Health")) + ": " +
             Markup.Escape(BuildHealthSummary(context, board.Entries.Count, board.GradedCount, board.HealthyCount)));
