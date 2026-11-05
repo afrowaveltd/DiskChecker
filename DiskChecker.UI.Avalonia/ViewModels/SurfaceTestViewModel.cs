@@ -112,6 +112,7 @@ public partial class SurfaceTestViewModel : ViewModelBase, INavigableViewModel, 
    private int _selectedZoomIndex = 1; // Default 5 min
    private int _currentPhase; // 0 = Write, 1 = Read (default is 0)
    private CancellationTokenSource? _testCancellation;
+   private int _sanitizationWritePauseSeconds;
    private bool _disposed;
    private bool _isDataWindowZoomEnabled;
    private int _zoomWindowModeIndex; // 0 = GB, 1 = %
@@ -1167,6 +1168,21 @@ public partial class SurfaceTestViewModel : ViewModelBase, INavigableViewModel, 
             SetStatusMessage(L.Get("SurfaceTest.Status.SanitizeCancelled"));
             return;
          }
+
+         var pauseInput = await _dialogService.ShowPromptAsync(
+            L.Get("SurfaceTest.Pacing.Title"),
+            L.Get("SurfaceTest.Pacing.Question"), "0");
+         if(pauseInput is null)
+         {
+            SetStatusMessage(L.Get("SurfaceTest.Status.SanitizeCancelled"));
+            return;
+         }
+         if(!int.TryParse(pauseInput, out _sanitizationWritePauseSeconds) ||
+            _sanitizationWritePauseSeconds is < 0 or > 60)
+         {
+            await _dialogService.ShowErrorAsync(L.Get("Common.Error"), L.Get("SurfaceTest.Pacing.Invalid"));
+            return;
+         }
       }
 
       _testCancellation?.Dispose();
@@ -1390,8 +1406,13 @@ public partial class SurfaceTestViewModel : ViewModelBase, INavigableViewModel, 
 
       var drivePath = SelectedDrive.Path;
       var driveSize = SelectedDrive.TotalSize;
-      var result = await Task.Run(() => _sanitizationService.SanitizeDiskAsync(
-          drivePath, driveSize, true, true, "SCCM", progress, cancellationToken), cancellationToken);
+      var pacing = SanitizationWritePacing.FromSeconds(_sanitizationWritePauseSeconds);
+      var result = await Task.Run(() => pacing is null
+          ? _sanitizationService.SanitizeDiskAsync(
+              drivePath, driveSize, true, true, "SCCM", progress, cancellationToken)
+          : _sanitizationService.SanitizeDiskPacedAsync(
+              drivePath, driveSize, true, true, "SCCM", pacing, progress, cancellationToken),
+          cancellationToken);
       _telemetryArchive?.Dispose(); // Flush the last partial block.
 
       SmartaData? smartAfterSnapshot = null;
