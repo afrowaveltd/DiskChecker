@@ -27,15 +27,17 @@ public sealed class SurfaceTestExecutor : ISurfaceTestExecutor
                 "Use the explicitly confirmed sanitization workflow for destructive operations.");
 
         var drive = request.Drive;
-        _logger.LogInformation("Starting read-only surface scan: {DrivePath}", drive.Path);
+        if (_logger.IsEnabled(LogLevel.Information))
+            _logger.LogInformation("Starting read-only surface scan: {DrivePath}", drive.Path);
         var result = await SurfaceReadScanner.ScanAsync(drive.Path, drive.TotalSize,
             request.MaxBytesToTest, progress, cancellationToken);
         result.DriveModel = drive.Name ?? drive.Model;
         result.DriveSerialNumber = drive.SerialNumber;
         result.DriveInterface = drive.BusType.ToString();
         result.Technology = request.Technology;
-        _logger.LogInformation("Surface scan finished: {BytesRead} bytes; {Errors} errors",
-            result.TotalBytesTested, result.ErrorCount);
+        if (_logger.IsEnabled(LogLevel.Information))
+            _logger.LogInformation("Surface scan finished: {BytesRead} bytes; {Errors} errors",
+                result.TotalBytesTested, result.ErrorCount);
         return result;
     }
 }
