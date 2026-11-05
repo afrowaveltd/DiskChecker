@@ -1,14 +1,11 @@
-using DiskChecker.Core.Extensions;
 using DiskChecker.Core.Interfaces;
 using DiskChecker.Core.Models;
 using Microsoft.Extensions.Logging;
 
 namespace DiskChecker.Infrastructure.Hardware;
 
-/// <summary>
-/// Executes surface tests on drives.
-/// </summary>
-public class SurfaceTestExecutor : ISurfaceTestExecutor
+/// <summary>Real read-only surface scan executor. Unsupported writes fail closed.</summary>
+public sealed class SurfaceTestExecutor : ISurfaceTestExecutor
 {
     private readonly ILogger<SurfaceTestExecutor> _logger;
 
@@ -22,51 +19,23 @@ public class SurfaceTestExecutor : ISurfaceTestExecutor
         IProgress<SurfaceTestProgress>? progress = null,
         CancellationToken cancellationToken = default)
     {
-        var result = new SurfaceTestResult
-        {
-            TestId = Guid.NewGuid().ToString(),
-            StartedAtUtc = DateTime.UtcNow,
-            DriveModel = request.Drive.Model ?? "Unknown",
-            DriveSerialNumber = request.Drive.SerialNumber ?? "Unknown"
-        };
+        ArgumentNullException.ThrowIfNull(request);
+        ArgumentNullException.ThrowIfNull(request.Drive);
+        if (request.Operation != SurfaceTestOperation.ReadOnly)
+            throw new NotSupportedException(
+                "This executor supports read-only surface tests only. " +
+                "Use the explicitly confirmed sanitization workflow for destructive operations.");
 
-        try
-        {
-            if (_logger.IsEnabled(LogLevel.Information))
-            {
-                _logger.LogInformation("Starting surface test for drive: {DrivePath}", request.Drive.Path);
-            }
-
-            // Implementation would go here - actual disk surface test
-            await Task.Delay(100, cancellationToken); // Placeholder
-
-            result.CompletedAtUtc = DateTime.UtcNow;
-            result.Notes = "Surface test completed successfully";
-
-            if (_logger.IsEnabled(LogLevel.Information))
-            {
-                _logger.LogInformation("Surface test completed for drive: {DrivePath}", request.Drive.Path);
-            }
-        }
-        catch (OperationCanceledException)
-        {
-            result.CompletedAtUtc = DateTime.UtcNow;
-            result.Notes = "Surface test was cancelled";
-            if (_logger.IsEnabled(LogLevel.Warning))
-            {
-                _logger.LogWarning("Surface test cancelled for drive: {DrivePath}", request.Drive.Path);
-            }
-        }
-        catch (Exception ex)
-        {
-            result.CompletedAtUtc = DateTime.UtcNow;
-            result.Notes = $"Surface test failed: {ex.Message}";
-            if (_logger.IsEnabled(LogLevel.Error))
-            {
-                _logger.LogError(ex, "Surface test failed for drive: {DrivePath}", request.Drive.Path);
-            }
-        }
-
+        var drive = request.Drive;
+        _logger.LogInformation("Starting read-only surface scan: {DrivePath}", drive.Path);
+        var result = await SurfaceReadScanner.ScanAsync(drive.Path, drive.TotalSize,
+            request.MaxBytesToTest, progress, cancellationToken);
+        result.DriveModel = drive.Name ?? drive.Model;
+        result.DriveSerialNumber = drive.SerialNumber;
+        result.DriveInterface = drive.BusType.ToString();
+        result.Technology = request.Technology;
+        _logger.LogInformation("Surface scan finished: {BytesRead} bytes; {Errors} errors",
+            result.TotalBytesTested, result.ErrorCount);
         return result;
     }
 }
