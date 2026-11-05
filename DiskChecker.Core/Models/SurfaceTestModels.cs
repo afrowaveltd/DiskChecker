@@ -88,7 +88,7 @@ public class SurfaceTestRequest
    /// <summary>
    /// Gets or sets the surface test operation.
    /// </summary>
-   public SurfaceTestOperation Operation { get; set; } = SurfaceTestOperation.WriteZeroFill;
+   public SurfaceTestOperation Operation { get; set; } = SurfaceTestOperation.ReadOnly;
 
    /// <summary>
    /// Gets or sets the block size used for IO operations in bytes.
