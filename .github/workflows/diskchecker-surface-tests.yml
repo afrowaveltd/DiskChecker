@@ -5,6 +5,8 @@ on:
   push:
     branches:
       - "fix/surface-smart-adapter-handoff-20261016"
+      - "fix/real-surface-read-20261105"
+      - "master"
 
 jobs:
   build-and-test:
