@@ -111,7 +111,20 @@ public sealed class FakeSanitizationService : IDiskSanitizationService
 
     public int SanitizeCalls { get; private set; }
 
+    public int? LastPacingSeconds { get; private set; }
+
     public int PartitionCalls { get; private set; }
+
+    public Task<SanitizationResult> SanitizeDiskPacedAsync(
+        string devicePath, long diskSize, bool createPartition, bool format,
+        string volumeLabel, SanitizationWritePacing pacing,
+        IProgress<SanitizationProgress>? progress = null,
+        CancellationToken cancellationToken = default)
+    {
+        LastPacingSeconds = (int)pacing.PauseDuration.TotalSeconds;
+        return SanitizeDiskAsync(devicePath, diskSize, createPartition, format,
+            volumeLabel, progress, cancellationToken);
+    }
 
     public Task<SanitizationResult> SanitizeDiskAsync(
         string devicePath,
