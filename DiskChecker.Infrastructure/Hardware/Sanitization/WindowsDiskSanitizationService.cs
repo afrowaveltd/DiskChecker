@@ -455,6 +455,7 @@ offline disk";
     {
         var result = new SanitizationPhaseResult();
         var stopwatch = Stopwatch.StartNew();
+        var writePacing = new SanitizationWritePacingController(pacing);
         var buffer = new byte[BUFFER_SIZE];
         long bytesWritten = 0;
         double smoothedSpeed = 0;
@@ -480,7 +481,7 @@ offline disk";
             {
                 cancellationToken.ThrowIfCancellationRequested();
 
-                var bytesToWrite = (int)Math.Min(BUFFER_SIZE, diskSize - bytesWritten);
+                var bytesToWrite = writePacing.NextWriteLength(BUFFER_SIZE, bytesWritten, diskSize);
                 var chunk = await IoStallMonitor.ExecuteAsync(
                     _ => ExecuteIoWithUsbRecoveryAsync(
                         () => WriteFileAsync(handle, buffer, bytesToWrite, cancellationToken),
@@ -574,7 +575,7 @@ offline disk";
                     : 0;
                 smoothedSpeed = smoothedSpeed <= 0 ? rawSpeed : (smoothedSpeed * 0.7) + (rawSpeed * 0.3);
 
-                var elapsed = stopwatch.Elapsed.TotalSeconds;
+                var elapsed = writePacing.ActiveElapsed(stopwatch.Elapsed).TotalSeconds;
                 var averageSpeed = elapsed > 0 ? bytesWritten / (1024.0 * 1024.0) / elapsed : 0;
                 var remaining = diskSize - bytesWritten;
                 var eta = averageSpeed > 0 ? TimeSpan.FromSeconds(remaining / (1024.0 * 1024.0) / averageSpeed) : (TimeSpan?)null;
@@ -597,13 +598,17 @@ offline disk";
                     IsWaitingForDevice = false,
                     StatusDetail = chunk.WasStalled ? $"Device responded after stall ({chunk.StallDuration:g})." : null
                 });
+
+                await writePacing.PauseIfDueAsync(bytesWritten, diskSize, progress, cancellationToken);
             }
 
             result.Success = true;
             result.BytesWritten = bytesWritten;
-            result.Duration = stopwatch.Elapsed;
-            result.SpeedMBps = stopwatch.Elapsed.TotalSeconds > 0 
-                ? bytesWritten / (1024.0 * 1024.0) / stopwatch.Elapsed.TotalSeconds 
+            result.Duration = writePacing.ActiveElapsed(stopwatch.Elapsed);
+            result.PauseDuration = writePacing.TotalPaused;
+            result.PauseCount = writePacing.PauseCount;
+            result.SpeedMBps = result.Duration.TotalSeconds > 0
+                ? bytesWritten / (1024.0 * 1024.0) / result.Duration.TotalSeconds 
                 : 0;
         }
         catch (Exception ex)
