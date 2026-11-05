@@ -134,8 +134,11 @@ public class SanitizationProgressTests
             BindingFlags.Instance | BindingFlags.NonPublic);
         Assert.NotNull(method);
 
-        var task = Assert.IsAssignableFrom<Task>(
-            method.Invoke(service, new object[] { path, size, progress, TestContext.Current.CancellationToken }));
+        // Write phases now accept optional SSD pacing; read/verify still use the original signature.
+        object?[] arguments = method.GetParameters().Length == 5
+            ? [path, size, null, progress, TestContext.Current.CancellationToken]
+            : [path, size, progress, TestContext.Current.CancellationToken];
+        var task = Assert.IsAssignableFrom<Task>(method.Invoke(service, arguments));
         await task;
 
         var result = task.GetType().GetProperty("Result")?.GetValue(task);
