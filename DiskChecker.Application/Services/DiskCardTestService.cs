@@ -723,6 +723,17 @@ public class DiskCardTestService
           }.Where(v => !string.IsNullOrWhiteSpace(v)))
           : breakdown.Findings.Count > 0 ? string.Join("; ", breakdown.Findings) : null;
 
+      if(result.WritePauseCount > 0)
+      {
+         var effectiveWallTime = result.WriteDuration + result.WritePausedDuration;
+         var effectiveSpeed = effectiveWallTime.TotalSeconds > 0
+             ? result.BytesWritten / (1024d * 1024d) / effectiveWallTime.TotalSeconds : 0;
+         var pacingNote = $"Poor SSD Drive Sanity: pause every 10 GiB, {result.WritePauseCount} pauses, " +
+             $"paused {result.WritePausedDuration.TotalSeconds:F1}s; " +
+             $"write speed active {result.WriteSpeedMBps:F1} MiB/s, incl. pauses {effectiveSpeed:F1} MiB/s.";
+         sessionNotes = string.IsNullOrWhiteSpace(sessionNotes) ? pacingNote : sessionNotes + "; " + pacingNote;
+      }
+
       if(!string.IsNullOrWhiteSpace(borrowedSmartProvenance))
          sessionNotes = string.IsNullOrWhiteSpace(sessionNotes) ? borrowedSmartProvenance : sessionNotes + "; " + borrowedSmartProvenance;
 
