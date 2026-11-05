@@ -282,7 +282,8 @@ public sealed class SurfaceTestScreen : ITuiScreen
 
             report = await runner.RunAsync(_disk.Path, _disk.TotalSize, options, reporter, linked.Token).ConfigureAwait(false);
             Volatile.Write(ref finished, true);
-            state.Percent = 100;
+            state.Percent = report.Completed ? 100 : report.TotalBytes > 0
+                ? report.ProcessedBytes * 100d / report.TotalBytes : 0;
             state.SpeedText = TuiFormats.Speed(report.AverageSpeedMbps);
             state.AddLog(report.Completed
                 ? "Test dokončen: " + TuiFormats.Speed(report.AverageSpeedMbps)
@@ -319,7 +320,10 @@ public sealed class SurfaceTestScreen : ITuiScreen
                 DriveSerialNumber = _disk.SerialNumber,
                 DriveTotalBytes = _disk.TotalSize,
                 DriveInterface = TuiFormats.BusTypeDisplay(_disk),
-                Operation = SurfaceTestOperation.ReadOnly,
+                Operation = report.Operation == TuiSurfaceOperation.WriteVerify
+                    ? SurfaceTestOperation.WritePattern : SurfaceTestOperation.ReadOnly,
+                FullDiskRead = report.Operation == TuiSurfaceOperation.ReadScan
+                    && report.TotalBytes == _disk.TotalSize && report.Completed,
                 Technology = _smart?.DeviceType?.Contains("nvme", StringComparison.OrdinalIgnoreCase) == true
                     ? DriveTechnology.Nvme
                     : _smart?.DeviceType?.Contains("ssd", StringComparison.OrdinalIgnoreCase) == true
