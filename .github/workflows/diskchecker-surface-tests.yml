@@ -6,6 +6,7 @@ on:
     branches:
       - "fix/surface-smart-adapter-handoff-20261016"
       - "fix/real-surface-read-20261105"
+      - "feature/poor-ssd-write-pacing-20261105"
       - "master"
 
 jobs:
