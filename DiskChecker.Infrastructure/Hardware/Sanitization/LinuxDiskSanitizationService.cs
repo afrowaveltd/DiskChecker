@@ -48,7 +48,7 @@ public class LinuxDiskSanitizationService : IDiskSanitizationService
         _logger = logger;
     }
 
-    public async Task<SanitizationResult> SanitizeDiskAsync(
+    public Task<SanitizationResult> SanitizeDiskAsync(
         string devicePath,
         long diskSize,
         bool createPartition = true,
@@ -56,6 +56,34 @@ public class LinuxDiskSanitizationService : IDiskSanitizationService
         string volumeLabel = "Sanitized",
         IProgress<SanitizationProgress>? progress = null,
         CancellationToken cancellationToken = default)
+        => SanitizeDiskCoreAsync(devicePath, diskSize, createPartition, format, volumeLabel,
+            null, progress, cancellationToken);
+
+    public Task<SanitizationResult> SanitizeDiskPacedAsync(
+        string devicePath,
+        long diskSize,
+        bool createPartition,
+        bool format,
+        string volumeLabel,
+        SanitizationWritePacing pacing,
+        IProgress<SanitizationProgress>? progress = null,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(pacing);
+        _ = new SanitizationWritePacingController(pacing); // fail before any destructive I/O
+        return SanitizeDiskCoreAsync(devicePath, diskSize, createPartition, format, volumeLabel,
+            pacing, progress, cancellationToken);
+    }
+
+    private async Task<SanitizationResult> SanitizeDiskCoreAsync(
+        string devicePath,
+        long diskSize,
+        bool createPartition,
+        bool format,
+        string volumeLabel,
+        SanitizationWritePacing? pacing,
+        IProgress<SanitizationProgress>? progress,
+        CancellationToken cancellationToken)
     {
         var result = new SanitizationResult();
         var stopwatch = Stopwatch.StartNew();
@@ -102,7 +130,7 @@ public class LinuxDiskSanitizationService : IDiskSanitizationService
                 TotalBytes = diskSize
             });
 
-            var writeResult = await WriteZerosAsync(normalizedPath, diskSize, progress, cancellationToken);
+            var writeResult = await WriteZerosAsync(normalizedPath, diskSize, pacing, progress, cancellationToken);
             result.ErrorDetails.AddRange(writeResult.ErrorDetails);
             if (!writeResult.Success)
             {
@@ -113,6 +141,8 @@ public class LinuxDiskSanitizationService : IDiskSanitizationService
             result.BytesWritten = writeResult.BytesWritten;
             result.WriteSpeedMBps = writeResult.SpeedMBps;
             result.WriteDuration = writeResult.Duration;
+            result.WritePausedDuration = writeResult.PauseDuration;
+            result.WritePauseCount = writeResult.PauseCount;
             result.ErrorsDetected += writeResult.Errors;
 
             // Phase 3: Read and verify
@@ -342,6 +372,7 @@ public class LinuxDiskSanitizationService : IDiskSanitizationService
     private async Task<SanitizationPhaseResult> WriteZerosAsync(
         string devicePath,
         long diskSize,
+        SanitizationWritePacing? pacing,
         IProgress<SanitizationProgress>? progress,
         CancellationToken cancellationToken)
     {
@@ -349,7 +380,7 @@ public class LinuxDiskSanitizationService : IDiskSanitizationService
         // Falls back to FileStream write-through if O_DIRECT is not supported.
         try
         {
-            return await WriteZerosDirectAsync(devicePath, diskSize, progress, cancellationToken);
+            return await WriteZerosDirectAsync(devicePath, diskSize, pacing, progress, cancellationToken);
         }
         catch (Exception ex) when (ex is IOException or InvalidOperationException)
         {
@@ -357,7 +388,7 @@ public class LinuxDiskSanitizationService : IDiskSanitizationService
             {
                 _logger.LogWarning(ex, "O_DIRECT write failed, falling back to FileStream write-through for {DevicePath}", devicePath);
             }
-            return await WriteZerosFileStreamAsync(devicePath, diskSize, progress, cancellationToken);
+            return await WriteZerosFileStreamAsync(devicePath, diskSize, pacing, progress, cancellationToken);
         }
     }
 
@@ -369,6 +400,7 @@ public class LinuxDiskSanitizationService : IDiskSanitizationService
     private async Task<SanitizationPhaseResult> WriteZerosDirectAsync(
         string devicePath,
         long diskSize,
+        SanitizationWritePacing? pacing,
         IProgress<SanitizationProgress>? progress,
         CancellationToken cancellationToken)
     {
@@ -499,6 +531,7 @@ public class LinuxDiskSanitizationService : IDiskSanitizationService
     private async Task<SanitizationPhaseResult> WriteZerosFileStreamAsync(
         string devicePath,
         long diskSize,
+        SanitizationWritePacing? pacing,
         IProgress<SanitizationProgress>? progress,
         CancellationToken cancellationToken)
     {
@@ -1522,6 +1555,8 @@ public class LinuxDiskSanitizationService : IDiskSanitizationService
         public long BytesRead { get; set; }
         public double SpeedMBps { get; set; }
         public TimeSpan Duration { get; set; }
+        public TimeSpan PauseDuration { get; set; }
+        public int PauseCount { get; set; }
         public int Errors { get; set; }
         public List<SanitizationErrorDetail> ErrorDetails { get; } = new();
     }
