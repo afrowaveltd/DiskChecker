@@ -1,70 +1,17 @@
-using DiskChecker.Core.Extensions;
 using DiskChecker.Core.Interfaces;
 using DiskChecker.Core.Models;
-using System.Diagnostics;
-using System.Runtime.InteropServices;
 
 namespace DiskChecker.Infrastructure.Hardware;
 
 /// <summary>
-/// Low-level disk surface test executor with NO OS buffering.
-/// Writes directly to disk sectors and verifies integrity.
-/// Supports both Windows (raw device access) and Linux (direct I/O).
+/// Historical low-level entry point. Reuse the real read-only scanner instead
+/// of claiming that an unimplemented hardware operation succeeded.
 /// </summary>
-public class DiskSurfaceTestExecutor : ISurfaceTestExecutor
+public sealed class DiskSurfaceTestExecutor : ISurfaceTestExecutor
 {
-    private readonly ISmartaProvider _smartaProvider;
-
-    // P/Invoke constants for Windows
-    private const uint GENERIC_READ = 0x80000000;
-    private const uint GENERIC_WRITE = 0x40000000;
-    private const uint OPEN_EXISTING = 3;
-    private const uint FILE_FLAG_NO_BUFFERING = 0x20000000;
-    private const uint FILE_FLAG_WRITE_THROUGH = 0x80000000;
-
-    // P/Invoke constants for Linux
-    private const int O_DIRECT = 0x4000;
-    private const int O_SYNC = 0x101000;
-
-    [DllImport("kernel32.dll", SetLastError = true)]
-    private static extern IntPtr CreateFileW(
-        [MarshalAs(UnmanagedType.LPWStr)] string lpFileName,
-        uint dwDesiredAccess,
-        uint dwShareMode,
-        IntPtr lpSecurityAttributes,
-        uint dwCreationDisposition,
-        uint dwFlagsAndAttributes,
-        IntPtr hTemplateFile);
-
-    [DllImport("kernel32.dll", SetLastError = true)]
-    private static extern bool CloseHandle(IntPtr hObject);
-
-    [DllImport("kernel32.dll", SetLastError = true)]
-    private static extern bool WriteFile(
-        IntPtr hFile,
-        byte[] lpBuffer,
-        uint nNumberOfBytesToWrite,
-        out uint lpNumberOfBytesWritten,
-        IntPtr lpOverlapped);
-
-    [DllImport("kernel32.dll", SetLastError = true)]
-    private static extern bool ReadFile(
-        IntPtr hFile,
-        byte[] lpBuffer,
-        uint nNumberOfBytesToRead,
-        out uint lpNumberOfBytesRead,
-        IntPtr lpOverlapped);
-
-    [DllImport("kernel32.dll", SetLastError = true)]
-    private static extern int SetFilePointer(
-        IntPtr hFile,
-        int lDistanceToMove,
-        ref int lpDistanceToMoveHigh,
-        uint dwMoveMethod);
-
     public DiskSurfaceTestExecutor(ISmartaProvider smartaProvider)
     {
-        _smartaProvider = smartaProvider;
+        ArgumentNullException.ThrowIfNull(smartaProvider);
     }
 
     public async Task<SurfaceTestResult> ExecuteAsync(
@@ -72,35 +19,18 @@ public class DiskSurfaceTestExecutor : ISurfaceTestExecutor
         IProgress<SurfaceTestProgress>? progress = null,
         CancellationToken cancellationToken = default)
     {
-        var result = new SurfaceTestResult
-        {
-            TestId = Guid.NewGuid().ToString(),
-            StartedAtUtc = DateTime.UtcNow,
-            DriveModel = request.Drive.Model.ToSafeString(),
-            DriveSerialNumber = request.Drive.SerialNumber.ToSafeString()
-        };
+        ArgumentNullException.ThrowIfNull(request);
+        ArgumentNullException.ThrowIfNull(request.Drive);
+        if (request.Operation != SurfaceTestOperation.ReadOnly)
+            throw new NotSupportedException("Write tests require a dedicated confirmed destructive workflow.");
 
-        try
-        {
-            // Implementation would go here
-            await Task.Delay(100, cancellationToken); // Placeholder
-            
-            if (result.ErrorCount >= 10)
-            {
-                result.CompletedAtUtc = DateTime.UtcNow;
-                result.Notes = "Disk surface test terminated early: 10 errors found. Disk is defective.".ToSafeString();
-                return result;
-            }
-
-            result.CompletedAtUtc = DateTime.UtcNow;
-            result.Notes = "Disk surface test completed successfully".ToSafeString();
-        }
-        catch (Exception ex)
-        {
-            result.CompletedAtUtc = DateTime.UtcNow;
-            result.Notes = $"Disk surface test failed: {ex.Message}".ToSafeString();
-        }
-
+        var drive = request.Drive;
+        var result = await SurfaceReadScanner.ScanAsync(drive.Path, drive.TotalSize,
+            request.MaxBytesToTest, progress, cancellationToken);
+        result.DriveModel = drive.Name ?? drive.Model;
+        result.DriveSerialNumber = drive.SerialNumber;
+        result.DriveInterface = drive.BusType.ToString();
+        result.Technology = request.Technology;
         return result;
     }
 }
