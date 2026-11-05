@@ -23,7 +23,7 @@ public static class SurfaceTestProfileDefaults
             Drive = request.Drive,
             Technology = request.Technology,
             Profile = request.Profile,
-            Operation = request.Operation == default ? defaults.Operation : request.Operation,
+            Operation = request.Operation,
             BlockSizeBytes = request.BlockSizeBytes <= 0 ? defaults.BlockSizeBytes : request.BlockSizeBytes,
             SampleIntervalBlocks = request.SampleIntervalBlocks <= 0 ? defaults.SampleIntervalBlocks : request.SampleIntervalBlocks,
             MaxBytesToTest = request.MaxBytesToTest ?? defaults.MaxBytesToTest,
@@ -66,7 +66,7 @@ public static class SurfaceTestProfileDefaults
             _ => new SurfaceTestRequest
             {
                 Profile = SurfaceTestProfile.HddFull,
-                Operation = SurfaceTestOperation.WriteZeroFill,
+                Operation = SurfaceTestOperation.ReadOnly,
                 BlockSizeBytes = 1024 * 1024,
                 SampleIntervalBlocks = 128,
                 MaxBytesToTest = null,
