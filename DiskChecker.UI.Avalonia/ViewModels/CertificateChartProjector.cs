@@ -65,6 +65,25 @@ public static class CertificateChartProjector
         double temperatureBottom = minTemp - 2;
         double temperatureTop = Math.Max(temperatureBottom + 1, maxTemp + 2);
 
+        var speedIsMeasured = (write?.Count ?? 0) > 0 || (read?.Count ?? 0) > 0;
+        string sourceNote;
+        if (speedIsMeasured)
+        {
+            double lastProgress = writeData.Concat(readData)
+                .Select(v => v.ProgressPercent).DefaultIfEmpty(0).Max();
+            sourceNote = lastProgress < 98
+                ? $"Pozor: uložené vzorky sahají jen do {lastProgress:F0} % testu."
+                : "Zobrazeny skutečné naměřené vzorky.";
+        }
+        else if (hasSpeed)
+        {
+            sourceNote = "Archivní profil: poloha bodů je odvozena z jejich pořadí.";
+        }
+        else
+        {
+            sourceNote = "K dispozici je pouze naměřený průběh teploty.";
+        }
+
         return new CertificateGraphData(
             Polyline(writeData, minSpeed, maxSpeed),
             Polyline(readData, minSpeed, maxSpeed),
@@ -78,7 +97,8 @@ public static class CertificateChartProjector
             "100 %",
             hasTemp ? $"{temperatureTop:F0} °C" : "N/A",
             hasTemp ? $"{(temperatureTop + temperatureBottom) / 2:F0} °C" : "N/A",
-            hasTemp ? $"{temperatureBottom:F0} °C" : "N/A");
+            hasTemp ? $"{temperatureBottom:F0} °C" : "N/A",
+            sourceNote);
     }
 
     private static List<SpeedSample> Prepare(
