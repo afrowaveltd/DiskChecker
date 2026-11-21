@@ -46,3 +46,17 @@ dotnet test tests/DiskChecker.Tui.Tests/DiskChecker.Tui.Tests.csproj -c Release
 
 Tested against a deterministic pacing controller without touching real hardware.
 Physical-drive integration on both Windows and Linux remains required.
+
+## Avalonia dialog and navigation consistency (November 2026)
+
+The SSD pacing prompt shares DiskChecker's common input dialog. Its **OK** and
+**Cancel** buttons use explicit localized properties from the dialog ViewModel,
+rather than the page-only `L[...]` indexer. Cancelling returns `null` and does
+not start sanitization. A destructive confirmation without an application owner
+must not be interpreted as user consent.
+
+All navigation entry points, including page-local Back actions, now enforce the
+same busy-operation lock through `NavigationService`. This prevents an active
+disk test, backup or restore from losing its scoped ViewModel. Hardware-level
+verification is still required; the lock is a UI lifecycle safeguard, not a
+substitute for device identity or write safety checks.

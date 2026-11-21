@@ -2997,5 +2997,8 @@
   "Workload": "Workload",
   "Write": "Write",
   "WriteShort": "WRITE",
-  "WriteSpeed": "Write Speed"
+  "WriteSpeed": "Write Speed",
+  "Common.NavigationBlocked": "A disk test or operation is running. Finish or cancel it before navigating away.",
+  "Settings.ExportImport": "Export / import data",
+  "DiskCardDetailView.SeekLatency": "Seek latency"
 }

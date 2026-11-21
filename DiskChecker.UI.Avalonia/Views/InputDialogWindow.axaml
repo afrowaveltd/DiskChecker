@@ -80,7 +80,7 @@
                             HorizontalAlignment="Right" 
                             Spacing="10">
                     
-                    <Button Content="{Binding L[Common.Cancel]}"
+                    <Button Content="{Binding CancelButtonText}"
                             Command="{Binding CancelCommand}"
                             Background="{DynamicResource ThemeCardBackgroundBrush}"
                             Foreground="{DynamicResource ThemeTextSecondaryBrush}"
@@ -90,7 +90,7 @@
                             CornerRadius="8"
                             Cursor="Hand"/>
                     
-                    <Button Content="{Binding L[Common.OK]}"
+                    <Button Content="{Binding OkButtonText}"
                             Command="{Binding OkCommand}"
                             Background="{DynamicResource ThemePrimaryBrush}"
                             Foreground="White"

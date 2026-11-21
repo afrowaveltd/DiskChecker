@@ -38,6 +38,41 @@ public class NavigationServiceTests
         Assert.Equal(0, previous.DisposeCount);
     }
 
+    [Fact]
+    public void BusyPageBlocksEveryNavigationPathUntilOperationCompletes()
+    {
+        using var provider = new ServiceCollection()
+            .AddTransient<BusyPage>()
+            .AddTransient<DisposablePage>()
+            .AddTransient<BrokenPage>()
+            .BuildServiceProvider();
+        var navigation = new NavigationService(provider);
+        navigation.NavigateTo<BusyPage>();
+        var busy = Assert.IsType<BusyPage>(navigation.CurrentViewModel);
+        var notifications = 0;
+        navigation.Navigated += (_, _) => notifications++;
+
+        // No new scope is constructed and the active VM cannot be disposed.
+        navigation.NavigateTo<DisposablePage>();
+        navigation.NavigateTo<BrokenPage>();
+        Assert.Same(busy, navigation.CurrentViewModel);
+        Assert.Equal(0, busy.DisposeCount);
+        Assert.Equal(0, notifications);
+
+        busy.IsNavigationBlocked = false;
+        navigation.NavigateTo<DisposablePage>();
+        Assert.IsType<DisposablePage>(navigation.CurrentViewModel);
+        Assert.Equal(1, busy.DisposeCount);
+        Assert.Equal(1, notifications);
+    }
+
+    public sealed class BusyPage : ViewModelBase, INavigationActivity, IDisposable
+    {
+        public bool IsNavigationBlocked { get; set; } = true;
+        public int DisposeCount { get; private set; }
+        public void Dispose() => DisposeCount++;
+    }
+
     public sealed class DisposablePage : ViewModelBase, IDisposable
     {
         public int DisposeCount { get; private set; }

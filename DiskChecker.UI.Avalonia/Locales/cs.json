@@ -2997,5 +2997,8 @@
   "Workload": "Zátěž",
   "Write": "Zápis",
   "WriteShort": "ZÁPIS",
-  "WriteSpeed": "Rychlost zápisu"
+  "WriteSpeed": "Rychlost zápisu",
+  "Common.NavigationBlocked": "Probíhá test nebo operace s diskem – nejprve ji dokončete nebo přerušte.",
+  "Settings.ExportImport": "Export / import dat",
+  "DiskCardDetailView.SeekLatency": "Latence přístupů (Seek)"
 }

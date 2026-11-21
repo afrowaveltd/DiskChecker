@@ -61,8 +61,11 @@ public enum TestPhaseStatus
 /// Orchestrates the Absolute Destructive Test: Sanitize₁ → Seek×3 → Sanitize₂ → Certificate.
 /// Captures SMART snapshots and temperature at every checkpoint.
 /// </summary>
-public partial class AbsoluteDestructiveTestViewModel : ViewModelBase, INavigableViewModel, IDisposable
+public partial class AbsoluteDestructiveTestViewModel : ViewModelBase, INavigableViewModel, IDisposable, INavigationActivity
 {
+    /// <inheritdoc />
+    public bool IsNavigationBlocked => IsTesting;
+
     // ──────────────────────────────────────────────
     //  Dependencies
     // ──────────────────────────────────────────────
