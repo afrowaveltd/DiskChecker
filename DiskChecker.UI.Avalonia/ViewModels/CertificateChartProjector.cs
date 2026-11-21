@@ -37,37 +37,51 @@ public static class CertificateChartProjector
         if (writeData.Count == 0 && readData.Count == 0)
             return CertificateGraphData.Default;
 
-        var valid = writeData.Concat(readData)
-            .Select(s => s.SpeedMBps)
-            .Where(double.IsFinite).ToArray();
-        if (valid.Length == 0)
+        // Temperature is a separate °C chart, NEVER a dimensionless overlay on
+        // the speed MB/s axis. A seek-only test may have temperature without
+        // a speed profile; in that case its temperature chart still renders.
+        var temp = (temperatures ?? [])
+            .Where(t => double.IsFinite(t.ProgressPercent) &&
+                t.TemperatureCelsius > -100 && t.TemperatureCelsius < 200)
+            .OrderBy(t => t.ProgressPercent).ToList();
+        if (temp.Count > 256)
+        {
+            int count = temp.Count;
+            temp = Enumerable.Range(0, 256)
+                .Select(i => temp[(int)Math.Round(i * (count - 1) / 255d)]).ToList();
+        }
+
+        bool hasSpeed = writeData.Count > 0 || readData.Count > 0;
+        bool hasTemp = temp.Count >= 2;
+        if (!hasSpeed && !hasTemp)
             return CertificateGraphData.Default;
 
-        double minimum = Math.Min(0, valid.Min());
-        double maximum = valid.Max();
-        if (maximum <= minimum)
-            maximum = minimum + 1;
-        if (maximum < 1d)
-            maximum = 1d;
+        double minSpeed = 0;
+        double maxSpeed = 1;
+        if (hasSpeed)
+        {
+            maxSpeed = Math.Max(1d, writeData.Concat(readData).Max(s => s.SpeedMBps));
+        }
 
-        // Chart origin is real zero, not an arbitrary truncated baseline.
-        // Zero-speed I/O stalls must remain visible.
-        var temp = (temperatures ?? [])
-            .Where(t => double.IsFinite(t.ProgressPercent))
-            .OrderBy(t => t.ProgressPercent).Take(256).ToList();
-        var hasTemp = temp.Count > 1;
+        int minTemp = hasTemp ? temp.Min(t => t.TemperatureCelsius) : 0;
+        int maxTemp = hasTemp ? temp.Max(t => t.TemperatureCelsius) : 0;
+        double temperatureBottom = minTemp - 2;
+        double temperatureTop = Math.Max(temperatureBottom + 1, maxTemp + 2);
 
         return new CertificateGraphData(
-            Polyline(writeData, minimum, maximum),
-            Polyline(readData, minimum, maximum),
-            hasTemp ? TemperaturePolyline(temp) : "",
+            Polyline(writeData, minSpeed, maxSpeed),
+            Polyline(readData, minSpeed, maxSpeed),
+            hasTemp ? TemperaturePolyline(temp, temperatureBottom, temperatureTop) : "",
             hasTemp,
-            $"{maximum:F1} MB/s",
-            $"{(maximum / 2):F1} MB/s",
+            hasSpeed ? $"{maxSpeed:F1} MB/s" : "N/A",
+            hasSpeed ? $"{maxSpeed / 2:F1} MB/s" : "N/A",
             "0 MB/s",
             "0 %",
             "50 %",
-            "100 %");
+            "100 %",
+            hasTemp ? $"{temperatureTop:F0} °C" : "N/A",
+            hasTemp ? $"{(temperatureTop + temperatureBottom) / 2:F0} °C" : "N/A",
+            hasTemp ? $"{temperatureBottom:F0} °C" : "N/A");
     }
 
     private static List<SpeedSample> Prepare(
@@ -138,10 +152,9 @@ public static class CertificateChartProjector
         }));
     }
 
-    private static string TemperaturePolyline(IReadOnlyList<TemperatureSample> samples)
+    private static string TemperaturePolyline(
+        IReadOnlyList<TemperatureSample> samples, double min, double max)
     {
-        double min = samples.Min(t => t.TemperatureCelsius);
-        double max = samples.Max(t => t.TemperatureCelsius);
         double range = Math.Max(1, max - min);
         return string.Join(" ", samples.Select(s =>
         {
