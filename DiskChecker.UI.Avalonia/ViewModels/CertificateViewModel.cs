@@ -1441,7 +1441,9 @@ public partial class CertificateViewModel : ViewModelBase, INavigableViewModel
 
       if(_selectedSession == null && sessionId > 0)
       {
-         _selectedSession = await _diskCardRepository.GetTestSessionWithoutSamplesAsync(sessionId);
+         var matchingSession = await _diskCardRepository.GetTestSessionWithoutSamplesAsync(sessionId);
+         if(!ReferenceEquals(certificate, Certificate)) return;
+         _selectedSession = matchingSession;
          if(_selectedSession != null)
          {
             certificate.ChartImagePath = _selectedSession.ChartImagePath;
@@ -1450,7 +1452,9 @@ public partial class CertificateViewModel : ViewModelBase, INavigableViewModel
 
       if(isSeekCertificate && _seekLatencyGraphSamples.Count == 0 && sessionId > 0)
       {
-         _seekLatencyGraphSamples = await LoadSeekLatencySamplesAsync(sessionId);
+         var seekSamples = await LoadSeekLatencySamplesAsync(sessionId);
+         if(!ReferenceEquals(certificate, Certificate)) return;
+         _seekLatencyGraphSamples = seekSamples;
          if(_seekLatencyGraphSamples.Count > 0)
          {
             certificate.SeekLatencyPoints = _seekLatencyGraphSamples.ToList();
@@ -1469,6 +1473,7 @@ public partial class CertificateViewModel : ViewModelBase, INavigableViewModel
       {
          StatusMessage = L.Get("CertificateView.Status.LoadingGraphData");
          var speedSeries = await LoadCertificateGraphSamplesProgressiveAsync(sessionId);
+         if(!ReferenceEquals(certificate, Certificate)) return;
          _writeGraphSamples = DownsampleToLimit(speedSeries.WriteSamples, 512);
          _readGraphSamples = DownsampleToLimit(speedSeries.ReadSamples, 512);
       }
@@ -1822,38 +1827,25 @@ public partial class CertificateViewModel : ViewModelBase, INavigableViewModel
     {
        ArgumentNullException.ThrowIfNull(speeds);
 
-       var values = speeds.Where(v => v > 0).ToList();
-       if(values.Count == 0)
+       var values = speeds.Where(v => double.IsFinite(v) && v >= 0).ToList();
+       if(values.Count <= targetPoints) return values;
+
+       // Preserve short zero-speed intervals. One average per bucket can hide
+       // a real I/O stall and yield a misleading PDF/profile.
+       int buckets = Math.Max(1, targetPoints / 4);
+       var output = new List<double>(targetPoints);
+       for(int i = 0; i < buckets; i++)
        {
-          return [];
+          int begin = i * values.Count / buckets;
+          int end = Math.Min(values.Count, (i + 1) * values.Count / buckets);
+          if(end <= begin) continue;
+          var part = values.Skip(begin).Take(end - begin).ToArray();
+          output.Add(part[0]);
+          output.Add(part.Min());
+          output.Add(part.Max());
+          output.Add(part[^1]);
        }
-
-       if(values.Count <= targetPoints)
-       {
-          return values;
-       }
-
-       var result = new List<double>(targetPoints);
-       var bucketSize = values.Count / (double)targetPoints;
-
-       for(var i = 0; i < targetPoints; i++)
-       {
-          var start = (int)Math.Floor(i * bucketSize);
-          var end = (int)Math.Floor((i + 1) * bucketSize);
-          end = Math.Clamp(end, start + 1, values.Count);
-
-          var sum = 0d;
-          var count = 0;
-          for(var j = start; j < end; j++)
-          {
-             sum += values[j];
-             count++;
-          }
-
-          result.Add(count > 0 ? sum / count : values[Math.Min(start, values.Count - 1)]);
-       }
-
-       return result;
+       return output;
     }
 
     private string BuildThermalSummary(TestSession session)
