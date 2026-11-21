@@ -15,6 +15,7 @@ public readonly record struct CertificateSeekGraphData(
     string FullStrokePoints,
     string RandomPoints,
     string SkipPoints,
+    string LegacyPoints,
     string MaxLabel,
     string MidLabel,
     string MinLabel,
@@ -23,10 +24,10 @@ public readonly record struct CertificateSeekGraphData(
     string EndLabel)
 {
     public bool HasGraph => FullStrokePoints.Length > 0 ||
-        RandomPoints.Length > 0 || SkipPoints.Length > 0;
+        RandomPoints.Length > 0 || SkipPoints.Length > 0 || LegacyPoints.Length > 0;
 
     public static CertificateSeekGraphData Empty { get; } = new(
-        "", "", "", "N/A", "N/A", "0 ms", "1", "—", "—");
+        "", "", "", "", "N/A", "N/A", "0 ms", "1", "—", "—");
 }
 
 /// <summary>Projects original per-phase index/latency pairs onto the fixed preview plot.</summary>
@@ -51,7 +52,8 @@ public static class CertificateSeekChartProjector
         // A legacy certificate contains only anonymous latency values, so the
         // mode is unknown. Treat these as one unlabeled full-stroke preview
         // only when no original per-mode samples survive.
-        if (valid.Count == 0 && historical is { Count: > 0 })
+        bool isLegacy = valid.Count == 0;
+        if (isLegacy && historical is { Count: > 0 })
         {
             var values = historical.Where(s => double.IsFinite(s) && s > 0)
                 .Select((ms, index) => new SeekSampleRecord
@@ -70,9 +72,10 @@ public static class CertificateSeekChartProjector
         double maxY = Math.Max(maxMeasured * 1.15, maxMeasured + 1);
         var last = lastIndex.ToString(CultureInfo.InvariantCulture);
         return new CertificateSeekGraphData(
-            Points(valid, SeekTestType.FullStroke, lastIndex, maxY),
+            isLegacy ? "" : Points(valid, SeekTestType.FullStroke, lastIndex, maxY),
             Points(valid, SeekTestType.Random, lastIndex, maxY),
             Points(valid, SeekTestType.Skip, lastIndex, maxY),
+            isLegacy ? Points(valid, SeekTestType.FullStroke, lastIndex, maxY) : "",
             $"{maxY:F1} ms",
             $"{maxY / 2:F1} ms",
             "0 ms",
