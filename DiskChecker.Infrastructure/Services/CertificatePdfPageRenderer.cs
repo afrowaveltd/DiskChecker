@@ -110,10 +110,10 @@ internal static class CertificatePdfPageRenderer
         .Replace("\r", "", StringComparison.Ordinal);
 
     /// <summary>Draws only what fits; any omitted content gets a visible continuation marker.</summary>
-    private static void Wrapped(SKCanvas c, string? value, float x, float y, float width,
+    private static int Wrapped(SKCanvas c, string? value, float x, float y, float width,
         SKFont font, SKColor color, int maxLines)
     {
-        if (string.IsNullOrWhiteSpace(value) || maxLines <= 0) return;
+        if (string.IsNullOrWhiteSpace(value) || maxLines <= 0) return 0;
 
         var words = Clean(value).Replace("\n", " \n ", StringComparison.Ordinal)
             .Split(' ', StringSplitOptions.RemoveEmptyEntries);
@@ -156,6 +156,8 @@ internal static class CertificatePdfPageRenderer
 
             Text(c, line, x, y + i * (font.Size + 9f), font, color);
         }
+
+        return count;
     }
 
     private static void Draw(SKCanvas c, DiskCertificate primary)
@@ -263,8 +265,8 @@ internal static class CertificatePdfPageRenderer
             Text(c, $"Zápis průměr: {write}", left, y + 233, small, Ink);
         }
 
-        float chartY = y + 265;
-        float chartHeight = 300;
+        float chartY = y + 255;
+        float chartHeight = 380;
         bool hasSeek = Seek(cert);
         bool hasSpeeds = cert.ReadProfilePoints.Count > 0 || cert.WriteProfilePoints.Count > 0
             || cert.Sanitize1ReadPoints.Count > 0 || cert.Sanitize1WritePoints.Count > 0;
@@ -288,15 +290,30 @@ internal static class CertificatePdfPageRenderer
             Text(c, "Graf pro tento typ testu není k dispozici.", left + 20, chartY + 45, body, Muted);
         }
 
-        Text(c, "KOMENTÁŘ TESTU", left, y + 606, small, Blue);
-        Wrapped(c, string.IsNullOrWhiteSpace(cert.Notes) ? cert.SeekTestSummary ?? "Bez poznámek." : cert.Notes,
-            left, y + 636, available, small, Ink, 6);
-        Text(c, "TECHNICKÉ POSOUZENÍ", left, y + 793, small, Blue);
-        Wrapped(c, string.IsNullOrWhiteSpace(cert.TechnicianAssessment)
+        // Allocate room by the actual number of rendered text lines rather than
+        // leaving a permanently reserved blank band below a short seek comment.
+        float notesTitleY = y + 674;
+        float notesTextY = notesTitleY + 29;
+        Text(c, "KOMENTÁŘ TESTU", left, notesTitleY, small, Blue);
+        int notesLines = Wrapped(c,
+            string.IsNullOrWhiteSpace(cert.Notes) ? cert.SeekTestSummary ?? "Bez poznámek." : cert.Notes,
+            left, notesTextY, available, small, Ink, 4);
+
+        float assessmentTitleY = Math.Max(y + 765,
+            notesTextY + notesLines * (small.Size + 9f) + 18f);
+        float assessmentTextY = assessmentTitleY + 30;
+        Text(c, "TECHNICKÉ POSOUZENÍ", left, assessmentTitleY, small, Blue);
+        int assessmentLines = Wrapped(c, string.IsNullOrWhiteSpace(cert.TechnicianAssessment)
                 ? "Bez doplňujícího hodnocení technika." : cert.TechnicianAssessment,
-            left, y + 821, available, small, Ink, 3);
-        Text(c, "DOPORUČENÍ", left, y + 932, small, Blue);
-        Wrapped(c, cert.RecommendationNotes, left, y + 958, available, tiny, Ink, 2);
+            left, assessmentTextY, available, small, Ink, 2);
+
+        float recommendationTitleY = Math.Max(y + 876,
+            assessmentTextY + assessmentLines * (small.Size + 9f) + 18f);
+        Text(c, "DOPORUČENÍ", left, recommendationTitleY, small, Blue);
+        float recommendationTextY = recommendationTitleY + 28;
+        int availableLines = recommendationTextY + 2 * (tiny.Size + 9f) < y + height - 12 ? 2 : 1;
+        Wrapped(c, cert.RecommendationNotes, left, recommendationTextY,
+            available, tiny, Ink, availableLines);
     }
 
     private static string Ms(double? value) =>
