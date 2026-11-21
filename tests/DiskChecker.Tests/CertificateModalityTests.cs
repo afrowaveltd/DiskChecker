@@ -148,6 +148,12 @@ public sealed class CertificateModalityTests
             };
             surface.PairedCertificate = seek;
             var pdf = await generator.GeneratePdfAsync(surface);
+            var qaFolder = Environment.GetEnvironmentVariable("DISKCHECKER_PDF_QA_DIR");
+            if (!string.IsNullOrWhiteSpace(qaFolder))
+            {
+                Directory.CreateDirectory(qaFolder);
+                File.Copy(pdf, Path.Combine(qaFolder, "combined-surface-seek.pdf"), overwrite: true);
+            }
             var text = Encoding.Latin1.GetString(await File.ReadAllBytesAsync(pdf, TestContext.Current.CancellationToken));
 
             Assert.StartsWith("%PDF-", text, StringComparison.Ordinal);
