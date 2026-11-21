@@ -99,6 +99,9 @@ public sealed class TuiRestoreRequest
 
     /// <summary>Expected payload checksum from the manifest, when present.</summary>
     public string? ExpectedSha256 { get; init; }
+
+    /// <summary>Bytes that the rescue backup could not recover from the original source.</summary>
+    public long UnreadableBytes { get; init; }
 }
 
 /// <summary>Outcome of a restore.</summary>
@@ -108,8 +111,11 @@ public sealed class TuiRestoreResult
 
     public string? Sha256 { get; init; }
 
-    /// <summary>True when a manifest checksum existed and matched the written bytes.</summary>
+    /// <summary>True only after read-back matches the manifest and no source bytes were missing.</summary>
     public bool Verified { get; init; }
+
+    /// <summary>True when the originating rescue image included unreadable source ranges.</summary>
+    public bool Partial { get; init; }
 
     public string? Message { get; init; }
 }
@@ -438,131 +444,239 @@ public sealed class TuiImageBackupService
         };
     }
 
-    /// <summary>Writes an image back onto a target device or file.</summary>
+    /// <summary>
+    /// Restores an image to a regular file through a verified staging file.
+    /// Physical devices remain disabled until identity, mount and size validation is implemented.
+    /// </summary>
     public async Task<TuiRestoreResult> RestoreAsync(TuiRestoreRequest request, TuiProgress? progress, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(request);
+        ArgumentException.ThrowIfNullOrWhiteSpace(request.TargetPath);
+        ArgumentOutOfRangeException.ThrowIfNegative(request.TotalBytes);
+        ArgumentOutOfRangeException.ThrowIfNegative(request.DataStartOffset);
+        ArgumentOutOfRangeException.ThrowIfNegative(request.UnreadableBytes);
+
+        // Physical-device selection and revalidation must be implemented before any
+        // direct write: a typed /dev or PhysicalDrive path is not a sufficient identity.
+        if (IsBlockDeviceTarget(request.TargetPath))
+        {
+            throw new NotSupportedException(
+                "Direct restore to a physical disk is temporarily disabled. " +
+                "Use a regular-file target until disk identity and mounted-volume checks are implemented.");
+        }
+
         if (request.ImagePaths.Count == 0)
         {
             throw new FileNotFoundException("Obraz zálohy nebyl nalezen.");
         }
 
-        var parts = request.ImagePaths.Where(File.Exists).ToArray();
-        if (parts.Length == 0)
+        // Missing parts must never be silently omitted, even if earlier parts exist.
+        var parts = request.ImagePaths.ToArray();
+        foreach (string part in parts)
         {
-            throw new FileNotFoundException("Obraz zálohy nebyl nalezen.");
-        }
-
-        long totalBytes = request.TotalBytes > 0
-            ? request.TotalBytes
-            : parts.Sum(part => Math.Max(0, new FileInfo(part).Length - request.DataStartOffset));
-
-        bool blockDevice = IsBlockDeviceTarget(request.TargetPath);
-        if (!blockDevice)
-        {
-            string? directory = Path.GetDirectoryName(request.TargetPath);
-            if (!string.IsNullOrEmpty(directory))
+            if (string.IsNullOrWhiteSpace(part) || !File.Exists(part))
             {
-                Directory.CreateDirectory(directory);
-            }
-
-            using var sizing = new FileStream(request.TargetPath, FileMode.OpenOrCreate, FileAccess.Write, FileShare.Read, 4096, FileOptions.SequentialScan);
-            if (sizing.Length < totalBytes)
-            {
-                sizing.SetLength(totalBytes);
+                throw new FileNotFoundException("Chybí část záložního obrazu.", part);
             }
         }
 
-        if (progress is not null)
+        var targetPath = Path.GetFullPath(request.TargetPath);
+        var comparer = OperatingSystem.IsWindows() ? StringComparer.OrdinalIgnoreCase : StringComparer.Ordinal;
+        var resolvedTarget = ResolveExistingPath(targetPath);
+        if (parts.Any(part => comparer.Equals(resolvedTarget, ResolveExistingPath(part))))
         {
-            progress.Phase = _localize("Tui.Restore.Phase.Writing");
+            throw new InvalidOperationException("Obraz zálohy nesmí být současně cílem obnovy.");
         }
 
+        // A nonzero payload offset is permitted only for a verified fixed VHDX.
+        if (request.DataStartOffset > 0)
+        {
+            if (parts.Length != 1 ||
+                !TuiVhdxImageUtility.TryReadInfo(parts[0], out var info) ||
+                info.DataStartOffset != request.DataStartOffset ||
+                (request.TotalBytes > 0 && info.VirtualDiskSizeBytes != request.TotalBytes))
+            {
+                throw new InvalidDataException("Obraz VHDX neprošel validací nebo neodpovídá manifestu.");
+            }
+        }
+
+        long available = 0;
+        for (int i = 0; i < parts.Length; i++)
+        {
+            long offset = i == 0 ? request.DataStartOffset : 0;
+            long size = new FileInfo(parts[i]).Length;
+            if (offset > size)
+            {
+                throw new InvalidDataException("Začátek dat leží za koncem záložního obrazu.");
+            }
+
+            available = checked(available + size - offset);
+        }
+
+        long totalBytes = request.TotalBytes > 0 ? request.TotalBytes : available;
+        if (totalBytes <= 0 || available < totalBytes)
+        {
+            throw new InvalidDataException("Záložní obraz je kratší než požadovaná obnova.");
+        }
+
+        string directory = Path.GetDirectoryName(targetPath)
+            ?? throw new InvalidOperationException("Cílový adresář není platný.");
+        Directory.CreateDirectory(directory);
+        string stagingPath = Path.Combine(directory, $".{Path.GetFileName(targetPath)}.restore-{Guid.NewGuid():N}.tmp");
+
+        long written = 0;
+        string writtenSha256;
         var startedUtc = DateTime.UtcNow;
         var buffer = new byte[BlockSize];
-        long written = 0;
-        using var hash = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
 
-        using (var target = new FileStream(
-                   request.TargetPath,
-                   blockDevice ? FileMode.Open : FileMode.OpenOrCreate,
-                   FileAccess.Write,
-                   FileShare.None,
-                   BlockSize,
-                   FileOptions.SequentialScan))
+        try
         {
-            for (int index = 0; index < parts.Length; index++)
+            if (progress is not null)
             {
-                long remaining = totalBytes - written;
-                if (remaining <= 0)
-                {
-                    break;
-                }
-
-                long skip = index == 0 ? request.DataStartOffset : 0;
-                using var source = new FileStream(parts[index], FileMode.Open, FileAccess.Read, FileShare.Read, BlockSize, FileOptions.SequentialScan);
-                if (skip > 0)
-                {
-                    source.Position = Math.Min(skip, source.Length);
-                }
-
-                while (remaining > 0)
-                {
-                    cancellationToken.ThrowIfCancellationRequested();
-                    int toRead = (int)Math.Min(BlockSize, remaining);
-                    int read = await source.ReadAsync(buffer.AsMemory(0, toRead), cancellationToken).ConfigureAwait(false);
-                    if (read == 0)
-                    {
-                        break;
-                    }
-
-                    await target.WriteAsync(buffer.AsMemory(0, read), cancellationToken).ConfigureAwait(false);
-                    hash.AppendData(buffer, 0, read);
-                    written += read;
-                    remaining -= read;
-                    Report(progress, written, totalBytes, startedUtc, "Tui.Restore.Metric.Blocks", written / BlockSize, totalBytes / BlockSize);
-                }
+                progress.Phase = _localize("Tui.Restore.Phase.Writing");
             }
 
-            await target.FlushAsync(cancellationToken).ConfigureAwait(false);
-        }
+            using (var hash = IncrementalHash.CreateHash(HashAlgorithmName.SHA256))
+            {
+                using var target = new FileStream(
+                    stagingPath, FileMode.CreateNew, FileAccess.Write, FileShare.None,
+                    BlockSize, FileOptions.SequentialScan);
 
-        string actual = Convert.ToHexString(hash.GetHashAndReset());
-        bool verified = !string.IsNullOrWhiteSpace(request.ExpectedSha256) &&
-                        string.Equals(actual, request.ExpectedSha256, StringComparison.OrdinalIgnoreCase);
+                for (int index = 0; index < parts.Length && written < totalBytes; index++)
+                {
+                    using var source = new FileStream(
+                        parts[index], FileMode.Open, FileAccess.Read, FileShare.Read,
+                        BlockSize, FileOptions.SequentialScan);
+                    if (index == 0)
+                    {
+                        source.Position = request.DataStartOffset;
+                    }
 
-        string message;
-        if (string.IsNullOrWhiteSpace(request.ExpectedSha256))
-        {
-            message = _localize("Tui.Restore.Log.NoChecksum");
-        }
-        else if (verified)
-        {
-            message = _localize("Tui.Restore.Log.Verified");
-        }
-        else
-        {
-            message = _localize("Tui.Restore.Log.Mismatch");
-        }
+                    while (written < totalBytes)
+                    {
+                        cancellationToken.ThrowIfCancellationRequested();
+                        int wanted = (int)Math.Min(BlockSize, totalBytes - written);
+                        int read = await source.ReadAsync(buffer.AsMemory(0, wanted), cancellationToken).ConfigureAwait(false);
+                        if (read == 0)
+                        {
+                            break;
+                        }
 
-        if (progress is not null)
-        {
-            progress.Percent = 100;
-            progress.Phase = _localize("Tui.Restore.Phase.Done");
-            progress.Detail = TuiFormats.DecimalSize(written);
-            progress.AddLog(_localize("Tui.Restore.Log.Done", TuiFormats.DecimalSize(written)));
-            progress.AddLog(message);
-            progress.UpdateFromElapsed(startedUtc);
-        }
+                        await target.WriteAsync(buffer.AsMemory(0, read), cancellationToken).ConfigureAwait(false);
+                        hash.AppendData(buffer, 0, read);
+                        written += read;
+                        Report(progress, written, totalBytes, startedUtc, "Tui.Restore.Metric.Blocks", written / BlockSize, totalBytes / BlockSize);
+                    }
+                }
 
-        return new TuiRestoreResult
+                if (written != totalBytes)
+                {
+                    throw new EndOfStreamException($"Obraz byl během obnovy zkrácen ({written}/{totalBytes} B).");
+                }
+
+                await target.FlushAsync(cancellationToken).ConfigureAwait(false);
+                target.Flush(flushToDisk: true);
+                writtenSha256 = Convert.ToHexString(hash.GetHashAndReset());
+            }
+
+            // Verify what the destination filesystem can actually read, not merely
+            // the bytes submitted to WriteAsync. Any mismatch preserves the old target.
+            string readbackSha256 = await HashStagedFileAsync(stagingPath, totalBytes, cancellationToken).ConfigureAwait(false);
+            if (!string.Equals(readbackSha256, writtenSha256, StringComparison.OrdinalIgnoreCase))
+            {
+                throw new IOException("Kontrolní součet zpětně přečteného cíle se liší od zapsaných dat.");
+            }
+
+            bool hasManifestHash = !string.IsNullOrWhiteSpace(request.ExpectedSha256);
+            if (hasManifestHash &&
+                !string.Equals(readbackSha256, request.ExpectedSha256, StringComparison.OrdinalIgnoreCase))
+            {
+                throw new InvalidDataException("SHA-256 obnovených dat neodpovídá manifestu. Původní cíl zůstal zachován.");
+            }
+
+            cancellationToken.ThrowIfCancellationRequested();
+            File.Move(stagingPath, targetPath, overwrite: true);
+
+            bool partial = request.UnreadableBytes > 0;
+            bool verified = hasManifestHash && !partial;
+            string message = partial
+                ? _localize("Tui.Restore.Log.Partial", request.UnreadableBytes)
+                : verified
+                    ? _localize("Tui.Restore.Log.Verified")
+                    : _localize("Tui.Restore.Log.NoChecksum");
+
+            if (progress is not null)
+            {
+                progress.Percent = 100;
+                progress.Phase = _localize("Tui.Restore.Phase.Done");
+                progress.Detail = TuiFormats.DecimalSize(written);
+                progress.AddLog(_localize("Tui.Restore.Log.Done", TuiFormats.DecimalSize(written)));
+                progress.AddLog(message);
+                progress.UpdateFromElapsed(startedUtc);
+            }
+
+            return new TuiRestoreResult
+            {
+                BytesWritten = written,
+                Sha256 = readbackSha256,
+                Verified = verified,
+                Partial = partial,
+                Message = message,
+            };
+        }
+        finally
         {
-            BytesWritten = written,
-            Sha256 = actual,
-            Verified = verified,
-            Message = message,
-        };
+            // A failed or cancelled restore must not overwrite the original target.
+            if (File.Exists(stagingPath))
+            {
+                File.Delete(stagingPath);
+            }
+        }
     }
+
+    /// <summary>Canonicalizes direct symbolic links when checking for image/target aliases.</summary>
+    private static string ResolveExistingPath(string path)
+    {
+        string fullPath = Path.GetFullPath(path);
+        if (File.Exists(fullPath) && new FileInfo(fullPath).ResolveLinkTarget(returnFinalTarget: true) is { } link)
+        {
+            return Path.GetFullPath(link.FullName);
+        }
+
+        return fullPath;
+    }
+
+    /// <summary>Hashes exactly the restored payload from a fresh read-only stream.</summary>
+    private async Task<string> HashStagedFileAsync(string path, long length, CancellationToken cancellationToken)
+    {
+        await using Stream source = ReadbackStreamFactory(path);
+        using var hash = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
+        byte[] buffer = new byte[BlockSize];
+        long readTotal = 0;
+        while (readTotal < length)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            int wanted = (int)Math.Min(buffer.Length, length - readTotal);
+            int read = await source.ReadAsync(buffer.AsMemory(0, wanted), cancellationToken).ConfigureAwait(false);
+            if (read <= 0)
+            {
+                throw new EndOfStreamException("Zpětné čtení cíle skončilo předčasně.");
+            }
+
+            hash.AppendData(buffer, 0, read);
+            readTotal += read;
+        }
+
+        return Convert.ToHexString(hash.GetHashAndReset());
+    }
+
+    /// <summary>
+    /// Test seam for deterministic read-back fault injection. Production always opens
+    /// the staged regular file read-only through a fresh file handle.
+    /// </summary>
+    internal Func<string, Stream> ReadbackStreamFactory { get; set; } =
+        static path => new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read,
+            BlockSize, FileOptions.SequentialScan);
 
     private static IReadOnlyList<string> DefaultScanRoots()
     {
@@ -637,7 +751,9 @@ public sealed class TuiImageBackupService
 
     private static bool IsBlockDeviceTarget(string path) =>
         path.StartsWith("/dev/", StringComparison.OrdinalIgnoreCase) ||
-        path.Contains("PhysicalDrive", StringComparison.OrdinalIgnoreCase);
+        path.Contains("PhysicalDrive", StringComparison.OrdinalIgnoreCase) ||
+        path.StartsWith(@"\\.\", StringComparison.Ordinal) ||
+        path.StartsWith(@"\\?\", StringComparison.Ordinal);
 
     private async Task<TuiBackupResult> RunImageAsync(
         TuiBackupRequest request,
