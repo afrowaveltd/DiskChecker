@@ -704,13 +704,18 @@ public partial class SafeDestructiveTestViewModel : ViewModelBase, INavigableVie
             try
             {
                if(await _notificationService.SendStoredCertificateIfConfiguredAsync(Certificate, ct))
-                  Log("SMTP: " + L.Get("Settings.SmtpTestAccepted"));
+                  Log(L.Get("Notification.CertificateAccepted"));
             }
-            catch(OperationCanceledException) { throw; }
+            catch(OperationCanceledException)
+            {
+               Log(L.Get("Notification.CertificateSendCancelled"));
+            }
             catch(Exception ex)
             {
-               // A notification failure cannot invalidate a successfully restored disk.
-               Log(L.Get("SurfaceTest.Status.EmailDeliveryFailed") + ": " + ex.Message);
+               // SMTP errors cannot invalidate a successfully restored disk.
+               var warning = L.Get("SurfaceTest.Status.EmailDeliveryFailed") + ": " + ex.Message;
+               Log(warning);
+               StatusMessage = L.Get("SafeDestructive.Status.Done") + ". " + warning;
             }
          }
          Log(L.Get("SafeDestructive.Log.WorkflowCompleted"));

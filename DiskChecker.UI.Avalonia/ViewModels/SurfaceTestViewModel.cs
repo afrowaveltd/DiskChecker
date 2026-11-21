@@ -1699,7 +1699,10 @@ public partial class SurfaceTestViewModel : ViewModelBase, INavigableViewModel, 
              Path.GetFileName(pdfPath), cancellationToken);
          return persistWarning;
       }
-      catch(OperationCanceledException) { throw; }
+      catch(OperationCanceledException)
+      {
+         return L.Get("Notification.CertificateSendCancelled");
+      }
       catch(Exception ex)
       {
          // A failed SMTP request must never be called a failed disk test.

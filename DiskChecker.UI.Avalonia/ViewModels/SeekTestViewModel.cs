@@ -903,7 +903,10 @@ public partial class SeekTestViewModel : ViewModelBase, INavigableViewModel, IDi
                     await _notificationService.SendStoredCertificateIfConfiguredAsync(
                         cert, _testCancellation?.Token ?? CancellationToken.None);
                 }
-                catch (OperationCanceledException) { throw; }
+                catch (OperationCanceledException)
+                {
+                    if (!_disposed) StatusMessage = L.Get("Notification.CertificateSendCancelled");
+                }
                 catch (Exception ex)
                 {
                     // Saved seek results stay valid when SMTP or PDF delivery fails.

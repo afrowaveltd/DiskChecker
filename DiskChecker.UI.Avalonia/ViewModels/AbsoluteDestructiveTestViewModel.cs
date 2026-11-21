@@ -1145,7 +1145,10 @@ public partial class AbsoluteDestructiveTestViewModel : ViewModelBase, INavigabl
             {
                 await _notificationService.SendStoredCertificateIfConfiguredAsync(Certificate, ct);
             }
-            catch (OperationCanceledException) { throw; }
+            catch (OperationCanceledException)
+            {
+                StatusMessage = L.Get("Notification.CertificateSendCancelled");
+            }
             catch (Exception ex)
             {
                 // Failed email does not invalidate completed destructive tests.

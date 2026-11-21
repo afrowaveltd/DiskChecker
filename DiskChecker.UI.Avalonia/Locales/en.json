@@ -3046,5 +3046,7 @@
   "SurfaceTest.Status.CertificateSaveFailed": "Could not save certificate to database",
   "Settings.SelectBackup": "Backup to restore:",
   "Settings.RefreshBackups": "Refresh list",
-  "Settings.RestoreSelectionHint": "Select a backup explicitly before restore. Restoring can replace current data and requires restarting DiskChecker."
+  "Settings.RestoreSelectionHint": "Select a backup explicitly before restore. Restoring can replace current data and requires restarting DiskChecker.",
+  "Notification.CertificateAccepted": "PDF certificate accepted by the SMTP server for delivery.",
+  "Notification.CertificateSendCancelled": "The disk test was saved; certificate emailing was cancelled."
 }
