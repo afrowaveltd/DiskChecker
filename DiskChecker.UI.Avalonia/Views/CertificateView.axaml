@@ -370,7 +370,7 @@
 
                         <Separator Background="{DynamicResource ThemeBorderBrush}"/>
 
-                        <Grid ColumnDefinitions="Auto,*" ColumnSpacing="8" Margin="0,2,0,2">
+                        <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="8" Margin="0,2,0,2">
                             <TextBlock Grid.Column="0" Text="{Binding L[CertificateView.TestSessionLabel]}" FontWeight="Bold" VerticalAlignment="Center"/>
                             <ComboBox Grid.Column="1"
                                       ItemsSource="{Binding AvailableSessions}"
@@ -389,6 +389,9 @@
                                     </DataTemplate>
                                 </ComboBox.ItemTemplate>
                             </ComboBox>
+                            <Button Grid.Column="2" Content="{Binding L[CertificateView.CombinedPdf]}"
+                                    Command="{Binding ExportCombinedPdfCommand}" Padding="12,6"
+                                    Background="{DynamicResource ThemeInfoBrush}" Foreground="White"/>
                         </Grid>
 
                         <Grid ColumnDefinitions="*,*" ColumnSpacing="16">
