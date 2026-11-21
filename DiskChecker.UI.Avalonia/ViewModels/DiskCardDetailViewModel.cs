@@ -78,8 +78,6 @@ public partial class DiskCardDetailViewModel : ViewModelBase, INavigableViewMode
         TestSessions = new ObservableCollection<TestSession>();
         Certificates = new ObservableCollection<DiskCertificate>();
         SmartHistory = new ObservableCollection<SmartHistoryItem>();
-        SpeedChartModel = new PlotModel { Title = L.Get("DiskCardDetail.Status.SpeedTest") };
-        TemperatureChartModel = new PlotModel { Title = L.Get("DiskCardDetail.Status.TemperatureDuringTest") };
     }
 
     #region Properties
@@ -157,8 +155,6 @@ public partial class DiskCardDetailViewModel : ViewModelBase, INavigableViewMode
 
     public ObservableCollection<SmartHistoryItem> SmartHistory { get; }
 
-    public PlotModel SpeedChartModel { get; }
-    public PlotModel TemperatureChartModel { get; }
     public PlotModel? SeekChartModel
     {
         get => _seekChartModel;
@@ -1000,12 +996,19 @@ public partial class DiskCardDetailViewModel : ViewModelBase, INavigableViewMode
         try
         {
             var envelope = JsonSerializer.Deserialize<SeekResultsEnvelope>(seekResultsJson);
-            return new[] { envelope?.FullStroke, envelope?.Random, envelope?.Skip }
-                .Where(r => r != null)
-                .SelectMany(r => r!.Samples)
-                .Where(s => !s.HasError && s.LatencyMs > 0)
-                .OrderBy(s => s.Index)
-                .Select(s => s.LatencyMs)
+            // Do not interleave FullStroke/Random/Skip operations that share
+            // sample indices; that fabricates a zig-zag timeline in the chart.
+            // Prefer full stroke when it exists, otherwise concatenate remaining
+            // modes in their original phase order.
+            var source = envelope?.FullStroke?.Samples.Count > 0
+                ? envelope.FullStroke.Samples.AsEnumerable()
+                : new[] { envelope?.Random, envelope?.Skip }
+                    .Where(r => r != null)
+                    .SelectMany(r => r!.Samples);
+            return source.Where(sample => !sample.HasError &&
+                    double.IsFinite(sample.LatencyMs) && sample.LatencyMs > 0)
+                .OrderBy(sample => sample.TimestampUtc)
+                .Select(sample => sample.LatencyMs)
                 .ToList();
         }
         catch (JsonException)
