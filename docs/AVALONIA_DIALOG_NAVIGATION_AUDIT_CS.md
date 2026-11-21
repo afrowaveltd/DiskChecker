@@ -25,3 +25,14 @@ Jde o ochranu životního cyklu GUI. Samotné potvrzení, identita cílového di
 ## Další audit
 
 Zbývá kompletní ruční projití všech pohledů a hardwarových scénářů. Opravený ochranný kontrakt **nenahrazuje** nezávislou bezpečnostní revizi restore a destruktivního testu. Knihovny Avalonia/LiveCharts/Skia zůstávají v dosud kompatibilních verzích; **Skia se kvůli této změně neaktualizuje**.
+
+## Doplňkové ověření klíčů (celkem 24 hlavních AXAML obrazovek)
+
+Porovnány odkazy `L[...]` ve všech hlavních oknech s českým a anglickým
+slovníkem. Chyběly `Settings.ExportImport` a
+`DiskCardDetailView.SeekLatency`; oba překlady byly doplněny.
+U `Settings.ExportImport` se současně opravila vazba tlačítka na
+`NavigateToExportImportCommand` přímo v `SettingsViewModel`, bez zbytečného
+parent-selector výrazu. Kontrola zahrnovala pouze deklarované XAML
+lokalizační klíče; dynamicky složené popisky a runtime navigaci je stále
+třeba vizuálně ověřit.

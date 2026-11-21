@@ -314,7 +314,7 @@
                                    FontWeight="SemiBold"
                                    FontSize="10"/>
                             <Button Content="{Binding L[Settings.ExportImport]}"
-                                   Command="{Binding \$parent[UserControl].DataContext.NavigateToExportImportCommand}"
+                                   Command="{Binding NavigateToExportImportCommand}"
                                    Background="{DynamicResource ThemePrimaryBrush}"
                                    Foreground="White"
                                    CornerRadius="6"
