@@ -16,7 +16,8 @@ public readonly record struct CertificateGraphData(
     string ChartXAxisEndLabel,
     string TemperatureMaxLabel,
     string TemperatureMidLabel,
-    string TemperatureMinLabel)
+    string TemperatureMinLabel,
+    string ChartSourceNote)
 {
     /// <summary>Never display demo curves as though they were measurements.</summary>
     public static CertificateGraphData Default { get; } = new(
@@ -32,5 +33,6 @@ public readonly record struct CertificateGraphData(
         "100 %",
         "N/A",
         "N/A",
-        "N/A");
+        "N/A",
+        "Pro tento test nejsou dostupné jednotlivé grafové vzorky.");
 }
