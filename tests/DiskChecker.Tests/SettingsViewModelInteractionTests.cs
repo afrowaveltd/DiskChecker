@@ -65,4 +65,33 @@ public sealed class SettingsViewModelInteractionTests
                 Directory.Delete(directory, recursive: true);
         }
     }
+    [Fact]
+    public async Task UnavailableSmtpStoreDisablesAttachmentChoiceButAllowsOtherSettings()
+    {
+        string directory = Directory.CreateTempSubdirectory("dc-settings-smtp-").FullName;
+        try
+        {
+            var settings = new SettingsService(directory);
+            var dialog = Substitute.For<IDialogService>();
+            var backup = Substitute.For<IBackupService>();
+            backup.GetAvailableBackupsAsync().Returns(Task.FromResult<IEnumerable<IBackupService.BackupInfo>>(
+                Array.Empty<IBackupService.BackupInfo>()));
+            var smtp = Substitute.For<IEmailSettingsService>();
+            smtp.GetAsync(Arg.Any<CancellationToken>()).Returns(
+                Task.FromException<EmailSettings>(new InvalidOperationException("SMTP database unavailable")));
+            var vm = new SettingsViewModel(settings, dialog, backup, new LocaleService(),
+                Substitute.For<IDiskCacheService>(), Substitute.For<INavigationService>(), smtp);
+            Assert.False(vm.IsEmailAttachmentAvailable);
+
+            vm.Language = "en";
+            await vm.SaveSettingsCommand.ExecuteAsync(null);
+            Assert.Equal("en", await settings.GetLanguageAsync());
+            await smtp.DidNotReceiveWithAnyArgs().SaveAsync(default!, default);
+        }
+        finally
+        {
+            if (Directory.Exists(directory)) Directory.Delete(directory, recursive: true);
+        }
+    }
+
 }
