@@ -79,7 +79,7 @@
                             <TextBlock Grid.Column="0" Text="{Binding L[Settings.CertificatePathLabel]}"
                                        VerticalAlignment="Center"
                                        Foreground="{DynamicResource ThemeTextSecondaryBrush}"/>
-                            <TextBox Grid.Column="1" Text="{Binding CertificatePath}"
+                            <TextBox x:Name="CertificatePathInput" Grid.Column="1" Text="{Binding CertificatePath}"
                                      Watermark="{Binding L[Settings.CertificatePathDefault]}"/>
                             <Button Grid.Column="2" Content="{Binding L[Settings.CertificatePathBrowse]}"
                                     Command="{Binding BrowseCertificatePathCommand}" Padding="10,6"/>
