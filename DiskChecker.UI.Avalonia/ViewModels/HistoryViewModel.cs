@@ -270,7 +270,12 @@ namespace DiskChecker.UI.Avalonia.ViewModels
                         _selectedDiskService.SelectedDiskCardId = card.Id;
 
                         var sessions = await _diskCardRepository.GetTestSessionsAsync(card.Id);
-                        var targetSession = sessions
+                        // Two different test kinds can start within seconds.
+                        // Match the recorded kind first, then the nearest date.
+                        var matchingType = sessions.Where(s => string.Equals(
+                            s.TestType.ToString(), test.TestType,
+                            StringComparison.OrdinalIgnoreCase)).ToList();
+                        var targetSession = (matchingType.Count > 0 ? matchingType : sessions)
                             .OrderBy(s => Math.Abs((s.StartedAt - test.TestDate).Ticks))
                             .FirstOrDefault();
 
