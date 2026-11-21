@@ -33,7 +33,7 @@ public class CertificateGenerator : ICertificateGenerator
     // Chart rendering constants
     private const int MaxChartPoints = 512;
     // Certificate PDF profiles are intentionally compact; live test charts use a separate budget.
-    private const int CertificateChartPoints = 32;
+    private const int CertificateChartPoints = 512;
 
     // Certificate JPEG dimensions (A4 at 150 DPI, extended for all content)
     private const int CertWidth = 1240;
@@ -290,9 +290,11 @@ public class CertificateGenerator : ICertificateGenerator
                 PendingSectors = pendingSectors,
                 SanitizationPerformed = session.TestType == TestType.Sanitization,
                 SanitizationMethod = session.TestType == TestType.Sanitization ? "Zero-fill" : null,
-                DataVerified = failureClassification.IsDeviceFailure
-                    ? false
-                    : session.Result == TestResult.Pass && session.VerificationErrors == 0,
+                // A read-only scan never verifies a destructive zero-fill operation.
+                DataVerified = session.TestType is TestType.Sanitization or TestType.AbsoluteDestructive
+                    && !failureClassification.IsDeviceFailure
+                    && session.Result == TestResult.Pass
+                    && session.VerificationErrors == 0,
                 PartitionScheme = session.PartitionScheme,
                 FileSystem = session.FileSystem,
                 VolumeLabel = session.VolumeLabel,
@@ -1491,20 +1493,30 @@ public class CertificateGenerator : ICertificateGenerator
 
         score -= session.Errors.Count * 2;
 
-        // Speed consistency penalty
-        if (session.AverageWriteSpeedMBps > 0 && session.MaxWriteSpeedMBps > 0)
+        // Missing write metrics are non-applicable in read-only and seek tests.
+        // Explicit test kinds take precedence over a default/legacy zero speed.
+        bool hasWritePhase = session.TestType is TestType.QuickWrite or TestType.FullWrite
+            or TestType.FullReadWrite or TestType.Sanitization or TestType.AbsoluteDestructive
+            || (session.TestType == TestType.Custom && session.BytesWritten > 0)
+            || (session.TestType == TestType.SurfaceScan && session.BytesWritten > 0);
+        bool hasReadPhase = session.TestType is TestType.QuickRead or TestType.FullRead
+            or TestType.SurfaceScan or TestType.FullReadWrite or TestType.Sanitization
+            or TestType.AbsoluteDestructive || session.BytesRead > 0;
+
+        // Speed consistency penalty only for actual writes.
+        if (hasWritePhase && session.AverageWriteSpeedMBps > 0 && session.MaxWriteSpeedMBps > 0)
         {
             var consistency = session.AverageWriteSpeedMBps / session.MaxWriteSpeedMBps;
             if (consistency < 0.7) score -= (0.7 - consistency) * 50;
         }
 
         // Catastrophic speed drop penalty: if min speed is < 20% of max, the disk has serious issues
-        if (session.MaxWriteSpeedMBps > 0 && session.MinWriteSpeedMBps > 0)
+        if (hasWritePhase && session.MaxWriteSpeedMBps > 0 && session.MinWriteSpeedMBps > 0)
         {
             var minToMaxRatio = session.MinWriteSpeedMBps / session.MaxWriteSpeedMBps;
             if (minToMaxRatio < 0.2) score -= (0.2 - minToMaxRatio) * 80;
         }
-        if (session.MaxReadSpeedMBps > 0 && session.MinReadSpeedMBps > 0)
+        if (hasReadPhase && session.MaxReadSpeedMBps > 0 && session.MinReadSpeedMBps > 0)
         {
             var minToMaxRatio = session.MinReadSpeedMBps / session.MaxReadSpeedMBps;
             if (minToMaxRatio < 0.2) score -= (0.2 - minToMaxRatio) * 80;
@@ -1512,7 +1524,7 @@ public class CertificateGenerator : ICertificateGenerator
 
         // Disk-type-aware speed expectations based on SMART and capacity
         var expectedSpeed = EstimateExpectedSpeed(session);
-        if (expectedSpeed > 0 && session.AverageWriteSpeedMBps > 0)
+        if (hasWritePhase && expectedSpeed > 0 && session.AverageWriteSpeedMBps > 0)
         {
             var speedRatio = session.AverageWriteSpeedMBps / expectedSpeed;
             if (speedRatio < 0.5) score -= (0.5 - speedRatio) * 60;
