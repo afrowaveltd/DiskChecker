@@ -1702,7 +1702,7 @@ public partial class SafeDestructiveTestViewModel : ViewModelBase, INavigableVie
             MaxTemperature = Math.Max(_smartBefore?.Temperature ?? 0, _smartAfter?.Temperature ?? 0),
             AverageTemperature = ((_smartBefore?.Temperature ?? 0) + (_smartAfter?.Temperature ?? 0)) / 2.0,
             TemperatureSamples = _temperatureMonitor.GetSamples().ToList(),
-            Result = TestResult.Pass,
+            Result = Certificate.ErrorCount > 0 ? TestResult.Fail : TestResult.Pass,
             Grade = Certificate.Grade,
             Score = Certificate.Score,
             HealthAssessment = MapHealthAssessment(Certificate.HealthStatus),
