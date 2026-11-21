@@ -440,8 +440,12 @@ public partial class DiskCardDetailViewModel : ViewModelBase, INavigableViewMode
         _selectedDiskService.SelectedDiskDisplayName = CurrentCard.ModelName;
         _selectedDiskService.IsSelectedDiskLocked = CurrentCard.IsLocked;
         _selectedDiskService.SelectedDiskCardId = CurrentCard.Id;
-        _selectedDiskService.SelectedTestSessionId = SelectedSession?.Id ?? TestSessions.FirstOrDefault()?.Id;
-        _selectedDiskService.SelectedCertificateId = LatestCertificate?.Id;
+        var targetSessionId = SelectedSession?.Id ?? TestSessions.FirstOrDefault()?.Id;
+        _selectedDiskService.SelectedTestSessionId = targetSessionId;
+        _selectedDiskService.SelectedCertificateId = Certificates
+            .Where(c => c.TestSessionId == targetSessionId)
+            .OrderByDescending(c => c.GeneratedAt)
+            .Select(c => (int?)c.Id).FirstOrDefault();
 
         _navigationService.NavigateTo<CertificateViewModel>();
     }
