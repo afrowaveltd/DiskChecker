@@ -3005,5 +3005,18 @@
   "Settings.InvalidNumberRange": "Neplatné nastavení: interval auto-ukládání a SMART cache 0–1440, SMART timeout 1–300, USB opakování 0–10.",
   "Settings.ExportSelectionCancelled": "Výběr exportní složky zrušen.",
   "Settings.CacheCleared": "Paměťová cache detekce disků byla vymazána.",
-  "Settings.DataFolderOpened": "Otevřena složka s nastavením."
+  "Settings.DataFolderOpened": "Otevřena složka s nastavením.",
+  "DiskComparison.AvailableDisks": "Dostupné testované disky",
+  "DiskComparison.SelectedDisks": "Vybrané disky",
+  "DiskComparison.SelectionHint": "Přidejte 2 až 5 disků. Výsledky se zobrazí po porovnání.",
+  "DiskComparison.Add": "Přidat",
+  "DiskComparison.Remove": "Odebrat",
+  "DiskComparison.ExportCsv": "Export CSV",
+  "DiskComparison.ExportTitle": "Uložit porovnání disků jako CSV",
+  "DiskComparison.ExportSuccess": "Porovnání disků bylo exportováno.",
+  "DiskComparison.NeedTwo": "Vyberte alespoň dva disky.",
+  "DiskComparison.SelectionCount": "Vybráno disků: {0}",
+  "DiskComparison.ScoreChart": "Skóre zdraví (0–100)",
+  "DiskComparison.SpeedChart": "Naměřené rychlosti (MB/s)",
+  "DiskComparison.MissingMeasurement": "Chybějící měření se nepovažují za nulovou rychlost. Skóre a MB/s používají oddělené grafy."
 }

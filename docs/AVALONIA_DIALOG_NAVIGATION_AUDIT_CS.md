@@ -46,3 +46,19 @@ třeba vizuálně ověřit.
 - Soubory databáze se nemažou. Velikost SQLite se čte pouze pro aktivní lokální backend; ostatní `N/A`.
 - Nefunkční volby „výchozí test“, obecná upozornění a „automatická záloha“ byly skryty, protože zde zatím nemají perzistentní funkci. Funkční přepínače mají vždy odpovídající stav a úložiště.
 - Po dokončení nutno vizuálně ověřit a projít regresní testy na Windows i Linuxu. Skia/Avalonia beze změny.
+
+## Porovnání disků – skutečná data namísto mrtvých vazeb
+
+Původní `DiskComparisonView.axaml` byl napsaný pro jiné rozhraní než existující
+`DiskComparisonViewModel`. Výměna za pohled nad `AvailableDisks`, `SelectedDisks` a
+`ComparisonResults` obnovuje výběr 2–5 disků, porovnání, historii skóre,
+přehled výsledků a export CSV. Ovládací prvky používají existující příkazy
+`AddDisk`, `RemoveDisk`, `CompareDisks`, `GoBack` a nový `ExportComparison`.
+Po změně výběru se staré porovnání a grafy zahodí.
+
+Skóre 0–100 a rychlosti MB/s mají nezávislé OxyPlot grafy. Nezměřené
+fáze se zobrazí jako N/A a nevytváří falešnou rychlost 0 MB/s.
+Export používá pouze uložené výsledky aktuálního porovnání; CSV
+chrání text před tabulkovým formula-injection. Současně se odstranilo
+rizikové dělení nulou v porovnání výkonu a výběr poslední session
+respektuje čas testu. Hardwarové testy a Skia beze změny.

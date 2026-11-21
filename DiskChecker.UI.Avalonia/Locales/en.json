@@ -3005,5 +3005,18 @@
   "Settings.InvalidNumberRange": "Invalid setting: autosave and SMART cache 0–1440, SMART timeout 1–300, USB retries 0–10.",
   "Settings.ExportSelectionCancelled": "Export folder selection cancelled.",
   "Settings.CacheCleared": "In-memory disk discovery cache cleared.",
-  "Settings.DataFolderOpened": "Settings folder opened."
+  "Settings.DataFolderOpened": "Settings folder opened.",
+  "DiskComparison.AvailableDisks": "Available tested disks",
+  "DiskComparison.SelectedDisks": "Selected disks",
+  "DiskComparison.SelectionHint": "Add 2 to 5 disks and compare them.",
+  "DiskComparison.Add": "Add",
+  "DiskComparison.Remove": "Remove",
+  "DiskComparison.ExportCsv": "Export CSV",
+  "DiskComparison.ExportTitle": "Save disk comparison as CSV",
+  "DiskComparison.ExportSuccess": "Disk comparison exported.",
+  "DiskComparison.NeedTwo": "Select at least two disks.",
+  "DiskComparison.SelectionCount": "Disks selected: {0}",
+  "DiskComparison.ScoreChart": "Health scores (0–100)",
+  "DiskComparison.SpeedChart": "Measured speeds (MB/s)",
+  "DiskComparison.MissingMeasurement": "Missing readings are not zero-speed measurements. Scores and MB/s have separate charts."
 }
