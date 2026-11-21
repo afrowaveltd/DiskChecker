@@ -105,7 +105,7 @@ public sealed class SmtpCompletionNotificationTests
         try
         {
             var bytes = new byte[] { 37, 80, 68, 70, 45, 49, 46, 55 };
-            await System.IO.File.WriteAllBytesAsync(path, bytes);
+            await System.IO.File.WriteAllBytesAsync(path, bytes, TestContext.Current.CancellationToken);
             generator.GeneratePdfAsync(Arg.Any<DiskCertificate>())
                 .Returns(Task.FromResult(path));
 
