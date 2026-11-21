@@ -741,6 +741,126 @@ public partial class CertificateViewModel : ViewModelBase, INavigableViewModel
       }
    }
 
+   /// <summary>
+   /// Exports the selected surface and nearest seek session for the SAME disk
+   /// to one A4 page. Source test grades and technician notes remain independent.
+   /// Pairing is restricted to 48 hours to avoid mixing unrelated diagnostics.
+   /// </summary>
+   [RelayCommand]
+   private async Task ExportCombinedPdfAsync()
+   {
+      int selectedId = SelectedSessionItem?.Id ?? Certificate?.TestSessionId ?? 0;
+      if(selectedId <= 0)
+      {
+         await _dialogService.ShowWarningAsync(L.Get("Common.Warning"),
+            L.Get("CertificateView.Combined.NoSession"));
+         return;
+      }
+
+      try
+      {
+         IsLoading = true;
+         var selected = await _diskCardRepository.GetTestSessionWithoutSamplesAsync(selectedId);
+         if(selected == null)
+            throw new InvalidOperationException(L.Get("CertificateView.Combined.NoSession"));
+
+         bool selectedSeek = selected.TestType == TestType.Seek;
+         if(!selectedSeek && !IsSurfaceCertificateSession(selected.TestType))
+            throw new InvalidOperationException(L.Get("CertificateView.Combined.Unsupported"));
+
+         var sessions = await _diskCardRepository.GetTestSessionsAsync(selected.DiskCardId);
+         var counterpart = sessions
+            .Where(s => s.Id != selected.Id
+                && s.DiskCardId == selected.DiskCardId
+                && (selectedSeek ? IsSurfaceCertificateSession(s.TestType) : s.TestType == TestType.Seek))
+            .OrderBy(s => Math.Abs((s.StartedAt - selected.StartedAt).TotalMinutes))
+            .FirstOrDefault();
+
+         if(counterpart == null ||
+             Math.Abs((counterpart.StartedAt - selected.StartedAt).TotalHours) > 48)
+         {
+            await _dialogService.ShowWarningAsync(L.Get("Common.Warning"),
+               L.Get("CertificateView.Combined.NoPair"));
+            return;
+         }
+
+         var card = await _diskCardRepository.GetByIdAsync(selected.DiskCardId)
+            ?? throw new InvalidOperationException(L.Get("CertificateView.Error.CardNotFound"));
+
+         var surface = selectedSeek ? counterpart : selected;
+         var seek = selectedSeek ? selected : counterpart;
+         var surfaceCertificate = await BuildCombinedPartAsync(surface.Id, card);
+         var seekCertificate = await BuildCombinedPartAsync(seek.Id, card);
+         surfaceCertificate.PairedCertificate = seekCertificate;
+         surfaceCertificate.CertificateNumber = $"PAIR-{surface.Id}-{seek.Id}";
+         surfaceCertificate.GeneratedAt = DateTime.UtcNow;
+
+         string pdfPath = await _certificateGenerator.GeneratePdfAsync(surfaceCertificate);
+         StatusMessage = string.Format(L.Get("CertificateView.Status.PdfSaved"), pdfPath);
+         if(await _dialogService.ShowConfirmationAsync(
+               L.Get("CertificateView.Dialog.PdfExport"),
+               string.Format(L.Get("CertificateView.Dialog.PdfSavedMessage"), pdfPath)))
+         {
+            DocumentLauncher.OpenFile(pdfPath);
+         }
+      }
+      catch(Exception ex) when (ex is InvalidOperationException or ArgumentException or IOException)
+      {
+         await _dialogService.ShowErrorAsync(L.Get("Common.Error"), ex.Message);
+      }
+      finally
+      {
+         IsLoading = false;
+      }
+   }
+
+   private static bool IsSurfaceCertificateSession(TestType type) =>
+      type is TestType.QuickRead or TestType.FullRead or TestType.SurfaceScan
+         or TestType.FullReadWrite or TestType.Sanitization or TestType.AbsoluteDestructive;
+
+   /// <summary>Builds one half of the report with bounded sampled telemetry.</summary>
+   private async Task<DiskCertificate> BuildCombinedPartAsync(int sessionId, DiskCard card)
+   {
+      var session = await _diskCardRepository.GetTestSessionWithoutSamplesAsync(sessionId)
+         ?? throw new InvalidOperationException($"Test {sessionId} nebyl nalezen.");
+      if(session.DiskCardId != card.Id)
+         throw new InvalidOperationException("Combined PDF: odlišná identita disku.");
+
+      if(session.TestType == TestType.Seek)
+      {
+         var seeks = await _diskCardRepository.GetSeekSamplesDownsampledAsync(sessionId, 1024);
+         var cert = await _certificateGenerator.GenerateCertificateAsync(session, card);
+         if(seeks.Count > 0)
+         {
+            cert.SeekLatencyPoints = seeks
+               .Where(s => !s.HasError && s.LatencyMs > 0)
+               .OrderBy(s => s.Index).Select(s => s.LatencyMs).ToList();
+         }
+         await CopyTechnicianCommentAsync(cert, sessionId);
+         return cert;
+      }
+
+      var speeds = await _diskCardRepository.GetSpeedSampleSeriesDownsampledAsync(sessionId, 512);
+      session.WriteSamples = speeds.WriteSamples;
+      session.ReadSamples = speeds.ReadSamples;
+      session.TemperatureSamples = await _diskCardRepository.GetTemperatureSampleSeriesDownsampledAsync(sessionId, 256);
+      var result = await _certificateGenerator.GenerateCertificateAsync(session, card);
+      await CopyTechnicianCommentAsync(result, sessionId);
+      return result;
+   }
+
+   private async Task CopyTechnicianCommentAsync(DiskCertificate certificate, int sessionId)
+   {
+      var existing = await _diskCardRepository.GetCertificatesAsync(certificate.DiskCardId);
+      var matched = existing.Where(c => c.TestSessionId == sessionId)
+         .OrderByDescending(c => c.GeneratedAt).FirstOrDefault();
+      if(matched != null)
+      {
+         certificate.TechnicianAssessment = matched.TechnicianAssessment;
+         certificate.TechnicianAssessmentUpdatedAtUtc = matched.TechnicianAssessmentUpdatedAtUtc;
+      }
+   }
+
    [RelayCommand]
    private async Task ExportPdfAsync()
    {
@@ -1399,7 +1519,7 @@ public partial class CertificateViewModel : ViewModelBase, INavigableViewModel
          // every measured dot, not a reduced line, so the characteristic
          // full-stroke V/diamond pattern remains visible just like in SeekTestView
          // and in the generated PDF certificate.
-         var records = await _diskCardRepository.GetSeekSamplesAsync(sessionId);
+         var records = await _diskCardRepository.GetSeekSamplesDownsampledAsync(sessionId, 1024);
          var successful = records
             .Where(s => !s.HasError && s.LatencyMs > 0)
             .ToList();
