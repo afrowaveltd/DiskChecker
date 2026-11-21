@@ -3002,7 +3002,7 @@
   "Settings.ExportImport": "Export / import data",
   "DiskCardDetailView.SeekLatency": "Seek latency",
   "Settings.SmartProbeTimeoutLabel": "SMART probe timeout (s):",
-  "Settings.InvalidNumberRange": "Invalid setting: autosave and SMART cache 0–1440, SMART timeout 1–300, USB retries 0–10.",
+  "Settings.InvalidNumberRange": "Invalid setting: autosave 0–1440, SMART cache 1–1440, SMART timeout 1–300, USB retries 0–10.",
   "Settings.ExportSelectionCancelled": "Export folder selection cancelled.",
   "Settings.CacheCleared": "In-memory disk discovery cache cleared.",
   "Settings.DataFolderOpened": "Settings folder opened.",

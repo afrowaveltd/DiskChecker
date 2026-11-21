@@ -212,28 +212,28 @@ public class SettingsService : ISettingsService
     }
 
     public Task<bool> GetAutoCheckForUpdatesAsync() => Task.FromResult(_autoCheckForUpdates);
-    public Task SetAutoCheckForUpdatesAsync(bool value) { _autoCheckForUpdates = value; return Task.CompletedTask; }
+    public Task SetAutoCheckForUpdatesAsync(bool value) { _autoCheckForUpdates = value; SaveSettingsToFile(); return Task.CompletedTask; }
     
     public Task<bool> GetRunAtStartupAsync() => Task.FromResult(_runAtStartup);
-    public Task SetRunAtStartupAsync(bool value) { _runAtStartup = value; return Task.CompletedTask; }
+    public Task SetRunAtStartupAsync(bool value) { _runAtStartup = value; SaveSettingsToFile(); return Task.CompletedTask; }
     
     public Task<bool> GetMinimizeToTrayAsync() => Task.FromResult(_minimizeToTray);
-    public Task SetMinimizeToTrayAsync(bool value) { _minimizeToTray = value; return Task.CompletedTask; }
+    public Task SetMinimizeToTrayAsync(bool value) { _minimizeToTray = value; SaveSettingsToFile(); return Task.CompletedTask; }
     
     public Task<int> GetAutoSaveIntervalAsync() => Task.FromResult(_autoSaveInterval);
-    public Task SetAutoSaveIntervalAsync(int value) { _autoSaveInterval = value; return Task.CompletedTask; }
+    public Task SetAutoSaveIntervalAsync(int value) { _autoSaveInterval = Math.Clamp(value, 0, 1440); SaveSettingsToFile(); return Task.CompletedTask; }
     
     public Task<string> GetDefaultExportPathAsync() => Task.FromResult(_defaultExportPath);
-    public Task SetDefaultExportPathAsync(string path) { _defaultExportPath = path; return Task.CompletedTask; }
+    public Task SetDefaultExportPathAsync(string path) { _defaultExportPath = path; SaveSettingsToFile(); return Task.CompletedTask; }
     
     public Task<string> GetLanguageAsync() => Task.FromResult(_language);
-    public Task SetLanguageAsync(string language) { _language = language; return Task.CompletedTask; }
+    public Task SetLanguageAsync(string language) { _language = language; SaveSettingsToFile(); return Task.CompletedTask; }
     
     public Task<bool> GetEnableLoggingAsync() => Task.FromResult(_enableLogging);
-    public Task SetEnableLoggingAsync(bool value) { _enableLogging = value; return Task.CompletedTask; }
+    public Task SetEnableLoggingAsync(bool value) { _enableLogging = value; SaveSettingsToFile(); return Task.CompletedTask; }
     
     public Task<string> GetLogLevelAsync() => Task.FromResult(_logLevel);
-    public Task SetLogLevelAsync(string level) { _logLevel = level; return Task.CompletedTask; }
+    public Task SetLogLevelAsync(string level) { _logLevel = level; SaveSettingsToFile(); return Task.CompletedTask; }
     
     public Task<string> GetReportRecipientEmailAsync() => Task.FromResult(_reportRecipientEmail);
     public Task<bool> GetEmailIncludeCertificateAttachmentAsync() => Task.FromResult(_emailIncludeCertificateAttachment);
@@ -473,6 +473,24 @@ public class SettingsService : ISettingsService
                 var doc = JsonSerializer.Deserialize<Dictionary<string, object>>(json);
                 if (doc != null)
                 {
+                    // Restore all values exposed by the Settings UI, not only SMART
+                    // and database settings. Prior setters changed these in memory only.
+                    if (doc.TryGetValue("AutoCheckForUpdates", out var updates) && bool.TryParse(updates?.ToString(), out var update))
+                        _autoCheckForUpdates = update;
+                    if (doc.TryGetValue("RunAtStartup", out var startup) && bool.TryParse(startup?.ToString(), out var runStartup))
+                        _runAtStartup = runStartup;
+                    if (doc.TryGetValue("MinimizeToTray", out var tray) && bool.TryParse(tray?.ToString(), out var minimize))
+                        _minimizeToTray = minimize;
+                    if (doc.TryGetValue("AutoSaveInterval", out var interval) && int.TryParse(interval?.ToString(), out var autosave))
+                        _autoSaveInterval = Math.Clamp(autosave, 0, 1440);
+                    if (doc.TryGetValue("DefaultExportPath", out var exportPath))
+                        _defaultExportPath = exportPath?.ToString() ?? string.Empty;
+                    if (doc.TryGetValue("Language", out var language) && !string.IsNullOrWhiteSpace(language?.ToString()))
+                        _language = language!.ToString()!;
+                    if (doc.TryGetValue("EnableLogging", out var logging) && bool.TryParse(logging?.ToString(), out var logs))
+                        _enableLogging = logs;
+                    if (doc.TryGetValue("LogLevel", out var logLevel) && !string.IsNullOrWhiteSpace(logLevel?.ToString()))
+                        _logLevel = logLevel!.ToString()!;
                     if (doc.TryGetValue("SmartCacheTtlMinutes", out var ttlObj) && int.TryParse(ttlObj.ToString(), out var ttl))
                         _smartCacheTtlMinutes = Math.Max(1, ttl);
                     if (doc.TryGetValue("SmartProbeTimeoutSeconds", out var toObj) && int.TryParse(toObj.ToString(), out var to))
@@ -515,10 +533,16 @@ public class SettingsService : ISettingsService
 
     private void SaveSettingsToFile()
     {
-        try
-        {
-            var dict = new Dictionary<string, object>
+        var dict = new Dictionary<string, object>
             {
+                ["AutoCheckForUpdates"] = _autoCheckForUpdates,
+                ["RunAtStartup"] = _runAtStartup,
+                ["MinimizeToTray"] = _minimizeToTray,
+                ["AutoSaveInterval"] = _autoSaveInterval,
+                ["DefaultExportPath"] = _defaultExportPath,
+                ["Language"] = _language,
+                ["EnableLogging"] = _enableLogging,
+                ["LogLevel"] = _logLevel,
                 ["SmartCacheTtlMinutes"] = _smartCacheTtlMinutes,
                 ["SmartProbeTimeoutSeconds"] = _smartProbeTimeoutSeconds,
                 ["SmartProbeParallelism"] = _smartProbeParallelism,
@@ -531,12 +555,19 @@ public class SettingsService : ISettingsService
                 ["DatabaseConnectionString"] = _databaseStorageSettings.ConnectionString ?? string.Empty,
                 ["AnalysisWorkspaceMode"] = _analysisWorkspaceMode.ToString()
             };
-            var json = JsonSerializer.Serialize(dict, JsonOptions);
-            File.WriteAllText(_settingsFilePath, json);
-        }
-        catch
+        var json = JsonSerializer.Serialize(dict, JsonOptions);
+        // Write in the same directory, then replace in one move. Failure must
+        // reach the caller: silent save failure is not a successful settings save.
+        var tempPath = _settingsFilePath + "." + Guid.NewGuid().ToString("N") + ".tmp";
+        try
         {
-            // ignore save errors
+            File.WriteAllText(tempPath, json);
+            File.Move(tempPath, _settingsFilePath, overwrite: true);
+        }
+        finally
+        {
+            if (File.Exists(tempPath))
+                File.Delete(tempPath);
         }
     }
     

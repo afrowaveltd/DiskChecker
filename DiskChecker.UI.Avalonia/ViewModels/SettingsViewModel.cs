@@ -16,7 +16,7 @@ using System.Threading.Tasks;
 
 namespace DiskChecker.UI.Avalonia.ViewModels
 {
-    public partial class SettingsViewModel : ViewModelBase
+    public partial class SettingsViewModel : ViewModelBase, INavigationActivity
     {
         private readonly ISettingsService _settingsService;
         private readonly IDialogService _dialogService;
@@ -153,6 +153,9 @@ namespace DiskChecker.UI.Avalonia.ViewModels
             set => SetProperty(ref _smartProbeParallelismValue, value);
         }
 
+        /// <summary>Prevents leaving during database backup/restore and settings mutations.</summary>
+        public bool IsNavigationBlocked => IsSaving;
+
         public bool IsSaving
         {
             get => _isSaving;
@@ -163,6 +166,7 @@ namespace DiskChecker.UI.Avalonia.ViewModels
                     SaveSettingsCommand.NotifyCanExecuteChanged();
                     CreateBackupCommand.NotifyCanExecuteChanged();
                     RestoreBackupCommand.NotifyCanExecuteChanged();
+                    OnPropertyChanged(nameof(IsNavigationBlocked));
                 }
             }
         }
@@ -322,7 +326,7 @@ namespace DiskChecker.UI.Avalonia.ViewModels
                 StatusMessage = "Ukládám nastavení...";
                 
                 if (AutoSaveInterval is < 0 or > 1440 ||
-                    SmartCacheTtlMinutes is < 0 or > 1440 ||
+                    SmartCacheTtlMinutes is < 1 or > 1440 ||
                     SmartProbeTimeoutSeconds is < 1 or > 300 ||
                     UsbRecoveryRetryCount is < 0 or > 10)
                     throw new InvalidOperationException(L.Get("Settings.InvalidNumberRange"));
@@ -352,7 +356,10 @@ namespace DiskChecker.UI.Avalonia.ViewModels
                 await _settingsService.SetSmartCacheTtlMinutesAsyncPersistent(SmartCacheTtlMinutes);
                 await _settingsService.SetSmartProbeTimeoutSecondsAsync(SmartProbeTimeoutSeconds);
                 await _settingsService.SetSmartProbeParallelismAsync(SmartProbeParallelism);
-                
+                if (!string.IsNullOrWhiteSpace(Language) &&
+                    !string.Equals(_localizationService.CurrentLocale, Language, StringComparison.OrdinalIgnoreCase))
+                    _localizationService.SetLocale(Language);
+
                 StatusMessage = "Nastavení úspěšně uloženo";
             }
             catch (Exception ex)

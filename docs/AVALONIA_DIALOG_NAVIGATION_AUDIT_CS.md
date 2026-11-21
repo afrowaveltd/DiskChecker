@@ -62,3 +62,14 @@ Export používá pouze uložené výsledky aktuálního porovnání; CSV
 chrání text před tabulkovým formula-injection. Současně se odstranilo
 rizikové dělení nulou v porovnání výkonu a výběr poslední session
 respektuje čas testu. Hardwarové testy a Skia beze změny.
+
+## Trvalost nastavení a bezpečný soubor
+
+`SettingsService` již neztrácí běžné hodnoty (`AutoSaveInterval`,
+`DefaultExportPath`, `Language`, logování a další) po restartu.
+Ukládá je v jednom JSON souboru spolu se SMART/e-mailovými volbami.
+Dočasný soubor a atomické přejmenování brání částečnému přepsání při
+chybě I/O. Chybu uložení nyní volající obdrží; UI ji neskryje za
+zavádějící zprávu „Uloženo“.
+`SettingsViewModel` při operaci ukládání/zálohy/obnovy blokuje navigaci
+stejným kontraktem jako ostatní obrazovky.

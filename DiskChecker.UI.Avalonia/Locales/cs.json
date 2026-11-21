@@ -3002,7 +3002,7 @@
   "Settings.ExportImport": "Export / import dat",
   "DiskCardDetailView.SeekLatency": "Latence přístupů (Seek)",
   "Settings.SmartProbeTimeoutLabel": "Časový limit SMART dotazu (s):",
-  "Settings.InvalidNumberRange": "Neplatné nastavení: interval auto-ukládání a SMART cache 0–1440, SMART timeout 1–300, USB opakování 0–10.",
+  "Settings.InvalidNumberRange": "Neplatné nastavení: auto-ukládání 0–1440, SMART cache 1–1440, SMART timeout 1–300, USB opakování 0–10.",
   "Settings.ExportSelectionCancelled": "Výběr exportní složky zrušen.",
   "Settings.CacheCleared": "Paměťová cache detekce disků byla vymazána.",
   "Settings.DataFolderOpened": "Otevřena složka s nastavením.",
