@@ -172,7 +172,7 @@ public partial class TestCompletionNotificationService
 
         try
         {
-            var status = certificate.Grade + "/100";
+            var status = $"{certificate.Grade} ({certificate.Score:F0}/100)";
             var subject = string.Format(
                 _locale.GetString("Notification.DiskTest.SubjectWithReport", "DiskChecker certificate {0} - {1}"),
                 certificate.DiskModel, status);
@@ -326,12 +326,18 @@ public partial class TestCompletionNotificationService
         sb.Append("</div>");
 
         sb.Append("<div class='panel' style='margin-top:12px'><div class='title'>" + _locale.GetString("Notification.Section.Performance", "Výkon testu") + "</div>");
-        AppendRow(sb, _locale.GetString("Notification.Label.AvgWriteSpeed", "Průměrný zápis"), $"{certificate.AvgWriteSpeed:F1} MB/s");
-        AppendRow(sb, _locale.GetString("Notification.Label.MaxWriteSpeed", "Maximální zápis"), $"{certificate.MaxWriteSpeed:F1} MB/s");
-        AppendRow(sb, _locale.GetString("Notification.Label.AvgReadSpeed", "Průměrné čtení"), $"{certificate.AvgReadSpeed:F1} MB/s");
-        AppendRow(sb, _locale.GetString("Notification.Label.MaxReadSpeed", "Maximální čtení"), $"{certificate.MaxReadSpeed:F1} MB/s");
+        // Do not invent 0 MB/s samples for a seek-only or read-only test.
+        var seekOnly = certificate.TestType.Contains("Seek", StringComparison.OrdinalIgnoreCase);
+        var hasWrite = !seekOnly && !certificate.IsReadOnlyTest &&
+            (certificate.AvgWriteSpeed > 0 || certificate.MaxWriteSpeed > 0);
+        var hasRead = !seekOnly && (certificate.AvgReadSpeed > 0 || certificate.MaxReadSpeed > 0);
+        AppendRow(sb, _locale.GetString("Notification.Label.AvgWriteSpeed", "Průměrný zápis"), hasWrite ? $"{certificate.AvgWriteSpeed:F1} MB/s" : "N/A");
+        AppendRow(sb, _locale.GetString("Notification.Label.MaxWriteSpeed", "Maximální zápis"), hasWrite ? $"{certificate.MaxWriteSpeed:F1} MB/s" : "N/A");
+        AppendRow(sb, _locale.GetString("Notification.Label.AvgReadSpeed", "Průměrné čtení"), hasRead ? $"{certificate.AvgReadSpeed:F1} MB/s" : "N/A");
+        AppendRow(sb, _locale.GetString("Notification.Label.MaxReadSpeed", "Maximální čtení"), hasRead ? $"{certificate.MaxReadSpeed:F1} MB/s" : "N/A");
         AppendRow(sb, _locale.GetString("Notification.Label.TemperatureRange", "Rozsah teplot"), certificate.TemperatureRange);
-        AppendRow(sb, _locale.GetString("Notification.Label.ErrorCount", "Počet chyb"), certificate.ErrorCount.ToString(CultureInfo.InvariantCulture));
+        AppendRow(sb, _locale.GetString("Notification.Label.ErrorCount", "Počet chyb"),
+            Math.Max(certificate.ErrorCount, certificate.SeekErrorCount ?? 0).ToString(CultureInfo.InvariantCulture));
         if (result != null)
             AppendRow(sb, _locale.GetString("Notification.Label.Samples", "Vzorky"), result.Samples.Count.ToString(CultureInfo.InvariantCulture));
         sb.Append("</div>");
