@@ -106,8 +106,8 @@ public sealed class CertificateEmailNotificationTests
                 locale, appSettings, generator);
             var cert = new DiskCertificate
             {
-                DiskCardId = 11, TestSessionId = 22, Grade = "B",
-                DiskModel = "Seek SSD", TestType = "Seek"
+                DiskCardId = 11, TestSessionId = 22, Grade = "B", Score = 82,
+                DiskModel = "Seek SSD", TestType = "Seek", SeekErrorCount = 3
             };
 
             Assert.True(await notify.SendStoredCertificateIfConfiguredAsync(
@@ -117,7 +117,9 @@ public sealed class CertificateEmailNotificationTests
                     msg.ToAddress == "recipient@example.net" &&
                     msg.Attachments.Count == 1 &&
                     msg.Attachments[0].ContentType == "application/pdf" &&
-                    !msg.HtmlBody!.Contains("Vzorky:")), Arg.Any<CancellationToken>());
+                    msg.Subject.Contains("82/100") &&
+                    msg.HtmlBody!.Contains("N/A") &&
+                    !msg.HtmlBody.Contains("Vzorky:")), Arg.Any<CancellationToken>());
         }
         finally
         {
