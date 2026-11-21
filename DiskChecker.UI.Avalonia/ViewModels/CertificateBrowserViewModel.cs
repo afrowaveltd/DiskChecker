@@ -60,6 +60,7 @@ public partial class CertificateBrowserViewModel : ViewModelBase, INavigableView
     private string _seekRandomPoints = string.Empty;
     private string _seekSkipPoints = string.Empty;
     private string _seekLegacyPoints = string.Empty;
+    private string _chartSourceNote = CertificateGraphData.Default.ChartSourceNote;
     private string _temperatureMaxLabel = "N/A";
     private string _temperatureMidLabel = "N/A";
     private string _temperatureMinLabel = "N/A";
@@ -453,6 +454,12 @@ public partial class CertificateBrowserViewModel : ViewModelBase, INavigableView
     public bool HasSeekSkip => SeekSkipPoints.Length > 0;
     public bool HasSeekLegacy => SeekLegacyPoints.Length > 0;
 
+    public string ChartSourceNote
+    {
+        get => _chartSourceNote;
+        private set => SetProperty(ref _chartSourceNote, value);
+    }
+
     public string TemperatureMaxLabel
     {
         get => _temperatureMaxLabel;
@@ -823,12 +830,16 @@ public partial class CertificateBrowserViewModel : ViewModelBase, INavigableView
         TemperatureMaxLabel = graph.TemperatureMaxLabel;
         TemperatureMidLabel = graph.TemperatureMidLabel;
         TemperatureMinLabel = graph.TemperatureMinLabel;
+        ChartSourceNote = graph.ChartSourceNote;
         ChartMaxSpeedLabel = graph.ChartMaxSpeedLabel;
         ChartMidSpeedLabel = graph.ChartMidSpeedLabel;
         ChartMinSpeedLabel = graph.ChartMinSpeedLabel;
         ChartXAxisStartLabel = graph.ChartXAxisStartLabel;
         ChartXAxisMidLabel = graph.ChartXAxisMidLabel;
         ChartXAxisEndLabel = graph.ChartXAxisEndLabel;
+        if(IsSeekChart &&
+            !HasSpeedGraph && !HasTemperatureProfile)
+            ChartSourceNote = "Seek: naměřené latence podle pořadí operací, fáze jsou oddělené.";
     }
 
     private void ResetGraphToDefaults()
@@ -842,6 +853,7 @@ public partial class CertificateBrowserViewModel : ViewModelBase, INavigableView
         TemperatureMaxLabel = defaults.TemperatureMaxLabel;
         TemperatureMidLabel = defaults.TemperatureMidLabel;
         TemperatureMinLabel = defaults.TemperatureMinLabel;
+        ChartSourceNote = defaults.ChartSourceNote;
         ChartMaxSpeedLabel = defaults.ChartMaxSpeedLabel;
         ChartMidSpeedLabel = defaults.ChartMidSpeedLabel;
         ChartMinSpeedLabel = defaults.ChartMinSpeedLabel;
