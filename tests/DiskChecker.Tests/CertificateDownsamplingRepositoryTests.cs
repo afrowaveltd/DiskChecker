@@ -433,4 +433,32 @@ public class CertificateDownsamplingRepositoryTests : IDisposable
                 $"Sample {i} has ProgressPercent {writeSamples[i].ProgressPercent} < {writeSamples[i - 1].ProgressPercent}");
         }
     }
+
+    [Fact]
+    public async Task SanitizationPreview_3700Rows_MustIncludeLastPartOfTheScan()
+    {
+        // Regression for a real screenshot: a 3700-row session plotted only the
+        // first ~83% because integer floor stride + LIMIT discarded the tail.
+        var (repo, connection) = CreateRepository();
+        await using var _ = connection;
+        EnsureDiskCard(repo);
+        int sessionId = InsertSession(connection, repo);
+        InsertSpeedSamples(connection, "TestSessions_WriteSamples", sessionId, 3700);
+        InsertSpeedSamples(connection, "TestSessions_ReadSamples", sessionId, 3700);
+        InsertTemperatureSamples(connection, sessionId, 3700);
+
+        var (writes, reads) = await repo.GetSpeedSampleSeriesDownsampledAsync(
+            sessionId, 1024, TestContext.Current.CancellationToken);
+        var temperatures = await repo.GetTemperatureSampleSeriesDownsampledAsync(
+            sessionId, 256, TestContext.Current.CancellationToken);
+
+        Assert.InRange(writes.Count, 1, 1024);
+        Assert.InRange(reads.Count, 1, 1024);
+        Assert.InRange(temperatures.Count, 1, 256);
+
+        Assert.True(writes.Max(s => s.ProgressPercent) > 98.0);
+        Assert.True(reads.Max(s => s.ProgressPercent) > 98.0);
+        Assert.True(temperatures.Max(s => s.ProgressPercent) > 98.0);
+    }
+
 }
