@@ -1,5 +1,7 @@
 using System.Collections.Generic;
 using System.Globalization;
+using System.Threading;
+using System.Threading.Tasks;
 using Avalonia;
 using Avalonia.Media;
 using DiskChecker.Core.Interfaces;
@@ -76,6 +78,41 @@ public class AnalysisSelectionTests
         vm.SelectSummaryCommand.Execute(null);
 
         Assert.Same(original, vm.SelectedSummary);
+    }
+
+    [Fact]
+    public async Task SlowAnalysisRequest_CannotOverwriteNewlySelectedTest()
+    {
+        var dialog = Substitute.For<IDialogService>();
+        var analysis = Substitute.For<ITestAnalysisDataService>();
+        var repo = Substitute.For<IDiskCardRepository>();
+        var settings = Substitute.For<ISettingsService>();
+        settings.GetAnalysisWorkspaceModeAsync().Returns(AnalysisWorkspaceMode.Compact);
+        repo.GetAllAsync().Returns(new List<DiskCard>());
+        repo.GetSmartSnapshotsAsync(Arg.Any<int>()).Returns(new List<SmartSnapshotRecord>());
+
+        var oldQuery = new TaskCompletionSource<TestAnalysisData?>(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        analysis.GetAnalysisDataAsync(1, Arg.Any<CancellationToken>())
+            .Returns(_ => oldQuery.Task);
+        analysis.GetAnalysisDataAsync(2, Arg.Any<CancellationToken>())
+            .Returns(new TestAnalysisData { Session = new TestSession { Id = 2 } });
+
+        var vm = new AnalysisViewModel(
+            dialog, analysis, repo, settings, new SmartTrendService(repo));
+        vm.SelectedSummary = new TestAnalysisSummary { TestSessionId = 1, DiskCardId = 7 };
+        vm.SelectedSummary = new TestAnalysisSummary { TestSessionId = 2, DiskCardId = 7 };
+
+        for (int i = 0; i < 200 && vm.AnalysisData?.Session.Id != 2; i++)
+            await Task.Delay(5, TestContext.Current.CancellationToken);
+        Assert.Equal(2, vm.AnalysisData?.Session.Id);
+
+        // Finish the old request *after* the newer one. The selected test must
+        // not change, and no stale notes/SMART data may get published.
+        oldQuery.SetResult(new TestAnalysisData { Session = new TestSession { Id = 1 } });
+        await Task.Delay(50, TestContext.Current.CancellationToken);
+        Assert.Equal(2, vm.AnalysisData?.Session.Id);
+        Assert.Equal(2, vm.SelectedSummary?.TestSessionId);
     }
 
     private static AnalysisViewModel CreateViewModel()
