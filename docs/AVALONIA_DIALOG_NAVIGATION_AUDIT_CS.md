@@ -108,3 +108,44 @@ Stejně jako otevření PDF přes `OpenFile` přepne na Linuxu při běhu
 pod `sudo` otevření ve správci souborů do grafické relace původního
 uživatele (pokud je dostupná). Při nedostupném prostředí zobrazí
 uživateli chybu namísto falešného úspěchu.
+
+## E-mail / SMTP a obnova záloh (další audit)
+
+- Skutečný odesílač používá MailKit, propojený s `IEmailSettingsService`; nastavení
+  SMTP serveru, portu, TLS, jména, hesla, adresy odesílatele a příjemce je nyní v Avalonia.
+  Tlačítko **Uložit a odeslat zkušební e-mail** volá reálné `IEmailSender`.
+- Dřívější SMTP kód akceptoval libovolný certifikát a mohl přejít na
+  nešifrovaný režim. Nyní vyžaduje ověřené TLS dle portu a nepovolí
+  SMTP login bez TLS. Soukromá CA musí být přidána mezi důvěryhodné v OS.
+- Po úspěšně dokončeném povrchovém čtení je PDF certifikát přiložen
+  ke zprávě; dokončený test s chybami odesílá chybové výsledky,
+  nikoli falešný úspěch. SMTP neúspěch nesmí změnit uložený výsledek disku.
+- Vybraná záloha měla ve ViewModelu `SelectedBackup`, ale žádný ovládací
+  prvek ji neuměl nastavit; **Obnovit ze zálohy** proto bylo nepoužitelné.
+  Doplněn výběr v ComboBox a tlačítko pro obnovení seznamu. Bez výslovného
+  výběru uživatele zůstává příkaz obnovy zakázán.
+- SMTP heslo se do UI nenačítá; prázdný vstup jej zachovává. Je uloženo
+  v lokální databázi konfigurace SMTP; chraňte soubor databáze a zálohy.
+- Dočasná omezení: automatické odesílání je zapojeno pro dokončené
+  povrchové testy; další druhy testů je třeba postupně sjednotit samostatně.
+
+### Automatické PDF pro všechny typy dokončených testů
+
+Po dokončení a uložení certifikátu se společná e-mailová služba volá
+pro povrchový, Seek, absolutní destruktivní a bezpečný destruktivní test.
+V bezpečném destruktivním režimu až po obnovení dat; u absolutního
+destruktivního režimu až po finální fázi. U všech platí volitelný
+příjemce a SMTP přepínač PDF příloh. Nezměřené vzorky se
+neprezentují jako syntetický výsledek povrchového testu.
+Záložní režim `ImageRoundTrip` není diskový test a neposílá
+certifikát jako otestovaný disk. SMTP chyby se hlásí nezávisle
+na uloženém výsledku.
+
+### Bezpečnostní oprava resetu
+
+Audit odhalil, že `SettingsService.ResetToDefaultsAsync` původně vymazal
+`_lockedDisks` a přepsal `locked_disks.json`. To by po stisku
+„Obnovit výchozí“ mohlo nechtěně zpřístupnit dosud uzamčený disk
+destruktivním operacím. Nově reset mění jen obecné preference a
+**nikdy neodemkne disk**. Zámky se zachovají v paměti i přes restart;
+regresní test to ověřuje. Unlock musí být explicitní operace na disku.

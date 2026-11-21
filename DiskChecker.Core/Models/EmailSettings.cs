@@ -23,6 +23,13 @@ public class EmailSettings
     public bool UseSsl { get; set; } = true;
 
     /// <summary>
+    /// Explicit opt-in to unencrypted SMTP for isolated/trusted intranet relays.
+    /// Defaults to false; it never disables certificate checks on TLS connections
+    /// and never authorizes automatic TLS downgrade.
+    /// </summary>
+    public bool AllowInsecureSmtp { get; set; }
+
+    /// <summary>
     /// Gets or sets the SMTP username.
     /// </summary>
     public string UserName { get; set; } = string.Empty;

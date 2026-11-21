@@ -1064,6 +1064,8 @@ public partial class AbsoluteDestructiveTestViewModel : ViewModelBase, INavigabl
                 $"Write: {_sanitize2Result.WriteSpeedMBps:F1} MB/s | Read: {_sanitize2Result.ReadSpeedMBps:F1} MB/s | Chyby: {_sanitize2Result.ErrorsDetected}");
         }, ct);
 
+        // An email may only be sent after certificate persistence.
+        bool certificatePersisted = false;
         // Phase 6: Finalization
         await RunPhaseAsync(6, "Finalizace", async () =>
         {
@@ -1082,14 +1084,17 @@ public partial class AbsoluteDestructiveTestViewModel : ViewModelBase, INavigabl
             // Generate certificate
             await BuildCertificateAsync();
 
-            // Save test session
-            await SaveTestSessionAsync();
+            // Persist before any notification.
+            certificatePersisted = await SaveTestSessionAsync();
 
-            SetPhase(6, TestPhaseStatus.Completed, "Hotovo — certifikát připraven");
+            SetPhase(6, TestPhaseStatus.Completed,
+                certificatePersisted ? "Hotovo — certifikát uložen" : "Test hotov, certifikát se nepodařilo uložit");
             IsCompleted = true;
             HasResults = true;
-            IsCertificateReady = true;
-            StatusMessage = L.Get("DestructiveTest.Completed");
+            IsCertificateReady = Certificate != null;
+            StatusMessage = certificatePersisted
+                ? L.Get("DestructiveTest.Completed")
+                : L.Get("Notification.CertificateNotSaved");
         }, ct);
 
         // Phase 7: Create partition
@@ -1136,6 +1141,23 @@ public partial class AbsoluteDestructiveTestViewModel : ViewModelBase, INavigabl
                 SetPhase(7, TestPhaseStatus.Skipped, "Disk není vybrán");
             }
         }, ct);
+
+        if (certificatePersisted && Certificate != null)
+        {
+            try
+            {
+                await _notificationService.SendStoredCertificateIfConfiguredAsync(Certificate, ct);
+            }
+            catch (OperationCanceledException)
+            {
+                StatusMessage = L.Get("Notification.CertificateSendCancelled");
+            }
+            catch (Exception ex)
+            {
+                // Failed email does not invalidate completed destructive tests.
+                StatusMessage = L.Get("SurfaceTest.Status.EmailDeliveryFailed") + ": " + ex.Message;
+            }
+        }
     }
 
     // ──────────────────────────────────────────────
@@ -1788,7 +1810,7 @@ public partial class AbsoluteDestructiveTestViewModel : ViewModelBase, INavigabl
         CertificateProgressText = string.Empty;
     }
 
-    private async Task SaveTestSessionAsync()
+    private async Task<bool> SaveTestSessionAsync()
     {
         try
         {
@@ -1827,7 +1849,7 @@ public partial class AbsoluteDestructiveTestViewModel : ViewModelBase, INavigabl
                 MaxTemperature = MaxTemperature,
                 AverageTemperature = (MinTemperature + MaxTemperature) / 2.0,
                 TemperatureSamples = _temperatureMonitor.GetSamples().ToList(),
-                Result = TestResult.Pass,
+                Result = Certificate?.ErrorCount > 0 ? TestResult.Fail : TestResult.Pass,
                 Grade = Certificate?.Grade ?? "?",
                 Score = Certificate?.Score ?? 0,
                 HealthAssessment = MapHealthAssessment(Certificate?.HealthStatus),
@@ -1860,11 +1882,14 @@ public partial class AbsoluteDestructiveTestViewModel : ViewModelBase, INavigabl
                 Certificate.DiskCardId = card.Id;
                 await _diskCardRepository.CreateCertificateAsync(Certificate);
                 StatusMessage = L.Get("DestructiveTest.Status.TestDoneCertSaved", Certificate.CertificateNumber);
+                return true;
             }
+            return false;
         }
         catch (Exception ex)
         {
             StatusMessage = L.Get("DestructiveTest.Status.SessionSaveFailed", ex.Message);
+            return false;
         }
     }
 

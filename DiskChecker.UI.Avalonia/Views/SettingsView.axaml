@@ -92,6 +92,62 @@
 
                         
 
+                        <StackPanel Spacing="8" IsEnabled="{Binding IsEmailAttachmentAvailable}">
+                        <TextBlock Text="{Binding L[Settings.SmtpSection]}" FontSize="14"
+                                   FontWeight="SemiBold" Margin="0,12,0,2"/>
+                        <TextBlock Text="{Binding L[Settings.SmtpTlsHint]}" TextWrapping="Wrap"
+                                   FontSize="11" Foreground="{DynamicResource ThemeTextSecondaryBrush}"/>
+                        <Grid ColumnDefinitions="200,*">
+                            <TextBlock Text="{Binding L[Settings.SmtpHost]}" VerticalAlignment="Center"/>
+                            <TextBox x:Name="SmtpHostInput" Grid.Column="1" Text="{Binding SmtpHost}" Watermark="smtp.example.org"/>
+                        </Grid>
+                        <Grid ColumnDefinitions="200,*">
+                            <TextBlock Text="{Binding L[Settings.SmtpPort]}" VerticalAlignment="Center"/>
+                            <TextBox Grid.Column="1" Text="{Binding SmtpPort}" Watermark="587"/>
+                        </Grid>
+                        <Grid ColumnDefinitions="200,*">
+                            <TextBlock Text="{Binding L[Settings.SmtpTls]}" VerticalAlignment="Center"/>
+                            <CheckBox Grid.Column="1" IsChecked="{Binding SmtpUseTls}"
+                                      Content="{Binding L[Settings.SmtpTlsRequired]}"/>
+                        </Grid>
+                        <Grid ColumnDefinitions="200,*">
+                            <TextBlock Text="{Binding L[Settings.SmtpInsecureLabel]}" VerticalAlignment="Center"/>
+                            <StackPanel Grid.Column="1" Spacing="4">
+                                <CheckBox x:Name="SmtpAllowInsecureInput"
+                                          IsChecked="{Binding SmtpAllowInsecure}"
+                                          Content="{Binding L[Settings.SmtpAllowInsecure]}"/>
+                                <TextBlock Text="{Binding L[Settings.SmtpInsecureWarning]}"
+                                           TextWrapping="Wrap" FontSize="11"
+                                           Foreground="{DynamicResource ThemeTextSecondaryBrush}"/>
+                            </StackPanel>
+                        </Grid>
+                        <Grid ColumnDefinitions="200,*">
+                            <TextBlock Text="{Binding L[Settings.SmtpUser]}" VerticalAlignment="Center"/>
+                            <TextBox Grid.Column="1" Text="{Binding SmtpUserName}"/>
+                        </Grid>
+                        <Grid ColumnDefinitions="200,*">
+                            <TextBlock Text="{Binding L[Settings.SmtpPassword]}" VerticalAlignment="Center"/>
+                            <StackPanel Grid.Column="1" Spacing="4">
+                                <TextBox x:Name="SmtpPasswordInput" Text="{Binding SmtpPassword}" PasswordChar="●"
+                                         Watermark="{Binding L[Settings.SmtpPasswordHint]}"/>
+                                <CheckBox Content="{Binding L[Settings.SmtpClearPassword]}"
+                                          IsChecked="{Binding ClearStoredSmtpPassword}"/>
+                            </StackPanel>
+                        </Grid>
+                        <Grid ColumnDefinitions="200,*">
+                            <TextBlock Text="{Binding L[Settings.SmtpFromName]}" VerticalAlignment="Center"/>
+                            <TextBox Grid.Column="1" Text="{Binding SmtpFromName}"/>
+                        </Grid>
+                        <Grid ColumnDefinitions="200,*">
+                            <TextBlock Text="{Binding L[Settings.SmtpFromEmail]}" VerticalAlignment="Center"/>
+                            <TextBox Grid.Column="1" Text="{Binding SmtpFromAddress}"/>
+                        </Grid>
+                        <TextBlock Text="{Binding L[Settings.SmtpAutomaticHint]}" TextWrapping="Wrap"
+                                   FontSize="11" Foreground="{DynamicResource ThemeTextSecondaryBrush}"/>
+                        <Button x:Name="SmtpSendTestButton" Content="{Binding L[Settings.SmtpTestButton]}"
+                                Command="{Binding TestSmtpCommand}" HorizontalAlignment="Left"
+                                IsEnabled="{Binding IsEmailAttachmentAvailable}" Padding="12,7"/>
+                        </StackPanel>
                         <Grid ColumnDefinitions="200,*">
                             <TextBlock Grid.Column="0" Text="{Binding L[Settings.CertificateAttachment]}" 
                                       FontSize="11" VerticalAlignment="Center"
@@ -254,9 +310,31 @@
                                       VerticalAlignment="Center"/>
                         </Grid>
                         
+                        <Grid ColumnDefinitions="200,*,Auto" ColumnSpacing="8">
+                            <TextBlock Text="{Binding L[Settings.SelectBackup]}" VerticalAlignment="Center"
+                                       Foreground="{DynamicResource ThemeTextSecondaryBrush}"/>
+                            <ComboBox x:Name="BackupSelection" Grid.Column="1" ItemsSource="{Binding AvailableBackups}"
+                                      SelectedItem="{Binding SelectedBackup}" HorizontalAlignment="Stretch">
+                                <ComboBox.ItemTemplate>
+                                    <DataTemplate>
+                                        <StackPanel Orientation="Horizontal" Spacing="10">
+                                            <TextBlock Text="{Binding FileName}"/>
+                                            <TextBlock Text="{Binding CreatedAt, StringFormat='{}{0:yyyy-MM-dd HH:mm}'}"/>
+                                        </StackPanel>
+                                    </DataTemplate>
+                                </ComboBox.ItemTemplate>
+                            </ComboBox>
+                            <Button Grid.Column="2" Content="{Binding L[Settings.RefreshBackups]}"
+                                    Command="{Binding RefreshBackupsCommand}" Padding="10,6"/>
+                        </Grid>
+                        <TextBlock Text="{Binding L[Settings.SqliteBackupHint]}" FontSize="11"
+                                   Foreground="{DynamicResource ThemeTextSecondaryBrush}" TextWrapping="Wrap"/>
+                        <TextBlock Text="{Binding L[Settings.RestoreSelectionHint]}" FontSize="11"
+                                   Foreground="{DynamicResource ThemeTextSecondaryBrush}" TextWrapping="Wrap"/>
                         <StackPanel Orientation="Horizontal" Spacing="8" Margin="0,8,0,0">
                             <Button Content="{Binding L[Settings.CreateBackup]}"
                                    Command="{Binding CreateBackupCommand}"
+                                   IsEnabled="{Binding CanUseSqliteBackup}"
                                    Background="{DynamicResource ThemePrimaryBrush}"
                                    Foreground="White"
                                    CornerRadius="6"
@@ -271,8 +349,9 @@
                                    Padding="12,6"
                                    FontSize="11"
                                    Cursor="Hand"/>
-                            <Button Content="{Binding L[Settings.RestoreBackup]}"
+                            <Button x:Name="RestoreBackupButton" Content="{Binding L[Settings.RestoreBackup]}"
                                    Command="{Binding RestoreBackupCommand}"
+                                   IsEnabled="{Binding CanUseSqliteBackup}"
                                    Background="{DynamicResource ThemeSecondaryBackgroundBrush}"
                                    Foreground="{DynamicResource ThemeTextPrimaryBrush}"
                                    BorderBrush="{DynamicResource ThemeBorderBrush}"

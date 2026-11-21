@@ -16,6 +16,8 @@ public partial class TestCompletionNotificationService
     private readonly IEmailSettingsService _emailSettingsService;
     private readonly ILogger<TestCompletionNotificationService> _logger;
     private readonly ILocaleProvider _locale;
+    private readonly ISettingsService? _completionSettings;
+    private readonly ICertificateGenerator? _certificateGenerator;
 
     // LoggerMessage delegates for better performance
     [LoggerMessage(Level = LogLevel.Warning, Message = "Email address is empty, skipping notification")]
@@ -37,12 +39,16 @@ public partial class TestCompletionNotificationService
         IEmailSender emailSender,
         IEmailSettingsService emailSettingsService,
         ILogger<TestCompletionNotificationService> logger,
-        ILocaleProvider locale)
+        ILocaleProvider locale,
+        ISettingsService? completionSettings = null,
+        ICertificateGenerator? certificateGenerator = null)
     {
         _emailSender = emailSender;
         _emailSettingsService = emailSettingsService;
         _logger = logger;
         _locale = locale;
+        _completionSettings = completionSettings;
+        _certificateGenerator = certificateGenerator;
     }
 
     /// <summary>
@@ -54,8 +60,7 @@ public partial class TestCompletionNotificationService
         string? diskName = null,
         CancellationToken cancellationToken = default)
     {
-        var emailSettings = await _emailSettingsService.GetAsync(cancellationToken);
-        var resolvedRecipient = ResolveRecipient(recipientEmail, emailSettings.FromAddress);
+        var resolvedRecipient = ResolveRecipient(recipientEmail);
         if (string.IsNullOrWhiteSpace(resolvedRecipient))
         {
             LogEmptyEmail();
@@ -78,9 +83,10 @@ public partial class TestCompletionNotificationService
 
             LogNotificationSent(resolvedRecipient);
         }
-        catch (InvalidOperationException ex)
+        catch (Exception ex) when (ex is not OperationCanceledException)
         {
             LogNotificationFailed(ex, resolvedRecipient);
+            throw;
         }
     }
 
@@ -97,7 +103,7 @@ public partial class TestCompletionNotificationService
         CancellationToken cancellationToken = default)
     {
         var emailSettings = await _emailSettingsService.GetAsync(cancellationToken);
-        var resolvedRecipient = ResolveRecipient(recipientEmail, emailSettings.FromAddress);
+        var resolvedRecipient = ResolveRecipient(recipientEmail);
         if (string.IsNullOrWhiteSpace(resolvedRecipient))
         {
             LogEmptyEmail();
@@ -118,14 +124,15 @@ public partial class TestCompletionNotificationService
                 HtmlBody = body
             };
 
-            if (emailSettings.IncludeCertificateAttachment && reportPdf is { Length: > 0 })
+            if (emailSettings.IncludeCertificateAttachment)
             {
+                ValidatePdf(reportPdf);
                 message.Attachments.Add(new EmailAttachment
                 {
                     FileName = string.IsNullOrWhiteSpace(attachmentFileName)
                         ? $"DiskCertificate_{DateTime.UtcNow:yyyyMMdd_HHmmss}.pdf"
                         : attachmentFileName,
-                    Content = reportPdf,
+                    Content = reportPdf!,
                     ContentType = "application/pdf"
                 });
             }
@@ -134,10 +141,74 @@ public partial class TestCompletionNotificationService
 
             LogNotificationWithReportSent(resolvedRecipient);
         }
-        catch (InvalidOperationException ex)
+        catch (Exception ex) when (ex is not OperationCanceledException)
         {
             LogNotificationWithReportFailed(ex, resolvedRecipient);
+            throw;
         }
+    }
+
+    /// <summary>
+    /// Emails a PDF certificate for a persisted completed test. Safe to use with
+    /// seek, surface and destructive tests: never invents a surface-test sample.
+    /// Returns false when no recipient was configured. SMTP errors propagate.
+    /// </summary>
+    public async Task<bool> SendStoredCertificateIfConfiguredAsync(
+        DiskCertificate certificate, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(certificate);
+        if (_completionSettings == null || _certificateGenerator == null)
+            throw new InvalidOperationException("Certificate notification services were not registered.");
+        var recipient = ResolveRecipient(await _completionSettings.GetReportRecipientEmailAsync());
+        if (recipient == null) return false;
+        if (certificate.TestSessionId <= 0 || certificate.DiskCardId <= 0)
+            throw new InvalidOperationException("A certificate must belong to a persisted disk test.");
+
+        var pdfPath = await _certificateGenerator.GeneratePdfAsync(certificate);
+        if (!File.Exists(pdfPath))
+            throw new FileNotFoundException("The generated disk certificate PDF was not found.", pdfPath);
+        var pdf = await File.ReadAllBytesAsync(pdfPath, cancellationToken);
+        var settings = await _emailSettingsService.GetAsync(cancellationToken);
+
+        try
+        {
+            var status = $"{certificate.Grade} ({certificate.Score:F0}/100)";
+            var subject = string.Format(
+                _locale.GetString("Notification.DiskTest.SubjectWithReport", "DiskChecker certificate {0} - {1}"),
+                certificate.DiskModel, status);
+            var message = new EmailMessage
+            {
+                ToAddress = recipient,
+                Subject = subject,
+                HtmlBody = BuildCertificateEmailBody(certificate, null)
+            };
+            if (settings.IncludeCertificateAttachment)
+            {
+                ValidatePdf(pdf);
+                message.Attachments.Add(new EmailAttachment
+                {
+                    FileName = Path.GetFileName(pdfPath),
+                    Content = pdf,
+                    ContentType = "application/pdf"
+                });
+            }
+            await _emailSender.SendAsync(message, cancellationToken);
+            LogNotificationWithReportSent(recipient);
+            return true;
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            LogNotificationWithReportFailed(ex, recipient);
+            throw;
+        }
+    }
+
+    private static void ValidatePdf(byte[]? pdf)
+    {
+        if (pdf is not { Length: > 5 } ||
+            pdf[0] != (byte)'%' || pdf[1] != (byte)'P' ||
+            pdf[2] != (byte)'D' || pdf[3] != (byte)'F' || pdf[4] != (byte)'-')
+            throw new InvalidDataException("The disk certificate PDF is missing or invalid.");
     }
 
     private string GetResultStatus(SurfaceTestResult result)
@@ -210,7 +281,7 @@ public partial class TestCompletionNotificationService
         return body;
     }
 
-    private string BuildCertificateEmailBody(DiskCertificate certificate, SurfaceTestResult result)
+    private string BuildCertificateEmailBody(DiskCertificate certificate, SurfaceTestResult? result)
     {
         ArgumentNullException.ThrowIfNull(certificate);
 
@@ -255,13 +326,20 @@ public partial class TestCompletionNotificationService
         sb.Append("</div>");
 
         sb.Append("<div class='panel' style='margin-top:12px'><div class='title'>" + _locale.GetString("Notification.Section.Performance", "Výkon testu") + "</div>");
-        AppendRow(sb, _locale.GetString("Notification.Label.AvgWriteSpeed", "Průměrný zápis"), $"{certificate.AvgWriteSpeed:F1} MB/s");
-        AppendRow(sb, _locale.GetString("Notification.Label.MaxWriteSpeed", "Maximální zápis"), $"{certificate.MaxWriteSpeed:F1} MB/s");
-        AppendRow(sb, _locale.GetString("Notification.Label.AvgReadSpeed", "Průměrné čtení"), $"{certificate.AvgReadSpeed:F1} MB/s");
-        AppendRow(sb, _locale.GetString("Notification.Label.MaxReadSpeed", "Maximální čtení"), $"{certificate.MaxReadSpeed:F1} MB/s");
+        // Do not invent 0 MB/s samples for a seek-only or read-only test.
+        var seekOnly = certificate.TestType.Contains("Seek", StringComparison.OrdinalIgnoreCase);
+        var hasWrite = !seekOnly && !certificate.IsReadOnlyTest &&
+            (certificate.AvgWriteSpeed > 0 || certificate.MaxWriteSpeed > 0);
+        var hasRead = !seekOnly && (certificate.AvgReadSpeed > 0 || certificate.MaxReadSpeed > 0);
+        AppendRow(sb, _locale.GetString("Notification.Label.AvgWriteSpeed", "Průměrný zápis"), hasWrite ? $"{certificate.AvgWriteSpeed:F1} MB/s" : "N/A");
+        AppendRow(sb, _locale.GetString("Notification.Label.MaxWriteSpeed", "Maximální zápis"), hasWrite ? $"{certificate.MaxWriteSpeed:F1} MB/s" : "N/A");
+        AppendRow(sb, _locale.GetString("Notification.Label.AvgReadSpeed", "Průměrné čtení"), hasRead ? $"{certificate.AvgReadSpeed:F1} MB/s" : "N/A");
+        AppendRow(sb, _locale.GetString("Notification.Label.MaxReadSpeed", "Maximální čtení"), hasRead ? $"{certificate.MaxReadSpeed:F1} MB/s" : "N/A");
         AppendRow(sb, _locale.GetString("Notification.Label.TemperatureRange", "Rozsah teplot"), certificate.TemperatureRange);
-        AppendRow(sb, _locale.GetString("Notification.Label.ErrorCount", "Počet chyb"), certificate.ErrorCount.ToString(CultureInfo.InvariantCulture));
-        AppendRow(sb, _locale.GetString("Notification.Label.Samples", "Vzorky"), result.Samples.Count.ToString(CultureInfo.InvariantCulture));
+        AppendRow(sb, _locale.GetString("Notification.Label.ErrorCount", "Počet chyb"),
+            Math.Max(certificate.ErrorCount, certificate.SeekErrorCount ?? 0).ToString(CultureInfo.InvariantCulture));
+        if (result != null)
+            AppendRow(sb, _locale.GetString("Notification.Label.Samples", "Vzorky"), result.Samples.Count.ToString(CultureInfo.InvariantCulture));
         sb.Append("</div>");
 
         sb.Append("<div class='panel' style='margin-top:12px'><div class='title'>" + _locale.GetString("Notification.Section.SmartSummary", "SMART souhrn") + "</div>");
@@ -299,18 +377,11 @@ public partial class TestCompletionNotificationService
         return $"{b:F1} {sizes[i]}";
     }
 
-    private static string? ResolveRecipient(string? preferredRecipient, string? fallbackRecipient)
+    private static string? ResolveRecipient(string? preferredRecipient)
     {
-        if (!string.IsNullOrWhiteSpace(preferredRecipient))
-        {
-            return preferredRecipient.Trim();
-        }
-
-        if (!string.IsNullOrWhiteSpace(fallbackRecipient))
-        {
-            return fallbackRecipient.Trim();
-        }
-
-        return null;
+        // A configured sender is never an implicit notification recipient.
+        // Mail is sent only to the explicitly configured destination.
+        return string.IsNullOrWhiteSpace(preferredRecipient) ? null : preferredRecipient.Trim();
     }
+
 }

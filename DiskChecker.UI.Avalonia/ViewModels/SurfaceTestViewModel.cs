@@ -1638,17 +1638,23 @@ public partial class SurfaceTestViewModel : ViewModelBase, INavigableViewModel, 
              _borrowedSmartProvenance == null ? smartSnapshot : null, cancellationToken);
          var session = await _cardTestService.SaveSurfaceTestAsync(
              card, result, smartSnapshot, _borrowedSmartProvenance, cancellationToken);
+         // A completed scan with errors still deserves a real certificate
+         // describing that result. Incomplete scans are not completed tests.
+         var emailWarning = result.TotalBytesTested == requestedBytes
+             ? await TrySendCompletionEmailAsync(result, card, session, cancellationToken)
+             : null;
          if(result.ErrorCount == 0 && result.TotalBytesTested == requestedBytes)
          {
             StatusMessage = L.Get("SurfaceTest.Status.TestCompletedAvg", result.AverageSpeedMbps.ToString("F1"));
-            await TrySendCompletionEmailAsync(result, card, session, cancellationToken);
             await _dialogService.ShowSuccessAsync(L.Get("SurfaceTest.Status.TestCompleted"),
-                L.Get("SurfaceTest.Status.TestSuccess"));
+                L.Get("SurfaceTest.Status.TestSuccess") +
+                (emailWarning is null ? "" : "\n\n" + emailWarning));
          }
          else
          {
             SetStickyErrorStatus(result.Notes ?? "Incomplete read-only scan.");
-            await _dialogService.ShowErrorAsync(L.Get("Common.Error"), StatusMessage);
+            await _dialogService.ShowErrorAsync(L.Get("Common.Error"), StatusMessage +
+                (emailWarning is null ? "" : "\n\n" + emailWarning));
          }
       }
       catch(OperationCanceledException) { throw; }
@@ -1659,59 +1665,48 @@ public partial class SurfaceTestViewModel : ViewModelBase, INavigableViewModel, 
       }
    }
 
-   private async Task TrySendCompletionEmailAsync(
-       SurfaceTestResult result,
-       DiskCard card,
-       TestSession session,
+   /// <summary>
+   /// Sends the real PDF certificate of a completed, persisted disk test.
+   /// Mail failures are reported separately from disk-test persistence errors.
+   /// </summary>
+   private async Task<string?> TrySendCompletionEmailAsync(
+       SurfaceTestResult result, DiskCard card, TestSession session,
        CancellationToken cancellationToken)
    {
       try
       {
          var recipient = await _settingsService.GetReportRecipientEmailAsync();
          if(string.IsNullOrWhiteSpace(recipient))
-         {
-            return;
-         }
+            return null; // No explicit recipient: no unsolicited email.
 
          var certificate = await _certificateGenerator.GenerateCertificateAsync(session, card);
-
-         // Save certificate to database
+         string? persistWarning = null;
          try
          {
             await _diskCardRepository.CreateCertificateAsync(certificate);
          }
-         catch { /* non-critical — certificate saved to DB for later viewing */ }
-
-         var certificatePath = await _certificateGenerator.GeneratePdfAsync(certificate);
-
-         if(!File.Exists(certificatePath))
+         catch(Exception ex) when(ex is not OperationCanceledException)
          {
-           StatusMessage = L.Get("SurfaceTest.Status.CertificateNotFound");
-           SetStatusMessage(L.Get("SurfaceTest.Status.CertificateNotFound"));
-             return;
+            persistWarning = L.Get("SurfaceTest.Status.CertificateSaveFailed") + ": " + ex.Message;
          }
 
-         var certificateBytes = await File.ReadAllBytesAsync(certificatePath, cancellationToken);
-         var attachmentFileName = Path.GetFileName(certificatePath);
-
+         var pdfPath = await _certificateGenerator.GeneratePdfAsync(certificate);
+         if(!File.Exists(pdfPath))
+            return L.Get("SurfaceTest.Status.CertificateNotFound");
+         var bytes = await File.ReadAllBytesAsync(pdfPath, cancellationToken);
          await _notificationService.SendTestCompletionWithReportAsync(
-             result,
-             recipient,
-             certificateBytes,
-             card.ModelName,
-           certificate,
-             attachmentFileName,
-             cancellationToken);
+             result, recipient, bytes, card.ModelName, certificate,
+             Path.GetFileName(pdfPath), cancellationToken);
+         return persistWarning;
       }
-      catch (InvalidOperationException)
+      catch(OperationCanceledException)
       {
-           StatusMessage = L.Get("SurfaceTest.Status.SmtpNotConfigured");
-           SetStatusMessage(L.Get("SurfaceTest.Status.SmtpNotConfigured"));
+         return L.Get("Notification.CertificateSendCancelled");
       }
-      catch (IOException)
+      catch(Exception ex)
       {
-           StatusMessage = L.Get("SurfaceTest.Status.EmailPrepareFailed");
-           SetStatusMessage(L.Get("SurfaceTest.Status.EmailPrepareFailed"));
+         // A failed SMTP request must never be called a failed disk test.
+         return L.Get("SurfaceTest.Status.EmailDeliveryFailed") + ": " + ex.Message;
       }
    }
 

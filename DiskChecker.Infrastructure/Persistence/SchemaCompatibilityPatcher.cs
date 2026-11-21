@@ -77,6 +77,7 @@ public static class SchemaCompatibilityPatcher
         if (TableExists(dbContext, "EmailSettings"))
         {
             EnsureColumn(dbContext, "EmailSettings", "IncludeCertificateAttachment");
+            EnsureColumn(dbContext, "EmailSettings", "AllowInsecureSmtp");
         }
 
         EnsureStallEventsTable(dbContext);
@@ -311,6 +312,13 @@ public static class SchemaCompatibilityPatcher
         if (tableName == "EmailSettings" && columnName == "IncludeCertificateAttachment")
         {
             dbContext.Database.ExecuteSqlRaw("ALTER TABLE EmailSettings ADD COLUMN IncludeCertificateAttachment INTEGER NOT NULL DEFAULT 1;");
+            return;
+        }
+
+        if (tableName == "EmailSettings" && columnName == "AllowInsecureSmtp")
+        {
+            // Strictly off for existing users until they explicitly opt in.
+            dbContext.Database.ExecuteSqlRaw("ALTER TABLE EmailSettings ADD COLUMN AllowInsecureSmtp INTEGER NOT NULL DEFAULT 0;");
             return;
         }
 

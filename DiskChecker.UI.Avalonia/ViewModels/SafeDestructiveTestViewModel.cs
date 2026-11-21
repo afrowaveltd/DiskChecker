@@ -698,7 +698,28 @@ public partial class SafeDestructiveTestViewModel : ViewModelBase, INavigableVie
 
          await BuildResultsAsync();
          await BuildCertificateAsync();
-         await SaveTestSessionAsync();
+         var certificateStored = await SaveTestSessionAsync();
+         if(!certificateStored)
+            StatusMessage = L.Get("Notification.CertificateNotSaved");
+         if(certificateStored && Certificate != null)
+         {
+            try
+            {
+               if(await _notificationService.SendStoredCertificateIfConfiguredAsync(Certificate, ct))
+                  Log(L.Get("Notification.CertificateAccepted"));
+            }
+            catch(OperationCanceledException)
+            {
+               Log(L.Get("Notification.CertificateSendCancelled"));
+            }
+            catch(Exception ex)
+            {
+               // SMTP errors cannot invalidate a successfully restored disk.
+               var warning = L.Get("SurfaceTest.Status.EmailDeliveryFailed") + ": " + ex.Message;
+               Log(warning);
+               StatusMessage = L.Get("SafeDestructive.Status.Done") + ". " + warning;
+            }
+         }
          Log(L.Get("SafeDestructive.Log.WorkflowCompleted"));
       }
       catch(OperationCanceledException)
@@ -1647,11 +1668,11 @@ public partial class SafeDestructiveTestViewModel : ViewModelBase, INavigableVie
 
    private DiskCertificate? Certificate { get; set; }
 
-   private async Task SaveTestSessionAsync()
+   private async Task<bool> SaveTestSessionAsync()
    {
       try
       {
-         if(SelectedDrive == null || Certificate == null) return;
+         if(SelectedDrive == null || Certificate == null) return false;
 
          var card = await _diskCardRepository.GetByDevicePathAsync(SelectedDrive.Path);
          if(card == null)
@@ -1688,7 +1709,7 @@ public partial class SafeDestructiveTestViewModel : ViewModelBase, INavigableVie
             MaxTemperature = Math.Max(_smartBefore?.Temperature ?? 0, _smartAfter?.Temperature ?? 0),
             AverageTemperature = ((_smartBefore?.Temperature ?? 0) + (_smartAfter?.Temperature ?? 0)) / 2.0,
             TemperatureSamples = _temperatureMonitor.GetSamples().ToList(),
-            Result = TestResult.Pass,
+            Result = Certificate.ErrorCount > 0 ? TestResult.Fail : TestResult.Pass,
             Grade = Certificate.Grade,
             Score = Certificate.Score,
             HealthAssessment = MapHealthAssessment(Certificate.HealthStatus),
@@ -1705,10 +1726,12 @@ public partial class SafeDestructiveTestViewModel : ViewModelBase, INavigableVie
          await _diskCardRepository.CreateCertificateAsync(Certificate);
 
          Log($"Certifikát uložen: {Certificate.CertificateNumber}");
+         return true;
       }
       catch(Exception ex)
       {
          Log($"❌ Uložení session/certifikátu selhalo: {ex.Message}");
+         return false;
       }
    }
 

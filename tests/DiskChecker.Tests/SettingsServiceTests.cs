@@ -471,5 +471,30 @@ public class SettingsServiceTests
         }
     }
 
+    [Fact]
+    public async Task ResetPreferencesMustNeverUnlockProtectedDisks()
+    {
+        var directory = GetTempSettingsPath();
+        var protectedDisk = @"\\.\PhysicalDrive5";
+        try
+        {
+            var settings = new SettingsService(directory);
+            await settings.LockDiskAsync(protectedDisk);
+            Assert.True(await settings.IsDiskLockedAsync(protectedDisk));
+
+            await settings.ResetToDefaultsAsync();
+            Assert.True(await settings.IsDiskLockedAsync(protectedDisk));
+
+            // Protection must survive both reset and a restart.
+            var restarted = new SettingsService(directory);
+            Assert.True(await restarted.IsDiskLockedAsync(protectedDisk));
+        }
+        finally
+        {
+            if (Directory.Exists(directory))
+                Directory.Delete(directory, recursive: true);
+        }
+    }
+
 }
 

@@ -32,6 +32,7 @@ public partial class SeekTestViewModel : ViewModelBase, INavigableViewModel, IDi
     private readonly ISelectedDiskService _selectedDiskService;
     private readonly IDialogService _dialogService;
     private readonly ISettingsService _settingsService;
+    private readonly TestCompletionNotificationService? _notificationService;
     private readonly IDiskCacheService _diskCacheService;
     private readonly SeekTestService _seekTestService;
     private readonly ICertificateGenerator _certificateGenerator;
@@ -149,7 +150,8 @@ public partial class SeekTestViewModel : ViewModelBase, INavigableViewModel, IDi
         SeekTestService seekTestService,
         ICertificateGenerator certificateGenerator,
         IDiskCardRepository diskCardRepository,
-        DiskCardTestService cardTestService)
+        DiskCardTestService cardTestService,
+        TestCompletionNotificationService? notificationService = null)
     {
         _navigationService = navigationService;
         _selectedDiskService = selectedDiskService;
@@ -160,6 +162,7 @@ public partial class SeekTestViewModel : ViewModelBase, INavigableViewModel, IDi
         _certificateGenerator = certificateGenerator;
         _diskCardRepository = diskCardRepository;
         _cardTestService = cardTestService;
+        _notificationService = notificationService;
 
         StatusMessage = L.Get("SeekTest.Status.Ready");
         RecommendationText = L.Get("SeekTest.Status.LoadingRecommendation");
@@ -862,7 +865,7 @@ public partial class SeekTestViewModel : ViewModelBase, INavigableViewModel, IDi
                 Status = TestStatus.Completed,
                 IsDestructive = false,
                 WasLocked = false,
-                Result = TestResult.Pass,
+                Result = result.ErrorCount > 0 || result.WasAborted ? TestResult.Fail : TestResult.Pass,
                 Grade = CalculateSeekGrade(result),
                 Score = CalculateSeekScore(result),
                 Notes = string.Format(L.Get("SeekTest.SessionNotes"), SelectedTestType, result.SeekCount, result.AverageLatencyMs),
@@ -893,6 +896,24 @@ public partial class SeekTestViewModel : ViewModelBase, INavigableViewModel, IDi
             await _diskCardRepository.CreateCertificateAsync(cert);
 
             if (!_disposed) StatusMessage = string.Format(L.Get("SeekTest.Status.CertificateSaved"), cert.CertificateNumber);
+            if (_notificationService != null && !_disposed)
+            {
+                try
+                {
+                    await _notificationService.SendStoredCertificateIfConfiguredAsync(
+                        cert, _testCancellation?.Token ?? CancellationToken.None);
+                }
+                catch (OperationCanceledException)
+                {
+                    if (!_disposed) StatusMessage = L.Get("Notification.CertificateSendCancelled");
+                }
+                catch (Exception ex)
+                {
+                    // Saved seek results stay valid when SMTP or PDF delivery fails.
+                    if (!_disposed)
+                        StatusMessage = L.Get("SurfaceTest.Status.EmailDeliveryFailed") + ": " + ex.Message;
+                }
+            }
         }
         catch (Exception ex)
         {

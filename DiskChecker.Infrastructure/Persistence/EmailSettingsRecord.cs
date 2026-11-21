@@ -29,6 +29,11 @@ public class EmailSettingsRecord
     public bool UseSsl { get; set; }
 
     /// <summary>
+    /// Explicit permission for plaintext SMTP. Defaults to false for existing records.
+    /// </summary>
+    public bool AllowInsecureSmtp { get; set; }
+
+    /// <summary>
     /// Username for authentication.
     /// </summary>
     [MaxLength(200)]
