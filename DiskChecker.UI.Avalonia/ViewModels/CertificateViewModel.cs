@@ -1397,12 +1397,12 @@ public partial class CertificateViewModel : ViewModelBase, INavigableViewModel
 
       if(!hasWriteProfile)
       {
-         certificate.WriteProfilePoints = DownsampleSpeedSamples(_writeGraphSamples.Select(s => s.SpeedMBps), 32);
+         certificate.WriteProfilePoints = DownsampleSpeedSamples(_writeGraphSamples.Select(s => s.SpeedMBps), 512);
       }
 
       if(!hasReadProfile)
       {
-         certificate.ReadProfilePoints = DownsampleSpeedSamples(_readGraphSamples.Select(s => s.SpeedMBps), 32);
+         certificate.ReadProfilePoints = DownsampleSpeedSamples(_readGraphSamples.Select(s => s.SpeedMBps), 512);
       }
 
       BackfillCertificatePerformanceFromSamples(certificate, _writeGraphSamples, _readGraphSamples);
@@ -1434,12 +1434,12 @@ public partial class CertificateViewModel : ViewModelBase, INavigableViewModel
 
       if(certificate.WriteProfilePoints.Count == 0 && _writeGraphSamples.Count > 0)
       {
-         certificate.WriteProfilePoints = DownsampleSpeedSamples(_writeGraphSamples.Select(s => s.SpeedMBps), 32);
+         certificate.WriteProfilePoints = DownsampleSpeedSamples(_writeGraphSamples.Select(s => s.SpeedMBps), 512);
       }
 
       if(certificate.ReadProfilePoints.Count == 0 && _readGraphSamples.Count > 0)
       {
-         certificate.ReadProfilePoints = DownsampleSpeedSamples(_readGraphSamples.Select(s => s.SpeedMBps), 32);
+         certificate.ReadProfilePoints = DownsampleSpeedSamples(_readGraphSamples.Select(s => s.SpeedMBps), 512);
       }
 
       BackfillCertificatePerformanceFromSamples(certificate, _writeGraphSamples, _readGraphSamples);
