@@ -1655,6 +1655,27 @@ public partial class SafeDestructiveTestViewModel : ViewModelBase, INavigableVie
         if (Certificate == null || _emailPreferenceSettings == null) return;
         try
         {
+            Certificate.Sanitize1WritePoints = SanitizePass1WritePoints
+                .Select(p => p.Y ?? 0).ToList();
+            Certificate.Sanitize1ReadPoints = SanitizePass1ReadPoints
+                .Select(p => p.Y ?? 0).ToList();
+            Certificate.Sanitize2WritePoints = SanitizePass2WritePoints
+                .Select(p => p.Y ?? 0).ToList();
+            Certificate.Sanitize2ReadPoints = SanitizePass2ReadPoints
+                .Select(p => p.Y ?? 0).ToList();
+            Certificate.WriteProfilePoints = Certificate.Sanitize2WritePoints.Count > 0
+                ? Certificate.Sanitize2WritePoints
+                : Certificate.Sanitize1WritePoints;
+            Certificate.ReadProfilePoints = Certificate.Sanitize2ReadPoints.Count > 0
+                ? Certificate.Sanitize2ReadPoints
+                : Certificate.Sanitize1ReadPoints;
+            Certificate.SeekLatencyPoints = SeekFullStrokePoints
+                .Concat(SeekRandomPoints)
+                .Concat(SeekSkipPoints)
+                .Select(p => p.Y ?? 0)
+                .Where(y => y > 0)
+                .ToList();
+
             await _notificationService.SendGeneratedCertificateAsync(
                 Certificate, _certificateGenerator, _emailPreferenceSettings, cancellationToken);
         }
