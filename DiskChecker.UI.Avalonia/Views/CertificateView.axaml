@@ -241,6 +241,9 @@
                         <Border Background="{Binding PanelBackground}" Padding="12" CornerRadius="8">
                             <StackPanel Spacing="8">
                                 <TextBlock Text="{Binding L[CertificateView.PerformanceProfile]}" FontWeight="Bold" FontSize="13"/>
+                                <TextBlock Text="{Binding ChartSourceNote}"
+                                           TextWrapping="Wrap" FontSize="11" FontStyle="Italic"
+                                           Foreground="#FF64748B"/>
 
                                 <StackPanel Spacing="12">
                                     <Border Background="#FFFFFFFF" BorderBrush="#FFE2E8F0" BorderThickness="1" CornerRadius="6" Padding="10"
