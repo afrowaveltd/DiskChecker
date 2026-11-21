@@ -10,7 +10,6 @@ using System;
 using System.Collections.ObjectModel;
 using System.IO;
 using System.Linq;
-using System.Diagnostics;
 using Microsoft.Data.Sqlite;
 using System.Threading.Tasks;
 
@@ -604,11 +603,7 @@ namespace DiskChecker.UI.Avalonia.ViewModels
                     : _backupService.GetDefaultBackupDirectory();
                 if (string.IsNullOrWhiteSpace(folder) || !Directory.Exists(folder))
                     throw new DirectoryNotFoundException(folder);
-                await Task.Run(() => Process.Start(new ProcessStartInfo
-                {
-                    FileName = folder,
-                    UseShellExecute = true
-                }) ?? throw new InvalidOperationException("Folder opener was unavailable."));
+                await Task.Run(() => DocumentLauncher.OpenFolder(folder));
                 StatusMessage = L.Get("Settings.DataFolderOpened");
             }
             catch (Exception ex)

@@ -100,3 +100,11 @@ Volba přikládání certifikátu do e-mailu je nyní synchronizována s
 Protože `settings.json` může obsahovat přístupové údaje v SQL connection
 stringu, dočasný soubor pro atomické přepsání je na Linuxu/macOS vytvořen
 s právy `0600` (pouze vlastník). Tato kontrola je součástí regresního testu.
+
+## Otevření složky pod sudo
+
+`SettingsViewModel` používá společný `DocumentLauncher.OpenFolder`.
+Stejně jako otevření PDF přes `OpenFile` přepne na Linuxu při běhu
+pod `sudo` otevření ve správci souborů do grafické relace původního
+uživatele (pokud je dostupná). Při nedostupném prostředí zobrazí
+uživateli chybu namísto falešného úspěchu.
