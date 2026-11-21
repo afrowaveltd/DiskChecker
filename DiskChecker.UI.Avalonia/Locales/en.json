@@ -3041,5 +3041,7 @@
   "Settings.SmtpTestFailed": "SMTP sending failed",
   "Settings.SmtpRecipientRequired": "Enter a notification recipient first.",
   "Settings.SmtpInvalidPort": "SMTP port must be between 1 and 65535.",
-  "Settings.SmtpNoPlaintextCredentials": "SMTP login requires TLS."
+  "Settings.SmtpNoPlaintextCredentials": "SMTP login requires TLS.",
+  "SurfaceTest.Status.EmailDeliveryFailed": "The disk test was saved, but sending the certificate by email failed",
+  "SurfaceTest.Status.CertificateSaveFailed": "Could not save certificate to database"
 }
