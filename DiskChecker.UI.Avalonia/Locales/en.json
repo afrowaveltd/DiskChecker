@@ -2785,6 +2785,7 @@
   "Tui.Restore.Log.Done": "Restore finished: {0}",
   "Tui.Restore.Log.Mismatch": "SHA-256 of the restored disk does NOT match the backup.",
   "Tui.Restore.Log.NoChecksum": "The backup has no SHA-256 — the restore cannot be verified by checksum.",
+  "Tui.Restore.Log.Partial": "PARTIAL rescue: {0} source bytes were unreadable. Restored image data were checked, but original data cannot be certified.",
   "Tui.Restore.Log.Verified": "SHA-256 of the restored disk matches the backup.",
   "Tui.Restore.ManifestAsk": "Path to backup_manifest.json:",
   "Tui.Restore.Manual": "Enter a manifest manually…",
