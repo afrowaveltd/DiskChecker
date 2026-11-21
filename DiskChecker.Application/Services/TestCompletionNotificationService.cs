@@ -142,6 +142,49 @@ public partial class TestCompletionNotificationService
         }
     }
 
+    /// <summary>Emails the real PDF certificate after a completed test.</summary>
+    public async Task SendGeneratedCertificateAsync(
+        DiskCertificate certificate,
+        ICertificateGenerator generator,
+        ISettingsService preferences,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(certificate);
+        ArgumentNullException.ThrowIfNull(generator);
+        ArgumentNullException.ThrowIfNull(preferences);
+        var recipient = await preferences.GetReportRecipientEmailAsync();
+        if (string.IsNullOrWhiteSpace(recipient)) return;
+        var smtp = await _emailSettingsService.GetAsync(cancellationToken);
+        var message = new EmailMessage
+        {
+            ToAddress = recipient.Trim(),
+            Subject = "DiskChecker – certifikát " + certificate.CertificateNumber,
+            HtmlBody = BuildCertificateEmailBody(certificate, null)
+        };
+        if (smtp.IncludeCertificateAttachment)
+        {
+            var path = await generator.GeneratePdfAsync(certificate);
+            if (!File.Exists(path))
+                throw new FileNotFoundException("Generated certificate PDF missing.", path);
+            message.Attachments.Add(new EmailAttachment
+            {
+                FileName = Path.GetFileName(path),
+                ContentType = "application/pdf",
+                Content = await File.ReadAllBytesAsync(path, cancellationToken)
+            });
+        }
+        try
+        {
+            await _emailSender.SendAsync(message, cancellationToken);
+            LogNotificationWithReportSent(message.ToAddress);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            LogNotificationWithReportFailed(ex, message.ToAddress);
+            throw;
+        }
+    }
+
     private string GetResultStatus(SurfaceTestResult result)
     {
         return result.ErrorCount == 0 ? "✅ ÚSPĚŠNO" : $"⚠️ CHYBY ({result.ErrorCount})";
@@ -212,7 +255,7 @@ public partial class TestCompletionNotificationService
         return body;
     }
 
-    private string BuildCertificateEmailBody(DiskCertificate certificate, SurfaceTestResult result)
+    private string BuildCertificateEmailBody(DiskCertificate certificate, SurfaceTestResult? result)
     {
         ArgumentNullException.ThrowIfNull(certificate);
 
@@ -263,7 +306,8 @@ public partial class TestCompletionNotificationService
         AppendRow(sb, _locale.GetString("Notification.Label.MaxReadSpeed", "Maximální čtení"), $"{certificate.MaxReadSpeed:F1} MB/s");
         AppendRow(sb, _locale.GetString("Notification.Label.TemperatureRange", "Rozsah teplot"), certificate.TemperatureRange);
         AppendRow(sb, _locale.GetString("Notification.Label.ErrorCount", "Počet chyb"), certificate.ErrorCount.ToString(CultureInfo.InvariantCulture));
-        AppendRow(sb, _locale.GetString("Notification.Label.Samples", "Vzorky"), result.Samples.Count.ToString(CultureInfo.InvariantCulture));
+        if (result != null)
+            AppendRow(sb, _locale.GetString("Notification.Label.Samples", "Vzorky"), result.Samples.Count.ToString(CultureInfo.InvariantCulture));
         sb.Append("</div>");
 
         sb.Append("<div class='panel' style='margin-top:12px'><div class='title'>" + _locale.GetString("Notification.Section.SmartSummary", "SMART souhrn") + "</div>");

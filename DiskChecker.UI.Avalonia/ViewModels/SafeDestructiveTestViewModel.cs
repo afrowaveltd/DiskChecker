@@ -63,6 +63,7 @@ public partial class SafeDestructiveTestViewModel : ViewModelBase, INavigableVie
    private readonly IDiskCardRepository _diskCardRepository;
    private readonly ICertificateGenerator _certificateGenerator;
    private readonly TestCompletionNotificationService _notificationService;
+   private readonly ISettingsService? _emailPreferenceSettings;
    private readonly IPowerManagementService _powerManagementService;
    private readonly IDiskTemperatureMonitor _temperatureMonitor;
 
@@ -308,7 +309,7 @@ public partial class SafeDestructiveTestViewModel : ViewModelBase, INavigableVie
        ICertificateGenerator certificateGenerator,
        TestCompletionNotificationService notificationService,
        IPowerManagementService powerManagementService,
-       IDiskTemperatureMonitor temperatureMonitor)
+       IDiskTemperatureMonitor temperatureMonitor, ISettingsService? emailPreferenceSettings = null)
    {
       _navigationService = navigationService;
       _selectedDiskService = selectedDiskService;
@@ -320,6 +321,7 @@ public partial class SafeDestructiveTestViewModel : ViewModelBase, INavigableVie
       _diskCardRepository = diskCardRepository;
       _certificateGenerator = certificateGenerator;
       _notificationService = notificationService;
+       _emailPreferenceSettings = emailPreferenceSettings;
       _powerManagementService = powerManagementService;
       _temperatureMonitor = temperatureMonitor;
       _temperatureMonitor.TemperatureChanged += OnMonitorTemperatureChanged;
@@ -699,6 +701,7 @@ public partial class SafeDestructiveTestViewModel : ViewModelBase, INavigableVie
          await BuildResultsAsync();
          await BuildCertificateAsync();
          await SaveTestSessionAsync();
+         await TryNotifyCertificateAsync(ct);
          Log(L.Get("SafeDestructive.Log.WorkflowCompleted"));
       }
       catch(OperationCanceledException)
@@ -1646,6 +1649,21 @@ public partial class SafeDestructiveTestViewModel : ViewModelBase, INavigableVie
    }
 
    private DiskCertificate? Certificate { get; set; }
+
+    private async Task TryNotifyCertificateAsync(CancellationToken cancellationToken)
+    {
+        if (Certificate == null || _emailPreferenceSettings == null) return;
+        try
+        {
+            await _notificationService.SendGeneratedCertificateAsync(
+                Certificate, _certificateGenerator, _emailPreferenceSettings, cancellationToken);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            // Email errors do not change the outcome of a completed disk test.
+            StatusMessage = "Disk test completed; certificate email failed: " + ex.Message;
+        }
+    }
 
    private async Task SaveTestSessionAsync()
    {

@@ -80,6 +80,7 @@ public partial class AbsoluteDestructiveTestViewModel : ViewModelBase, INavigabl
     private readonly IDiskCardRepository _diskCardRepository;
     private readonly ICertificateGenerator _certificateGenerator;
     private readonly TestCompletionNotificationService _notificationService;
+    private readonly ISettingsService? _emailPreferenceSettings;
     private readonly IPowerManagementService _powerManagementService;
     private readonly IDiskTemperatureMonitor _temperatureMonitor;
 
@@ -269,7 +270,7 @@ public partial class AbsoluteDestructiveTestViewModel : ViewModelBase, INavigabl
         ICertificateGenerator certificateGenerator,
         TestCompletionNotificationService notificationService,
         IPowerManagementService powerManagementService,
-        IDiskTemperatureMonitor temperatureMonitor)
+        IDiskTemperatureMonitor temperatureMonitor, ISettingsService? emailPreferenceSettings = null)
     {
         _navigationService = navigationService;
         _selectedDiskService = selectedDiskService;
@@ -281,6 +282,7 @@ public partial class AbsoluteDestructiveTestViewModel : ViewModelBase, INavigabl
         _diskCardRepository = diskCardRepository;
         _certificateGenerator = certificateGenerator;
         _notificationService = notificationService;
+       _emailPreferenceSettings = emailPreferenceSettings;
         _powerManagementService = powerManagementService;
         _temperatureMonitor = temperatureMonitor;
         _temperatureMonitor.TemperatureChanged += OnMonitorTemperatureChanged;
@@ -1084,6 +1086,7 @@ public partial class AbsoluteDestructiveTestViewModel : ViewModelBase, INavigabl
 
             // Save test session
             await SaveTestSessionAsync();
+            await TryNotifyCertificateAsync(ct);
 
             SetPhase(6, TestPhaseStatus.Completed, "Hotovo — certifikát připraven");
             IsCompleted = true;
@@ -1786,6 +1789,21 @@ public partial class AbsoluteDestructiveTestViewModel : ViewModelBase, INavigabl
         Certificate = cert;
         IsGeneratingCertificate = false;
         CertificateProgressText = string.Empty;
+    }
+
+    private async Task TryNotifyCertificateAsync(CancellationToken cancellationToken)
+    {
+        if (Certificate == null || _emailPreferenceSettings == null) return;
+        try
+        {
+            await _notificationService.SendGeneratedCertificateAsync(
+                Certificate, _certificateGenerator, _emailPreferenceSettings, cancellationToken);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            // Email errors do not change the outcome of a completed disk test.
+            StatusMessage = "Disk test completed; certificate email failed: " + ex.Message;
+        }
     }
 
     private async Task SaveTestSessionAsync()
