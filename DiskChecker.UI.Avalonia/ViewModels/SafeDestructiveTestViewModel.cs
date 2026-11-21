@@ -1658,6 +1658,10 @@ public partial class SafeDestructiveTestViewModel : ViewModelBase, INavigableVie
             await _notificationService.SendGeneratedCertificateAsync(
                 Certificate, _certificateGenerator, _emailPreferenceSettings, cancellationToken);
         }
+        catch (OperationCanceledException)
+        {
+            StatusMessage = "Test disku byl dokončen; odesílání certifikátu e-mailem bylo zrušeno.";
+        }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
             // Email errors do not change the outcome of a completed disk test.
