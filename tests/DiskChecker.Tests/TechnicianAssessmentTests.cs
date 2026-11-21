@@ -90,7 +90,7 @@ public class TechnicianAssessmentTests
     }
 
     [Fact]
-    public async Task Pdf_WithManualAssessment_CreatesTwoA4PagesAndKeepsOriginalGrade()
+    public async Task Pdf_WithManualAssessment_CreatesOneA4PageAndKeepsOriginalGrade()
     {
         var folder = Path.Combine(Path.GetTempPath(), "DiskChecker-Cert-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(folder);
@@ -114,9 +114,9 @@ public class TechnicianAssessmentTests
             var pdf = await generator.GeneratePdfAsync(certificate);
             var data = await File.ReadAllBytesAsync(pdf, TestContext.Current.CancellationToken);
             var text = Encoding.Latin1.GetString(data);
-            Assert.StartsWith("%PDF-1.4", text, StringComparison.Ordinal);
-            Assert.Contains("/Count 2", text, StringComparison.Ordinal);
-            Assert.Contains("/Width 1240 /Height 2400", text, StringComparison.Ordinal);
+            Assert.StartsWith("%PDF-", text, StringComparison.Ordinal);
+            Assert.Contains("/Count 1", text, StringComparison.Ordinal);
+            Assert.DoesNotContain("/Width 1240 /Height 2400", text, StringComparison.Ordinal);
             Assert.Equal("F", certificate.Grade);
             Assert.Equal(13, certificate.Score);
         }
