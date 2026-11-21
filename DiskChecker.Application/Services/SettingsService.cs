@@ -321,7 +321,8 @@ public class SettingsService : ISettingsService
         _language = "cs";
         _enableLogging = true;
         _logLevel = "Information";
-        _lockedDisks = new List<string>();
+        // Safety locks must NOT be cleared by resetting cosmetic/general
+        // preferences. Unlocking a drive requires an explicit disk action.
         _smartCacheTtlMinutes = 10;
         _smartProbeTimeoutSeconds = 4;
         _smartProbeParallelism = 0;
@@ -330,7 +331,7 @@ public class SettingsService : ISettingsService
         _emailSendOnlyForLongRunningTests = true;
         _emailIncludeCertificateAttachment = true;
         _certificatePath = null;
-        SaveLockedDisksToFile();
+        // Preserve locked_disks.json and the in-memory lock list.
         SaveSettingsToFile();
         return Task.CompletedTask;
     }

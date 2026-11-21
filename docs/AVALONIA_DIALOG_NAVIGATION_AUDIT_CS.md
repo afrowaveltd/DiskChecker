@@ -140,3 +140,12 @@ neprezentují jako syntetický výsledek povrchového testu.
 Záložní režim `ImageRoundTrip` není diskový test a neposílá
 certifikát jako otestovaný disk. SMTP chyby se hlásí nezávisle
 na uloženém výsledku.
+
+### Bezpečnostní oprava resetu
+
+Audit odhalil, že `SettingsService.ResetToDefaultsAsync` původně vymazal
+`_lockedDisks` a přepsal `locked_disks.json`. To by po stisku
+„Obnovit výchozí“ mohlo nechtěně zpřístupnit dosud uzamčený disk
+destruktivním operacím. Nově reset mění jen obecné preference a
+**nikdy neodemkne disk**. Zámky se zachovají v paměti i přes restart;
+regresní test to ověřuje. Unlock musí být explicitní operace na disku.
