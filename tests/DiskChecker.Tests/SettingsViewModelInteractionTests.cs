@@ -174,4 +174,43 @@ public sealed class SettingsViewModelInteractionTests
         }
     }
 
+    [Fact]
+    public async Task GeneralResetClearsRecipientButPreservesSmtpServerAndReloadsUi()
+    {
+        string path = Directory.CreateTempSubdirectory("dc-general-reset-").FullName;
+        try
+        {
+            var settings = new SettingsService(path);
+            await settings.SetLanguageAsync("en");
+            await settings.SetReportRecipientEmailAsync("person@example.net");
+            var smtpData = new EmailSettings
+            {
+                Host = "smtp.example.net", Password = "protected-password",
+                FromAddress = "sender@example.net", IncludeCertificateAttachment = false
+            };
+            var smtp = Substitute.For<IEmailSettingsService>();
+            smtp.GetAsync(Arg.Any<CancellationToken>()).Returns(Task.FromResult(smtpData));
+            var dialog = Substitute.For<IDialogService>();
+            dialog.ShowConfirmationAsync(Arg.Any<string>(), Arg.Any<string>())
+                .Returns(Task.FromResult(true));
+            var backup = Substitute.For<IBackupService>();
+            backup.GetAvailableBackupsAsync().Returns(
+                Task.FromResult<IEnumerable<IBackupService.BackupInfo>>(Array.Empty<IBackupService.BackupInfo>()));
+            var vm = new SettingsViewModel(settings, dialog, backup, new LocaleService(),
+                Substitute.For<IDiskCacheService>(), Substitute.For<INavigationService>(), smtp,
+                Substitute.For<IEmailSender>());
+            await vm.ResetSettingsCommand.ExecuteAsync(null);
+            Assert.Equal(string.Empty, vm.ReportRecipientEmail);
+            Assert.Equal("cs", vm.Language);
+            Assert.Equal("smtp.example.net", vm.SmtpHost);
+            Assert.True(vm.HasStoredSmtpPassword);
+            Assert.False(vm.EmailIncludeCertificateAttachment);
+            await smtp.DidNotReceiveWithAnyArgs().SaveAsync(default!, TestContext.Current.CancellationToken);
+        }
+        finally
+        {
+            if (Directory.Exists(path)) Directory.Delete(path, recursive: true);
+        }
+    }
+
 }

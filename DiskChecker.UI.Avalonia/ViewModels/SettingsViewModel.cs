@@ -75,7 +75,7 @@ namespace DiskChecker.UI.Avalonia.ViewModels
             _emailSender = emailSender ?? throw new ArgumentNullException(nameof(emailSender));
             
             SaveSettingsCommand = new AsyncRelayCommand(SaveSettingsAsync, () => !IsSaving);
-            ResetSettingsCommand = new AsyncRelayCommand(ResetSettingsAsync);
+            ResetSettingsCommand = new AsyncRelayCommand(ResetSettingsAsync, () => !IsSaving);
             BrowseExportPathCommand = new AsyncRelayCommand(BrowseExportPathAsync);
             CreateBackupCommand = new AsyncRelayCommand(CreateBackupAsync, () => !IsSaving && CanUseSqliteBackup);
             RestoreBackupCommand = new AsyncRelayCommand(RestoreBackupAsync, () => !IsSaving && CanUseSqliteBackup && SelectedBackup != null);
@@ -97,7 +97,7 @@ namespace DiskChecker.UI.Avalonia.ViewModels
                 AvailableLanguages.Add("en");
             }
             
-            LoadSettings();
+            _ = LoadSettingsAsync();
             _ = RefreshBackupsAsync();
         }
 
@@ -178,6 +178,8 @@ namespace DiskChecker.UI.Avalonia.ViewModels
                 if (SetProperty(ref _isSaving, value))
                 {
                     SaveSettingsCommand.NotifyCanExecuteChanged();
+                    ResetSettingsCommand.NotifyCanExecuteChanged();
+                    TestDatabaseConnectionCommand.NotifyCanExecuteChanged();
                     CreateBackupCommand.NotifyCanExecuteChanged();
                     RestoreBackupCommand.NotifyCanExecuteChanged();
                     TestSmtpCommand.NotifyCanExecuteChanged();
@@ -304,7 +306,7 @@ namespace DiskChecker.UI.Avalonia.ViewModels
             set => SetProperty(ref _databaseConnectionString, value);
         }
 
-        private async void LoadSettings()
+        private async Task LoadSettingsAsync()
         {
             try
             {
@@ -357,7 +359,10 @@ namespace DiskChecker.UI.Avalonia.ViewModels
                 SmartCacheTtlMinutes = ttl;
                 SmartProbeTimeoutSeconds = timeout;
                 SmartProbeParallelism = parallel;
-                
+                if (!string.IsNullOrWhiteSpace(Language) &&
+                    !string.Equals(_localizationService.CurrentLocale, Language, StringComparison.OrdinalIgnoreCase))
+                    _localizationService.SetLocale(Language);
+
                 var concreteSettings = _settingsService as DiskChecker.Application.Services.SettingsService;
                 var dbLocationWarning = concreteSettings?.OtherDatabaseCandidates;
                 var active = concreteSettings?.StartupDatabaseStorageSettings ?? dbSettings;
@@ -508,21 +513,26 @@ namespace DiskChecker.UI.Avalonia.ViewModels
                 
                 if (confirmation)
                 {
-                    StatusMessage = "Resetuji nastavení...";
-                    
-                    // Resetujeme nastavení ve službě
+                    IsSaving = true;
+                    StatusMessage = L.Get("Settings.Resetting");
+
+                    // General settings and notification recipient are reset.
+                    // SMTP server credentials reside in a separate DB-backed
+                    // service and are intentionally preserved.
                     await _settingsService.ResetToDefaultsAsync();
-                    
-                    // Znovu načteme nastavení
-                    LoadSettings();
-                    
-                    StatusMessage = "Nastavení resetováno na výchozí hodnoty";
+                    await LoadSettingsAsync();
+
+                    StatusMessage = L.Get("Settings.ResetDone");
                 }
             }
             catch (Exception ex)
             {
                 StatusMessage = $"Chyba při resetování nastavení: {ex.Message}";
                 await _dialogService.ShowErrorAsync(L.Get("Common.Error"), $"Nepodařilo se resetovat nastavení: {ex.Message}");
+            }
+            finally
+            {
+                IsSaving = false;
             }
         }
 
