@@ -1698,6 +1698,8 @@
   "Report.Text.Test": "Test: {0}",
   "Report.Title": "Report",
   "Report.UseExternalPDF": "Pro tisk použijte externí PDF prohlížeč.",
+  "ReportView.OpenCertificate": "Otevřít test / společné PDF",
+  "ReportView.CertificateNotFound": "Karta disku nebo vybraný záznam testu již neexistuje.",
   "ReportView.AllTestsHistory": "Historie všech testů",
   "ReportView.AvgRead": "Prům. čtení",
   "ReportView.AvgWrite": "Prům. zápis",
