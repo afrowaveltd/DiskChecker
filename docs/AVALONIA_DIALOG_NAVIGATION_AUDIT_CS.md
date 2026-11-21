@@ -73,3 +73,13 @@ chybě I/O. Chybu uložení nyní volající obdrží; UI ji neskryje za
 zavádějící zprávu „Uloženo“.
 `SettingsViewModel` při operaci ukládání/zálohy/obnovy blokuje navigaci
 stejným kontraktem jako ostatní obrazovky.
+
+## Navazující regresní testy
+
+`DiskComparisonUiTests` ověřuje výběr a odebrání disků, invalidaci výsledků,
+samostatné grafy skóre/MB/s, rozlišení N/A a bezpečný CSV export.
+`SettingsViewModelInteractionTests` ověřuje zrušení výběru složky,
+skutečný výběr, mazání pouze paměťové cache a blokování navigace.
+`SettingsServiceTests` ověřuje uchování voleb přes restart služby.
+`DiskComparisonServiceRegressionTests` ověřuje skutečně poslední session
+a srovnání bez dělení nulou. Výsledky CI jsou nutné před sloučením.

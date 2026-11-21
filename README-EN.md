@@ -359,3 +359,12 @@ See the [`LICENSE`](LICENSE) file.
 
 See [docs/AVALONIA_DIALOG_NAVIGATION_AUDIT_CS.md](docs/AVALONIA_DIALOG_NAVIGATION_AUDIT_CS.md)
 for dialog localization, operation-safe navigation and smoke-test guidance.
+
+### Avalonia Settings and disk comparison (November 2026)
+
+Settings are backed by actual persisted options, a real export-folder picker and
+safe in-memory-only disk discovery cache invalidation. Disk comparison selects
+2–5 disk cards, displays recorded results, uses separate score and MB/s charts,
+and exports formula-safe CSV without inventing missing measurements. See the
+[Avalonia UX audit](docs/AVALONIA_DIALOG_NAVIGATION_AUDIT_CS.md)
+for scope, remaining limitations and manual verification.
