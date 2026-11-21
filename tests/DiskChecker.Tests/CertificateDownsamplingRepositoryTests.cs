@@ -433,4 +433,77 @@ public class CertificateDownsamplingRepositoryTests : IDisposable
                 $"Sample {i} has ProgressPercent {writeSamples[i].ProgressPercent} < {writeSamples[i - 1].ProgressPercent}");
         }
     }
+
+    [Fact]
+    public async Task SanitizationPreview_3700Rows_MustIncludeLastPartOfTheScan()
+    {
+        // Regression for a real screenshot: a 3700-row session plotted only the
+        // first ~83% because integer floor stride + LIMIT discarded the tail.
+        var (repo, connection) = CreateRepository();
+        await using var _ = connection;
+        EnsureDiskCard(repo);
+        int sessionId = InsertSession(connection, repo);
+        InsertSpeedSamples(connection, "TestSessions_WriteSamples", sessionId, 3700);
+        InsertSpeedSamples(connection, "TestSessions_ReadSamples", sessionId, 3700);
+        InsertTemperatureSamples(connection, sessionId, 3700);
+
+        var (writes, reads) = await repo.GetSpeedSampleSeriesDownsampledAsync(
+            sessionId, 1024, TestContext.Current.CancellationToken);
+        var temperatures = await repo.GetTemperatureSampleSeriesDownsampledAsync(
+            sessionId, 256, TestContext.Current.CancellationToken);
+
+        Assert.InRange(writes.Count, 1, 1024);
+        Assert.InRange(reads.Count, 1, 1024);
+        Assert.InRange(temperatures.Count, 1, 256);
+
+        Assert.True(writes.Max(s => s.ProgressPercent) > 98.0);
+        Assert.True(reads.Max(s => s.ProgressPercent) > 98.0);
+        Assert.True(temperatures.Max(s => s.ProgressPercent) > 98.0);
+    }
+
+
+    [Fact]
+    public async Task SeekPreview_3700Records_KeepsTrueIndicesThroughTheEnd()
+    {
+        var (repo, connection) = CreateRepository();
+        await using var _ = connection;
+        EnsureDiskCard(repo);
+        int sessionId = InsertSession(connection, repo);
+
+        using (var transaction = connection.BeginTransaction())
+        using (var command = connection.CreateCommand())
+        {
+            command.Transaction = transaction;
+            command.CommandText = """
+                INSERT INTO SeekSamples
+                  (TestSessionId, TestType, "Index", SourceLba, DestinationLba,
+                   SeekDistance, LatencyMs, TimestampUtc, HasError)
+                VALUES (@session, @type, @index, 0, 1, 1, @latency, @timestamp, 0)
+                """;
+            command.Parameters.AddWithValue("@session", sessionId);
+            command.Parameters.AddWithValue("@type", (int)SeekTestType.FullStroke);
+            var index = command.Parameters.AddWithValue("@index", 0);
+            var latency = command.Parameters.AddWithValue("@latency", 0d);
+            command.Parameters.AddWithValue("@timestamp", DateTime.UtcNow);
+            for (int i = 1; i <= 3700; i++)
+            {
+                index.Value = i;
+                latency.Value = i == 3695 ? 300d : 5d;
+                command.ExecuteNonQuery();
+            }
+            transaction.Commit();
+        }
+
+        var samples = await repo.GetSeekSamplesDownsampledAsync(
+            sessionId, 512, SeekTestType.FullStroke);
+        Assert.InRange(samples.Count, 1, 512);
+        Assert.True(samples.Max(s => s.Index) > 3650,
+            "Old floor-stride+LIMIT truncated the end of the seek recording.");
+        Assert.Contains(samples, s => s.Index == 1);
+        Assert.Contains(samples, s => s.Index == 3700);
+        // This single unusually slow operation must not disappear in the
+        // modulo downsampling. It is potentially the important diagnostic.
+        Assert.Contains(samples, s => s.Index == 3695 && s.LatencyMs == 300d);
+    }
+
 }

@@ -628,7 +628,7 @@ public class DiskCardRepository : IDiskCardRepository
          }
 
          // Large dataset: modulo sampling (no window function)
-         var step = (int)Math.Max(1, totalCount / maxPoints);
+         var step = DiskChecker.Core.Services.TelemetrySampling.CalculateStride(totalCount, maxPoints);
 
          await using var command = connection.CreateCommand();
          command.CommandText = $@"
@@ -769,7 +769,7 @@ public class DiskCardRepository : IDiskCardRepository
       }
 
       // Large dataset: modulo sampling on Id (no window function = no temp files)
-      var step = (int)Math.Max(1, totalCount / maxPoints);
+      var step = DiskChecker.Core.Services.TelemetrySampling.CalculateStride(totalCount, maxPoints);
 
       await using var command = connection.CreateCommand();
       command.CommandText = hasIsStalledColumn
@@ -1320,15 +1320,54 @@ public class DiskCardRepository : IDiskCardRepository
              .ToListAsync();
       }
 
-      // Velký dataset: modulo sampling na Id (stejný přístup jako u speed samples)
-      var step = Math.Max(1, totalCount / maxPoints);
+      // Large seek histories must be bounded in memory AND preserve the
+      // actual worst completed latency. Pure Id-modulo sampling can omit an
+      // isolated 300ms stall, creating a falsely healthy-looking chart.
+      // Three reserved slots ensure the first, last and worst sample survive.
+      int reserve = Math.Min(3, Math.Max(0, maxPoints - 1));
+      int sampleBudget = maxPoints - reserve;
+      var step = TelemetrySampling.CalculateStride(totalCount, sampleBudget);
 
-      return await queryBase
+      var selected = await queryBase
           .Where(s => s.Id % step == 0)
           .OrderBy(s => s.TestType)
           .ThenBy(s => s.Index)
-          .Take(maxPoints)
+          .Take(sampleBudget)
           .ToListAsync();
+
+      if(reserve > 0)
+      {
+         var first = await queryBase.OrderBy(s => s.Id).FirstAsync();
+         AddIfMissing(selected, first);
+      }
+      if(reserve > 1)
+      {
+         var last = await queryBase.OrderByDescending(s => s.Id).FirstAsync();
+         AddIfMissing(selected, last);
+      }
+      if(reserve > 2)
+      {
+         var slowestLatency = await queryBase.Where(s => !s.HasError)
+             .Select(s => (double?)s.LatencyMs).MaxAsync();
+         if(slowestLatency.HasValue)
+         {
+            var slowest = await queryBase
+                .Where(s => !s.HasError && s.LatencyMs == slowestLatency.Value)
+                .OrderBy(s => s.Id)
+                .FirstOrDefaultAsync();
+            if(slowest != null)
+               AddIfMissing(selected, slowest);
+         }
+      }
+
+      return selected.OrderBy(s => s.TestType).ThenBy(s => s.Index)
+          .Take(maxPoints).ToList();
+
+      static void AddIfMissing(List<SeekSampleRecord> target, SeekSampleRecord sample)
+      {
+         if(!target.Any(s => s.Id == sample.Id))
+            target.Add(sample);
+      }
    }
 
    public async Task<TestSession> CreateTestSessionAsync(TestSession session)

@@ -241,6 +241,9 @@
                         <Border Background="{Binding PanelBackground}" Padding="12" CornerRadius="8">
                             <StackPanel Spacing="8">
                                 <TextBlock Text="{Binding L[CertificateView.PerformanceProfile]}" FontWeight="Bold" FontSize="13"/>
+                                <TextBlock Text="{Binding ChartSourceNote}"
+                                           TextWrapping="Wrap" FontSize="11" FontStyle="Italic"
+                                           Foreground="#FF64748B"/>
 
                                 <StackPanel Spacing="12">
                                     <Border Background="#FFFFFFFF" BorderBrush="#FFE2E8F0" BorderThickness="1" CornerRadius="6" Padding="10"
@@ -268,10 +271,7 @@
                                                     <Polyline Points="{Binding ReadProfilePoints, Converter={StaticResource PointsStringConverter}}"
                                                               Stroke="{Binding ChartStrokeRead}" StrokeThickness="2"
                                                               StrokeJoin="Round" StrokeLineCap="Round"/>
-                                                    <Polyline Points="{Binding TemperatureProfilePoints, Converter={StaticResource PointsStringConverter}}"
-                                                              Stroke="#FF7C3AED" StrokeThickness="1.6"
-                                                              StrokeJoin="Round" StrokeLineCap="Round"
-                                                              IsVisible="{Binding HasTemperatureProfile}"/>
+                                                    
                                                 </Canvas>
                                             </Viewbox>
 
@@ -283,6 +283,36 @@
                                                 <TextBlock Grid.Column="8" Text="100 %" FontSize="10" Foreground="#FF64748B" HorizontalAlignment="Right"/>
                                             </Grid>
                                         </Grid>
+                                    </Border>
+
+                                    <!-- Celsius is intentionally separate from MB/s. -->
+                                    <Border Background="#FFFFFFFF" BorderBrush="#FFE2E8F0" BorderThickness="1" CornerRadius="6" Padding="10"
+                                            IsVisible="{Binding HasTemperatureProfile}">
+                                        <StackPanel Spacing="6">
+                                            <TextBlock Text="Teplota během testu (°C)" FontSize="11" FontWeight="SemiBold" Foreground="#FF1E3A8A"/>
+                                            <Grid ColumnDefinitions="Auto,*" RowDefinitions="Auto,Auto" RowSpacing="6" ColumnSpacing="10">
+                                                <Grid Grid.Row="0" Grid.Column="0" RowDefinitions="Auto,*,Auto" Height="220" MinWidth="46">
+                                                    <TextBlock Grid.Row="0" Text="{Binding TemperatureMaxLabel}" FontSize="10" Foreground="#FF64748B"/>
+                                                    <TextBlock Grid.Row="1" Text="{Binding TemperatureMidLabel}" FontSize="10" Foreground="#FF64748B" VerticalAlignment="Center"/>
+                                                    <TextBlock Grid.Row="2" Text="{Binding TemperatureMinLabel}" FontSize="10" Foreground="#FF64748B" VerticalAlignment="Bottom"/>
+                                                </Grid>
+                                                <Viewbox Grid.Row="0" Grid.Column="1" Stretch="Uniform" StretchDirection="Both" MinHeight="220">
+                                                    <Canvas Width="920" Height="260" Background="#FFFFFFFF" ClipToBounds="True">
+                                                        <Rectangle Canvas.Left="56" Canvas.Top="18" Width="830" Height="208" Stroke="#FFCBD5E1" StrokeThickness="1" Fill="#00FFFFFF"/>
+                                                        <Line StartPoint="56,70" EndPoint="886,70" Stroke="#FFE2E8F0" StrokeThickness="1"/>
+                                                        <Line StartPoint="56,122" EndPoint="886,122" Stroke="#FFE2E8F0" StrokeThickness="1"/>
+                                                        <Line StartPoint="56,174" EndPoint="886,174" Stroke="#FFE2E8F0" StrokeThickness="1"/>
+                                                        <Polyline Points="{Binding TemperatureProfilePoints, Converter={StaticResource PointsStringConverter}}"
+                                                                  Stroke="#FF7C3AED" StrokeThickness="2" StrokeJoin="Round" StrokeLineCap="Round"/>
+                                                    </Canvas>
+                                                </Viewbox>
+                                                <Grid Grid.Row="1" Grid.Column="1" ColumnDefinitions="Auto,*,Auto,*,Auto">
+                                                    <TextBlock Grid.Column="0" Text="0 %" FontSize="10" Foreground="#FF64748B"/>
+                                                    <TextBlock Grid.Column="2" Text="50 %" FontSize="10" Foreground="#FF64748B" HorizontalAlignment="Center"/>
+                                                    <TextBlock Grid.Column="4" Text="100 %" FontSize="10" Foreground="#FF64748B" HorizontalAlignment="Right"/>
+                                                </Grid>
+                                            </Grid>
+                                        </StackPanel>
                                     </Border>
 
                                     <Border Background="#FFFFFFFF" BorderBrush="#FFE2E8F0" BorderThickness="1" CornerRadius="6" Padding="10"
@@ -302,22 +332,19 @@
                                                         <Line StartPoint="56,70" EndPoint="886,70" Stroke="#FFE2E8F0" StrokeThickness="1"/>
                                                         <Line StartPoint="56,122" EndPoint="886,122" Stroke="#FFE2E8F0" StrokeThickness="1"/>
                                                         <Line StartPoint="56,174" EndPoint="886,174" Stroke="#FFE2E8F0" StrokeThickness="1"/>
-                                                        <ItemsControl ItemsSource="{Binding SeekScatterPoints}">
-                                                            <ItemsControl.ItemsPanel>
-                                                                <ItemsPanelTemplate>
-                                                                    <Canvas/>
-                                                                </ItemsPanelTemplate>
-                                                            </ItemsControl.ItemsPanel>
-                                                            <ItemsControl.ItemTemplate>
-                                                                <DataTemplate>
-                                                                    <Ellipse Width="3" Height="3" Fill="#FF1D4ED8">
-                                                                        <Ellipse.RenderTransform>
-                                                                            <TranslateTransform X="{Binding X}" Y="{Binding Y}"/>
-                                                                        </Ellipse.RenderTransform>
-                                                                    </Ellipse>
-                                                                </DataTemplate>
-                                                            </ItemsControl.ItemTemplate>
-                                                        </ItemsControl>
+                                                        <!-- Distinct measured seek modes; each point keeps its true index. -->
+                                                        <Polyline Points="{Binding SeekFullStrokePoints, Converter={StaticResource PointsStringConverter}}"
+                                                                  Stroke="#FF2563EB" StrokeThickness="1.9" StrokeLineCap="Round" StrokeJoin="Round"
+                                                                  IsVisible="{Binding HasSeekFullStroke}"/>
+                                                        <Polyline Points="{Binding SeekRandomPoints, Converter={StaticResource PointsStringConverter}}"
+                                                                  Stroke="#FFEA580C" StrokeThickness="1.7" StrokeLineCap="Round" StrokeJoin="Round"
+                                                                  IsVisible="{Binding HasSeekRandom}"/>
+                                                        <Polyline Points="{Binding SeekSkipPoints, Converter={StaticResource PointsStringConverter}}"
+                                                                  Stroke="#FF9333EA" StrokeThickness="1.7" StrokeLineCap="Round" StrokeJoin="Round"
+                                                                  IsVisible="{Binding HasSeekSkip}"/>
+                                                        <Polyline Points="{Binding SeekLegacyPoints, Converter={StaticResource PointsStringConverter}}"
+                                                                  Stroke="#FF64748B" StrokeThickness="1.7" StrokeLineCap="Round" StrokeJoin="Round"
+                                                                  IsVisible="{Binding HasSeekLegacy}"/>
                                                     </Canvas>
                                                 </Viewbox>
 
@@ -339,13 +366,21 @@
                                             <Border Width="10" Height="10" Background="{Binding ChartStrokeRead}" CornerRadius="2"/>
                                             <TextBlock Text="{Binding L[CertificateView.Read]}" FontSize="11"/>
                                         </StackPanel>
-                                        <StackPanel Orientation="Horizontal" Spacing="6" IsVisible="{Binding HasTemperatureProfile}">
-                                            <Border Width="10" Height="10" Background="#FF7C3AED" CornerRadius="2"/>
-                                            <TextBlock Text="{Binding L[CertificateView.TemperatureChart]}" FontSize="11"/>
+                                        <StackPanel Orientation="Horizontal" Spacing="6" IsVisible="{Binding HasSeekFullStroke}">
+                                            <Border Width="10" Height="10" Background="#FF2563EB" CornerRadius="2"/>
+                                            <TextBlock Text="Full Stroke" FontSize="11"/>
                                         </StackPanel>
-                                        <StackPanel Orientation="Horizontal" Spacing="6" IsVisible="{Binding IsSeekChart}">
-                                            <Border Width="10" Height="10" Background="#FF1D4ED8" CornerRadius="5"/>
-                                            <TextBlock Text="Seek latence" FontSize="11"/>
+                                        <StackPanel Orientation="Horizontal" Spacing="6" IsVisible="{Binding HasSeekRandom}">
+                                            <Border Width="10" Height="10" Background="#FFEA580C" CornerRadius="2"/>
+                                            <TextBlock Text="Random" FontSize="11"/>
+                                        </StackPanel>
+                                        <StackPanel Orientation="Horizontal" Spacing="6" IsVisible="{Binding HasSeekSkip}">
+                                            <Border Width="10" Height="10" Background="#FF9333EA" CornerRadius="2"/>
+                                            <TextBlock Text="Skip" FontSize="11"/>
+                                        </StackPanel>
+                                        <StackPanel Orientation="Horizontal" Spacing="6" IsVisible="{Binding HasSeekLegacy}">
+                                            <Border Width="10" Height="10" Background="#FF64748B" CornerRadius="2"/>
+                                            <TextBlock Text="Archivní seek (režim neznámý)" FontSize="11"/>
                                         </StackPanel>
                                     </StackPanel>
                                 </StackPanel>
