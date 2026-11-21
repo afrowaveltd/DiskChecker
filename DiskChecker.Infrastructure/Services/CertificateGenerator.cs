@@ -26,7 +26,6 @@ public class CertificateGenerator : ICertificateGenerator
     private readonly ILogger<CertificateGenerator>? _logger;
     private readonly ISettingsService? _settingsService;
     private readonly ILocaleProvider? _locale;
-    private readonly string _certificatesDirectory;
     private readonly string _labelsDirectory;
     private readonly string _chartCacheDirectory;
 
@@ -52,15 +51,12 @@ public class CertificateGenerator : ICertificateGenerator
         _locale = locale;
 
         var basePath = GetCertificateBasePath();
-        _certificatesDirectory = Path.Combine(basePath, "Certificates");
         _labelsDirectory = Path.Combine(basePath, "Labels");
         _chartCacheDirectory = Path.Combine(basePath, "ChartCache");
 
-        Directory.CreateDirectory(_certificatesDirectory);
         Directory.CreateDirectory(_labelsDirectory);
         Directory.CreateDirectory(_chartCacheDirectory);
 
-        TryAssignOwnershipToSudoUser(_certificatesDirectory);
         TryAssignOwnershipToSudoUser(_labelsDirectory);
         TryAssignOwnershipToSudoUser(_chartCacheDirectory);
     }
@@ -70,7 +66,9 @@ public class CertificateGenerator : ICertificateGenerator
         if (_settingsService != null)
         {
             var customPath = _settingsService.GetCertificatePathAsync().GetAwaiter().GetResult();
-            if (!string.IsNullOrWhiteSpace(customPath) && Directory.Exists(customPath))
+            // Never silently fall back to the elevated account's profile when the configured
+            // destination is temporarily missing or inaccessible. Export should fail explicitly.
+            if (!string.IsNullOrWhiteSpace(customPath))
                 return customPath;
         }
 
@@ -353,6 +351,15 @@ public class CertificateGenerator : ICertificateGenerator
         if (string.IsNullOrWhiteSpace(certificate.CertificateNumber))
             certificate.CertificateNumber = $"TMP-{DateTime.UtcNow:yyyyMMddHHmmss}";
 
+        // Resolve per export: the user can change the folder while the application is running.
+        // A singleton generator must not retain the old administrator-profile destination.
+        var certificateRoot = GetCertificateBasePath();
+        if (!Directory.Exists(certificateRoot))
+            throw new DirectoryNotFoundException($"Certificate destination is unavailable: {certificateRoot}");
+        var certificatesDirectory = Path.Combine(certificateRoot, "Certificates");
+        Directory.CreateDirectory(certificatesDirectory);
+        TryAssignOwnershipToSudoUser(certificatesDirectory);
+
         var safeSerial = SanitizeFileName(certificate.SerialNumber ?? "NOSN");
         var datePart = certificate.GeneratedAt.ToString("yyyyMMdd");
         var baseName = $"{safeSerial}_{datePart}";
@@ -362,7 +369,7 @@ public class CertificateGenerator : ICertificateGenerator
         {
             fileName = $"{baseName}_{index}.pdf";
             index++;
-        } while (File.Exists(Path.Combine(_certificatesDirectory, fileName)));
+        } while (File.Exists(Path.Combine(certificatesDirectory, fileName)));
 
         var filePath = Path.Combine(_certificatesDirectory, fileName);
 
