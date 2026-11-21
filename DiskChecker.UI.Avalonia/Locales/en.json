@@ -3043,5 +3043,8 @@
   "Settings.SmtpInvalidPort": "SMTP port must be between 1 and 65535.",
   "Settings.SmtpNoPlaintextCredentials": "SMTP login requires TLS.",
   "SurfaceTest.Status.EmailDeliveryFailed": "The disk test was saved, but sending the certificate by email failed",
-  "SurfaceTest.Status.CertificateSaveFailed": "Could not save certificate to database"
+  "SurfaceTest.Status.CertificateSaveFailed": "Could not save certificate to database",
+  "Settings.SelectBackup": "Backup to restore:",
+  "Settings.RefreshBackups": "Refresh list",
+  "Settings.RestoreSelectionHint": "Select a backup explicitly before restore. Restoring can replace current data and requires restarting DiskChecker."
 }

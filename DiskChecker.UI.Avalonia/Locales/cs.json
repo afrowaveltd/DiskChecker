@@ -3043,5 +3043,8 @@
   "Settings.SmtpInvalidPort": "Port SMTP musí být mezi 1 a 65535.",
   "Settings.SmtpNoPlaintextCredentials": "Přihlášení k SMTP vyžaduje zapnuté TLS.",
   "SurfaceTest.Status.EmailDeliveryFailed": "Diskový test byl uložen, ale odeslání certifikátu e-mailem selhalo",
-  "SurfaceTest.Status.CertificateSaveFailed": "Certifikát se nepodařilo uložit do databáze"
+  "SurfaceTest.Status.CertificateSaveFailed": "Certifikát se nepodařilo uložit do databáze",
+  "Settings.SelectBackup": "Záloha k obnovení:",
+  "Settings.RefreshBackups": "Obnovit seznam",
+  "Settings.RestoreSelectionHint": "Před obnovou výslovně vyberte zálohu. Obnova databáze může nahradit aktuální data a vyžaduje restart."
 }

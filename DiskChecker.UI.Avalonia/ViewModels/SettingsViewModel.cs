@@ -645,7 +645,10 @@ namespace DiskChecker.UI.Avalonia.ViewModels
                 IsLoadingBackups = true;
                 var backups = await _backupService.GetAvailableBackupsAsync();
                 var ordered = backups.OrderByDescending(b => b.CreatedAt).ToList();
+                var oldSelection = SelectedBackup?.FilePath;
                 AvailableBackups = new ObservableCollection<IBackupService.BackupInfo>(ordered);
+                // Explicit user choice is mandatory; never auto-restore the newest backup.
+                SelectedBackup = ordered.FirstOrDefault(b => b.FilePath == oldSelection);
                 LastBackupText = ordered.Count == 0 ? "—" :
                     ordered[0].CreatedAt.ToString("g", System.Globalization.CultureInfo.CurrentCulture);
             }
