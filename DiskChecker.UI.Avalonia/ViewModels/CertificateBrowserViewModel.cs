@@ -35,6 +35,7 @@ public partial class CertificateBrowserViewModel : ViewModelBase, INavigableView
     private ObservableCollection<CertificateListItem> _filteredCertificates = new();
     private CertificateListItem? _selectedListItem;
     private DiskCertificate? _selectedCertificate;
+    private int _detailSelectionGeneration;
     private string _technicianAssessmentDraft = string.Empty;
     private TestSession? _selectedSession;
     private bool _isLoading;
@@ -97,9 +98,16 @@ public partial class CertificateBrowserViewModel : ViewModelBase, INavigableView
         get => _selectedListItem;
         set
         {
-            if (SetProperty(ref _selectedListItem, value) && value != null)
+            if (SetProperty(ref _selectedListItem, value))
             {
-                _ = LoadCertificateDetailAsync(value.Id);
+                int generation = ++_detailSelectionGeneration;
+                if (value != null)
+                    _ = LoadCertificateDetailAsync(value.Id, generation);
+                else
+                {
+                    SelectedCertificate = null;
+                    ResetGraphToDefaults();
+                }
             }
         }
     }
@@ -671,7 +679,7 @@ public partial class CertificateBrowserViewModel : ViewModelBase, INavigableView
         }
     }
 
-    private async Task LoadCertificateDetailAsync(int certificateId)
+    private async Task LoadCertificateDetailAsync(int certificateId, int generation)
     {
         try
         {
@@ -679,6 +687,7 @@ public partial class CertificateBrowserViewModel : ViewModelBase, INavigableView
             StatusMessage = L.Get("CertificateBrowser.Status.LoadingDetail");
 
             var cert = await _diskCardRepository.GetCertificateAsync(certificateId);
+            if (generation != _detailSelectionGeneration) return;
             if (cert == null)
             {
                 StatusMessage = L.Get("CertificateBrowser.Status.CertNotFound");
@@ -689,10 +698,16 @@ public partial class CertificateBrowserViewModel : ViewModelBase, INavigableView
             if (cert.TestSessionId > 0)
             {
                 _selectedSession = await _diskCardRepository.GetTestSessionWithoutSamplesAsync(cert.TestSessionId);
+                if (generation != _detailSelectionGeneration) return;
+            }
+            else
+            {
+                _selectedSession = null;
             }
 
             SelectedCertificate = cert;
-            await ReconstructGraphAsync(cert);
+            await ReconstructGraphAsync(cert, generation);
+            if (generation != _detailSelectionGeneration) return;
 
             StatusMessage = string.Format(L.Get("CertificateBrowser.Status.CertLoaded"), cert.CertificateNumber, cert.DiskModel);
         }
@@ -702,7 +717,8 @@ public partial class CertificateBrowserViewModel : ViewModelBase, INavigableView
         }
         finally
         {
-            IsLoading = false;
+            if (generation == _detailSelectionGeneration)
+                IsLoading = false;
         }
     }
 
@@ -712,7 +728,7 @@ public partial class CertificateBrowserViewModel : ViewModelBase, INavigableView
     /// certificate profiles when historical data have been pruned.
     /// Read-only tests need only their read profile; no write data is invented.
     /// </summary>
-    private async Task ReconstructGraphAsync(DiskCertificate certificate)
+    private async Task ReconstructGraphAsync(DiskCertificate certificate, int generation)
     {
         ArgumentNullException.ThrowIfNull(certificate);
 
@@ -721,6 +737,7 @@ public partial class CertificateBrowserViewModel : ViewModelBase, INavigableView
              certificate.TestType.Contains("Seek", StringComparison.OrdinalIgnoreCase)))
         {
             var latency = await LoadSeekLatencySamplesAsync(certificate.TestSessionId);
+            if (generation != _detailSelectionGeneration) return;
             if (latency.Count == 0)
                 latency = certificate.SeekLatencyPoints;
             ApplySeekScatterGraph(latency);
@@ -737,6 +754,7 @@ public partial class CertificateBrowserViewModel : ViewModelBase, INavigableView
         if (certificate.TestSessionId > 0)
         {
             (write, read) = await LoadSpeedSamplesChunkedAsync(certificate.TestSessionId);
+            if (generation != _detailSelectionGeneration) return;
             try
             {
                 temperatures = await _diskCardRepository.GetTemperatureSampleSeriesDownsampledAsync(
@@ -748,6 +766,7 @@ public partial class CertificateBrowserViewModel : ViewModelBase, INavigableView
             }
         }
 
+        if (generation != _detailSelectionGeneration) return;
         var graph = CertificateChartProjector.Build(certificate, write, read, temperatures);
         WriteProfilePoints = graph.WriteProfilePoints;
         ReadProfilePoints = graph.ReadProfilePoints;
