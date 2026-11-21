@@ -366,20 +366,17 @@ public class CertificateGenerator : ICertificateGenerator
 
         var filePath = Path.Combine(_certificatesDirectory, fileName);
 
-        // Preserve the original A4 certificate resolution. A technician's
-        // interpretation is printed on a separate A4 addendum rather than
-        // shrinking the original pages/text to fit a very tall image.
-        byte[] pdfBytes;
-        var jpegBytes = await RenderCertificateJpegAsync(certificate, CancellationToken.None);
-        if(string.IsNullOrWhiteSpace(certificate.TechnicianAssessment))
+        // Single A4 page with real searchable/selectable text and vector charts.
+        // Combined certificates keep two independently graded tests on that page.
+        if (certificate.PairedCertificate is { } paired &&
+            (paired.DiskCardId != certificate.DiskCardId ||
+             paired.TestSessionId == certificate.TestSessionId))
         {
-            pdfBytes = BuildImagePdfDocument(jpegBytes, CertWidth, CertHeight);
+            throw new InvalidOperationException(
+                "Combined certificate requires two distinct sessions belonging to the same disk.");
         }
-        else
-        {
-            var addendumBytes = await RenderTechnicianAssessmentJpegAsync(certificate);
-            pdfBytes = BuildTwoPageImagePdfDocument(jpegBytes, addendumBytes, CertWidth, CertHeight);
-        }
+
+        byte[] pdfBytes = await Task.Run(() => CertificatePdfPageRenderer.CreatePdf(certificate));
         await File.WriteAllBytesAsync(filePath, pdfBytes);
         TryAssignOwnershipToSudoUser(filePath);
 
@@ -1474,7 +1471,8 @@ public class CertificateGenerator : ICertificateGenerator
 
     public Task<byte[]> GeneratePreviewAsync(DiskCertificate certificate)
     {
-        return RenderCertificateJpegAsync(certificate, CancellationToken.None);
+        ArgumentNullException.ThrowIfNull(certificate);
+        return Task.Run(() => CertificatePdfPageRenderer.CreatePreview(certificate));
     }
 
     public (string grade, double score) CalculateGrade(TestSession session)
