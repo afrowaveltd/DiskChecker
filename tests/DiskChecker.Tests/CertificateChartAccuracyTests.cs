@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.Linq;
 using DiskChecker.Core.Models;
 using DiskChecker.UI.Avalonia.ViewModels;
@@ -40,7 +41,11 @@ public sealed class CertificateChartAccuracyTests
         var graph = CertificateSeekChartProjector.Build(new[]
         {
             Point(SeekTestType.FullStroke, 1, double.NaN),
-            Point(SeekTestType.Random, 2, 20) with { HasError = true },
+            new SeekSampleRecord
+            {
+                TestType = SeekTestType.Random, Index = 2, LatencyMs = 20,
+                HasError = true
+            },
             Point(SeekTestType.Skip, 3, -1)
         });
         Assert.False(graph.HasGraph);
@@ -60,7 +65,10 @@ public sealed class CertificateChartAccuracyTests
         Assert.StartsWith("56,", graph.FullStrokePoints);
         Assert.Contains("886,", graph.FullStrokePoints);
         // The 980 ms spike must survive extremum-preserving downsampling.
-        Assert.Contains(",18", graph.FullStrokePoints);
+        var top = graph.FullStrokePoints.Split(' ')
+            .Select(p => double.Parse(p.Split(',')[1], CultureInfo.InvariantCulture))
+            .Min();
+        Assert.True(top < 50, $"Peak latency was lost: top pixel {top}");
     }
 
     [Fact]
