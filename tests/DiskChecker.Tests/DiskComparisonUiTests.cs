@@ -42,7 +42,7 @@ public sealed class DiskComparisonUiTests
         Assert.Equal(2, vm.ComparisonResults.Count);
         Assert.Equal(100, vm.ComparisonChartModel.Axes.Last().Maximum);
         Assert.Equal(0, vm.SpeedChartModel.Axes.Last().Minimum);
-        Assert.Empty(((BarSeries)vm.SpeedChartModel.Series[0]).Items.Where(i => i.CategoryIndex == 0));
+        Assert.DoesNotContain(((BarSeries)vm.SpeedChartModel.Series[0]).Items, i => i.CategoryIndex == 0);
         Assert.Equal("N/A", vm.ComparisonResults[0].WriteSpeedText);
         Assert.Single(((BarSeries)vm.SpeedChartModel.Series[1]).Items);
 
