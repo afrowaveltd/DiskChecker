@@ -461,4 +461,44 @@ public class CertificateDownsamplingRepositoryTests : IDisposable
         Assert.True(temperatures.Max(s => s.ProgressPercent) > 98.0);
     }
 
+
+    [Fact]
+    public async Task SeekPreview_3700Records_KeepsTrueIndicesThroughTheEnd()
+    {
+        var (repo, connection) = CreateRepository();
+        await using var _ = connection;
+        EnsureDiskCard(repo);
+        int sessionId = InsertSession(connection, repo);
+
+        using (var transaction = connection.BeginTransaction())
+        using (var command = connection.CreateCommand())
+        {
+            command.Transaction = transaction;
+            command.CommandText = """
+                INSERT INTO SeekSamples
+                  (TestSessionId, TestType, "Index", SourceLba, DestinationLba,
+                   SeekDistance, LatencyMs, TimestampUtc, HasError)
+                VALUES (@session, @type, @index, 0, 1, 1, @latency, @timestamp, 0)
+                """;
+            command.Parameters.AddWithValue("@session", sessionId);
+            command.Parameters.AddWithValue("@type", (int)SeekTestType.FullStroke);
+            var index = command.Parameters.AddWithValue("@index", 0);
+            var latency = command.Parameters.AddWithValue("@latency", 0d);
+            command.Parameters.AddWithValue("@timestamp", DateTime.UtcNow);
+            for (int i = 1; i <= 3700; i++)
+            {
+                index.Value = i;
+                latency.Value = i == 3695 ? 300d : 5d;
+                command.ExecuteNonQuery();
+            }
+            transaction.Commit();
+        }
+
+        var samples = await repo.GetSeekSamplesDownsampledAsync(
+            sessionId, 512, SeekTestType.FullStroke);
+        Assert.InRange(samples.Count, 1, 512);
+        Assert.True(samples.Max(s => s.Index) > 3650,
+            "Old floor-stride+LIMIT truncated the end of the seek recording.");
+    }
+
 }
