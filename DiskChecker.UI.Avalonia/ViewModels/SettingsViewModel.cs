@@ -479,6 +479,7 @@ namespace DiskChecker.UI.Avalonia.ViewModels
             {
                 IsSaving = true;
                 await SaveSmtpSettingsAsync();
+                await _settingsService.SetReportRecipientEmailAsync(ReportRecipientEmail);
                 var recipient = string.IsNullOrWhiteSpace(ReportRecipientEmail)
                     ? SmtpFromAddress.Trim() : ReportRecipientEmail.Trim();
                 if (string.IsNullOrWhiteSpace(recipient))
