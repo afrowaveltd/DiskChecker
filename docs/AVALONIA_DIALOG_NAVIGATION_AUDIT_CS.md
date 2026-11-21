@@ -94,3 +94,9 @@ nenabízí jako funkční přepínače. Výběr výchozí exportní složky je n
 skutečně respektován v `ExportImportViewModel.BrowseExportPathAsync`.
 Volba přikládání certifikátu do e-mailu je nyní synchronizována s
 `IEmailSettingsService` (SMTP DB), který čte skutečná odesílací služba.
+
+## Důvěrnost konfigurace
+
+Protože `settings.json` může obsahovat přístupové údaje v SQL connection
+stringu, dočasný soubor pro atomické přepsání je na Linuxu/macOS vytvořen
+s právy `0600` (pouze vlastník). Tato kontrola je součástí regresního testu.

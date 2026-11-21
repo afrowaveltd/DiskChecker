@@ -452,5 +452,24 @@ public class SettingsServiceTests
         }
     }
 
+    [Fact]
+    public async Task SettingsJsonContainingConnectionDetailsIsPrivateOnUnix()
+    {
+        if (!OperatingSystem.IsLinux() && !OperatingSystem.IsMacOS()) return;
+        var path = GetTempSettingsPath();
+        try
+        {
+            var settings = new SettingsService(path);
+            await settings.SetReportRecipientEmailAsync("test@example.invalid");
+            Assert.Equal(UnixFileMode.UserRead | UnixFileMode.UserWrite,
+                File.GetUnixFileMode(settings.SettingsFilePath));
+        }
+        finally
+        {
+            if (Directory.Exists(path))
+                Directory.Delete(path, recursive: true);
+        }
+    }
+
 }
 

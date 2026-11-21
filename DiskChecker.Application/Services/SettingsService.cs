@@ -562,6 +562,10 @@ public class SettingsService : ISettingsService
         try
         {
             File.WriteAllText(tempPath, json);
+            // JSON may contain database credentials. Replacing an existing
+            // 0600 file with a new temporary file must not make it world-readable.
+            if (OperatingSystem.IsLinux() || OperatingSystem.IsMacOS())
+                File.SetUnixFileMode(tempPath, UnixFileMode.UserRead | UnixFileMode.UserWrite);
             File.Move(tempPath, _settingsFilePath, overwrite: true);
         }
         finally
