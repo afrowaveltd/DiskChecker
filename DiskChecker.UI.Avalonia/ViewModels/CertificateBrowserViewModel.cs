@@ -29,6 +29,7 @@ public partial class CertificateBrowserViewModel : ViewModelBase, INavigableView
     private readonly INavigationService _navigationService;
     private readonly IDialogService _dialogService;
     private readonly ICertificateGenerator _certificateGenerator;
+    private readonly ISelectedDiskService? _selectedDiskService;
 
     private ObservableCollection<CertificateListItem> _allCertificates = new();
     private ObservableCollection<CertificateListItem> _filteredCertificates = new();
@@ -65,12 +66,14 @@ public partial class CertificateBrowserViewModel : ViewModelBase, INavigableView
         IDiskCardRepository diskCardRepository,
         INavigationService navigationService,
         IDialogService dialogService,
-        ICertificateGenerator certificateGenerator)
+        ICertificateGenerator certificateGenerator,
+        ISelectedDiskService? selectedDiskService = null)
     {
         _diskCardRepository = diskCardRepository;
         _navigationService = navigationService;
         _dialogService = dialogService;
         _certificateGenerator = certificateGenerator;
+        _selectedDiskService = selectedDiskService ?? App.GetService<ISelectedDiskService>();
 
         GradeFilters = new ObservableCollection<string> { L.Get("CertificateBrowser.Status.All"), "A", "B", "C", "D", "E", "F" };
     }
@@ -550,20 +553,63 @@ public partial class CertificateBrowserViewModel : ViewModelBase, INavigableView
         }
     }
 
+    /// <summary>
+    /// Open the selected saved certificate in the detailed session viewer.
+    /// That viewer also supports selecting *any* session and pairing with seek.
+    /// </summary>
+    [RelayCommand]
+    private async Task OpenCertificateDetailsAsync()
+    {
+        var cert = SelectedCertificate;
+        if (cert == null)
+            return;
+
+        var card = await _diskCardRepository.GetByIdAsync(cert.DiskCardId);
+        if (card == null || _selectedDiskService == null)
+        {
+            await _dialogService.ShowErrorAsync(L.Get("Common.Error"),
+                "Vybraný certifikát nemá dostupnou kartu disku.");
+            return;
+        }
+
+        SetSelectionContext(card, cert.TestSessionId, cert.Id);
+        _navigationService.NavigateTo<CertificateViewModel>();
+    }
+
     [RelayCommand]
     private async Task ViewDiskCardAsync()
     {
-        if (SelectedCertificate?.DiskCardId > 0)
+        var cert = SelectedCertificate;
+        if (cert == null)
+            return;
+        var card = await _diskCardRepository.GetByIdAsync(cert.DiskCardId);
+        if (card == null || _selectedDiskService == null)
         {
-            var card = await _diskCardRepository.GetByIdAsync(SelectedCertificate.DiskCardId);
-            if (card != null)
-            {
-                // Navigate to disk card detail - we'd need ISelectedDiskService for this
-                // For now, navigate back to disk cards
-                _navigationService.NavigateTo<DiskCardsViewModel>();
-                StatusMessage = string.Format(L.Get("CertificateBrowser.Status.RedirectedToCards"), SelectedCertificate.DiskModel);
-            }
+            await _dialogService.ShowErrorAsync(L.Get("Common.Error"),
+                "Vybraný disk nelze otevřít.");
+            return;
         }
+
+        SetSelectionContext(card, cert.TestSessionId, cert.Id);
+        _navigationService.NavigateTo<DiskCardDetailViewModel>();
+    }
+
+    private void SetSelectionContext(DiskCard card, int sessionId, int certificateId)
+    {
+        if (_selectedDiskService == null) return;
+        _selectedDiskService.SelectedDisk = new CoreDriveInfo
+        {
+            Path = card.DevicePath,
+            Name = card.ModelName,
+            SerialNumber = card.SerialNumber,
+            TotalSize = card.Capacity,
+            FirmwareVersion = card.FirmwareVersion
+        };
+        _selectedDiskService.SelectedDiskCardId = card.Id;
+        _selectedDiskService.SelectedDiskDisplayName = card.ModelName;
+        _selectedDiskService.IsSelectedDiskLocked = card.IsLocked;
+        _selectedDiskService.SelectedTestSessionId = sessionId > 0 ? sessionId : null;
+        _selectedDiskService.SelectedCertificateId = certificateId > 0 ? certificateId : null;
     }
 
     #endregion
