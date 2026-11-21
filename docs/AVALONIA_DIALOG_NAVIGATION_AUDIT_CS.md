@@ -11,7 +11,7 @@ Stav: 21. listopadu 2026. Revize skutečného zdrojového kódu; CI a uživatels
 
 ## Sjednocený kontrakt
 
-`INavigationActivity` používají aktuálně `SurfaceTest`, `SeekTest`, `AbsoluteDestructiveTest`, `SafeDestructiveTest`, `Backup` a `Restore`. Aktivity blokují odchod pouze za běhu operace; při ukončení nebo zrušení je možné navigovat. `MainWindowViewModel` a `NavigationService` používají stejný kontrakt, takže nové obrazovky lze zapojit bez duplikace přepínače typů.
+`INavigationActivity` používají aktuálně `SurfaceTest`, `SeekTest`, `AbsoluteDestructiveTest`, `SafeDestructiveTest`, `Backup` a `Restore`. Aktivity blokují odchod pouze za běhu operace; při ukončení nebo zrušení je možné navigovat. Zálohování chrání také fáze skenování a výpočtu a samostatný asynchronní převod RAW → VHDx, který neběží v `BackupPhase.Running`. `MainWindowViewModel` a `NavigationService` používají stejný kontrakt, takže nové obrazovky lze zapojit bez duplikace přepínače typů.
 
 Jde o ochranu životního cyklu GUI. Samotné potvrzení, identita cílového disku, kontrola připojených oddílů a kontrola rozsahu destruktivního zápisu zůstávají nezávislými bezpečnostními podmínkami a nesmí se oslabit.
 

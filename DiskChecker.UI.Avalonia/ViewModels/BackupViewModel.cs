@@ -87,7 +87,9 @@ public enum BackupPhase
 public partial class BackupViewModel : ViewModelBase, INavigableViewModel, IDisposable, INavigationActivity
 {
     /// <inheritdoc />
-    public bool IsNavigationBlocked => Phase == BackupPhase.Running;
+    public bool IsNavigationBlocked =>
+        Phase is BackupPhase.Scanning or BackupPhase.Calculating or BackupPhase.Running ||
+        ConvertRawToVhdxCommand.IsRunning;
 
     private readonly INavigationService _navigationService;
     private readonly ISelectedDiskService _selectedDiskService;
@@ -192,6 +194,10 @@ public partial class BackupViewModel : ViewModelBase, INavigableViewModel, IDisp
         SwitchToFileModeCommand = new RelayCommand(() => SelectedMode = BackupMode.FileLevel);
         NavigateToRestoreCommand = new RelayCommand(NavigateToRestore);
         ConvertRawToVhdxCommand = new AsyncRelayCommand(ConvertLastRawBackupToVhdxAsync, () => CanConvertRawToVhdx && Phase != BackupPhase.Running);
+        // Conversion runs outside the main BackupPhase.Running state. Notify the
+        // shell when this separate async operation acquires/releases its file handles.
+        if (ConvertRawToVhdxCommand is System.ComponentModel.INotifyPropertyChanged notifier)
+            notifier.PropertyChanged += (_, _) => OnPropertyChanged(nameof(IsNavigationBlocked));
 
         // Subscribe to collection item changes so space calculations update reactively
         SubscribeToCollectionChanges();

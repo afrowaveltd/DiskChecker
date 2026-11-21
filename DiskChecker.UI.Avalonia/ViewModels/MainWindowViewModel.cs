@@ -755,6 +755,7 @@ public partial class MainWindowViewModel : ViewModelBase
             or nameof(AbsoluteDestructiveTestViewModel.IsTesting)
             or nameof(SafeDestructiveTestViewModel.Phase)
             or nameof(BackupViewModel.Phase)
+            or nameof(INavigationActivity.IsNavigationBlocked)
             or nameof(RestoreViewModel.Phase))
         {
             OnPropertyChanged(nameof(CanNavigateFromCurrentView));
