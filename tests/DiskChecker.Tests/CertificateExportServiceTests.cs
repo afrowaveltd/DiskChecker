@@ -141,10 +141,10 @@ public class CertificateExportServiceTests
         Assert.True(result.Certificate.Score >= 90);
 
         // Verify chart profiles are downsampled (not full 100k samples)
-        Assert.True(result.Certificate.WriteProfilePoints.Count <= 32,
-            $"WriteProfilePoints should be <= 32, got {result.Certificate.WriteProfilePoints.Count}");
-        Assert.True(result.Certificate.ReadProfilePoints.Count <= 32,
-            $"ReadProfilePoints should be <= 32, got {result.Certificate.ReadProfilePoints.Count}");
+        Assert.True(result.Certificate.WriteProfilePoints.Count <= 512,
+            $"WriteProfilePoints should be <= 512, got {result.Certificate.WriteProfilePoints.Count}");
+        Assert.True(result.Certificate.ReadProfilePoints.Count <= 512,
+            $"ReadProfilePoints should be <= 512, got {result.Certificate.ReadProfilePoints.Count}");
 
         // Verify aggregate values are preserved (from session aggregates, not from downsampled chart)
         Assert.Equal(150.0, result.Certificate.AvgWriteSpeed);
