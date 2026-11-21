@@ -622,10 +622,13 @@ public partial class DiskCardDetailViewModel : ViewModelBase, INavigableViewMode
                 OnPropertyChanged(nameof(TotalSectorsTested));
                 OnPropertyChanged(nameof(TotalErrors));
 
-                if (SelectedSession == null)
-                {
-                    SelectedSession = TestSessions.FirstOrDefault();
-                }
+                // A ViewModel can be reused for another card. Never keep a
+                // selected session from the previous physical disk.
+                int? requestedSessionId = _selectedDiskService.SelectedTestSessionId;
+                var matchingRequested = TestSessions.FirstOrDefault(s => s.Id == requestedSessionId);
+                SelectedSession = matchingRequested ??
+                    TestSessions.FirstOrDefault(s => s.Id == SelectedSession?.Id) ??
+                    TestSessions.FirstOrDefault();
 
                 StatusMessage = string.Format(L.Get("DiskCardDetail.Status.CardLoadedName"), CurrentCard.ModelName);
             }
