@@ -86,7 +86,7 @@ public sealed class SettingsViewModelInteractionTests
             vm.Language = "en";
             await vm.SaveSettingsCommand.ExecuteAsync(null);
             Assert.Equal("en", await settings.GetLanguageAsync());
-            await smtp.DidNotReceiveWithAnyArgs().SaveAsync(default!, default);
+            await smtp.DidNotReceiveWithAnyArgs().SaveAsync(default!, TestContext.Current.CancellationToken);
         }
         finally
         {
