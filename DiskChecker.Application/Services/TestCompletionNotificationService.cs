@@ -132,7 +132,7 @@ public partial class TestCompletionNotificationService
                     FileName = string.IsNullOrWhiteSpace(attachmentFileName)
                         ? $"DiskCertificate_{DateTime.UtcNow:yyyyMMdd_HHmmss}.pdf"
                         : attachmentFileName,
-                    Content = reportPdf,
+                    Content = reportPdf!,
                     ContentType = "application/pdf"
                 });
             }
