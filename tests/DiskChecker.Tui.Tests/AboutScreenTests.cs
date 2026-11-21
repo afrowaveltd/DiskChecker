@@ -95,7 +95,7 @@ public sealed class AboutScreenTests : IDisposable
 
         Assert.True(harness.Io.Contains("SQLite"));
         Assert.True(harness.Io.Contains("DiskChecker.db"));
-        Assert.True(harness.Io.Contains(Path.Combine(_settingsDirectory, "DiskChecker.db")));
+        Assert.True(harness.Io.Contains(Path.Combine(harness.Root, "DiskChecker.db")));
         Assert.False(harness.Io.Contains("Password=***"));
     }
 
