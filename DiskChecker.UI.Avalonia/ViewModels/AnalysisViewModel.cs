@@ -47,6 +47,7 @@ public partial class AnalysisViewModel : ViewModelBase
     private double _manualZoomStart;
     private double _manualZoomEnd = 10;
     private int _zoomRequestVersion;
+    private int _selectedAnalysisRequestVersion;
 
     // SMART trend properties
     private SmartTrendReport? _smartTrendReport;
@@ -91,7 +92,12 @@ public partial class AnalysisViewModel : ViewModelBase
         {
             if (SetProperty(ref _selectedSummary, value))
             {
+                // Invalidate BOTH in-flight zoom and full analysis requests.
+                // Never leave the preceding disk's graphs visible under a new row.
                 Interlocked.Increment(ref _zoomRequestVersion);
+                Interlocked.Increment(ref _selectedAnalysisRequestVersion);
+                AnalysisData = null;
+                ResetSmartTrends();
                 _zoomStartPercent = _zoomEndPercent = null;
                 OnPropertyChanged(nameof(IsZoomActive));
                 OnPropertyChanged(nameof(ZoomText));
@@ -625,8 +631,13 @@ public partial class AnalysisViewModel : ViewModelBase
                 foreach (var summary in summaries)
                     all.Add(summary);
             }
+            int? previouslySelectedSessionId = SelectedSummary?.TestSessionId;
             AnalysisSummaries = all;
-            SelectedSummary ??= AnalysisSummaries.FirstOrDefault();
+            // Refreshed summaries are new objects; retain a selection only if
+            // the underlying TestSession is still present.
+            SelectedSummary = AnalysisSummaries.FirstOrDefault(s =>
+                s.TestSessionId == previouslySelectedSessionId) ??
+                AnalysisSummaries.FirstOrDefault();
             StatusMessage = $"Načteno {AnalysisSummaries.Count} měření pro analýzu.";
         }
         catch (Exception ex)
@@ -642,32 +653,67 @@ public partial class AnalysisViewModel : ViewModelBase
 
     private async Task LoadSelectedAnalysisAsync()
     {
-        if (SelectedSummary == null) return;
+        var summary = SelectedSummary;
+        int request = Interlocked.Increment(ref _selectedAnalysisRequestVersion);
+        if (summary == null)
+        {
+            AnalysisData = null;
+            ResetSmartTrends();
+            // A cancelled/cleared selection has no successor request whose
+            // finally block could release the busy state.
+            IsLoadingAnalysis = false;
+            return;
+        }
+
         try
         {
             IsLoadingAnalysis = true;
-            AnalysisData = await _analysisDataService.GetAnalysisDataAsync(SelectedSummary.TestSessionId);
-            StatusMessage = AnalysisData == null ? "Měření nebylo nalezeno." : $"Načten detail testu {SelectedSummary.TestSessionId}.";
+            var result = await _analysisDataService.GetAnalysisDataAsync(summary.TestSessionId);
+            // An older DB query must not display a different session's graph,
+            // notes, SMART snapshot or error summaries.
+            if (request != Volatile.Read(ref _selectedAnalysisRequestVersion) ||
+                !ReferenceEquals(summary, SelectedSummary))
+                return;
 
-            // Load SMART trends for this disk
-            await LoadSmartTrendsAsync(SelectedSummary.DiskCardId);
+            AnalysisData = result;
+            StatusMessage = result == null ? "Měření nebylo nalezeno." :
+                $"Načten detail testu {summary.TestSessionId}.";
+
+            await LoadSmartTrendsAsync(summary.DiskCardId, request);
         }
         catch (Exception ex)
         {
-            StatusMessage = $"Chyba detailu analýzy: {ex.Message}";
-            await _dialogService.ShowErrorAsync(L.Get("Common.Error"), StatusMessage);
+            if (request == Volatile.Read(ref _selectedAnalysisRequestVersion))
+            {
+                StatusMessage = $"Chyba detailu analýzy: {ex.Message}";
+                await _dialogService.ShowErrorAsync(L.Get("Common.Error"), StatusMessage);
+            }
         }
         finally
         {
-            IsLoadingAnalysis = false;
+            if (request == Volatile.Read(ref _selectedAnalysisRequestVersion))
+                IsLoadingAnalysis = false;
         }
     }
 
-    private async Task LoadSmartTrendsAsync(int diskCardId)
+    private void ResetSmartTrends()
+    {
+        SmartTrendReport = null;
+        SmartTrendTemperaturePoints = string.Empty;
+        SmartTrendReallocatedPoints = string.Empty;
+        SmartTrendWearPoints = string.Empty;
+        SmartTrendPercentageUsedPoints = string.Empty;
+        SmartTrendPendingSectorsPoints = string.Empty;
+        OnPropertyChanged(nameof(HasSmartTrendCharts));
+    }
+
+    private async Task LoadSmartTrendsAsync(int diskCardId, int request)
     {
         try
         {
             var report = await _smartTrendService.BuildTrendReportAsync(diskCardId);
+            if (request != Volatile.Read(ref _selectedAnalysisRequestVersion))
+                return;
             SmartTrendReport = report;
 
             if (report.SnapshotCount >= 2)
@@ -701,8 +747,10 @@ public partial class AnalysisViewModel : ViewModelBase
         }
         catch
         {
-            // Non-critical - trends are supplementary
-            SmartTrendReport = null;
+            // Non-critical - trends are supplementary, but a stale request
+            // must not erase the newly selected disk's trend display.
+            if (request == Volatile.Read(ref _selectedAnalysisRequestVersion))
+                ResetSmartTrends();
         }
     }
 
