@@ -683,7 +683,17 @@ namespace DiskChecker.UI.Avalonia.ViewModels
             try
             {
                 var path = new SqliteConnectionStringBuilder(settings.ConnectionString).DataSource;
-                return File.Exists(path) ? $"{new FileInfo(path).Length / 1048576d:F1} MiB" : "N/A";
+                if (!File.Exists(path)) return "N/A";
+                // SQLite may keep a substantial amount of data in its live
+                // write-ahead log. Showing only DiskChecker.db underreports
+                // actual local disk use.
+                long total = new FileInfo(path).Length;
+                foreach (var suffix in new[] { "-wal", "-shm" })
+                {
+                    if (File.Exists(path + suffix))
+                        total += new FileInfo(path + suffix).Length;
+                }
+                return $"{total / 1048576d:F1} MiB";
             }
             catch (Exception ex) when (ex is ArgumentException or IOException or UnauthorizedAccessException)
             {
