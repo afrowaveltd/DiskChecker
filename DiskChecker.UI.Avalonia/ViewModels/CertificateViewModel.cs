@@ -52,7 +52,7 @@ public partial class CertificateViewModel : ViewModelBase, INavigableViewModel
    private List<SpeedSample> _readGraphSamples = [];
    private List<double> _seekLatencyGraphSamples = [];
    private ObservableCollection<ObservablePoint> _seekScatterPoints = new();
-   private bool _hasThroughputChart = true;
+   private bool _hasThroughputChart;
    private string _seekChartMaxLabel = "0 ms";
    private string _seekChartMidLabel = "0 ms";
    private string _seekChartMinLabel = "0 ms";
@@ -73,6 +73,9 @@ public partial class CertificateViewModel : ViewModelBase, INavigableViewModel
    private string _selectedSessionThermalSummary = string.Empty;
    private string _selectedSessionSmartSummary = string.Empty;
    private TestSession? _selectedSessionItem;
+   private TestSession? _selectedPairSession;
+   private int _sessionSelectionGeneration;
+   private bool _initializingSessionSelection;
 
    public CertificateViewModel(
        ICertificateGenerator certificateGenerator,
@@ -91,6 +94,7 @@ public partial class CertificateViewModel : ViewModelBase, INavigableViewModel
       SelectedSessionThermalSummary = L.Get("CertificateView.Session.ThermalAvailableAfterSelection");
       SelectedSessionSmartSummary = L.Get("CertificateView.Session.SmartAvailableAfterSelection");
       AvailableSessions = new ObservableCollection<TestSession>();
+      PairCandidateSessions = new ObservableCollection<TestSession>();
    }
 
    #region Properties
@@ -308,7 +312,7 @@ public partial class CertificateViewModel : ViewModelBase, INavigableViewModel
       }
    }
 
-   public bool IsSeekChart => HasSeekMetrics && SeekScatterPoints.Count > 0;
+   public bool IsSeekChart => SeekScatterPoints.Count > 0;
 
    public bool IsThroughputChart => HasThroughputChart;
 
@@ -371,6 +375,40 @@ public partial class CertificateViewModel : ViewModelBase, INavigableViewModel
    /// </summary>
    public ObservableCollection<TestSession> AvailableSessions { get; }
 
+   /// <summary>Compatible seek or surface sessions on the selected disk.</summary>
+   public ObservableCollection<TestSession> PairCandidateSessions { get; }
+
+   /// <summary>Explicit other test to include in one combined A4 certificate.</summary>
+   public TestSession? SelectedPairSession
+   {
+      get => _selectedPairSession;
+      set => SetProperty(ref _selectedPairSession, value);
+   }
+
+   private void RefreshPairCandidates(TestSession? chosen)
+   {
+      PairCandidateSessions.Clear();
+      SelectedPairSession = null;
+      if(chosen == null) return;
+      bool isSeek = chosen.TestType == DiskChecker.Core.Models.TestType.Seek;
+      if(!isSeek && !IsSurfaceCertificateSession(chosen.TestType)) return;
+      foreach(var session in AvailableSessions.Where(s => s.Id != chosen.Id &&
+         s.DiskCardId == chosen.DiskCardId &&
+         (isSeek ? IsSurfaceCertificateSession(s.TestType) :
+             s.TestType == DiskChecker.Core.Models.TestType.Seek))
+         .OrderBy(s => Math.Abs((s.StartedAt - chosen.StartedAt).TotalMinutes)))
+      {
+         PairCandidateSessions.Add(session);
+      }
+
+      // Nearby tests are auto-suggested; an older session can be chosen
+      // explicitly by the operator without a hidden 48-hour exclusion.
+      var nearest = PairCandidateSessions.FirstOrDefault();
+      if(nearest != null &&
+         Math.Abs((nearest.StartedAt - chosen.StartedAt).TotalHours) <= 48)
+         SelectedPairSession = nearest;
+   }
+
    /// <summary>
    /// Gets or sets currently selected session for detailed in-app certificate analysis.
    /// </summary>
@@ -381,7 +419,10 @@ public partial class CertificateViewModel : ViewModelBase, INavigableViewModel
       {
          if(SetProperty(ref _selectedSessionItem, value))
          {
-            _ = SelectSessionAsync(value);
+            RefreshPairCandidates(value);
+            int generation = ++_sessionSelectionGeneration;
+            if(!_initializingSessionSelection)
+               _ = SelectSessionAsync(value, generation);
          }
       }
    }
@@ -769,15 +810,21 @@ public partial class CertificateViewModel : ViewModelBase, INavigableViewModel
             throw new InvalidOperationException(L.Get("CertificateView.Combined.Unsupported"));
 
          var sessions = await _diskCardRepository.GetTestSessionsAsync(selected.DiskCardId);
-         var counterpart = sessions
+         // Prefer the operator's explicit choice. Without it, pair only with
+         // a nearby test (48h), never silently combine unrelated diagnostics.
+         var eligible = sessions
             .Where(s => s.Id != selected.Id
                 && s.DiskCardId == selected.DiskCardId
-                && (selectedSeek ? IsSurfaceCertificateSession(s.TestType) : s.TestType == DiskChecker.Core.Models.TestType.Seek))
+                && (selectedSeek ? IsSurfaceCertificateSession(s.TestType) :
+                    s.TestType == DiskChecker.Core.Models.TestType.Seek))
             .OrderBy(s => Math.Abs((s.StartedAt - selected.StartedAt).TotalMinutes))
-            .FirstOrDefault();
+            .ToList();
+         var counterpart = SelectedPairSession == null
+            ? eligible.FirstOrDefault(s =>
+                Math.Abs((s.StartedAt - selected.StartedAt).TotalHours) <= 48)
+            : eligible.FirstOrDefault(s => s.Id == SelectedPairSession.Id);
 
-         if(counterpart == null ||
-             Math.Abs((counterpart.StartedAt - selected.StartedAt).TotalHours) > 48)
+         if(counterpart == null)
          {
             await _dialogService.ShowWarningAsync(L.Get("Common.Warning"),
                L.Get("CertificateView.Combined.NoPair"));
@@ -1062,28 +1109,49 @@ public partial class CertificateViewModel : ViewModelBase, INavigableViewModel
    /// <summary>
    /// Updates in-app certificate preview to selected test session.
    /// </summary>
-   private async Task SelectSessionAsync(TestSession? session)
+   private async Task SelectSessionAsync(TestSession? session, int generation)
    {
       if(session == null)
       {
          return;
       }
 
-      _selectedSession = await _diskCardRepository.GetTestSessionWithoutSamplesAsync(session.Id) ?? session;
+      var loaded = await _diskCardRepository.GetTestSessionWithoutSamplesAsync(session.Id) ?? session;
+      if(generation != _sessionSelectionGeneration) return;
+      _selectedSession = loaded;
       if(Certificate == null)
       {
          return;
       }
 
       var card = await _diskCardRepository.GetByIdAsync(_selectedSession.DiskCardId);
+      if(generation != _sessionSelectionGeneration) return;
       if(card == null)
       {
          return;
       }
 
-      Certificate = await _certificateGenerator.GenerateCertificateAsync(_selectedSession, card);
+      // Do not let speed/seek samples from the previously selected test
+      // leak into the newly selected session's on-screen graphs.
+      _writeGraphSamples = [];
+      _readGraphSamples = [];
+      _seekLatencyGraphSamples = [];
+      SeekScatterPoints = new ObservableCollection<ObservablePoint>();
+      _selectedDiskService.SelectedTestSessionId = _selectedSession.Id;
+
+      // Reuse the persisted certificate for THIS session, including the
+      // technician's comment; never silently show the latest of another test.
+      var matching = (await _diskCardRepository.GetCertificatesAsync(card.Id))
+         .Where(c => c.TestSessionId == _selectedSession.Id)
+         .OrderByDescending(c => c.GeneratedAt).FirstOrDefault();
+      if(generation != _sessionSelectionGeneration) return;
+      _selectedDiskService.SelectedCertificateId = matching?.Id;
+      var newCertificate = matching ?? await _certificateGenerator.GenerateCertificateAsync(_selectedSession, card);
+      if(generation != _sessionSelectionGeneration) return;
+      Certificate = newCertificate;
       await PrepareCertificateGraphAsync(Certificate, updateView: true);
-      UpdateDetailedSummaries(_selectedSession);
+      if(generation == _sessionSelectionGeneration)
+         UpdateDetailedSummaries(_selectedSession);
    }
 
    [RelayCommand]
@@ -1244,7 +1312,9 @@ public partial class CertificateViewModel : ViewModelBase, INavigableViewModel
             if(_selectedSession != null)
             {
                UpdateDetailedSummaries(_selectedSession);
-               SelectedSessionItem = AvailableSessions.FirstOrDefault(s => s.Id == _selectedSession.Id);
+               _initializingSessionSelection = true;
+               try { SelectedSessionItem = AvailableSessions.FirstOrDefault(s => s.Id == _selectedSession.Id); }
+               finally { _initializingSessionSelection = false; }
             }
             StatusMessage = string.Format(L.Get("CertificateView.Status.Loaded"), latestCert.CertificateNumber);
           }
@@ -1371,7 +1441,9 @@ public partial class CertificateViewModel : ViewModelBase, INavigableViewModel
 
       if(_selectedSession == null && sessionId > 0)
       {
-         _selectedSession = await _diskCardRepository.GetTestSessionWithoutSamplesAsync(sessionId);
+         var matchingSession = await _diskCardRepository.GetTestSessionWithoutSamplesAsync(sessionId);
+         if(!ReferenceEquals(certificate, Certificate)) return;
+         _selectedSession = matchingSession;
          if(_selectedSession != null)
          {
             certificate.ChartImagePath = _selectedSession.ChartImagePath;
@@ -1380,7 +1452,9 @@ public partial class CertificateViewModel : ViewModelBase, INavigableViewModel
 
       if(isSeekCertificate && _seekLatencyGraphSamples.Count == 0 && sessionId > 0)
       {
-         _seekLatencyGraphSamples = await LoadSeekLatencySamplesAsync(sessionId);
+         var seekSamples = await LoadSeekLatencySamplesAsync(sessionId);
+         if(!ReferenceEquals(certificate, Certificate)) return;
+         _seekLatencyGraphSamples = seekSamples;
          if(_seekLatencyGraphSamples.Count > 0)
          {
             certificate.SeekLatencyPoints = _seekLatencyGraphSamples.ToList();
@@ -1399,6 +1473,7 @@ public partial class CertificateViewModel : ViewModelBase, INavigableViewModel
       {
          StatusMessage = L.Get("CertificateView.Status.LoadingGraphData");
          var speedSeries = await LoadCertificateGraphSamplesProgressiveAsync(sessionId);
+         if(!ReferenceEquals(certificate, Certificate)) return;
          _writeGraphSamples = DownsampleToLimit(speedSeries.WriteSamples, 512);
          _readGraphSamples = DownsampleToLimit(speedSeries.ReadSamples, 512);
       }
@@ -1660,7 +1735,8 @@ public partial class CertificateViewModel : ViewModelBase, INavigableViewModel
     {
        ArgumentNullException.ThrowIfNull(certificate);
 
-       if(HasSeekMetrics)
+       if(HasSeekMetrics || certificate.SeekLatencyPoints.Count > 0 ||
+          certificate.TestType.Contains("Seek", StringComparison.OrdinalIgnoreCase))
        {
           var seekValues = _seekLatencyGraphSamples.Count > 0
              ? _seekLatencyGraphSamples
@@ -1684,7 +1760,11 @@ public partial class CertificateViewModel : ViewModelBase, INavigableViewModel
           certificate.MaxWriteSpeed > 0 ||
           certificate.MaxReadSpeed > 0;
 
-       var graphData = await Task.Run(() => BuildGraphData(certificate, writeGraphSamples, readGraphSamples, temperatureSamples)).ConfigureAwait(true);
+       var graphData = await Task.Run(() => CertificateChartProjector.Build(
+          certificate, writeGraphSamples, readGraphSamples, temperatureSamples)).ConfigureAwait(true);
+       if(!ReferenceEquals(certificate, Certificate)) return;
+       HasThroughputChart = !string.IsNullOrWhiteSpace(graphData.WriteProfilePoints) ||
+          !string.IsNullOrWhiteSpace(graphData.ReadProfilePoints);
 
        WriteProfilePoints = graphData.WriteProfilePoints;
        ReadProfilePoints = graphData.ReadProfilePoints;
@@ -1704,7 +1784,7 @@ public partial class CertificateViewModel : ViewModelBase, INavigableViewModel
        _readGraphSamples = [];
        _seekLatencyGraphSamples = [];
        SeekScatterPoints = new ObservableCollection<ObservablePoint>();
-       HasThroughputChart = true;
+       HasThroughputChart = false;
        SeekChartMaxLabel = "0 ms";
        SeekChartMidLabel = "0 ms";
        SeekChartMinLabel = "0 ms";
@@ -1740,202 +1820,32 @@ public partial class CertificateViewModel : ViewModelBase, INavigableViewModel
        SelectedSessionSmartSummary = BuildSmartSummary(session);
     }
 
-    private static CertificateGraphData BuildGraphData(
-        DiskCertificate certificate,
-        IReadOnlyList<SpeedSample> writeGraphSamples,
-        IReadOnlyList<SpeedSample> readGraphSamples,
-        IReadOnlyList<TemperatureSample> temperatureSamples)
-    {
-       ArgumentNullException.ThrowIfNull(certificate);
-
-       var writePoints = GetGraphSamples(writeGraphSamples, certificate.AvgWriteSpeed, certificate.MaxWriteSpeed);
-       var readPoints = GetGraphSamples(readGraphSamples, certificate.AvgReadSpeed, certificate.MaxReadSpeed);
-       var allValues = writePoints.Select(p => p.SpeedMBps).Concat(readPoints.Select(p => p.SpeedMBps)).ToList();
-
-       if(allValues.Count == 0)
-       {
-          return CertificateGraphData.Default;
-       }
-
-       var minSpeed = allValues.Min();
-       var maxSpeed = allValues.Max();
-       var spread = maxSpeed - minSpeed;
-       if(spread < Math.Max(1d, maxSpeed * 0.02))
-       {
-          var center = (maxSpeed + minSpeed) / 2.0;
-          var pad = Math.Max(1d, center * 0.05);
-          minSpeed = Math.Max(0d, center - pad);
-          maxSpeed = center + pad;
-       }
-
-       var tempPoints = temperatureSamples.OrderBy(t => t.ProgressPercent).ToList();
-       var hasTemp = tempPoints.Count > 1;
-       var temperaturePolyline = hasTemp ? BuildTemperaturePolylinePoints(tempPoints) : $"{ChartStartX:0},{ChartMaxY:0} {ChartEndX:0},{ChartMaxY:0}";
-
-       return new CertificateGraphData(
-           BuildPolylinePoints(writePoints, minSpeed, maxSpeed),
-           BuildPolylinePoints(readPoints, minSpeed, maxSpeed),
-           temperaturePolyline,
-           hasTemp,
-           $"{maxSpeed:F1} MB/s",
-           $"{((maxSpeed + minSpeed) / 2):F1} MB/s",
-           $"{minSpeed:F1} MB/s",
-           "0 %",
-           "50 %",
-           "100 %");
-    }
-
-    private static string BuildTemperaturePolylinePoints(IReadOnlyList<TemperatureSample> samples)
-    {
-       if(samples.Count == 0)
-       {
-          return $"{ChartStartX:0},{ChartMaxY:0} {ChartEndX:0},{ChartMaxY:0}";
-       }
-
-       var minTemp = samples.Min(s => s.TemperatureCelsius);
-       var maxTemp = samples.Max(s => s.TemperatureCelsius);
-       var range = Math.Max(1d, maxTemp - minTemp);
-       var startX = ChartStartX;
-       var endX = ChartEndX;
-       var minY = ChartMinY;
-       var maxY = ChartMaxY;
-       var points = new List<string>(samples.Count);
-
-       foreach(var sample in samples)
-       {
-          var x = startX + (Math.Clamp(sample.ProgressPercent, 0d, 100d) / 100d) * (endX - startX);
-          var ratio = Math.Clamp((sample.TemperatureCelsius - minTemp) / range, 0d, 1d);
-          var y = maxY - ((maxY - minY) * ratio);
-          points.Add(FormattableString.Invariant($"{x:0},{y:0}"));
-       }
-
-       return string.Join(" ", points);
-    }
-
-    private static List<SpeedSample> GetGraphSamples(IReadOnlyList<SpeedSample> samples, double averageSpeed, double maxSpeed)
-    {
-       var values = samples.Where(s => s.SpeedMBps > 0).OrderBy(s => s.ProgressPercent).ToList();
-       if(values.Count > 0)
-       {
-          return DownsampleGraphSamples(values, InternalChartTargetPoints);
-       }
-
-       if(averageSpeed <= 0 && maxSpeed <= 0)
-       {
-          return [];
-       }
-
-       var peakSpeed = maxSpeed > 0 ? maxSpeed : averageSpeed;
-       var baseSpeed = averageSpeed > 0 ? averageSpeed : peakSpeed;
-       return
-       [
-          new SpeedSample { ProgressPercent = 0, SpeedMBps = baseSpeed },
-          new SpeedSample { ProgressPercent = 50, SpeedMBps = peakSpeed },
-          new SpeedSample { ProgressPercent = 100, SpeedMBps = baseSpeed }
-       ];
-    }
-
-    private static string BuildPolylinePoints(IEnumerable<SpeedSample> samples, double minSpeed, double maxSpeed)
-    {
-       var values = samples.Where(v => v.SpeedMBps > 0).OrderBy(v => v.ProgressPercent).ToList();
-       if(values.Count == 0)
-       {
-          return $"{ChartStartX:0},{ChartMaxY:0} {ChartEndX:0},{ChartMaxY:0}";
-       }
-
-       var startX = ChartStartX;
-       var endX = ChartEndX;
-       var minY = ChartMinY;
-       var maxY = ChartMaxY;
-       var range = Math.Max(0.0001d, maxSpeed - minSpeed);
-       var points = new List<string>(values.Count);
-
-       foreach(var sample in values)
-       {
-          var x = startX + (Math.Clamp(sample.ProgressPercent, 0d, 100d) / 100d) * (endX - startX);
-          var ratio = Math.Clamp((sample.SpeedMBps - minSpeed) / range, 0d, 1d);
-          var y = maxY - ((maxY - minY) * ratio);
-          points.Add(FormattableString.Invariant($"{x:0},{y:0}"));
-       }
-
-       return string.Join(" ", points);
-    }
-
-    private static List<SpeedSample> DownsampleGraphSamples(IReadOnlyList<SpeedSample> values, int targetPoints)
-    {
-       if(values.Count <= targetPoints)
-       {
-          return values.ToList();
-       }
-
-       var result = new List<SpeedSample>(targetPoints);
-       var bucketSize = values.Count / (double)targetPoints;
-
-       for(var i = 0; i < targetPoints; i++)
-       {
-          var start = (int)Math.Floor(i * bucketSize);
-          var end = (int)Math.Floor((i + 1) * bucketSize);
-          end = Math.Clamp(end, start + 1, values.Count);
-
-          var sumSpeed = 0d;
-          var sumProgress = 0d;
-          var count = 0;
-          for(var j = start; j < end; j++)
-          {
-             sumSpeed += values[j].SpeedMBps;
-             sumProgress += values[j].ProgressPercent;
-             count++;
-          }
-
-          if(count > 0)
-          {
-             result.Add(new SpeedSample
-             {
-                ProgressPercent = sumProgress / count,
-                SpeedMBps = sumSpeed / count
-             });
-          }
-       }
-
-       return result;
-    }
+    // Measured preview projections live in CertificateChartProjector so the
+    // certificate and browser screens do not maintain divergent algorithms.
 
     private static List<double> DownsampleSpeedSamples(IEnumerable<double> speeds, int targetPoints)
     {
        ArgumentNullException.ThrowIfNull(speeds);
 
-       var values = speeds.Where(v => v > 0).ToList();
-       if(values.Count == 0)
+       var values = speeds.Where(v => double.IsFinite(v) && v >= 0).ToList();
+       if(values.Count <= targetPoints) return values;
+
+       // Preserve short zero-speed intervals. One average per bucket can hide
+       // a real I/O stall and yield a misleading PDF/profile.
+       int buckets = Math.Max(1, targetPoints / 4);
+       var output = new List<double>(targetPoints);
+       for(int i = 0; i < buckets; i++)
        {
-          return [];
+          int begin = i * values.Count / buckets;
+          int end = Math.Min(values.Count, (i + 1) * values.Count / buckets);
+          if(end <= begin) continue;
+          var part = values.Skip(begin).Take(end - begin).ToArray();
+          output.Add(part[0]);
+          output.Add(part.Min());
+          output.Add(part.Max());
+          output.Add(part[^1]);
        }
-
-       if(values.Count <= targetPoints)
-       {
-          return values;
-       }
-
-       var result = new List<double>(targetPoints);
-       var bucketSize = values.Count / (double)targetPoints;
-
-       for(var i = 0; i < targetPoints; i++)
-       {
-          var start = (int)Math.Floor(i * bucketSize);
-          var end = (int)Math.Floor((i + 1) * bucketSize);
-          end = Math.Clamp(end, start + 1, values.Count);
-
-          var sum = 0d;
-          var count = 0;
-          for(var j = start; j < end; j++)
-          {
-             sum += values[j];
-             count++;
-          }
-
-          result.Add(count > 0 ? sum / count : values[Math.Min(start, values.Count - 1)]);
-       }
-
-       return result;
+       return output;
     }
 
     private string BuildThermalSummary(TestSession session)

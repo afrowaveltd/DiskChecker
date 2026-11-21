@@ -441,7 +441,12 @@ public partial class DiskCardsViewModel : ViewModelBase, INavigableViewModel
 
         var sessions = await _diskCardRepository.GetTestSessionsAsync(card.Id);
         var latestSession = sessions.OrderByDescending(s => s.StartedAt).FirstOrDefault();
-        var latestCertificate = await _diskCardRepository.GetLatestCertificateAsync(card.Id);
+        // The latest certificate may refer to a different test than the
+        // newest session. Keep the context unambiguous.
+        var latestCertificate = latestSession == null ? null :
+            (await _diskCardRepository.GetCertificatesAsync(card.Id))
+                .Where(c => c.TestSessionId == latestSession.Id)
+                .OrderByDescending(c => c.GeneratedAt).FirstOrDefault();
 
         _selectedDiskService.SelectedDisk = new CoreDriveInfo
         {
@@ -453,6 +458,7 @@ public partial class DiskCardsViewModel : ViewModelBase, INavigableViewModel
         };
         _selectedDiskService.SelectedDiskDisplayName = card.ModelName;
         _selectedDiskService.IsSelectedDiskLocked = card.IsLocked;
+        _selectedDiskService.SelectedDiskCardId = card.Id;
         _selectedDiskService.SelectedTestSessionId = latestSession?.Id;
         _selectedDiskService.SelectedCertificateId = latestCertificate?.Id;
 

@@ -37,7 +37,12 @@
                             IsEnabled="{Binding HasSelectedCertificate}"
                             Background="{DynamicResource ThemeSuccessBrush}" Foreground="White"
                             FontWeight="Bold" Padding="12,6" Cursor="Hand"/>
-                    <Button Content="💾 Karta disku"
+                    <Button Content="{Binding L[CertificateBrowser.OpenDetails]}"
+                            Command="{Binding OpenCertificateDetailsCommand}"
+                            IsEnabled="{Binding HasSelectedCertificate}"
+                            Background="{DynamicResource ThemeInfoBrush}" Foreground="White"
+                            FontWeight="Bold" Padding="12,6" Cursor="Hand"/>
+                    <Button Content="{Binding L[CertificateBrowser.OpenDiskCard]}"
                             Command="{Binding ViewDiskCardCommand}"
                             IsEnabled="{Binding HasSelectedCertificate}"
                             Background="{DynamicResource ThemePrimaryBrush}" Foreground="White"
@@ -325,7 +330,8 @@
                         </Border>
 
                         <!-- Performance Graph -->
-                        <Border Background="{Binding PanelBackground}" Padding="12" CornerRadius="8">
+                        <Border Background="{Binding PanelBackground}" Padding="12" CornerRadius="8"
+                                IsVisible="{Binding HasSpeedGraph}">
                             <StackPanel Spacing="6">
                                 <TextBlock Text="{Binding L[CertificateBrowser.PerformanceProfile]}" FontWeight="Bold" FontSize="12"/>
 
@@ -339,7 +345,7 @@
                                                    Foreground="{DynamicResource ThemeTextMutedBrush}" VerticalAlignment="Bottom"/>
                                     </Grid>
 
-                                    <Viewbox Grid.Row="0" Grid.Column="1" Stretch="Fill" StretchDirection="Both" MinHeight="220">
+                                    <Viewbox Grid.Row="0" Grid.Column="1" Stretch="Uniform" StretchDirection="Both" MinHeight="220">
                                         <Canvas Width="920" Height="260" Background="#FFFFFFFF" ClipToBounds="True">
                                             <Rectangle Canvas.Left="56" Canvas.Top="18" Width="830" Height="208" Stroke="#FFCBD5E1" StrokeThickness="1" Fill="#00FFFFFF"/>
                                             <Line StartPoint="56,70" EndPoint="886,70" Stroke="#FFE2E8F0" StrokeThickness="1"/>
@@ -399,7 +405,7 @@
                                         <TextBlock Grid.Row="1" Text="{Binding SeekChartMidLabel}" FontSize="9" Foreground="{DynamicResource ThemeTextMutedBrush}" VerticalAlignment="Center"/>
                                         <TextBlock Grid.Row="2" Text="{Binding SeekChartMinLabel}" FontSize="9" Foreground="{DynamicResource ThemeTextMutedBrush}" VerticalAlignment="Bottom"/>
                                     </Grid>
-                                    <Viewbox Grid.Row="0" Grid.Column="1" Stretch="Fill" StretchDirection="Both" MinHeight="220">
+                                    <Viewbox Grid.Row="0" Grid.Column="1" Stretch="Uniform" StretchDirection="Both" MinHeight="220">
                                         <Canvas Width="920" Height="260" Background="#FFFFFFFF" ClipToBounds="True">
                                             <Rectangle Canvas.Left="56" Canvas.Top="18" Width="830" Height="208" Stroke="#FFCBD5E1" StrokeThickness="1" Fill="#00FFFFFF"/>
                                             <Line StartPoint="56,70" EndPoint="886,70" Stroke="#FFE2E8F0" StrokeThickness="1"/>

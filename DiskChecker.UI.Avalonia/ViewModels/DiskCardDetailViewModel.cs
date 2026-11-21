@@ -440,8 +440,12 @@ public partial class DiskCardDetailViewModel : ViewModelBase, INavigableViewMode
         _selectedDiskService.SelectedDiskDisplayName = CurrentCard.ModelName;
         _selectedDiskService.IsSelectedDiskLocked = CurrentCard.IsLocked;
         _selectedDiskService.SelectedDiskCardId = CurrentCard.Id;
-        _selectedDiskService.SelectedTestSessionId = SelectedSession?.Id ?? TestSessions.FirstOrDefault()?.Id;
-        _selectedDiskService.SelectedCertificateId = LatestCertificate?.Id;
+        var targetSessionId = SelectedSession?.Id ?? TestSessions.FirstOrDefault()?.Id;
+        _selectedDiskService.SelectedTestSessionId = targetSessionId;
+        _selectedDiskService.SelectedCertificateId = Certificates
+            .Where(c => c.TestSessionId == targetSessionId)
+            .OrderByDescending(c => c.GeneratedAt)
+            .Select(c => (int?)c.Id).FirstOrDefault();
 
         _navigationService.NavigateTo<CertificateViewModel>();
     }
@@ -618,10 +622,13 @@ public partial class DiskCardDetailViewModel : ViewModelBase, INavigableViewMode
                 OnPropertyChanged(nameof(TotalSectorsTested));
                 OnPropertyChanged(nameof(TotalErrors));
 
-                if (SelectedSession == null)
-                {
-                    SelectedSession = TestSessions.FirstOrDefault();
-                }
+                // A ViewModel can be reused for another card. Never keep a
+                // selected session from the previous physical disk.
+                int? requestedSessionId = _selectedDiskService.SelectedTestSessionId;
+                var matchingRequested = TestSessions.FirstOrDefault(s => s.Id == requestedSessionId);
+                SelectedSession = matchingRequested ??
+                    TestSessions.FirstOrDefault(s => s.Id == SelectedSession?.Id) ??
+                    TestSessions.FirstOrDefault();
 
                 StatusMessage = string.Format(L.Get("DiskCardDetail.Status.CardLoadedName"), CurrentCard.ModelName);
             }
