@@ -324,16 +324,28 @@ public partial class CertificateBrowserViewModel : ViewModelBase, INavigableView
     public string ChartStrokeRead => "#059669";
 
     // Graph properties
+    public bool HasSpeedGraph =>
+        !string.IsNullOrWhiteSpace(WriteProfilePoints) ||
+        !string.IsNullOrWhiteSpace(ReadProfilePoints);
+
     public string WriteProfilePoints
     {
         get => _writeProfilePoints;
-        private set => SetProperty(ref _writeProfilePoints, value);
+        private set
+        {
+            if (SetProperty(ref _writeProfilePoints, value))
+                OnPropertyChanged(nameof(HasSpeedGraph));
+        }
     }
 
     public string ReadProfilePoints
     {
         get => _readProfilePoints;
-        private set => SetProperty(ref _readProfilePoints, value);
+        private set
+        {
+            if (SetProperty(ref _readProfilePoints, value))
+                OnPropertyChanged(nameof(HasSpeedGraph));
+        }
     }
 
     public string TemperatureProfilePoints
@@ -648,104 +660,59 @@ public partial class CertificateBrowserViewModel : ViewModelBase, INavigableView
         }
     }
 
+    /// <summary>
+    /// Both certificate screens render from the same real measurements. Prefer
+    /// SQL-bounded samples with their original progress axis, then persisted
+    /// certificate profiles when historical data have been pruned.
+    /// Read-only tests need only their read profile; no write data is invented.
+    /// </summary>
     private async Task ReconstructGraphAsync(DiskCertificate certificate)
     {
         ArgumentNullException.ThrowIfNull(certificate);
 
-        // Use stored profile points if available
-        var hasWriteProfile = certificate.WriteProfilePoints is { Count: > 0 };
-        var hasReadProfile = certificate.ReadProfilePoints is { Count: > 0 };
-
-        if (HasSeekMetrics && certificate.TestSessionId > 0)
+        if (certificate.TestSessionId > 0 &&
+            (certificate.SeekAvgLatencyMs.HasValue ||
+             certificate.TestType.Contains("Seek", StringComparison.OrdinalIgnoreCase)))
         {
-            var seekLatencies = await LoadSeekLatencySamplesAsync(certificate.TestSessionId);
-            ApplySeekScatterGraph(seekLatencies);
+            var latency = await LoadSeekLatencySamplesAsync(certificate.TestSessionId);
+            if (latency.Count == 0)
+                latency = certificate.SeekLatencyPoints;
+            ApplySeekScatterGraph(latency);
         }
         else
         {
             ResetSeekGraph();
         }
 
-        if (hasWriteProfile && hasReadProfile)
-        {
-            // Reconstruct graph from stored downsampled points
-            var writeValues = certificate.WriteProfilePoints
-                .Select(p => new SpeedSample { ProgressPercent = 0, SpeedMBps = p })
-                .ToList();
-            var readValues = certificate.ReadProfilePoints
-                .Select(p => new SpeedSample { ProgressPercent = 0, SpeedMBps = p })
-                .ToList();
+        var write = new List<SpeedSample>();
+        var read = new List<SpeedSample>();
+        var temperatures = new List<TemperatureSample>();
 
-            await Task.Run(() =>
-            {
-                var graphData = BuildGraphDataFromValues(
-                    writeValues.Select(s => s.SpeedMBps).ToList(),
-                    readValues.Select(s => s.SpeedMBps).ToList(),
-                    certificate.AvgWriteSpeed,
-                    certificate.MaxWriteSpeed,
-                    certificate.AvgReadSpeed,
-                    certificate.MaxReadSpeed);
-
-                WriteProfilePoints = graphData.WriteProfilePoints;
-                ReadProfilePoints = graphData.ReadProfilePoints;
-                TemperatureProfilePoints = graphData.TemperatureProfilePoints;
-                HasTemperatureProfile = graphData.HasTemperatureProfile;
-                ChartMaxSpeedLabel = graphData.ChartMaxSpeedLabel;
-                ChartMidSpeedLabel = graphData.ChartMidSpeedLabel;
-                ChartMinSpeedLabel = graphData.ChartMinSpeedLabel;
-                ChartXAxisStartLabel = graphData.ChartXAxisStartLabel;
-                ChartXAxisMidLabel = graphData.ChartXAxisMidLabel;
-                ChartXAxisEndLabel = graphData.ChartXAxisEndLabel;
-            });
-        }
-        else if (_selectedSession != null && certificate.TestSessionId > 0)
+        if (certificate.TestSessionId > 0)
         {
-            // Try to load speed samples from test session
+            (write, read) = await LoadSpeedSamplesChunkedAsync(certificate.TestSessionId);
             try
             {
-                var (writeSamples, readSamples) = await LoadSpeedSamplesChunkedAsync(certificate.TestSessionId);
-
-                if (writeSamples.Count > 0 || readSamples.Count > 0)
-                {
-                    var tempSamples = _selectedSession.TemperatureSamples ?? new List<TemperatureSample>();
-
-                    await Task.Run(() =>
-                    {
-                        var graphData = BuildGraphData(
-                            writeSamples.Where(s => s.SpeedMBps > 0).OrderBy(s => s.ProgressPercent).ToList(),
-                            readSamples.Where(s => s.SpeedMBps > 0).OrderBy(s => s.ProgressPercent).ToList(),
-                            tempSamples,
-                            certificate.AvgWriteSpeed,
-                            certificate.MaxWriteSpeed,
-                            certificate.AvgReadSpeed,
-                            certificate.MaxReadSpeed);
-
-                        WriteProfilePoints = graphData.WriteProfilePoints;
-                        ReadProfilePoints = graphData.ReadProfilePoints;
-                        TemperatureProfilePoints = graphData.TemperatureProfilePoints;
-                        HasTemperatureProfile = graphData.HasTemperatureProfile;
-                        ChartMaxSpeedLabel = graphData.ChartMaxSpeedLabel;
-                        ChartMidSpeedLabel = graphData.ChartMidSpeedLabel;
-                        ChartMinSpeedLabel = graphData.ChartMinSpeedLabel;
-                        ChartXAxisStartLabel = graphData.ChartXAxisStartLabel;
-                        ChartXAxisMidLabel = graphData.ChartXAxisMidLabel;
-                        ChartXAxisEndLabel = graphData.ChartXAxisEndLabel;
-                    });
-                }
-                else
-                {
-                    ResetGraphToDefaults();
-                }
+                temperatures = await _diskCardRepository.GetTemperatureSampleSeriesDownsampledAsync(
+                    certificate.TestSessionId, 256);
             }
-            catch
+            catch (Exception ex) when (ex is System.IO.IOException or InvalidOperationException)
             {
-                ResetGraphToDefaults();
+                // Temperature telemetry is optional; speeds remain usable.
             }
         }
-        else
-        {
-            ResetGraphToDefaults();
-        }
+
+        var graph = CertificateChartProjector.Build(certificate, write, read, temperatures);
+        WriteProfilePoints = graph.WriteProfilePoints;
+        ReadProfilePoints = graph.ReadProfilePoints;
+        TemperatureProfilePoints = graph.TemperatureProfilePoints;
+        HasTemperatureProfile = graph.HasTemperatureProfile;
+        ChartMaxSpeedLabel = graph.ChartMaxSpeedLabel;
+        ChartMidSpeedLabel = graph.ChartMidSpeedLabel;
+        ChartMinSpeedLabel = graph.ChartMinSpeedLabel;
+        ChartXAxisStartLabel = graph.ChartXAxisStartLabel;
+        ChartXAxisMidLabel = graph.ChartXAxisMidLabel;
+        ChartXAxisEndLabel = graph.ChartXAxisEndLabel;
     }
 
     private void ResetGraphToDefaults()
@@ -771,7 +738,7 @@ public partial class CertificateBrowserViewModel : ViewModelBase, INavigableView
             // Keep all seek dots for analytical certificate browsing. Seek tests
             // are bounded by UI limits, unlike surface-test telemetry, and the
             // full-stroke shape is important for diagnosis.
-            var records = await _diskCardRepository.GetSeekSamplesAsync(sessionId);
+            var records = await _diskCardRepository.GetSeekSamplesDownsampledAsync(sessionId, 1024);
             var successful = records.Where(s => !s.HasError && s.LatencyMs > 0).ToList();
             if (successful.Count > 0)
             {
@@ -852,7 +819,7 @@ public partial class CertificateBrowserViewModel : ViewModelBase, INavigableView
 
     private void ApplySeekScatterGraph(IReadOnlyList<double> latencies)
     {
-        var values = latencies.Where(v => v > 0).ToList();
+        var values = latencies.Where(v => double.IsFinite(v) && v > 0).Take(1024).ToList();
         if (values.Count == 0)
         {
             ResetSeekGraph();
