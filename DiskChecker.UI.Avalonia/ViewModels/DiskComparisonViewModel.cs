@@ -358,11 +358,11 @@ public partial class DiskComparisonViewModel : ViewModelBase, INavigableViewMode
         SpeedChartModel.Series.Clear();
         SpeedChartModel.Axes.Clear();
 
-        var scores = new ColumnSeries { Title = "Score" };
-        var writes = new ColumnSeries { Title = "Write MB/s" };
-        var reads = new ColumnSeries { Title = "Read MB/s" };
-        var scoreCategory = new CategoryAxis { Position = AxisPosition.Bottom, Title = "Disk" };
-        var speedCategory = new CategoryAxis { Position = AxisPosition.Bottom, Title = "Disk" };
+        var scores = new BarSeries { Title = "Score" };
+        var writes = new BarSeries { Title = "Write MB/s" };
+        var reads = new BarSeries { Title = "Read MB/s" };
+        var scoreCategory = new CategoryAxis { Position = AxisPosition.Left, Title = "Disk" };
+        var speedCategory = new CategoryAxis { Position = AxisPosition.Left, Title = "Disk" };
         int index = 0;
         foreach (var result in ComparisonResults)
         {
@@ -371,14 +371,14 @@ public partial class DiskComparisonViewModel : ViewModelBase, INavigableViewMode
             scoreCategory.Labels.Add(label);
             speedCategory.Labels.Add(label);
             if (double.IsFinite(result.Score))
-                scores.Items.Add(new ColumnItem(Math.Clamp(result.Score, 0d, 100d), index)
+                scores.Items.Add(new BarItem(Math.Clamp(result.Score, 0d, 100d), index)
                 {
                     Color = GetScoreColor(result.Score)
                 });
             if (result.HasWriteMeasurement && double.IsFinite(result.AvgWriteSpeed) && result.AvgWriteSpeed >= 0)
-                writes.Items.Add(new ColumnItem(result.AvgWriteSpeed, index));
+                writes.Items.Add(new BarItem(result.AvgWriteSpeed, index));
             if (result.HasReadMeasurement && double.IsFinite(result.AvgReadSpeed) && result.AvgReadSpeed >= 0)
-                reads.Items.Add(new ColumnItem(result.AvgReadSpeed, index));
+                reads.Items.Add(new BarItem(result.AvgReadSpeed, index));
             index++;
         }
 
@@ -388,7 +388,7 @@ public partial class DiskComparisonViewModel : ViewModelBase, INavigableViewMode
             ComparisonChartModel.Axes.Add(scoreCategory);
             ComparisonChartModel.Axes.Add(new LinearAxis
             {
-                Title = "Score (0–100)", Position = AxisPosition.Left,
+                Title = "Score (0–100)", Position = AxisPosition.Bottom,
                 Minimum = 0, Maximum = 100
             });
             SpeedChartModel.Series.Add(writes);
@@ -396,7 +396,7 @@ public partial class DiskComparisonViewModel : ViewModelBase, INavigableViewMode
             SpeedChartModel.Axes.Add(speedCategory);
             SpeedChartModel.Axes.Add(new LinearAxis
             {
-                Title = "MB/s", Position = AxisPosition.Left, Minimum = 0
+                Title = "MB/s", Position = AxisPosition.Bottom, Minimum = 0
             });
         }
         ComparisonChartModel.InvalidatePlot(true);
