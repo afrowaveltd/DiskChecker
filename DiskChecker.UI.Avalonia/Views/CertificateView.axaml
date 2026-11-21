@@ -100,6 +100,30 @@
                             </Border>
                         </Grid>
 
+                        <!-- The operator can explicitly pair any compatible historical
+                             seek/surface test. The nearest recent test is suggested. -->
+                        <Grid ColumnDefinitions="Auto,*" ColumnSpacing="8" Margin="0,4,0,8">
+                            <TextBlock Grid.Column="0" Text="{Binding L[CertificateView.PairLabel]}"
+                                       VerticalAlignment="Center" FontWeight="Bold"/>
+                            <ComboBox Grid.Column="1"
+                                      ItemsSource="{Binding PairCandidateSessions}"
+                                      SelectedItem="{Binding SelectedPairSession}"
+                                      PlaceholderText="{Binding L[CertificateView.PairPlaceholder]}"
+                                      HorizontalAlignment="Stretch">
+                                <ComboBox.ItemTemplate>
+                                    <DataTemplate>
+                                        <StackPanel Orientation="Horizontal" Spacing="6">
+                                            <TextBlock Text="{Binding StartedAt, StringFormat={}{0:dd.MM.yyyy HH:mm}}"/>
+                                            <TextBlock Text=" - "/>
+                                            <TextBlock Text="{Binding TestType}"/>
+                                            <TextBlock Text=" - "/>
+                                            <TextBlock Text="{Binding Grade}"/>
+                                        </StackPanel>
+                                    </DataTemplate>
+                                </ComboBox.ItemTemplate>
+                            </ComboBox>
+                        </Grid>
+
                         <Grid ColumnDefinitions="*,*" ColumnSpacing="16">
                             <Border Grid.Column="0" Background="{Binding PanelBackground}" Padding="12" CornerRadius="8">
                                 <StackPanel Spacing="4">
