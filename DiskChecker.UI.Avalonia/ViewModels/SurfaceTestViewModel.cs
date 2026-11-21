@@ -1673,6 +1673,10 @@ public partial class SurfaceTestViewModel : ViewModelBase, INavigableViewModel, 
          await _notificationService.SendGeneratedCertificateAsync(
              certificate, _certificateGenerator, _settingsService, cancellationToken);
       }
+      catch (OperationCanceledException)
+      {
+         SetStatusMessage("Test disku byl dokončen a uložen; odesílání certifikátu e-mailem bylo zrušeno.");
+      }
       catch (Exception ex) when (ex is not OperationCanceledException)
       {
          StatusMessage = "Disk test completed; certificate email failed: " + ex.Message;
