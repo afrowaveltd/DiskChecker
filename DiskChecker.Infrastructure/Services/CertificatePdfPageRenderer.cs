@@ -148,7 +148,7 @@ internal static class CertificatePdfPageRenderer
             string line = lines[i];
             if (truncated && i == maxLines - 1)
             {
-                const string suffix = " ... [vice v historii testu]";
+                const string suffix = " ... [více v historii testu]";
                 while (line.Length > 0 && font.MeasureText(line + suffix) > width)
                     line = line[..^1];
                 line += suffix;
@@ -171,32 +171,32 @@ internal static class CertificatePdfPageRenderer
         DiskCertificate? paired = primary.PairedCertificate;
         bool combined = paired != null;
         Text(c, "DISKCHECKER", 50, 76, large, Blue);
-        Text(c, combined ? "SPOLECNY DIAGNOSTICKY CERTIFIKAT" : "DIAGNOSTICKY CERTIFIKAT DISKU",
+        Text(c, combined ? "SPOLEČNÝ DIAGNOSTICKÝ CERTIFIKÁT" : "DIAGNOSTICKÝ CERTIFIKÁT DISKU",
             50, 112, title, Ink);
         Text(c, $"ID: {primary.CertificateNumber}   |   Vystaveno: {primary.GeneratedAt:dd.MM.yyyy HH:mm}",
             790, 77, small, Muted);
 
         Box(c, 48, 140, 1144, 186, Panel);
-        Text(c, "IDENTIFIKACE ZARIZENI", 67, 173, title, Blue);
+        Text(c, "IDENTIFIKACE ZAŘÍZENÍ", 67, 173, title, Blue);
         Wrapped(c, primary.DiskModel, 67, 209, 650, body, Ink, 2);
         Text(c, $"S/N: {primary.SerialNumber}", 67, 274, body, Ink);
         Text(c, $"Kapacita: {primary.Capacity}    Typ: {primary.DiskType}", 650, 215, small, Ink);
-        Text(c, $"Rozhrani: {primary.Interface}    FW: {primary.Firmware}", 650, 249, small, Ink);
+        Text(c, $"Rozhraní: {primary.Interface}    FW: {primary.Firmware}", 650, 249, small, Ink);
         Text(c, $"Test: {primary.TestType}" + (combined ? $" + {paired!.TestType}" : ""), 650, 284, small, Muted);
 
         Box(c, 48, 344, 1144, 147, SKColors.White);
-        Text(c, "SMART / HARDWAROVE SIGNALY", 67, 379, title, Blue);
+        Text(c, "SMART / HARDWAROVÉ SIGNÁLY", 67, 379, title, Blue);
         bool smartObserved = primary.PowerOnHours > 0 || primary.PowerCycles > 0
             || primary.SmartAttributes.Count > 0 || primary.ReallocatedSectors > 0
             || primary.PendingSectors > 0 || (paired != null &&
                 (paired.PowerOnHours > 0 || paired.SmartAttributes.Count > 0));
-        Text(c, $"SMART: {(smartObserved ? (primary.SmartPassed ? "bez hlaseneho selhani" : "varovani") : "nedostupne")}",
+        Text(c, $"SMART: {(smartObserved ? (primary.SmartPassed ? "bez hlášeného selhání" : "varování") : "nedostupné")}",
             67, 417, body, smartObserved && !primary.SmartPassed ? Red : Ink);
         Text(c, $"Hodiny: {NullableNumber(primary.PowerOnHours)}", 67, 455, small, Ink);
         Text(c, $"Starty: {NullableNumber(primary.PowerCycles)}", 332, 455, small, Ink);
         Text(c, $"Realokace: {primary.ReallocatedSectors}", 617, 417, body, Ink);
         Text(c, $"Pending: {primary.PendingSectors}", 909, 417, body, Ink);
-        Text(c, "SMART je doplnujici diagnostika, nikoli zaruka bezchybnosti media.", 617, 462, small, Muted);
+        Text(c, "SMART je doplňující diagnostika, nikoli záruka bezchybnosti média.", 617, 462, small, Muted);
 
         float testWidth = combined ? 558f : 1144f;
         DrawTest(c, primary, 48, 511, testWidth, 1014f, large, title, body, small, tiny, gradeFont);
@@ -206,13 +206,13 @@ internal static class CertificatePdfPageRenderer
         }
 
         Box(c, 48, 1542, 1144, 160, Panel);
-        Text(c, combined ? "SOUHRN DVOJICE TESTU" : "ROZSAH A OMEZENI", 68, 1580, title, Blue);
+        Text(c, combined ? "SOUHRN DVOJICE TESTŮ" : "ROZSAH A OMEZENÍ", 68, 1580, title, Blue);
         string footer = combined
-            ? "Vysledky obou testu jsou samostatne; neslucujeme znamky ani z nich neodvozujeme novou."
-            : "Znamka plati pouze pro uvedeny typ testu a zaznamenane podminky.";
+            ? "Výsledky obou testů jsou samostatné; neslučujeme známky ani z nich neodvozujeme novou."
+            : "Známka platí pouze pro uvedený typ testu a zaznamenané podmínky.";
         Wrapped(c, footer, 68, 1614, 1100, small, Ink, 2);
-        Wrapped(c, "Rychlost zapisu se nehodnoti pri testu cteni. Udaje oznacene N/A nebyly mereny. " +
-            "Detailni protokol, historicka telemetrie a uplne komentare zustavaji v DiskCheckeru.",
+        Wrapped(c, "Rychlost zápisu se nehodnotí při testu čtení. Údaje označené N/A nebyly měřeny. " +
+            "Detailní protokol, historická telemetrie a úplné komentáře zůstávají v DiskCheckeru.",
             68, 1670, 1100, tiny, Muted, 2);
     }
 
@@ -226,11 +226,11 @@ internal static class CertificatePdfPageRenderer
     private static string Name(DiskCertificate cert)
     {
         if (Seek(cert) && cert.TestType != "AbsoluteDestructive") return "SEEK / LATENCE";
-        if (cert.IsReadOnlyTest) return "CTENI BEZ ZAPISU";
-        if (cert.TestType == "AbsoluteDestructive") return "KOMPLEXNI DESTRUKTIVNI TEST";
-        if (cert.SanitizationPerformed) return "SANITIZACE / OVERENI";
+        if (cert.IsReadOnlyTest) return "ČTENÍ BEZ ZÁPISU";
+        if (cert.TestType == "AbsoluteDestructive") return "KOMPLEXNÍ DESTRUKTIVNÍ TEST";
+        if (cert.SanitizationPerformed) return "SANITIZACE / OVĚŘENÍ";
         if (cert.TestType.Contains("SMART", StringComparison.OrdinalIgnoreCase)) return "SMART DIAGNOSTIKA";
-        return "POVRCH / VYKON";
+        return "POVRCH / VÝKON";
     }
 
     private static void DrawTest(SKCanvas c, DiskCertificate cert,
@@ -241,26 +241,26 @@ internal static class CertificatePdfPageRenderer
         float left = x + 20;
         float available = width - 40;
         Text(c, Name(cert), left, y + 41, title, Blue);
-        Text(c, $"Znamka: {cert.Grade}    Skore: {cert.Score:F0}/100",
+        Text(c, $"Známka: {cert.Grade}    Skóre: {cert.Score:F0}/100",
             left, y + 91, title, GradeColor(cert.Grade));
-        Text(c, $"Test: {cert.TestType}    Cas: {cert.TestDuration:hh\\:mm\\:ss}", left, y + 128, small, Ink);
+        Text(c, $"Test: {cert.TestType}    Čas: {cert.TestDuration.ToString(@"hh\:mm\:ss")}", left, y + 128, small, Ink);
         Text(c, $"Chyby: {cert.ErrorCount}    Teplota: {cert.TemperatureRange}", left, y + 160, small, Ink);
 
         bool seekOnly = Seek(cert) && cert.TestType != "AbsoluteDestructive";
         if (seekOnly)
         {
-            Text(c, $"Seek prumer: {Ms(cert.SeekAvgLatencyMs)}    P95: {Ms(cert.SeekP95LatencyMs)}",
+            Text(c, $"Seek průměr: {Ms(cert.SeekAvgLatencyMs)}    P95: {Ms(cert.SeekP95LatencyMs)}",
                 left, y + 200, small, Ink);
-            Text(c, $"P99: {Ms(cert.SeekP99LatencyMs)}    Pocet: {cert.SeekTotalCount?.ToString() ?? "N/A"}",
+            Text(c, $"P99: {Ms(cert.SeekP99LatencyMs)}    Počet: {cert.SeekTotalCount?.ToString() ?? "N/A"}",
                 left, y + 233, small, Ink);
         }
         else
         {
             string read = cert.AvgReadSpeed > 0 ? $"{cert.AvgReadSpeed:F1} MB/s" : "N/A";
-            string write = cert.IsReadOnlyTest ? "N/A (bez zapisu)"
+            string write = cert.IsReadOnlyTest ? "N/A (bez zápisu)"
                 : cert.AvgWriteSpeed > 0 ? $"{cert.AvgWriteSpeed:F1} MB/s" : "N/A";
-            Text(c, $"Cteni prumer: {read}", left, y + 200, small, Ink);
-            Text(c, $"Zapis prumer: {write}", left, y + 233, small, Ink);
+            Text(c, $"Čtení průměr: {read}", left, y + 200, small, Ink);
+            Text(c, $"Zápis průměr: {write}", left, y + 233, small, Ink);
         }
 
         float chartY = y + 265;
@@ -285,17 +285,17 @@ internal static class CertificatePdfPageRenderer
         else
         {
             Box(c, left, chartY, available, chartHeight, SKColors.White, 6);
-            Text(c, "Graf pro tento typ testu neni k dispozici.", left + 20, chartY + 45, body, Muted);
+            Text(c, "Graf pro tento typ testu není k dispozici.", left + 20, chartY + 45, body, Muted);
         }
 
-        Text(c, "KOMENTAR TESTU", left, y + 606, small, Blue);
-        Wrapped(c, string.IsNullOrWhiteSpace(cert.Notes) ? cert.SeekTestSummary ?? "Bez poznamek." : cert.Notes,
+        Text(c, "KOMENTÁŘ TESTU", left, y + 606, small, Blue);
+        Wrapped(c, string.IsNullOrWhiteSpace(cert.Notes) ? cert.SeekTestSummary ?? "Bez poznámek." : cert.Notes,
             left, y + 636, available, small, Ink, 6);
-        Text(c, "TECHNICKE POSOUZENI", left, y + 793, small, Blue);
+        Text(c, "TECHNICKÉ POSOUZENÍ", left, y + 793, small, Blue);
         Wrapped(c, string.IsNullOrWhiteSpace(cert.TechnicianAssessment)
-                ? "Bez doplnujiciho hodnoceni technika." : cert.TechnicianAssessment,
+                ? "Bez doplňujícího hodnocení technika." : cert.TechnicianAssessment,
             left, y + 821, available, small, Ink, 3);
-        Text(c, "DOPORUCENI", left, y + 932, small, Blue);
+        Text(c, "DOPORUČENÍ", left, y + 932, small, Blue);
         Wrapped(c, cert.RecommendationNotes, left, y + 958, available, tiny, Ink, 2);
     }
 
@@ -313,7 +313,7 @@ internal static class CertificatePdfPageRenderer
         float width, float height, SKFont small)
     {
         Box(c, x, y, width, height, SKColors.White, 6);
-        Text(c, "PRUBEH RYCHLOSTI (MB/s)", x + 15, y + 30, small, Blue);
+        Text(c, "PRŮBĚH RYCHLOSTI (MB/s)", x + 15, y + 30, small, Blue);
         var series = new List<(IReadOnlyList<double> Points, SKColor Color, string Label)>();
         if (cert.Sanitize1WritePoints.Count > 0 || cert.Sanitize2WritePoints.Count > 0)
         {
@@ -325,9 +325,9 @@ internal static class CertificatePdfPageRenderer
         else
         {
             if (!cert.IsReadOnlyTest && cert.WriteProfilePoints.Count > 0)
-                series.Add((cert.WriteProfilePoints, Red, "Zapis"));
+                series.Add((cert.WriteProfilePoints, Red, "Zápis"));
             if (cert.ReadProfilePoints.Count > 0)
-                series.Add((cert.ReadProfilePoints, Green, "Cteni"));
+                series.Add((cert.ReadProfilePoints, Green, "Čtení"));
         }
 
         float left = x + 40, top = y + 55, plotW = width - 60, plotH = height - 90;
@@ -356,7 +356,7 @@ internal static class CertificatePdfPageRenderer
         var values = cert.SeekLatencyPoints.Where(v => double.IsFinite(v) && v >= 0).Take(1024).ToArray();
         if (values.Length == 0)
         {
-            Text(c, "Ulozene body latence nejsou dostupne.", left + 12, top + 65, small, Muted);
+            Text(c, "Uložené body latence nejsou dostupné.", left + 12, top + 65, small, Muted);
             return;
         }
 
