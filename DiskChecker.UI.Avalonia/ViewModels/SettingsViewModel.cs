@@ -19,6 +19,16 @@ namespace DiskChecker.UI.Avalonia.ViewModels
     {
         private readonly ISettingsService _settingsService;
         private readonly IEmailSettingsService _emailSettingsService;
+        private readonly IEmailSender _emailSender;
+        private string _smtpHost = string.Empty;
+        private int _smtpPort = 587;
+        private bool _smtpUseTls = true;
+        private string _smtpUserName = string.Empty;
+        private string _smtpPassword = string.Empty;
+        private bool _clearStoredSmtpPassword;
+        private bool _hasStoredSmtpPassword;
+        private string _smtpFromName = "DiskChecker";
+        private string _smtpFromAddress = string.Empty;
         private readonly IDialogService _dialogService;
         private readonly IBackupService _backupService;
         private readonly LocaleService _localizationService;
@@ -53,7 +63,7 @@ namespace DiskChecker.UI.Avalonia.ViewModels
         private int _smartProbeTimeoutSeconds;
         private int _smartProbeParallelismValue;
 
-        public SettingsViewModel(ISettingsService settingsService, IDialogService dialogService, IBackupService backupService, LocaleService localizationService, IDiskCacheService diskCacheService, INavigationService navigationService, IEmailSettingsService emailSettingsService)
+        public SettingsViewModel(ISettingsService settingsService, IDialogService dialogService, IBackupService backupService, LocaleService localizationService, IDiskCacheService diskCacheService, INavigationService navigationService, IEmailSettingsService emailSettingsService, IEmailSender emailSender)
         {
             _settingsService = settingsService ?? throw new ArgumentNullException(nameof(settingsService));
             _dialogService = dialogService ?? throw new ArgumentNullException(nameof(dialogService));
@@ -62,6 +72,7 @@ namespace DiskChecker.UI.Avalonia.ViewModels
             _diskCacheService = diskCacheService ?? throw new ArgumentNullException(nameof(diskCacheService));
             _navigationService = navigationService ?? throw new ArgumentNullException(nameof(navigationService));
             _emailSettingsService = emailSettingsService ?? throw new ArgumentNullException(nameof(emailSettingsService));
+            _emailSender = emailSender ?? throw new ArgumentNullException(nameof(emailSender));
             
             SaveSettingsCommand = new AsyncRelayCommand(SaveSettingsAsync, () => !IsSaving);
             ResetSettingsCommand = new AsyncRelayCommand(ResetSettingsAsync);
@@ -71,6 +82,7 @@ namespace DiskChecker.UI.Avalonia.ViewModels
             RefreshBackupsCommand = new AsyncRelayCommand(RefreshBackupsAsync);
             SetLanguageCommand = new RelayCommand<string>(SetLanguage);
             TestDatabaseConnectionCommand = new AsyncRelayCommand(TestDatabaseConnectionAsync, () => !IsSaving);
+            TestSmtpCommand = new AsyncRelayCommand(TestSmtpAsync, () => !IsSaving && IsEmailAttachmentAvailable);
             GoBackCommand = new RelayCommand(() => _navigationService.NavigateTo<DiskSelectionViewModel>());
             OpenDataFolderCommand = new AsyncRelayCommand(OpenDataFolderAsync);
             ClearCacheCommand = new RelayCommand(ClearCache);
@@ -168,6 +180,7 @@ namespace DiskChecker.UI.Avalonia.ViewModels
                     SaveSettingsCommand.NotifyCanExecuteChanged();
                     CreateBackupCommand.NotifyCanExecuteChanged();
                     RestoreBackupCommand.NotifyCanExecuteChanged();
+                    TestSmtpCommand.NotifyCanExecuteChanged();
                     OnPropertyChanged(nameof(IsNavigationBlocked));
                 }
             }
@@ -213,8 +226,24 @@ namespace DiskChecker.UI.Avalonia.ViewModels
         public bool IsEmailAttachmentAvailable
         {
             get => _isEmailAttachmentAvailable;
-            private set => SetProperty(ref _isEmailAttachmentAvailable, value);
+            private set
+            {
+                if (SetProperty(ref _isEmailAttachmentAvailable, value))
+                    TestSmtpCommand.NotifyCanExecuteChanged();
+            }
         }
+
+        // The password is never loaded into a UI-bound property.
+        // Empty input preserves the existing secret unless ClearStoredSmtpPassword is checked.
+        public string SmtpHost { get => _smtpHost; set => SetProperty(ref _smtpHost, value); }
+        public int SmtpPort { get => _smtpPort; set => SetProperty(ref _smtpPort, value); }
+        public bool SmtpUseTls { get => _smtpUseTls; set => SetProperty(ref _smtpUseTls, value); }
+        public string SmtpUserName { get => _smtpUserName; set => SetProperty(ref _smtpUserName, value); }
+        public string SmtpPassword { get => _smtpPassword; set => SetProperty(ref _smtpPassword, value); }
+        public bool ClearStoredSmtpPassword { get => _clearStoredSmtpPassword; set => SetProperty(ref _clearStoredSmtpPassword, value); }
+        public bool HasStoredSmtpPassword { get => _hasStoredSmtpPassword; private set => SetProperty(ref _hasStoredSmtpPassword, value); }
+        public string SmtpFromName { get => _smtpFromName; set => SetProperty(ref _smtpFromName, value); }
+        public string SmtpFromAddress { get => _smtpFromAddress; set => SetProperty(ref _smtpFromAddress, value); }
 
         public bool EmailIncludeCertificateAttachment
         {
@@ -246,6 +275,7 @@ namespace DiskChecker.UI.Avalonia.ViewModels
         public IRelayCommand<string> SetLanguageCommand { get; }
         public IRelayCommand GoBackCommand { get; }
         public IAsyncRelayCommand OpenDataFolderCommand { get; }
+        public IAsyncRelayCommand TestSmtpCommand { get; }
         public IRelayCommand ClearCacheCommand { get; }
         public IAsyncRelayCommand TestDatabaseConnectionCommand { get; }
     public IRelayCommand NavigateToExportImportCommand { get; }
@@ -295,6 +325,15 @@ namespace DiskChecker.UI.Avalonia.ViewModels
                 {
                     var smtp = await _emailSettingsService.GetAsync();
                     EmailIncludeCertificateAttachment = smtp.IncludeCertificateAttachment;
+                    SmtpHost = smtp.Host;
+                    SmtpPort = smtp.Port;
+                    SmtpUseTls = smtp.UseSsl;
+                    SmtpUserName = smtp.UserName;
+                    SmtpPassword = string.Empty;
+                    ClearStoredSmtpPassword = false;
+                    HasStoredSmtpPassword = !string.IsNullOrEmpty(smtp.Password);
+                    SmtpFromName = smtp.FromName;
+                    SmtpFromAddress = smtp.FromAddress;
                     IsEmailAttachmentAvailable = true;
                 }
                 catch (Exception ex) when (ex is InvalidOperationException or Microsoft.EntityFrameworkCore.DbUpdateException or System.Data.Common.DbException or IOException)
@@ -341,7 +380,9 @@ namespace DiskChecker.UI.Avalonia.ViewModels
             }
         }
 
-        private async Task SaveSettingsAsync()
+        private async Task SaveSettingsAsync() => await SaveSettingsCoreAsync();
+
+        private async Task<bool> SaveSettingsCoreAsync()
         {
             try
             {
@@ -353,6 +394,13 @@ namespace DiskChecker.UI.Avalonia.ViewModels
                     SmartProbeTimeoutSeconds is < 1 or > 300 ||
                     UsbRecoveryRetryCount is < 0 or > 10)
                     throw new InvalidOperationException(L.Get("Settings.InvalidNumberRange"));
+                if (IsEmailAttachmentAvailable)
+                {
+                    if (SmtpPort is < 1 or > 65535)
+                        throw new InvalidOperationException(L.Get("Settings.SmtpInvalidPort"));
+                    if (!SmtpUseTls && !string.IsNullOrWhiteSpace(SmtpUserName))
+                        throw new InvalidOperationException(L.Get("Settings.SmtpNoPlaintextCredentials"));
+                }
 
                 // Uložíme nastavení do služby
                 await _settingsService.SetAutoCheckForUpdatesAsync(AutoCheckForUpdates);
@@ -368,11 +416,19 @@ namespace DiskChecker.UI.Avalonia.ViewModels
                 if (IsEmailAttachmentAvailable)
                 {
                     var smtp = await _emailSettingsService.GetAsync();
-                    if (smtp.IncludeCertificateAttachment != EmailIncludeCertificateAttachment)
-                    {
-                        smtp.IncludeCertificateAttachment = EmailIncludeCertificateAttachment;
-                        await _emailSettingsService.SaveAsync(smtp);
-                    }
+                    smtp.Host = SmtpHost.Trim();
+                    smtp.Port = SmtpPort;
+                    smtp.UseSsl = SmtpUseTls;
+                    smtp.UserName = SmtpUserName.Trim();
+                    smtp.FromName = SmtpFromName.Trim();
+                    smtp.FromAddress = SmtpFromAddress.Trim();
+                    smtp.IncludeCertificateAttachment = EmailIncludeCertificateAttachment;
+                    if (ClearStoredSmtpPassword) smtp.Password = string.Empty;
+                    else if (!string.IsNullOrEmpty(SmtpPassword)) smtp.Password = SmtpPassword;
+                    await _emailSettingsService.SaveAsync(smtp);
+                    HasStoredSmtpPassword = !string.IsNullOrEmpty(smtp.Password);
+                    SmtpPassword = string.Empty;
+                    ClearStoredSmtpPassword = false;
                     await _settingsService.SetEmailIncludeCertificateAttachmentAsync(EmailIncludeCertificateAttachment);
                 }
                 await _settingsService.SetUsbRecoveryRetryCountAsync(UsbRecoveryRetryCount);
@@ -392,12 +448,46 @@ namespace DiskChecker.UI.Avalonia.ViewModels
                     !string.Equals(_localizationService.CurrentLocale, Language, StringComparison.OrdinalIgnoreCase))
                     _localizationService.SetLocale(Language);
 
-                StatusMessage = "Nastavení úspěšně uloženo";
+                StatusMessage = L.Get("Settings.Saved");
+                return true;
             }
             catch (Exception ex)
             {
                 StatusMessage = $"Chyba při ukládání nastavení: {ex.Message}";
                 await _dialogService.ShowErrorAsync(L.Get("Common.Error"), string.Format(L.Get("Common.SettingsSaveFailed"), ex.Message));
+                return false;
+            }
+            finally
+            {
+                IsSaving = false;
+            }
+        }
+
+        private async Task TestSmtpAsync()
+        {
+            if (!IsEmailAttachmentAvailable) return;
+            // The test uses the same persisted server settings and the same
+            // sender as automatic completion emails; no simulated success.
+            if (!await SaveSettingsCoreAsync()) return;
+            IsSaving = true;
+            try
+            {
+                if (string.IsNullOrWhiteSpace(ReportRecipientEmail))
+                    throw new InvalidOperationException(L.Get("Settings.SmtpRecipientRequired"));
+                StatusMessage = L.Get("Settings.SmtpSendingTest");
+                await _emailSender.SendAsync(new EmailMessage
+                {
+                    ToAddress = ReportRecipientEmail.Trim(),
+                    Subject = L.Get("Settings.SmtpTestSubject"),
+                    TextBody = L.Get("Settings.SmtpTestBody")
+                });
+                StatusMessage = L.Get("Settings.SmtpTestAccepted");
+                await _dialogService.ShowSuccessAsync(L.Get("Settings.SmtpTestTitle"), StatusMessage);
+            }
+            catch (Exception ex)
+            {
+                StatusMessage = L.Get("Settings.SmtpTestFailed") + ": " + ex.Message;
+                await _dialogService.ShowErrorAsync(L.Get("Common.Error"), StatusMessage);
             }
             finally
             {
