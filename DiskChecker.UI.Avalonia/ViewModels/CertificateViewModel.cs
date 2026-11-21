@@ -74,6 +74,8 @@ public partial class CertificateViewModel : ViewModelBase, INavigableViewModel
    private string _selectedSessionSmartSummary = string.Empty;
    private TestSession? _selectedSessionItem;
    private TestSession? _selectedPairSession;
+   private int _sessionSelectionGeneration;
+   private bool _initializingSessionSelection;
 
    public CertificateViewModel(
        ICertificateGenerator certificateGenerator,
@@ -418,7 +420,9 @@ public partial class CertificateViewModel : ViewModelBase, INavigableViewModel
          if(SetProperty(ref _selectedSessionItem, value))
          {
             RefreshPairCandidates(value);
-            _ = SelectSessionAsync(value);
+            int generation = ++_sessionSelectionGeneration;
+            if(!_initializingSessionSelection)
+               _ = SelectSessionAsync(value, generation);
          }
       }
    }
@@ -1105,20 +1109,23 @@ public partial class CertificateViewModel : ViewModelBase, INavigableViewModel
    /// <summary>
    /// Updates in-app certificate preview to selected test session.
    /// </summary>
-   private async Task SelectSessionAsync(TestSession? session)
+   private async Task SelectSessionAsync(TestSession? session, int generation)
    {
       if(session == null)
       {
          return;
       }
 
-      _selectedSession = await _diskCardRepository.GetTestSessionWithoutSamplesAsync(session.Id) ?? session;
+      var loaded = await _diskCardRepository.GetTestSessionWithoutSamplesAsync(session.Id) ?? session;
+      if(generation != _sessionSelectionGeneration) return;
+      _selectedSession = loaded;
       if(Certificate == null)
       {
          return;
       }
 
       var card = await _diskCardRepository.GetByIdAsync(_selectedSession.DiskCardId);
+      if(generation != _sessionSelectionGeneration) return;
       if(card == null)
       {
          return;
@@ -1137,10 +1144,14 @@ public partial class CertificateViewModel : ViewModelBase, INavigableViewModel
       var matching = (await _diskCardRepository.GetCertificatesAsync(card.Id))
          .Where(c => c.TestSessionId == _selectedSession.Id)
          .OrderByDescending(c => c.GeneratedAt).FirstOrDefault();
+      if(generation != _sessionSelectionGeneration) return;
       _selectedDiskService.SelectedCertificateId = matching?.Id;
-      Certificate = matching ?? await _certificateGenerator.GenerateCertificateAsync(_selectedSession, card);
+      var newCertificate = matching ?? await _certificateGenerator.GenerateCertificateAsync(_selectedSession, card);
+      if(generation != _sessionSelectionGeneration) return;
+      Certificate = newCertificate;
       await PrepareCertificateGraphAsync(Certificate, updateView: true);
-      UpdateDetailedSummaries(_selectedSession);
+      if(generation == _sessionSelectionGeneration)
+         UpdateDetailedSummaries(_selectedSession);
    }
 
    [RelayCommand]
@@ -1301,7 +1312,9 @@ public partial class CertificateViewModel : ViewModelBase, INavigableViewModel
             if(_selectedSession != null)
             {
                UpdateDetailedSummaries(_selectedSession);
-               SelectedSessionItem = AvailableSessions.FirstOrDefault(s => s.Id == _selectedSession.Id);
+               _initializingSessionSelection = true;
+               try { SelectedSessionItem = AvailableSessions.FirstOrDefault(s => s.Id == _selectedSession.Id); }
+               finally { _initializingSessionSelection = false; }
             }
             StatusMessage = string.Format(L.Get("CertificateView.Status.Loaded"), latestCert.CertificateNumber);
           }
