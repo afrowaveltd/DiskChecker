@@ -34,7 +34,7 @@ public sealed class SettingsViewModelInteractionTests
             smtp.GetAsync(Arg.Any<CancellationToken>())
                 .Returns(Task.FromResult(new EmailSettings { IncludeCertificateAttachment = true }));
             var vm = new SettingsViewModel(settings, dialog, backup,
-                new LocaleService(), cache, Substitute.For<INavigationService>(), smtp);
+                new LocaleService(), cache, Substitute.For<INavigationService>(), smtp, Substitute.For<IEmailSender>());
 
             vm.DefaultExportPath = "original";
             await vm.BrowseExportPathCommand.ExecuteAsync(null);
@@ -80,7 +80,7 @@ public sealed class SettingsViewModelInteractionTests
             smtp.GetAsync(Arg.Any<CancellationToken>()).Returns(
                 Task.FromException<EmailSettings>(new InvalidOperationException("SMTP database unavailable")));
             var vm = new SettingsViewModel(settings, dialog, backup, new LocaleService(),
-                Substitute.For<IDiskCacheService>(), Substitute.For<INavigationService>(), smtp);
+                Substitute.For<IDiskCacheService>(), Substitute.For<INavigationService>(), smtp, Substitute.For<IEmailSender>());
             Assert.False(vm.IsEmailAttachmentAvailable);
 
             vm.Language = "en";

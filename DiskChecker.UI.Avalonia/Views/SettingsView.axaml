@@ -105,6 +105,50 @@
                     </StackPanel>
                 </Border>
 
+                <!-- SMTP settings come from EmailSettingsService in the active database. -->
+                <Border Background="{DynamicResource ThemeCardBackgroundBrush}"
+                        BorderBrush="{DynamicResource ThemeBorderBrush}" BorderThickness="1"
+                        CornerRadius="8" Padding="16" IsEnabled="{Binding IsEmailAttachmentAvailable}">
+                    <StackPanel Spacing="10">
+                        <TextBlock Text="{Binding L[Settings.SmtpTitle]}" FontSize="14" FontWeight="Bold"/>
+                        <TextBlock Text="{Binding L[Settings.SmtpHelp]}" TextWrapping="Wrap"
+                                   Foreground="{DynamicResource ThemeTextSecondaryBrush}" FontSize="11"/>
+                        <Grid ColumnDefinitions="200,*">
+                            <TextBlock Text="{Binding L[Settings.SmtpHost]}" VerticalAlignment="Center"/>
+                            <TextBox Grid.Column="1" Text="{Binding SmtpHost}" Watermark="smtp.example.org"/>
+                        </Grid>
+                        <Grid ColumnDefinitions="200,*">
+                            <TextBlock Text="{Binding L[Settings.SmtpPort]}" VerticalAlignment="Center"/>
+                            <TextBox Grid.Column="1" Text="{Binding SmtpPort}"/>
+                        </Grid>
+                        <Grid ColumnDefinitions="200,*">
+                            <TextBlock Text="{Binding L[Settings.SmtpTls]}" VerticalAlignment="Center"/>
+                            <CheckBox Grid.Column="1" IsChecked="{Binding SmtpUseSsl}"
+                                      Content="{Binding L[Settings.SmtpTlsHint]}"/>
+                        </Grid>
+                        <Grid ColumnDefinitions="200,*">
+                            <TextBlock Text="{Binding L[Settings.SmtpUser]}" VerticalAlignment="Center"/>
+                            <TextBox Grid.Column="1" Text="{Binding SmtpUserName}"/>
+                        </Grid>
+                        <Grid ColumnDefinitions="200,*">
+                            <TextBlock Text="{Binding L[Settings.SmtpPassword]}" VerticalAlignment="Center"/>
+                            <TextBox Grid.Column="1" Text="{Binding SmtpPassword}" PasswordChar="*"
+                                     Watermark="{Binding L[Settings.SmtpPasswordHint]}"/>
+                        </Grid>
+                        <Grid ColumnDefinitions="200,*">
+                            <TextBlock Text="{Binding L[Settings.SmtpFromName]}" VerticalAlignment="Center"/>
+                            <TextBox Grid.Column="1" Text="{Binding SmtpFromName}"/>
+                        </Grid>
+                        <Grid ColumnDefinitions="200,*">
+                            <TextBlock Text="{Binding L[Settings.SmtpFromAddress]}" VerticalAlignment="Center"/>
+                            <TextBox Grid.Column="1" Text="{Binding SmtpFromAddress}" Watermark="diskchecker@example.org"/>
+                        </Grid>
+                        <Button Content="{Binding L[Settings.SmtpTestButton]}"
+                                Command="{Binding TestSmtpEmailCommand}"
+                                HorizontalAlignment="Left" Padding="12,6"/>
+                    </StackPanel>
+                </Border>
+
                 <!-- Test Settings -->
                 <Border Background="{DynamicResource ThemeCardBackgroundBrush}"
                        BorderBrush="{DynamicResource ThemeBorderBrush}"
