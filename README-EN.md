@@ -384,3 +384,7 @@ trust store if applicable.
 The SMTP password is persisted in the application configuration database,
 not a system keychain; protect that database and its backups. An SMTP server
 accepting a message is not proof of final inbox delivery.
+
+Automatic PDF certificate email also covers completed seek, safe destructive
+and absolute destructive tests when their certificates were persisted.
+It never runs for a cancelled test or for an image-only backup mode.

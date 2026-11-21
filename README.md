@@ -415,3 +415,8 @@ je třeba přidat do systémového úložiště certifikátů.
 SMTP heslo je uložené v konfigurační databázi aplikace, nikoli v systémové
 klíčence; dbejte na práva k databázi a jejím zálohám. Samotné přijetí
 zprávy SMTP serverem nezaručuje její doručení do cílové schránky.
+
+Automatický e-mail s PDF certifikátem se nyní vztahuje na dokončené
+povrchové, Seek, bezpečné a absolutní destruktivní testy. Odesílání
+nenahrazuje ruční prohlížení výsledků; vyžaduje skutečně uložený
+certifikát a vyplněnou cílovou adresu.

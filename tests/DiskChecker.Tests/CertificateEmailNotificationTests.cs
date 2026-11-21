@@ -82,4 +82,68 @@ public sealed class CertificateEmailNotificationTests
                 new SurfaceTestResult(), "technician@example.net", null,
                 cancellationToken: TestContext.Current.CancellationToken));
     }
+    [Fact]
+    public async Task StoredSeekCertificateUsesItsRealPdfAndNoFakeSurfaceSamples()
+    {
+        var temp = Path.Combine(Path.GetTempPath(), $"dc-mail-{Guid.NewGuid():N}.pdf");
+        try
+        {
+            File.WriteAllBytes(temp, new byte[] { 37, 80, 68, 70, 45, 49, 46, 52 });
+            var sender = Substitute.For<IEmailSender>();
+            var smtp = Substitute.For<IEmailSettingsService>();
+            smtp.GetAsync(Arg.Any<CancellationToken>())
+                .Returns(Task.FromResult(new EmailSettings { IncludeCertificateAttachment = true }));
+            var appSettings = Substitute.For<ISettingsService>();
+            appSettings.GetReportRecipientEmailAsync()
+                .Returns(Task.FromResult("recipient@example.net"));
+            var generator = Substitute.For<ICertificateGenerator>();
+            generator.GeneratePdfAsync(Arg.Any<DiskCertificate>()).Returns(Task.FromResult(temp));
+            var locale = Substitute.For<ILocaleProvider>();
+            locale.GetString(Arg.Any<string>(), Arg.Any<string>())
+                .Returns(call => call.ArgAt<string>(1));
+            var notify = new TestCompletionNotificationService(sender, smtp,
+                NullLogger<TestCompletionNotificationService>.Instance,
+                locale, appSettings, generator);
+            var cert = new DiskCertificate
+            {
+                DiskCardId = 11, TestSessionId = 22, Grade = "B",
+                DiskModel = "Seek SSD", TestType = "Seek"
+            };
+
+            Assert.True(await notify.SendStoredCertificateIfConfiguredAsync(
+                cert, TestContext.Current.CancellationToken));
+            await sender.Received(1).SendAsync(
+                Arg.Is<EmailMessage>(msg =>
+                    msg.ToAddress == "recipient@example.net" &&
+                    msg.Attachments.Count == 1 &&
+                    msg.Attachments[0].ContentType == "application/pdf" &&
+                    !msg.HtmlBody!.Contains("Vzorky:")), Arg.Any<CancellationToken>());
+        }
+        finally
+        {
+            if (File.Exists(temp)) File.Delete(temp);
+        }
+    }
+
+    [Fact]
+    public async Task NoRecipientNeverSendsStoredCertificate()
+    {
+        var sender = Substitute.For<IEmailSender>();
+        var smtp = Substitute.For<IEmailSettingsService>();
+        var appSettings = Substitute.For<ISettingsService>();
+        appSettings.GetReportRecipientEmailAsync()
+            .Returns(Task.FromResult(string.Empty));
+        var generator = Substitute.For<ICertificateGenerator>();
+        var locale = Substitute.For<ILocaleProvider>();
+        var notify = new TestCompletionNotificationService(sender, smtp,
+            NullLogger<TestCompletionNotificationService>.Instance,
+            locale, appSettings, generator);
+
+        Assert.False(await notify.SendStoredCertificateIfConfiguredAsync(
+            new DiskCertificate { DiskCardId = 1, TestSessionId = 2 },
+            TestContext.Current.CancellationToken));
+        await sender.DidNotReceiveWithAnyArgs().SendAsync(default!, Arg.Any<CancellationToken>());
+        await generator.DidNotReceiveWithAnyArgs().GeneratePdfAsync(default!);
+    }
+
 }

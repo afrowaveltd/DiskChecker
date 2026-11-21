@@ -128,3 +128,15 @@ uživateli chybu namísto falešného úspěchu.
   v lokální databázi konfigurace SMTP; chraňte soubor databáze a zálohy.
 - Dočasná omezení: automatické odesílání je zapojeno pro dokončené
   povrchové testy; další druhy testů je třeba postupně sjednotit samostatně.
+
+### Automatické PDF pro všechny typy dokončených testů
+
+Po dokončení a uložení certifikátu se společná e-mailová služba volá
+pro povrchový, Seek, absolutní destruktivní a bezpečný destruktivní test.
+V bezpečném destruktivním režimu až po obnovení dat; u absolutního
+destruktivního režimu až po finální fázi. U všech platí volitelný
+příjemce a SMTP přepínač PDF příloh. Nezměřené vzorky se
+neprezentují jako syntetický výsledek povrchového testu.
+Záložní režim `ImageRoundTrip` není diskový test a neposílá
+certifikát jako otestovaný disk. SMTP chyby se hlásí nezávisle
+na uloženém výsledku.
