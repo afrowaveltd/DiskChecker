@@ -115,6 +115,36 @@ public class AnalysisSelectionTests
         Assert.Equal(2, vm.SelectedSummary?.TestSessionId);
     }
 
+    [Fact]
+    public async Task ClearingSelectionWhileRequestRuns_ReleasesBusyStateAndRejectsLateResult()
+    {
+        var dialog = Substitute.For<IDialogService>();
+        var analysis = Substitute.For<ITestAnalysisDataService>();
+        var repo = Substitute.For<IDiskCardRepository>();
+        var settings = Substitute.For<ISettingsService>();
+        settings.GetAnalysisWorkspaceModeAsync().Returns(Task.FromResult(AnalysisWorkspaceMode.Compact));
+        repo.GetAllAsync().Returns(Task.FromResult(new List<DiskCard>()));
+
+        var pending = new TaskCompletionSource<TestAnalysisData?>(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        analysis.GetAnalysisDataAsync(99, Arg.Any<CancellationToken>())
+            .Returns(_ => pending.Task);
+
+        var vm = new AnalysisViewModel(
+            dialog, analysis, repo, settings, new SmartTrendService(repo));
+        vm.SelectedSummary = new TestAnalysisSummary { TestSessionId = 99, DiskCardId = 7 };
+        Assert.True(vm.IsLoadingAnalysis);
+
+        vm.SelectedSummary = null;
+        Assert.Null(vm.AnalysisData);
+        Assert.False(vm.IsLoadingAnalysis);
+
+        pending.SetResult(new TestAnalysisData { Session = new TestSession { Id = 99 } });
+        await Task.Delay(50, TestContext.Current.CancellationToken);
+        Assert.Null(vm.AnalysisData);
+        Assert.False(vm.IsLoadingAnalysis);
+    }
+
     private static AnalysisViewModel CreateViewModel()
     {
         var dialog = Substitute.For<IDialogService>();
