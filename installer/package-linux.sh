@@ -41,7 +41,7 @@ RPM_TOP="${STAGE}/rpmbuild"
 mkdir -p "${RPM_TOP}"/{BUILD,BUILDROOT,RPMS,SOURCES,SPECS,SRPMS}
 rpmbuild -bb installer/diskchecker.spec \
   --define "_topdir ${RPM_TOP}" \
-  --define "_builddir ${ROOT}" \
+  --define "_diskchecker_source ${ROOT}" \
   --define "_sourcedir ${ROOT}" \
   --define "debug_package %{nil}"
 find "${RPM_TOP}/RPMS" -name '*.rpm' -type f -exec cp -f {} "${PACKAGES}/" \;
