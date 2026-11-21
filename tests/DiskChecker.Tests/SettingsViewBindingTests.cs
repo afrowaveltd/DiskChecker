@@ -55,16 +55,16 @@ public sealed class SettingsViewBindingTests(SeekUiFixture fixture)
                     await Task.Delay(30);
 
                     var inputs = window.GetVisualDescendants().OfType<TextBox>().ToList();
-                    var host = Assert.Single(inputs.Where(c => c.Name == "SmtpHostInput"));
+                    var host = Assert.Single(inputs, c => c.Name == "SmtpHostInput");
                     Assert.Equal("smtp.example.net", host.Text);
                     vm.SmtpHost = "mail.example.net";
                     Assert.Equal("mail.example.net", host.Text);
-                    var secret = Assert.Single(inputs.Where(c => c.Name == "SmtpPasswordInput"));
+                    var secret = Assert.Single(inputs, c => c.Name == "SmtpPasswordInput");
                     Assert.Equal(string.Empty, secret.Text);
                     Assert.Equal('●', secret.PasswordChar);
 
-                    var backupPicker = Assert.Single(window.GetVisualDescendants().OfType<ComboBox>()
-                        .Where(c => c.Name == "BackupSelection"));
+                    var backupPicker = Assert.Single(window.GetVisualDescendants().OfType<ComboBox>(),
+                        c => c.Name == "BackupSelection");
                     Assert.Single(vm.AvailableBackups);
                     backupPicker.SelectedItem = vm.AvailableBackups[0];
                     Assert.Same(vm.AvailableBackups[0], vm.SelectedBackup);
