@@ -1789,7 +1789,22 @@ public partial class CertificateViewModel : ViewModelBase, INavigableViewModel
 
        var writeGraphSamples = _writeGraphSamples;
        var readGraphSamples = _readGraphSamples;
-       var temperatureSamples = _selectedSession?.TemperatureSamples ?? [];
+       IReadOnlyList<TemperatureSample> temperatureSamples = _selectedSession?.TemperatureSamples ?? [];
+       if(certificate.TestSessionId > 0)
+       {
+          try
+          {
+             // The light session endpoint deliberately omits owned samples.
+             // Query a bounded temperature series directly from persisted data.
+             temperatureSamples = await _diskCardRepository.GetTemperatureSampleSeriesDownsampledAsync(
+                certificate.TestSessionId, 256);
+             if(!ReferenceEquals(certificate, Certificate)) return;
+          }
+          catch(Exception ex) when(ex is DbException or IOException or InvalidOperationException)
+          {
+             // Older databases may lack the optional temperature series.
+          }
+       }
        HasThroughputChart = writeGraphSamples.Any(s => s.SpeedMBps > 0) ||
           readGraphSamples.Any(s => s.SpeedMBps > 0) ||
           certificate.WriteProfilePoints.Any(v => v > 0) ||
