@@ -115,6 +115,24 @@ public sealed class CertificateChartAccuracyTests
         Assert.DoesNotContain("886,", graph.ReadProfilePoints);
     }
 
+    [Fact]
+    public void LongHistoricalSpeedProfile_RetainsTheEndAndZeroSpeedStalls()
+    {
+        var history = Enumerable.Range(0, 3700)
+            .Select(i => i == 3692 ? 0d : 95d).ToList();
+        var certificate = new DiskCertificate
+        {
+            TestType = "FullRead",
+            ReadProfilePoints = history
+        };
+        var graph = CertificateChartProjector.Build(certificate, [], []);
+        var pixels = graph.ReadProfilePoints.Split(' ');
+
+        Assert.InRange(pixels.Length, 1, CertificateChartProjector.MaxSamplesPerPhase);
+        Assert.Contains("886,", graph.ReadProfilePoints);
+        Assert.Contains("226", graph.ReadProfilePoints);
+    }
+
     private static SeekSampleRecord Point(SeekTestType type, int index, double ms) => new()
     {
         TestType = type, Index = index, LatencyMs = ms
