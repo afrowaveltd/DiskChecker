@@ -267,6 +267,7 @@ namespace DiskChecker.UI.Avalonia.ViewModels
                         };
                         _selectedDiskService.SelectedDiskDisplayName = card.ModelName;
                         _selectedDiskService.IsSelectedDiskLocked = card.IsLocked;
+                        _selectedDiskService.SelectedDiskCardId = card.Id;
 
                         var sessions = await _diskCardRepository.GetTestSessionsAsync(card.Id);
                         var targetSession = sessions
