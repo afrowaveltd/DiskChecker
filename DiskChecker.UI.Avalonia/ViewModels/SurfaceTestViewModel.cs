@@ -1463,10 +1463,10 @@ public partial class SurfaceTestViewModel : ViewModelBase, INavigableViewModel, 
 
                var savedSession = await _cardTestService.SaveSanitizationAsync(card, result, writeSamples, readSamples, smartSnapshot, smartAfterSnapshot, _borrowedSmartProvenance, cancellationToken);
                CommitTelemetryArchive(savedSession.SessionId);
-               await TrySendSavedCertificateAsync(savedSession, card, cancellationToken);
 
                StatusMessage = L.Get("SurfaceTest.Status.SanitizeSaved", card.ModelName, (writeSamples.Count + readSamples.Count).ToString());
                SetStatusMessage(L.Get("SurfaceTest.Status.SanitizeSavedSimple", card.ModelName));
+               await TrySendSavedCertificateAsync(savedSession, card, cancellationToken);
              }
              catch (InvalidOperationException ex)
              {

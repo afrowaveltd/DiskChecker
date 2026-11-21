@@ -1086,13 +1086,13 @@ public partial class AbsoluteDestructiveTestViewModel : ViewModelBase, INavigabl
 
             // Save test session
             await SaveTestSessionAsync();
-            await TryNotifyCertificateAsync(ct);
 
             SetPhase(6, TestPhaseStatus.Completed, "Hotovo — certifikát připraven");
             IsCompleted = true;
             HasResults = true;
             IsCertificateReady = true;
             StatusMessage = L.Get("DestructiveTest.Completed");
+            await TryNotifyCertificateAsync(ct);
         }, ct);
 
         // Phase 7: Create partition
