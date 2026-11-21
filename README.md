@@ -420,3 +420,23 @@ Automatický e-mail s PDF certifikátem se nyní vztahuje na dokončené
 povrchové, Seek, bezpečné a absolutní destruktivní testy. Odesílání
 nenahrazuje ruční prohlížení výsledků; vyžaduje skutečně uložený
 certifikát a vyplněnou cílovou adresu.
+
+
+### Testovací instalátory před vydáním
+
+Pro Windows (x64) a Linux (x64) existuje workflow
+[Build test installers (no release)](.github/workflows/test-installers.yml).
+Na PR nebo ruční spuštění sestaví self-contained program a nahraje artefakty
+Windows Setup EXE, Linux DEB, RPM a archiv s `install-linux.sh`.
+Jde o **testovací balíčky**, nikoli veřejný release.
+
+Program pro práci s fyzickými disky vyžaduje práva správce:
+ve Windows je vyžaduje manifest aplikace, v Linuxu root/polkit.
+Ve **Nastavení → Složka PDF certifikátů** lze vybrat vlastní cestu,
+například složku testujícího uživatele při spuštění pod jiným
+administrátorským účtem. Certifikáty se ukládají do podsložky
+`Certificates`. Cesta se ukládá a platí pro další PDF bez restartu;
+při nedostupném adresáři export skončí jasnou chybou, nikoli přesunem
+výstupu do profilu správce.
+
+Podrobnosti a testovací postupy: [Linux instalace](docs/LINUX_INSTALL.md).
