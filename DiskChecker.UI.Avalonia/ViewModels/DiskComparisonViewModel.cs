@@ -1,6 +1,9 @@
 using System;
 using System.Collections.ObjectModel;
 using System.Linq;
+using System.Globalization;
+using System.IO;
+using System.Text;
 using System.Threading.Tasks;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
@@ -29,6 +32,7 @@ public partial class DiskComparisonViewModel : ViewModelBase, INavigableViewMode
     private DiskCard? _bestDisk;
     private bool _isLoading;
     private string _statusMessage = "Porovnání disků";
+    private int _selectionGeneration;
 
     public DiskComparisonViewModel(
         IDiskCardRepository diskCardRepository,
@@ -41,7 +45,8 @@ public partial class DiskComparisonViewModel : ViewModelBase, INavigableViewMode
         _navigationService = navigationService;
         _dialogService = dialogService;
 
-        ComparisonChartModel = new PlotModel { Title = "Porovnání výkonu" };
+        ComparisonChartModel = new PlotModel { Title = "Skóre zdraví (0–100)" };
+        SpeedChartModel = new PlotModel { Title = "Naměřená rychlost (MB/s)" };
     }
 
     #region Properties
@@ -80,7 +85,15 @@ public partial class DiskComparisonViewModel : ViewModelBase, INavigableViewMode
     public bool IsLoading
     {
         get => _isLoading;
-        set => SetProperty(ref _isLoading, value);
+        set
+        {
+            if (SetProperty(ref _isLoading, value))
+            {
+                OnPropertyChanged(nameof(CanCompare));
+                OnPropertyChanged(nameof(CanExport));
+                OnPropertyChanged(nameof(IsNotLoading));
+            }
+        }
     }
 
     public string StatusMessage
@@ -90,11 +103,16 @@ public partial class DiskComparisonViewModel : ViewModelBase, INavigableViewMode
     }
 
     public PlotModel ComparisonChartModel { get; }
+    public PlotModel SpeedChartModel { get; }
+    public bool CanCompare => SelectedDisks.Count >= 2 && !IsLoading;
+    public bool HasComparison => ComparisonResults.Count > 0;
+    public bool CanExport => HasComparison && !IsLoading;
+    public bool IsNotLoading => !IsLoading;
 
     public bool HasBestDisk => BestDisk != null;
-    public string BestDiskText => BestDisk != null
-        ? $"🏆 Nejlepší disk: {BestDisk.ModelName} (Známka: {BestDisk.OverallGrade}, Skóre: {BestDisk.OverallScore:F0})"
-        : "Vyberte disky k porovnání";
+    public string BestDiskText => ComparisonResults.Count > 0
+        ? $"🏆 {ComparisonResults[0].Disk.ModelName}: {ComparisonResults[0].Grade}, {ComparisonResults[0].Score:F0}/100"
+        : L.Get("DiskComparison.NeedTwo");
 
     #endregion
 
@@ -169,9 +187,9 @@ public partial class DiskComparisonViewModel : ViewModelBase, INavigableViewMode
     [RelayCommand]
     private async Task CompareDisksAsync()
     {
-        if (SelectedDisks.Count < 2)
+        if (SelectedDisks.Count < 2 || IsLoading)
         {
-            StatusMessage = "Vyberte alespoň 2 disky k porovnání";
+            StatusMessage = L.Get("DiskComparison.NeedTwo");
             return;
         }
 
@@ -181,7 +199,9 @@ public partial class DiskComparisonViewModel : ViewModelBase, INavigableViewMode
             StatusMessage = "Porovnávám disky...";
 
             var diskIds = SelectedDisks.Select(d => d.Disk.Id).ToList();
+            int generation = _selectionGeneration;
             var results = await _comparisonService.CompareAsync(diskIds);
+            if (generation != _selectionGeneration) return;
 
             ComparisonResults.Clear();
             foreach (var result in results.OrderBy(r => r.Rank))
@@ -193,7 +213,9 @@ public partial class DiskComparisonViewModel : ViewModelBase, INavigableViewMode
             UpdateChart();
 
             // Find best disk
-            BestDisk = results.FirstOrDefault()?.Disk;
+            BestDisk = results.OrderBy(r => r.Rank).FirstOrDefault()?.Disk;
+            OnPropertyChanged(nameof(HasComparison));
+            OnPropertyChanged(nameof(CanExport));
             StatusMessage = "Porovnání dokončeno";
         }
         catch (Exception ex)
@@ -295,64 +317,90 @@ public partial class DiskComparisonViewModel : ViewModelBase, INavigableViewMode
 
     private void SelectionChanged()
     {
+        _selectionGeneration++;
+        ComparisonResults.Clear();
+        BestDisk = null;
+        UpdateChart();
         OnPropertyChanged(nameof(SelectedDisks));
         OnPropertyChanged(nameof(CanCompare));
-
-        StatusMessage = $"Vybráno {SelectedDisks.Count} disků k porovnání";
+        OnPropertyChanged(nameof(HasComparison));
+        OnPropertyChanged(nameof(CanExport));
+        StatusMessage = L.Get("DiskComparison.SelectionCount", SelectedDisks.Count);
     }
 
-    private bool CanCompare => SelectedDisks.Count >= 2;
+    /// <summary>Export only the visible, real comparison results.</summary>
+    [RelayCommand]
+    private async Task ExportComparisonAsync()
+    {
+        if (!CanExport) return;
+        var path = await _dialogService.PickSaveFileAsync(
+            L.Get("DiskComparison.ExportTitle"), "disk-comparison.csv");
+        if (string.IsNullOrWhiteSpace(path)) return;
+        try
+        {
+            var csv = DiskComparisonCsvExporter.Build(ComparisonResults);
+            await File.WriteAllTextAsync(path, csv, new UTF8Encoding(true));
+            StatusMessage = L.Get("DiskComparison.ExportSuccess");
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException)
+        {
+            StatusMessage = ex.Message;
+            await _dialogService.ShowErrorAsync(L.Get("Common.Error"), ex.Message);
+        }
+    }
 
     private void UpdateChart()
     {
+        // Scores and throughput must NEVER share the same value axis.
+        // Distinct plots also avoid treating an unmeasured write phase as 0 MB/s.
         ComparisonChartModel.Series.Clear();
         ComparisonChartModel.Axes.Clear();
+        SpeedChartModel.Series.Clear();
+        SpeedChartModel.Axes.Clear();
 
-        if (ComparisonResults.Count == 0) return;
-
-        // Bar chart for scores
-        var scoreSeries = new OxyPlot.Series.BarSeries
-        {
-            Title = "Skóre",
-            LabelPlacement = LabelPlacement.Inside,
-            TextColor = OxyColors.White
-        };
-
-        var writeSpeedSeries = new OxyPlot.Series.BarSeries
-        {
-            Title = "Rychlost zápisu (MB/s)",
-            LabelPlacement = LabelPlacement.Inside,
-            TextColor = OxyColors.White
-        };
-
-        var readSpeedSeries = new OxyPlot.Series.BarSeries
-        {
-            Title = "Rychlost čtení (MB/s)",
-            LabelPlacement = LabelPlacement.Inside,
-            TextColor = OxyColors.White
-        };
-
-        var categoryAxis = new CategoryAxis { Title = "Disk", Position = AxisPosition.Bottom };
-
+        var scores = new BarSeries { Title = "Score" };
+        var writes = new BarSeries { Title = "Write MB/s" };
+        var reads = new BarSeries { Title = "Read MB/s" };
+        var scoreCategory = new CategoryAxis { Position = AxisPosition.Left, Title = "Disk" };
+        var speedCategory = new CategoryAxis { Position = AxisPosition.Left, Title = "Disk" };
+        int index = 0;
         foreach (var result in ComparisonResults)
         {
-            var label = result.Disk.ModelName.Length > 15
-                ? $"{result.Disk.ModelName[..12]}..."
-                : result.Disk.ModelName;
-
-            categoryAxis.Labels.Add(label);
-
-            scoreSeries.Items.Add(new OxyPlot.Series.BarItem(result.Score) { Color = GetScoreColor(result.Score) });
-            writeSpeedSeries.Items.Add(new OxyPlot.Series.BarItem(result.AvgWriteSpeed) { Color = OxyColors.Blue });
-            readSpeedSeries.Items.Add(new OxyPlot.Series.BarItem(result.AvgReadSpeed) { Color = OxyColors.Green });
+            string name = result.Disk.ModelName;
+            string label = name.Length > 20 ? name[..17] + "..." : name;
+            scoreCategory.Labels.Add(label);
+            speedCategory.Labels.Add(label);
+            if (double.IsFinite(result.Score))
+                scores.Items.Add(new BarItem(Math.Clamp(result.Score, 0d, 100d), index)
+                {
+                    Color = GetScoreColor(result.Score)
+                });
+            if (result.HasWriteMeasurement && double.IsFinite(result.AvgWriteSpeed) && result.AvgWriteSpeed >= 0)
+                writes.Items.Add(new BarItem(result.AvgWriteSpeed, index));
+            if (result.HasReadMeasurement && double.IsFinite(result.AvgReadSpeed) && result.AvgReadSpeed >= 0)
+                reads.Items.Add(new BarItem(result.AvgReadSpeed, index));
+            index++;
         }
 
-        ComparisonChartModel.Series.Add(scoreSeries);
-        ComparisonChartModel.Series.Add(writeSpeedSeries);
-        ComparisonChartModel.Series.Add(readSpeedSeries);
-        ComparisonChartModel.Axes.Add(categoryAxis);
-        ComparisonChartModel.Axes.Add(new LinearAxis { Title = "Hodnota", Position = AxisPosition.Left });
+        if (index > 0)
+        {
+            ComparisonChartModel.Series.Add(scores);
+            ComparisonChartModel.Axes.Add(scoreCategory);
+            ComparisonChartModel.Axes.Add(new LinearAxis
+            {
+                Title = "Score (0–100)", Position = AxisPosition.Bottom,
+                Minimum = 0, Maximum = 100
+            });
+            SpeedChartModel.Series.Add(writes);
+            SpeedChartModel.Series.Add(reads);
+            SpeedChartModel.Axes.Add(speedCategory);
+            SpeedChartModel.Axes.Add(new LinearAxis
+            {
+                Title = "MB/s", Position = AxisPosition.Bottom, Minimum = 0
+            });
+        }
         ComparisonChartModel.InvalidatePlot(true);
+        SpeedChartModel.InvalidatePlot(true);
     }
 
     private static OxyColor GetScoreColor(double score)

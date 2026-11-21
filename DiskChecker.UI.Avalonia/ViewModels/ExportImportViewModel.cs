@@ -37,6 +37,7 @@ public partial class ExportImportViewModel : ViewModelBase, INavigableViewModel,
     private readonly IDialogService _dialogService;
     private readonly INavigationService _navigationService;
     private readonly IBackupService _backupService;
+    private readonly ISettingsService _settingsService;
 
     private CancellationTokenSource? _operationCts;
     private bool _disposed;
@@ -96,13 +97,15 @@ public partial class ExportImportViewModel : ViewModelBase, INavigableViewModel,
         IDiskCardRepository repository,
         IDialogService dialogService,
         INavigationService navigationService,
-        IBackupService backupService)
+        IBackupService backupService,
+        ISettingsService settingsService)
     {
         _exportImportService = exportImportService;
         _repository = repository;
         _dialogService = dialogService;
         _navigationService = navigationService;
         _backupService = backupService;
+        _settingsService = settingsService;
 
         ExportCommand = new AsyncRelayCommand(ExecuteExportAsync, () => Phase == ExportImportPhase.Idle);
         ImportCommand = new AsyncRelayCommand(ExecuteImportAsync, () => Phase == ExportImportPhase.Idle);
@@ -184,7 +187,13 @@ public partial class ExportImportViewModel : ViewModelBase, INavigableViewModel,
 
             if (topLevel == null) return;
 
-            var defaultDir = _exportImportService.GetDefaultExportDirectory();
+            var preferredDirectory = await _settingsService.GetDefaultExportPathAsync();
+            // Settings page's export folder must actually affect the file picker.
+            // If it no longer exists, safely fall back to the app's export folder.
+            var defaultDir = !string.IsNullOrWhiteSpace(preferredDirectory) &&
+                             System.IO.Directory.Exists(preferredDirectory)
+                ? preferredDirectory
+                : _exportImportService.GetDefaultExportDirectory();
             var defaultFile = $"DiskChecker_Export_{DateTime.Now:yyyyMMdd_HHmmss}.json";
 
             var file = await topLevel.StorageProvider.SaveFilePickerAsync(new FilePickerSaveOptions

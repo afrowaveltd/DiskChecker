@@ -45,7 +45,7 @@ public class DiskComparisonService : IDiskComparisonService
         var sessionTasks = cards.Select(async card =>
         {
             var sessions = await _repository.GetTestSessionsAsync(card.Id);
-            return (Card: card, LatestSession: sessions.FirstOrDefault());
+            return (Card: card, LatestSession: sessions.OrderByDescending(s => s.CompletedAt ?? s.StartedAt).FirstOrDefault());
         });
 
         var sessions = await Task.WhenAll(sessionTasks);
@@ -66,6 +66,8 @@ public class DiskComparisonService : IDiskComparisonService
                     Grade = session.Grade,
                     AvgWriteSpeed = session.AverageWriteSpeedMBps,
                     AvgReadSpeed = session.AverageReadSpeedMBps,
+                    HasWriteMeasurement = session.BytesWritten > 0 || session.AverageWriteSpeedMBps > 0,
+                    HasReadMeasurement = session.BytesRead > 0 || session.AverageReadSpeedMBps > 0,
                     ErrorCount = session.Errors.Count + session.VerificationErrors,
                     Recommendation = recommendation
                 };
@@ -82,10 +84,10 @@ public class DiskComparisonService : IDiskComparisonService
         // Add cards without tests at the end
         var withoutTests = sessions
             .Where(s => s.LatestSession == null)
-            .Select(s => new DiskComparisonResult
+            .Select((s, index) => new DiskComparisonResult
             {
                 Disk = s.Card,
-                Rank = ranked.Count + 1,
+                Rank = ranked.Count + index + 1,
                 Score = 0,
                 Grade = "?",
                 AvgWriteSpeed = 0,
@@ -140,8 +142,8 @@ public class DiskComparisonService : IDiskComparisonService
         var sessions1 = await _repository.GetTestSessionsAsync(diskCardId1);
         var sessions2 = await _repository.GetTestSessionsAsync(diskCardId2);
 
-        var latest1 = sessions1.FirstOrDefault();
-        var latest2 = sessions2.FirstOrDefault();
+        var latest1 = sessions1.OrderByDescending(s => s.CompletedAt ?? s.StartedAt).FirstOrDefault();
+        var latest2 = sessions2.OrderByDescending(s => s.CompletedAt ?? s.StartedAt).FirstOrDefault();
 
         if (latest1 == null || latest2 == null)
         {
@@ -155,9 +157,15 @@ public class DiskComparisonService : IDiskComparisonService
             ? (writeDiff > 0 ? card1.ModelName : card2.ModelName)
             : (readDiff > 0 ? card1.ModelName : card2.ModelName);
 
-        var speedAdvantage = (int)((Math.Max(
-            Math.Abs(writeDiff) / latest2.AverageWriteSpeedMBps,
-            Math.Abs(readDiff) / latest2.AverageReadSpeedMBps) * 100));
+        // A read-only test can legitimately have no write measurement.
+        // Never divide by zero or misreport an infinite percentage.
+        var comparable = new List<double>();
+        if (latest1.AverageWriteSpeedMBps > 0 && latest2.AverageWriteSpeedMBps > 0)
+            comparable.Add(Math.Abs(writeDiff) / Math.Min(latest1.AverageWriteSpeedMBps, latest2.AverageWriteSpeedMBps));
+        if (latest1.AverageReadSpeedMBps > 0 && latest2.AverageReadSpeedMBps > 0)
+            comparable.Add(Math.Abs(readDiff) / Math.Min(latest1.AverageReadSpeedMBps, latest2.AverageReadSpeedMBps));
+        var percent = comparable.Count > 0 ? comparable.Max() * 100d : 0d;
+        var speedAdvantage = (int)Math.Clamp(Math.Round(percent), 0, int.MaxValue);
 
         var score1 = latest1.Score;
         var score2 = latest2.Score;

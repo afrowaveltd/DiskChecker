@@ -36,3 +36,75 @@ U `Settings.ExportImport` se současně opravila vazba tlačítka na
 parent-selector výrazu. Kontrola zahrnovala pouze deklarované XAML
 lokalizační klíče; dynamicky složené popisky a runtime navigaci je stále
 třeba vizuálně ověřit.
+
+## Nastavení: sjednocení s aplikačními službami (navazující etapa)
+
+- XAML používá existující `AutoSaveInterval`, `SmartCacheTtlMinutes` a `SmartProbeTimeoutSeconds` místo nenapojených vlastností.
+- Oba e-mailové přepínače a USB recovery retry se načítají a ukládají přes `ISettingsService`.
+- Výběr exportní složky používá skutečný systémový picker a po zrušení zachová dosavadní cestu.
+- `GoBack`, otevření datové složky a vymazání výhradně **paměťové** cache mají skutečné příkazy.
+- Soubory databáze se nemažou. Velikost SQLite se čte pouze pro aktivní lokální backend; ostatní `N/A`.
+- Nefunkční volby „výchozí test“, obecná upozornění a „automatická záloha“ byly skryty, protože zde zatím nemají perzistentní funkci. Funkční přepínače mají vždy odpovídající stav a úložiště.
+- Po dokončení nutno vizuálně ověřit a projít regresní testy na Windows i Linuxu. Skia/Avalonia beze změny.
+
+## Porovnání disků – skutečná data namísto mrtvých vazeb
+
+Původní `DiskComparisonView.axaml` byl napsaný pro jiné rozhraní než existující
+`DiskComparisonViewModel`. Výměna za pohled nad `AvailableDisks`, `SelectedDisks` a
+`ComparisonResults` obnovuje výběr 2–5 disků, porovnání, historii skóre,
+přehled výsledků a export CSV. Ovládací prvky používají existující příkazy
+`AddDisk`, `RemoveDisk`, `CompareDisks`, `GoBack` a nový `ExportComparison`.
+Po změně výběru se staré porovnání a grafy zahodí.
+
+Skóre 0–100 a rychlosti MB/s mají nezávislé OxyPlot grafy. Nezměřené
+fáze se zobrazí jako N/A a nevytváří falešnou rychlost 0 MB/s.
+Export používá pouze uložené výsledky aktuálního porovnání; CSV
+chrání text před tabulkovým formula-injection. Současně se odstranilo
+rizikové dělení nulou v porovnání výkonu a výběr poslední session
+respektuje čas testu. Hardwarové testy a Skia beze změny.
+
+## Trvalost nastavení a bezpečný soubor
+
+`SettingsService` již neztrácí běžné hodnoty (`AutoSaveInterval`,
+`DefaultExportPath`, `Language`, logování a další) po restartu.
+Ukládá je v jednom JSON souboru spolu se SMART/e-mailovými volbami.
+Dočasný soubor a atomické přejmenování brání částečnému přepsání při
+chybě I/O. Chybu uložení nyní volající obdrží; UI ji neskryje za
+zavádějící zprávu „Uloženo“.
+`SettingsViewModel` při operaci ukládání/zálohy/obnovy blokuje navigaci
+stejným kontraktem jako ostatní obrazovky.
+
+## Navazující regresní testy
+
+`DiskComparisonUiTests` ověřuje výběr a odebrání disků, invalidaci výsledků,
+samostatné grafy skóre/MB/s, rozlišení N/A a bezpečný CSV export.
+`SettingsViewModelInteractionTests` ověřuje zrušení výběru složky,
+skutečný výběr, mazání pouze paměťové cache a blokování navigace.
+`SettingsServiceTests` ověřuje uchování voleb přes restart služby.
+`DiskComparisonServiceRegressionTests` ověřuje skutečně poslední session
+a srovnání bez dělení nulou. Výsledky CI jsou nutné před sloučením.
+
+## Konfigurace bez falešných voleb
+
+Kontrola skutečných call-site prokázala, že auto-save interval,
+`EmailSendOnlyForLongRunningTests`, SMART cache TTL a SMART probe timeout
+dosud nikdo v běžném Avalonia provozu nečte. Jejich hodnoty zůstávají v
+konfiguraci kvůli kompatibilitě s TUI/plánovaným využitím, ale GUI je
+nenabízí jako funkční přepínače. Výběr výchozí exportní složky je nově
+skutečně respektován v `ExportImportViewModel.BrowseExportPathAsync`.
+Volba přikládání certifikátu do e-mailu je nyní synchronizována s
+`IEmailSettingsService` (SMTP DB), který čte skutečná odesílací služba.
+
+## Důvěrnost konfigurace
+
+Protože `settings.json` může obsahovat přístupové údaje v SQL connection
+stringu, dočasný soubor pro atomické přepsání je na Linuxu/macOS vytvořen
+s právy `0600` (pouze vlastník). Tato kontrola je součástí regresního testu.
+
+## Otevření složky pod sudo
+
+`SettingsViewModel` používá společný `DocumentLauncher.OpenFolder`.
+Stejně jako otevření PDF přes `OpenFile` přepne na Linuxu při běhu
+pod `sudo` otevření ve správci souborů do grafické relace původního
+uživatele (pokud je dostupná). Při nedostupném prostředí zobrazí
+uživateli chybu namísto falešného úspěchu.

@@ -422,5 +422,54 @@ public class SettingsServiceTests
         Assert.True(await service.GetEmailSendOnlyForLongRunningTestsAsync());
         Assert.True(await service.GetEmailIncludeCertificateAttachmentAsync());
     }
+    [Fact]
+    public async Task PersistedUiSettingsSurviveServiceRestart()
+    {
+        var path = GetTempSettingsPath();
+        try
+        {
+            var settings = new SettingsService(path);
+            await settings.SetAutoSaveIntervalAsync(12);
+            await settings.SetDefaultExportPathAsync(Path.Combine(path, "exports"));
+            await settings.SetLanguageAsync("en");
+            await settings.SetEnableLoggingAsync(false);
+            await settings.SetLogLevelAsync("Debug");
+            await settings.SetEmailSendOnlyForLongRunningTestsAsync(false);
+            await settings.SetUsbRecoveryRetryCountAsync(7);
+            var second = new SettingsService(path);
+            Assert.Equal(12, await second.GetAutoSaveIntervalAsync());
+            Assert.Equal(Path.Combine(path, "exports"), await second.GetDefaultExportPathAsync());
+            Assert.Equal("en", await second.GetLanguageAsync());
+            Assert.False(await second.GetEnableLoggingAsync());
+            Assert.Equal("Debug", await second.GetLogLevelAsync());
+            Assert.False(await second.GetEmailSendOnlyForLongRunningTestsAsync());
+            Assert.Equal(7, await second.GetUsbRecoveryRetryCountAsync());
+        }
+        finally
+        {
+            if (Directory.Exists(path))
+                Directory.Delete(path, recursive: true);
+        }
+    }
+
+    [Fact]
+    public async Task SettingsJsonContainingConnectionDetailsIsPrivateOnUnix()
+    {
+        if (!OperatingSystem.IsLinux() && !OperatingSystem.IsMacOS()) return;
+        var path = GetTempSettingsPath();
+        try
+        {
+            var settings = new SettingsService(path);
+            await settings.SetReportRecipientEmailAsync("test@example.invalid");
+            Assert.Equal(UnixFileMode.UserRead | UnixFileMode.UserWrite,
+                File.GetUnixFileMode(settings.SettingsFilePath));
+        }
+        finally
+        {
+            if (Directory.Exists(path))
+                Directory.Delete(path, recursive: true);
+        }
+    }
+
 }
 

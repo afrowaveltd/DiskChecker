@@ -55,6 +55,29 @@ internal static class DocumentLauncher
     }
 
     /// <summary>
+    /// Opens a directory in the desktop file manager, including when DiskChecker
+    /// runs under sudo and must use the original user's desktop session.
+    /// </summary>
+    public static void OpenFolder(string folderPath)
+    {
+        if (string.IsNullOrWhiteSpace(folderPath))
+            throw new ArgumentException("Cesta ke složce nesmí být prázdná.", nameof(folderPath));
+        if (!Directory.Exists(folderPath))
+            throw new DirectoryNotFoundException(folderPath);
+
+        var errors = new StringBuilder();
+        if (!RuntimeInformation.IsOSPlatform(OSPlatform.Windows) &&
+            TryOpenAsSudoUser(folderPath, errors))
+            return;
+        if (TryOpenWithShell(folderPath, errors))
+            return;
+        if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows) &&
+            TryOpenWithWindowsStart(folderPath, errors))
+            return;
+        throw new InvalidOperationException($"Složku se nepodařilo otevřít. {errors}");
+    }
+
+    /// <summary>
     /// Opens a file under the original sudo user's desktop session (Linux only).
     /// </summary>
     private static bool TryOpenAsSudoUser(string filePath, StringBuilder errors)

@@ -37,6 +37,15 @@ public class DiskComparisonResult
     /// </summary>
     public double AvgReadSpeed { get; set; }
 
+    /// <summary>True only if this session included measured write I/O.</summary>
+    public bool HasWriteMeasurement { get; set; }
+
+    /// <summary>True only if this session included measured read I/O.</summary>
+    public bool HasReadMeasurement { get; set; }
+
+    public string WriteSpeedText => HasWriteMeasurement ? $"{AvgWriteSpeed:F1} MB/s" : "N/A";
+    public string ReadSpeedText => HasReadMeasurement ? $"{AvgReadSpeed:F1} MB/s" : "N/A";
+
     /// <summary>
     /// Total error count from test.
     /// </summary>

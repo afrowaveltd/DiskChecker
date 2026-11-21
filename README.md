@@ -392,3 +392,11 @@ Viz soubor [`LICENSE`](LICENSE).
 
 Kontrola konzistence vstupních dialogů, ochrany při běžících diskových operacích
 a postup ověření: [docs/AVALONIA_DIALOG_NAVIGATION_AUDIT_CS.md](docs/AVALONIA_DIALOG_NAVIGATION_AUDIT_CS.md).
+
+### Nastavení a porovnání disků (audit Avalonia, listopad 2026)
+
+Nastavení používá skutečné perzistentní volby, funkční systémový výběr exportní složky
+a bezpečné vyprázdnění pouze paměťové cache disků. Porovnání disků podporuje výběr 2–5
+záznamů, výsledky testů, oddělené grafy skóre/MB/s a CSV export s ochranou proti
+vzorcům. Graf nezobrazuje nezměřené hodnoty jako nulovou rychlost. Podrobnosti,
+omezení a postup ověření: [audit Avalonia](docs/AVALONIA_DIALOG_NAVIGATION_AUDIT_CS.md).

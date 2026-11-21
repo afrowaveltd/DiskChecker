@@ -1,355 +1,125 @@
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-             xmlns:vm="using:DiskChecker.UI.Avalonia.ViewModels"
-             xmlns:converters="using:DiskChecker.UI.Avalonia.Converters"
-             xmlns:dg="clr-namespace:Avalonia.Controls;assembly=Avalonia.Controls.DataGrid"
+             xmlns:oxy="clr-namespace:OxyPlot.Avalonia;assembly=OxyPlot.Avalonia"
              x:Class="DiskChecker.UI.Avalonia.Views.DiskComparisonView"
+             x:Name="Root"
              Background="{DynamicResource ThemeBackgroundBrush}">
-
-    <Grid>
-        <Grid.RowDefinitions>
-            <RowDefinition Height="Auto"/>
-            <RowDefinition Height="Auto"/>
-            <RowDefinition Height="*"/>
-            <RowDefinition Height="Auto"/>
-        </Grid.RowDefinitions>
-
-        <!-- ========== HEADER ========== -->
-        <Border Grid.Row="0" Background="{DynamicResource ThemePanelBackgroundBrush}"
-                BorderBrush="{DynamicResource ThemeBorderBrush}"
-                BorderThickness="0,0,0,1" Padding="16,10" MinHeight="60">
-            <Grid>
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="*"/>
-                    <ColumnDefinition Width="Auto"/>
-                </Grid.ColumnDefinitions>
-
-                <StackPanel Grid.Column="0">
+    <Grid RowDefinitions="Auto,*,Auto">
+        <Border Grid.Row="0" Classes="PageHeader">
+            <Grid ColumnDefinitions="*,Auto,Auto,Auto" ColumnSpacing="8">
+                <StackPanel>
                     <TextBlock Text="{Binding L[DiskComparison.Title]}" Classes="PageTitle"/>
                     <TextBlock Text="{Binding L[Comparison.Description]}" Classes="PageSubtitle"/>
                 </StackPanel>
-
-                <StackPanel Grid.Column="1" Orientation="Horizontal">
-                    <Button Content="{Binding L[DiskComparison.CompareSelected]}"
-                            Command="{Binding CompareCommand}"
-                            IsEnabled="{Binding CanCompare}"
-                            Background="{DynamicResource ThemeSuccessBrush}" Foreground="White"
-                            FontWeight="Bold" Padding="12,6" Margin="0,0,8,0"
-                            Cursor="Hand"/>
-                    <Button Content="📊 Exportovat"
-                            Command="{Binding ExportCommand}"
-                            IsEnabled="{Binding HasComparison}"
-                            Background="{DynamicResource ThemeInfoBrush}" Foreground="White"
-                            FontWeight="Bold" Padding="12,6" Margin="0,0,8,0"
-                            Cursor="Hand"/>
-                    <Button Content="{Binding L[DiskComparison.Back]}"
-                            Command="{Binding NavigateBackCommand}"
-                            Background="{DynamicResource ThemeSecondaryBackgroundBrush}" Foreground="{DynamicResource ThemeTextPrimaryBrush}"
-                            BorderBrush="{DynamicResource ThemeBorderBrush}"
-                            FontWeight="Bold" Padding="12,6"
-                            Cursor="Hand"/>
-                </StackPanel>
+                <Button Grid.Column="1" Content="{Binding L[DiskComparison.CompareSelected]}"
+                        Command="{Binding CompareDisksCommand}" IsEnabled="{Binding CanCompare}" Padding="12,6"/>
+                <Button Grid.Column="2" Content="{Binding L[DiskComparison.ExportCsv]}"
+                        Command="{Binding ExportComparisonCommand}" IsEnabled="{Binding CanExport}" Padding="12,6"/>
+                <Button Grid.Column="3" Content="{Binding L[DiskComparison.Back]}"
+                        Command="{Binding GoBackCommand}" Padding="12,6"/>
             </Grid>
         </Border>
 
-        <!-- ========== DISK SELECTION ========== -->
-        <Border Grid.Row="1" Background="{DynamicResource ThemeSecondaryBackgroundBrush}" Padding="16,10">
-            <Grid>
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="*"/>
-                    <ColumnDefinition Width="Auto"/>
-                    <ColumnDefinition Width="*"/>
-                </Grid.ColumnDefinitions>
+        <ScrollViewer Grid.Row="1">
+            <StackPanel Margin="16" Spacing="12">
+                <Border Background="{DynamicResource ThemeCardBackgroundBrush}"
+                        CornerRadius="8" Padding="12">
+                    <StackPanel Spacing="8">
+                        <TextBlock Text="{Binding L[DiskComparison.AvailableDisks]}" FontWeight="Bold"/>
+                        <ItemsControl ItemsSource="{Binding AvailableDisks}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <Grid ColumnDefinitions="*,Auto" Margin="0,3" ColumnSpacing="8">
+                                        <StackPanel Spacing="2">
+                                            <TextBlock Text="{Binding ModelName}" FontWeight="SemiBold"/>
+                                            <StackPanel Orientation="Horizontal" Spacing="8">
+                                                <TextBlock Text="{Binding SerialNumber}" FontSize="11"/>
+                                                <TextBlock Text="{Binding CapacityText}" FontSize="11"/>
+                                                <TextBlock Text="{Binding OverallGrade}" FontSize="11"/>
+                                            </StackPanel>
+                                        </StackPanel>
+                                        <Button Grid.Column="1" Content="{Binding #Root.DataContext.L[DiskComparison.Add]}"
+                                                Command="{Binding #Root.DataContext.AddDiskCommand}"
+                                                CommandParameter="{Binding}"
+                                                IsEnabled="{Binding #Root.DataContext.IsNotLoading}"
+                                                Padding="10,5"/>
+                                    </Grid>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </StackPanel>
+                </Border>
 
-                <!-- Disk 1 Selection -->
-                <StackPanel Grid.Column="0">
-                    <TextBlock Text="{Binding L[DiskComparisonView.Disk1]}" FontSize="12" FontWeight="Bold" Margin="0,0,0,8"/>
-                    <ComboBox ItemsSource="{Binding AvailableDisks}"
-                              SelectedItem="{Binding SelectedDisk1}"
-                              Width="280" HorizontalAlignment="Left">
-                        <ComboBox.ItemTemplate>
+                <Border Background="{DynamicResource ThemeCardBackgroundBrush}"
+                        CornerRadius="8" Padding="12">
+                    <StackPanel Spacing="8">
+                        <TextBlock Text="{Binding L[DiskComparison.SelectedDisks]}" FontWeight="Bold"/>
+                        <TextBlock Text="{Binding L[DiskComparison.SelectionHint]}" FontSize="11"
+                                   Foreground="{DynamicResource ThemeTextSecondaryBrush}" TextWrapping="Wrap"/>
+                        <ItemsControl ItemsSource="{Binding SelectedDisks}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <Grid ColumnDefinitions="*,Auto" Margin="0,3" ColumnSpacing="8">
+                                        <StackPanel Orientation="Horizontal" Spacing="8">
+                                            <TextBlock Text="{Binding Disk.ModelName}" FontWeight="SemiBold"/>
+                                            <TextBlock Text="{Binding Disk.SerialNumber}" FontSize="11"/>
+                                        </StackPanel>
+                                        <Button Grid.Column="1" Content="{Binding #Root.DataContext.L[DiskComparison.Remove]}"
+                                                Command="{Binding #Root.DataContext.RemoveDiskCommand}"
+                                                CommandParameter="{Binding}"
+                                                IsEnabled="{Binding #Root.DataContext.IsNotLoading}"
+                                                Padding="10,5"/>
+                                    </Grid>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </StackPanel>
+                </Border>
+
+                <StackPanel Spacing="10" IsVisible="{Binding HasComparison}">
+                    <TextBlock Text="{Binding BestDiskText}" FontWeight="SemiBold" TextWrapping="Wrap"/>
+                    <ItemsControl ItemsSource="{Binding ComparisonResults}">
+                        <ItemsControl.ItemTemplate>
                             <DataTemplate>
-                                <StackPanel Orientation="Horizontal">
-                                    <TextBlock Text="{Binding DisplayName}" FontWeight="Bold"/>
-                                    <TextBlock Text=" (" Foreground="{DynamicResource ThemeTextMutedBrush}"/>
-                                    <TextBlock Text="{Binding SerialNumber}" Foreground="{DynamicResource ThemeTextSecondaryBrush}" FontFamily="Consolas" FontSize="10"/>
-                                    <TextBlock Text=")" Foreground="{DynamicResource ThemeTextMutedBrush}"/>
-                                </StackPanel>
+                                <Border Background="{DynamicResource ThemeCardBackgroundBrush}" CornerRadius="8"
+                                        Padding="12" Margin="0,0,0,6">
+                                    <StackPanel Spacing="4">
+                                        <StackPanel Orientation="Horizontal" Spacing="12">
+                                            <TextBlock Text="{Binding Rank, StringFormat='#{0}'}" FontWeight="Bold"/>
+                                            <TextBlock Text="{Binding Disk.ModelName}" FontWeight="Bold"/>
+                                            <TextBlock Text="{Binding Disk.CapacityText}"/>
+                                            <TextBlock Text="{Binding Grade}"/>
+                                            <TextBlock Text="{Binding Score, StringFormat='{}{0:F1}/100'}"/>
+                                        </StackPanel>
+                                        <StackPanel Orientation="Horizontal" Spacing="12">
+                                            <TextBlock Text="{Binding WriteSpeedText}"/>
+                                            <TextBlock Text="{Binding ReadSpeedText}"/>
+                                            <TextBlock Text="{Binding ErrorCount, StringFormat='Errors: {0}'}"/>
+                                        </StackPanel>
+                                        <TextBlock Text="{Binding Recommendation}" TextWrapping="Wrap"/>
+                                    </StackPanel>
+                                </Border>
                             </DataTemplate>
-                        </ComboBox.ItemTemplate>
-                    </ComboBox>
-                </StackPanel>
-
-                <!-- VS Label -->
-                <TextBlock Grid.Column="1" Text="{Binding L[DiskComparisonView.VsLabel]}" FontSize="22" FontWeight="Bold"
-                          Foreground="{DynamicResource ThemeTextMutedBrush}" VerticalAlignment="Center" Margin="20,10,20,0"/>
-
-                <!-- Disk 2 Selection -->
-                <StackPanel Grid.Column="2">
-                    <TextBlock Text="{Binding L[DiskComparisonView.Disk2]}" FontSize="12" FontWeight="Bold" Margin="0,0,0,8"/>
-                    <ComboBox ItemsSource="{Binding AvailableDisks}"
-                              SelectedItem="{Binding SelectedDisk2}"
-                              Width="280" HorizontalAlignment="Right">
-                        <ComboBox.ItemTemplate>
-                            <DataTemplate>
-                                <StackPanel Orientation="Horizontal">
-                                    <TextBlock Text="{Binding DisplayName}" FontWeight="Bold"/>
-                                    <TextBlock Text=" (" Foreground="{DynamicResource ThemeTextMutedBrush}"/>
-                                    <TextBlock Text="{Binding SerialNumber}" Foreground="{DynamicResource ThemeTextSecondaryBrush}" FontFamily="Consolas" FontSize="10"/>
-                                    <TextBlock Text=")" Foreground="{DynamicResource ThemeTextMutedBrush}"/>
-                                </StackPanel>
-                            </DataTemplate>
-                        </ComboBox.ItemTemplate>
-                    </ComboBox>
-                </StackPanel>
-            </Grid>
-        </Border>
-
-        <!-- ========== COMPARISON RESULTS ========== -->
-        <ScrollViewer Grid.Row="2">
-            <StackPanel Margin="16">
-                <!-- Comparison Grid -->
-                <Panel IsVisible="{Binding HasComparison}">
-                    <Border Background="{DynamicResource ThemeCardBackgroundBrush}" BorderBrush="{DynamicResource ThemeBorderBrush}" BorderThickness="1" CornerRadius="8">
-                        <Grid>
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="2*"/>
-                                <ColumnDefinition Width="*"/>
-                                <ColumnDefinition Width="*"/>
-                                <ColumnDefinition Width="Auto"/>
-                            </Grid.ColumnDefinitions>
-                            <Grid.RowDefinitions>
-                                <RowDefinition Height="Auto"/>
-                                <RowDefinition Height="Auto"/>
-                                <RowDefinition Height="Auto"/>
-                                <RowDefinition Height="Auto"/>
-                                <RowDefinition Height="Auto"/>
-                                <RowDefinition Height="Auto"/>
-                                <RowDefinition Height="Auto"/>
-                                <RowDefinition Height="Auto"/>
-                                <RowDefinition Height="Auto"/>
-                                <RowDefinition Height="Auto"/>
-                                <RowDefinition Height="Auto"/>
-                                <RowDefinition Height="Auto"/>
-                                <RowDefinition Height="Auto"/>
-                                <RowDefinition Height="Auto"/>
-                                <RowDefinition Height="Auto"/>
-                                <RowDefinition Height="Auto"/>
-                            </Grid.RowDefinitions>
-
-                            <!-- Header Row -->
-                            <Border Grid.Row="0" Grid.ColumnSpan="4" Background="{DynamicResource ThemePanelBackgroundBrush}" Padding="10,5"
-                                    BorderBrush="{DynamicResource ThemeBorderBrush}" BorderThickness="0,0,0,1">
-                                <TextBlock Text="{Binding L[DiskComparison.BasicInfo]}" FontWeight="Bold" FontSize="14"/>
-                            </Border>
-
-                            <!-- Labels Column -->
-                            <StackPanel Grid.Row="1" Grid.RowSpan="8" Grid.Column="0" Margin="10,5">
-                                <Grid Margin="0,3">
-                                    <TextBlock Text="{Binding L[DiskComparison.Model]}" FontSize="11"/>
-                                </Grid>
-                                <Grid Margin="0,3">
-                                    <TextBlock Text="{Binding L[DiskComparison.SerialNumber]}" FontSize="11"/>
-                                </Grid>
-                                <Grid Margin="0,3">
-                                    <TextBlock Text="{Binding L[DiskComparison.Capacity]}" FontSize="11"/>
-                                </Grid>
-                                <Grid Margin="0,3">
-                                    <TextBlock Text="{Binding L[DiskComparisonView.DiskTypeLabel]}" FontSize="11"/>
-                                </Grid>
-                                <Grid Margin="0,3">
-                                    <TextBlock Text="{Binding L[DiskComparisonView.FirmwareLabel]}" FontSize="11"/>
-                                </Grid>
-                                <Grid Margin="0,3">
-                                    <TextBlock Text="{Binding L[DiskComparison.OverallRating]}" FontSize="11" FontWeight="Bold"/>
-                                </Grid>
-                                <Grid Margin="0,3">
-                                    <TextBlock Text="{Binding L[DiskComparison.Score]}" FontSize="11"/>
-                                </Grid>
-                                <Grid Margin="0,3">
-                                    <TextBlock Text="{Binding L[DiskComparison.LastTest]}" FontSize="11"/>
-                                </Grid>
-                            </StackPanel>
-
-                            <!-- Disk 1 Column -->
-                            <StackPanel Grid.Row="1" Grid.RowSpan="8" Grid.Column="1" Margin="5">
-                                <Grid Margin="0,3">
-                                    <TextBlock Text="{Binding Disk1.ModelName}" FontSize="11" FontWeight="Bold"/>
-                                </Grid>
-                                <Grid Margin="0,3">
-                                    <TextBlock Text="{Binding Disk1.SerialNumber}" FontSize="10" FontFamily="Consolas"/>
-                                </Grid>
-                                <Grid Margin="0,3">
-                                    <TextBlock Text="{Binding Disk1.CapacityText}" FontSize="11"/>
-                                </Grid>
-                                <Grid Margin="0,3">
-                                    <TextBlock Text="{Binding Disk1.DiskType}" FontSize="11"/>
-                                </Grid>
-                                <Grid Margin="0,3">
-                                    <TextBlock Text="{Binding Disk1.Firmware}" FontSize="11"/>
-                                </Grid>
-                                <Grid Margin="0,3">
-                                    <TextBlock Text="{Binding Disk1.OverallGrade}" FontSize="14" FontWeight="Bold"
-                                               Foreground="{Binding Disk1.GradeColor}"/>
-                                </Grid>
-                                <Grid Margin="0,3">
-                                    <TextBlock Text="{Binding Disk1.OverallScore, StringFormat={}{0:F0}%}" FontSize="11"/>
-                                </Grid>
-                                <Grid Margin="0,3">
-                                    <TextBlock Text="{Binding Disk1.LastTested, StringFormat={}{0:dd.MM.yyyy}}" FontSize="10"/>
-                                </Grid>
-                            </StackPanel>
-
-                            <!-- Winner Indicators -->
-                            <StackPanel Grid.Row="1" Grid.RowSpan="8" Grid.Column="2" Margin="5">
-                                <Grid Margin="0,3">
-                                    <TextBlock Text="{Binding Disk1.ModelName}" FontSize="11" FontWeight="Bold"/>
-                                </Grid>
-                                <Grid Margin="0,3">
-                                    <TextBlock Text="{Binding Disk1.SerialNumber}" FontSize="10" FontFamily="Consolas"/>
-                                </Grid>
-                                <Grid Margin="0,3">
-                                    <TextBlock Text="{Binding Disk1.CapacityText}" FontSize="11"/>
-                                </Grid>
-                                <Grid Margin="0,3">
-                                    <TextBlock Text="{Binding Disk1.DiskType}" FontSize="11"/>
-                                </Grid>
-                                <Grid Margin="0,3">
-                                    <TextBlock Text="{Binding Disk1.Firmware}" FontSize="11"/>
-                                </Grid>
-                                <Grid Margin="0,3">
-                                    <TextBlock Text="{Binding Disk1.OverallGrade}" FontSize="14" FontWeight="Bold"
-                                               Foreground="{Binding Disk1.GradeColor}"/>
-                                </Grid>
-                                <Grid Margin="0,3">
-                                    <TextBlock Text="{Binding Disk1.OverallScore, StringFormat={}{0:F0}%}" FontSize="11"/>
-                                </Grid>
-                                <Grid Margin="0,3">
-                                    <TextBlock Text="{Binding Disk1.LastTested, StringFormat={}{0:dd.MM.yyyy}}" FontSize="10"/>
-                                </Grid>
-                            </StackPanel>
-
-                            <!-- Win Indicator Column -->
-                            <StackPanel Grid.Row="1" Grid.RowSpan="8" Grid.Column="3" Margin="5">
-                                <!-- Winner indicators would go here -->
-                            </StackPanel>
-
-                            <!-- SMART Metrics Section -->
-                            <Border Grid.Row="9" Grid.ColumnSpan="4" Background="{DynamicResource ThemePanelBackgroundBrush}" Padding="10,5"
-                                    BorderBrush="{DynamicResource ThemeBorderBrush}" BorderThickness="1,1,0,1">
-                                <TextBlock Text="{Binding L[DiskComparisonView.SmartMetrics]}" FontWeight="Bold" FontSize="14"/>
-                            </Border>
-
-                            <!-- SMART Labels -->
-                            <StackPanel Grid.Row="10" Grid.RowSpan="6" Grid.Column="0" Margin="10,5">
-                                <Grid Margin="0,3">
-                                    <TextBlock Text="{Binding L[DiskComparison.Temperature]}" FontSize="11"/>
-                                </Grid>
-                                <Grid Margin="0,3">
-                                    <TextBlock Text="{Binding L[DiskComparison.PowerOnHours]}" FontSize="11"/>
-                                </Grid>
-                                <Grid Margin="0,3">
-                                    <TextBlock Text="{Binding L[DiskComparisonView.ReallocatedSectors]}" FontSize="11"/>
-                                </Grid>
-                                <Grid Margin="0,3">
-                                    <TextBlock Text="{Binding L[DiskComparisonView.PendingSectors]}" FontSize="11"/>
-                                </Grid>
-                                <Grid Margin="0,3">
-                                    <TextBlock Text="{Binding L[DiskComparison.ReadErrors]}" FontSize="11"/>
-                                </Grid>
-                                <Grid Margin="0,3">
-                                    <TextBlock Text="{Binding L[DiskComparison.StartCount]}" FontSize="11"/>
-                                </Grid>
-                            </StackPanel>
-
-                            <!-- Disk 1 SMART -->
-                            <StackPanel Grid.Row="10" Grid.RowSpan="6" Grid.Column="1" Margin="5">
-                                <Grid Margin="0,3">
-                                    <TextBlock Text="{Binding Disk1.Temperature, StringFormat={}{0}°C}" FontSize="11"/>
-                                </Grid>
-                                <Grid Margin="0,3">
-                                    <TextBlock Text="{Binding Disk1.PowerOnHours, StringFormat={}{0}h}" FontSize="11"/>
-                                </Grid>
-                                <Grid Margin="0,3">
-                                    <TextBlock Text="{Binding Disk1.ReallocatedSectors}" FontSize="11"/>
-                                </Grid>
-                                <Grid Margin="0,3">
-                                    <TextBlock Text="{Binding Disk1.PendingSectors}" FontSize="11"/>
-                                </Grid>
-                                <Grid Margin="0,3">
-                                    <TextBlock Text="{Binding Disk1.ReadErrors}" FontSize="11"/>
-                                </Grid>
-                                <Grid Margin="0,3">
-                                    <TextBlock Text="{Binding Disk1.PowerCycles}" FontSize="11"/>
-                                </Grid>
-                            </StackPanel>
-
-                            <!-- Disk 2 SMART -->
-                            <StackPanel Grid.Row="10" Grid.RowSpan="6" Grid.Column="2" Margin="5">
-                                <Grid Margin="0,3">
-                                    <TextBlock Text="{Binding Disk2.Temperature, StringFormat={}{0}°C}" FontSize="11"/>
-                                </Grid>
-                                <Grid Margin="0,3">
-                                    <TextBlock Text="{Binding Disk2.PowerOnHours, StringFormat={}{0}h}" FontSize="11"/>
-                                </Grid>
-                                <Grid Margin="0,3">
-                                    <TextBlock Text="{Binding Disk2.ReallocatedSectors}" FontSize="11"/>
-                                </Grid>
-                                <Grid Margin="0,3">
-                                    <TextBlock Text="{Binding Disk2.PendingSectors}" FontSize="11"/>
-                                </Grid>
-                                <Grid Margin="0,3">
-                                    <TextBlock Text="{Binding Disk2.ReadErrors}" FontSize="11"/>
-                                </Grid>
-                                <Grid Margin="0,3">
-                                    <TextBlock Text="{Binding Disk2.PowerCycles}" FontSize="11"/>
-                                </Grid>
-                            </StackPanel>
-                        </Grid>
-                    </Border>
-                </Panel>
-
-                <!-- Recommendation -->
-                <Panel IsVisible="{Binding HasComparison}" Margin="0,16,0,0">
-                    <Border Background="{DynamicResource ThemePrimaryLightBrush}" BorderBrush="{DynamicResource ThemeSuccessBrush}" BorderThickness="1" CornerRadius="8" Padding="12">
-                        <StackPanel>
-                            <TextBlock Text="{Binding L[DiskComparison.Recommendation]}" FontWeight="Bold" FontSize="13" Margin="0,0,0,5"/>
-                            <TextBlock Text="{Binding Recommendation}" TextWrapping="Wrap" FontSize="11"/>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                    <Border Background="{DynamicResource ThemeCardBackgroundBrush}" CornerRadius="8" Padding="12">
+                        <StackPanel Spacing="8">
+                            <TextBlock Text="{Binding L[DiskComparison.ScoreChart]}" FontWeight="Bold"/>
+                            <oxy:PlotView Model="{Binding ComparisonChartModel}" Height="250"/>
                         </StackPanel>
                     </Border>
-                </Panel>
-
-                <!-- Empty State -->
-                <Panel IsVisible="{Binding !HasComparison}">
-                    <Border Background="{DynamicResource ThemeSecondaryBackgroundBrush}" BorderBrush="{DynamicResource ThemeBorderBrush}" BorderThickness="1" CornerRadius="8" Padding="36">
-                        <StackPanel HorizontalAlignment="Center">
-                            <TextBlock Text="⚖️" FontSize="42" HorizontalAlignment="Center"/>
-                            <TextBlock Text="{Binding L[DiskComparison.SelectTwoDisks]}" FontSize="17" FontWeight="Bold"
-                                       HorizontalAlignment="Center" Margin="0,10,0,5"/>
-                            <TextBlock Text="{Binding L[DiskComparison.SelectHint]}"
-                                       FontSize="12" Foreground="{DynamicResource ThemeTextSecondaryBrush}" HorizontalAlignment="Center"/>
+                    <Border Background="{DynamicResource ThemeCardBackgroundBrush}" CornerRadius="8" Padding="12">
+                        <StackPanel Spacing="8">
+                            <TextBlock Text="{Binding L[DiskComparison.SpeedChart]}" FontWeight="Bold"/>
+                            <TextBlock Text="{Binding L[DiskComparison.MissingMeasurement]}" FontSize="11" TextWrapping="Wrap"/>
+                            <oxy:PlotView Model="{Binding SpeedChartModel}" Height="250"/>
                         </StackPanel>
                     </Border>
-                </Panel>
+                </StackPanel>
             </StackPanel>
         </ScrollViewer>
-
-        <!-- ========== STATUS BAR ========== -->
-        <Border Grid.Row="3" Classes="StatusBar" Padding="16,6">
-            <Grid>
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="*"/>
-                    <ColumnDefinition Width="Auto"/>
-                </Grid.ColumnDefinitions>
-
-                <TextBlock Grid.Column="0" Text="{Binding StatusMessage}" Classes="StatusText"/>
-
-                <StackPanel Grid.Column="1" Orientation="Horizontal">
-                    <Panel IsVisible="{Binding IsComparing}">
-                        <TextBlock Text="{Binding L[DiskComparison.Comparing]}" FontSize="10" Foreground="{DynamicResource ThemeWarningBrush}"/>
-                    </Panel>
-                </StackPanel>
-            </Grid>
+        <Border Grid.Row="2" Classes="StatusBar">
+            <TextBlock Text="{Binding StatusMessage}" Margin="16,5" TextWrapping="Wrap"/>
         </Border>
     </Grid>
 </UserControl>
