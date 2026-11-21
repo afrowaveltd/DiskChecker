@@ -186,4 +186,43 @@ public sealed class TuiRestoreSafetyTests
         Assert.Equal("unchanged", File.ReadAllText(target));
         Assert.Empty(Directory.GetFiles(Path.GetDirectoryName(target)!, "*.restore-*.tmp"));
     }
+
+    [Fact]
+    public async Task SymlinkedParentCannotMakeBackupImageItsOwnTarget()
+    {
+        if (OperatingSystem.IsWindows())
+        {
+            return; // Creating directory symlinks on Windows depends on runner privileges.
+        }
+
+        using var harness = TestHarness.Create();
+        var (image, _, checksum) = Fixture(harness);
+        string aliasDirectory = Path.Combine(harness.Root, "alias");
+        Directory.CreateSymbolicLink(aliasDirectory, Path.GetDirectoryName(image)!);
+        string alias = Path.Combine(aliasDirectory, Path.GetFileName(image));
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            new TuiImageBackupService().RestoreAsync(
+                Request(image, alias, ImageBytes, checksum),
+                null, CancellationToken.None));
+
+        Assert.Equal(checksum, BackupTestFixtures.Sha256OfFile(image));
+    }
+
+    [Fact]
+    public async Task VhdxExtensionCannotBypassValidatedPayloadOffset()
+    {
+        using var harness = TestHarness.Create();
+        var (image, target, checksum) = Fixture(harness);
+        string fakeVhdx = Path.ChangeExtension(image, ".vhdx");
+        File.Copy(image, fakeVhdx);
+
+        await Assert.ThrowsAsync<InvalidDataException>(() =>
+            new TuiImageBackupService().RestoreAsync(
+                Request(fakeVhdx, target, ImageBytes, checksum),
+                null, CancellationToken.None));
+
+        Assert.False(File.Exists(target));
+    }
+
 }
