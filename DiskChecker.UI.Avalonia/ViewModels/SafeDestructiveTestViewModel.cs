@@ -698,7 +698,21 @@ public partial class SafeDestructiveTestViewModel : ViewModelBase, INavigableVie
 
          await BuildResultsAsync();
          await BuildCertificateAsync();
-         await SaveTestSessionAsync();
+         var certificateStored = await SaveTestSessionAsync();
+         if(certificateStored && Certificate != null)
+         {
+            try
+            {
+               if(await _notificationService.SendStoredCertificateIfConfiguredAsync(Certificate, ct))
+                  Log("SMTP: " + L.Get("Settings.SmtpTestAccepted"));
+            }
+            catch(OperationCanceledException) { throw; }
+            catch(Exception ex)
+            {
+               // A notification failure cannot invalidate a successfully restored disk.
+               Log(L.Get("SurfaceTest.Status.EmailDeliveryFailed") + ": " + ex.Message);
+            }
+         }
          Log(L.Get("SafeDestructive.Log.WorkflowCompleted"));
       }
       catch(OperationCanceledException)
@@ -1647,11 +1661,11 @@ public partial class SafeDestructiveTestViewModel : ViewModelBase, INavigableVie
 
    private DiskCertificate? Certificate { get; set; }
 
-   private async Task SaveTestSessionAsync()
+   private async Task<bool> SaveTestSessionAsync()
    {
       try
       {
-         if(SelectedDrive == null || Certificate == null) return;
+         if(SelectedDrive == null || Certificate == null) return false;
 
          var card = await _diskCardRepository.GetByDevicePathAsync(SelectedDrive.Path);
          if(card == null)
@@ -1705,10 +1719,12 @@ public partial class SafeDestructiveTestViewModel : ViewModelBase, INavigableVie
          await _diskCardRepository.CreateCertificateAsync(Certificate);
 
          Log($"Certifikát uložen: {Certificate.CertificateNumber}");
+         return true;
       }
       catch(Exception ex)
       {
          Log($"❌ Uložení session/certifikátu selhalo: {ex.Message}");
+         return false;
       }
    }
 
