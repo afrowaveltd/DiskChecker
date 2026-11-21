@@ -33,7 +33,7 @@ public class CertificateGenerator : ICertificateGenerator
     // Chart rendering constants
     private const int MaxChartPoints = 512;
     // Certificate PDF profiles are intentionally compact; live test charts use a separate budget.
-    private const int CertificateChartPoints = 32;
+    private const int CertificateChartPoints = 512;
 
     // Certificate JPEG dimensions (A4 at 150 DPI, extended for all content)
     private const int CertWidth = 1240;
@@ -290,9 +290,11 @@ public class CertificateGenerator : ICertificateGenerator
                 PendingSectors = pendingSectors,
                 SanitizationPerformed = session.TestType == TestType.Sanitization,
                 SanitizationMethod = session.TestType == TestType.Sanitization ? "Zero-fill" : null,
-                DataVerified = failureClassification.IsDeviceFailure
-                    ? false
-                    : session.Result == TestResult.Pass && session.VerificationErrors == 0,
+                // A read-only scan never verifies a destructive zero-fill operation.
+                DataVerified = session.TestType is TestType.Sanitization or TestType.AbsoluteDestructive
+                    && !failureClassification.IsDeviceFailure
+                    && session.Result == TestResult.Pass
+                    && session.VerificationErrors == 0,
                 PartitionScheme = session.PartitionScheme,
                 FileSystem = session.FileSystem,
                 VolumeLabel = session.VolumeLabel,
@@ -364,20 +366,17 @@ public class CertificateGenerator : ICertificateGenerator
 
         var filePath = Path.Combine(_certificatesDirectory, fileName);
 
-        // Preserve the original A4 certificate resolution. A technician's
-        // interpretation is printed on a separate A4 addendum rather than
-        // shrinking the original pages/text to fit a very tall image.
-        byte[] pdfBytes;
-        var jpegBytes = await RenderCertificateJpegAsync(certificate, CancellationToken.None);
-        if(string.IsNullOrWhiteSpace(certificate.TechnicianAssessment))
+        // Single A4 page with real searchable/selectable text and vector charts.
+        // Combined certificates keep two independently graded tests on that page.
+        if (certificate.PairedCertificate is { } paired &&
+            (paired.DiskCardId != certificate.DiskCardId ||
+             paired.TestSessionId == certificate.TestSessionId))
         {
-            pdfBytes = BuildImagePdfDocument(jpegBytes, CertWidth, CertHeight);
+            throw new InvalidOperationException(
+                "Combined certificate requires two distinct sessions belonging to the same disk.");
         }
-        else
-        {
-            var addendumBytes = await RenderTechnicianAssessmentJpegAsync(certificate);
-            pdfBytes = BuildTwoPageImagePdfDocument(jpegBytes, addendumBytes, CertWidth, CertHeight);
-        }
+
+        byte[] pdfBytes = await Task.Run(() => CertificatePdfPageRenderer.CreatePdf(certificate));
         await File.WriteAllBytesAsync(filePath, pdfBytes);
         TryAssignOwnershipToSudoUser(filePath);
 
@@ -1472,7 +1471,8 @@ public class CertificateGenerator : ICertificateGenerator
 
     public Task<byte[]> GeneratePreviewAsync(DiskCertificate certificate)
     {
-        return RenderCertificateJpegAsync(certificate, CancellationToken.None);
+        ArgumentNullException.ThrowIfNull(certificate);
+        return Task.Run(() => CertificatePdfPageRenderer.CreatePreview(certificate));
     }
 
     public (string grade, double score) CalculateGrade(TestSession session)
@@ -1491,20 +1491,30 @@ public class CertificateGenerator : ICertificateGenerator
 
         score -= session.Errors.Count * 2;
 
-        // Speed consistency penalty
-        if (session.AverageWriteSpeedMBps > 0 && session.MaxWriteSpeedMBps > 0)
+        // Missing write metrics are non-applicable in read-only and seek tests.
+        // Explicit test kinds take precedence over a default/legacy zero speed.
+        bool hasWritePhase = session.TestType is TestType.QuickWrite or TestType.FullWrite
+            or TestType.FullReadWrite or TestType.Sanitization or TestType.AbsoluteDestructive
+            || (session.TestType == TestType.Custom && session.BytesWritten > 0)
+            || (session.TestType == TestType.SurfaceScan && session.BytesWritten > 0);
+        bool hasReadPhase = session.TestType is TestType.QuickRead or TestType.FullRead
+            or TestType.SurfaceScan or TestType.FullReadWrite or TestType.Sanitization
+            or TestType.AbsoluteDestructive || session.BytesRead > 0;
+
+        // Speed consistency penalty only for actual writes.
+        if (hasWritePhase && session.AverageWriteSpeedMBps > 0 && session.MaxWriteSpeedMBps > 0)
         {
             var consistency = session.AverageWriteSpeedMBps / session.MaxWriteSpeedMBps;
             if (consistency < 0.7) score -= (0.7 - consistency) * 50;
         }
 
         // Catastrophic speed drop penalty: if min speed is < 20% of max, the disk has serious issues
-        if (session.MaxWriteSpeedMBps > 0 && session.MinWriteSpeedMBps > 0)
+        if (hasWritePhase && session.MaxWriteSpeedMBps > 0 && session.MinWriteSpeedMBps > 0)
         {
             var minToMaxRatio = session.MinWriteSpeedMBps / session.MaxWriteSpeedMBps;
             if (minToMaxRatio < 0.2) score -= (0.2 - minToMaxRatio) * 80;
         }
-        if (session.MaxReadSpeedMBps > 0 && session.MinReadSpeedMBps > 0)
+        if (hasReadPhase && session.MaxReadSpeedMBps > 0 && session.MinReadSpeedMBps > 0)
         {
             var minToMaxRatio = session.MinReadSpeedMBps / session.MaxReadSpeedMBps;
             if (minToMaxRatio < 0.2) score -= (0.2 - minToMaxRatio) * 80;
@@ -1512,7 +1522,7 @@ public class CertificateGenerator : ICertificateGenerator
 
         // Disk-type-aware speed expectations based on SMART and capacity
         var expectedSpeed = EstimateExpectedSpeed(session);
-        if (expectedSpeed > 0 && session.AverageWriteSpeedMBps > 0)
+        if (hasWritePhase && expectedSpeed > 0 && session.AverageWriteSpeedMBps > 0)
         {
             var speedRatio = session.AverageWriteSpeedMBps / expectedSpeed;
             if (speedRatio < 0.5) score -= (0.5 - speedRatio) * 60;
@@ -1619,6 +1629,25 @@ public class CertificateGenerator : ICertificateGenerator
                 "CertificatePdf.Recommendation.Retire",
                 "Disk NENÍ vhodný k dalšímu používání. Doporučení: okamžitě vyřadit z provozu, nepoužívat pro žádná data a případná důležitá data obnovovat pouze ze záloh. Test sice mohl technicky doběhnout, ale výsledná známka/SMART/stally ukazují na kritickou degradaci média.")
                 ?? "Disk NENÍ vhodný k dalšímu používání. Doporučení: okamžitě vyřadit z provozu, nepoužívat pro žádná data a případná důležitá data obnovovat pouze ze záloh. Test sice mohl technicky doběhnout, ale výsledná známka/SMART/stally ukazují na kritickou degradaci média.";
+        }
+
+        // Seek latency and read throughput are performance observations.
+        // A slow seek or a slow read is not, by itself, proof that the disk is
+        // unsafe for data or that the medium must be discarded.
+        if (session.TestType == TestType.Seek)
+        {
+            return $"Seek test: známka {effectiveGrade}, skóre {effectiveScore:F0}/100. " +
+                "Hodnocení vychází z latence, stability a chyb vyhledávání. " +
+                "Samotná vyšší latence není důkazem fyzické poruchy. " +
+                "Pro spolehlivost zohledněte SMART, chyby I/O a případný povrchový test.";
+        }
+
+        if (session.TestType is TestType.QuickRead or TestType.FullRead)
+        {
+            return $"Čtecí test bez zápisu: známka {effectiveGrade}, skóre {effectiveScore:F0}/100. " +
+                "Nebyla testována rychlost ani spolehlivost zápisu. " +
+                "Pomalé čtení samo o sobě nepotvrzuje poškození média. " +
+                "Pro úplnější posouzení použijte SMART a podle potřeby seek test.";
         }
 
         if (!recommended)
@@ -1811,11 +1840,17 @@ public class CertificateGenerator : ICertificateGenerator
 
     private static bool HasCriticalRetirementSignals(TestSession session, string effectiveGrade, double effectiveScore)
     {
-        if (string.Equals(effectiveGrade, "E", StringComparison.OrdinalIgnoreCase) ||
-            string.Equals(effectiveGrade, "F", StringComparison.OrdinalIgnoreCase) ||
-            effectiveScore < 40 ||
-            session.HealthAssessment == HealthAssessment.Critical ||
-            session.Result == TestResult.Fail)
+        bool performanceOnly = session.TestType is TestType.Seek or TestType.QuickRead
+            or TestType.FullRead or TestType.SurfaceScan;
+        if (session.Result == TestResult.Fail ||
+            session.Status == TestStatus.Failed ||
+            session.ReadErrors > 0 || session.WriteErrors > 0 ||
+            session.VerificationErrors > 0 || session.Errors.Any(e => e.IsCritical) ||
+            (!performanceOnly &&
+                (string.Equals(effectiveGrade, "E", StringComparison.OrdinalIgnoreCase) ||
+                 string.Equals(effectiveGrade, "F", StringComparison.OrdinalIgnoreCase) ||
+                 effectiveScore < 40 ||
+                 session.HealthAssessment == HealthAssessment.Critical)))
         {
             return true;
         }
@@ -1861,7 +1896,7 @@ public class CertificateGenerator : ICertificateGenerator
             return true;
         }
 
-        if (!string.IsNullOrWhiteSpace(session.Notes) &&
+        if (!performanceOnly && !string.IsNullOrWhiteSpace(session.Notes) &&
             (session.Notes.Contains("krit", StringComparison.OrdinalIgnoreCase) ||
              session.Notes.Contains("failure", StringComparison.OrdinalIgnoreCase) ||
              session.Notes.Contains("failing", StringComparison.OrdinalIgnoreCase) ||
@@ -1902,6 +1937,13 @@ public class CertificateGenerator : ICertificateGenerator
     private static void TryPopulateSeekMetrics(DiskCertificate certificate, TestSession session)
     {
         if (string.IsNullOrWhiteSpace(session.SeekResultsJson))
+            return;
+
+        // The historical JSON envelope can embed every single seek operation.
+        // Large tests must rely on bounded SQL queries rather than deserializing
+        // an unbounded object graph during certificate generation.
+        const int MaxInlineSeekJsonChars = 2_000_000;
+        if (session.SeekResultsJson.Length > MaxInlineSeekJsonChars)
             return;
 
         List<SeekTestResult> seekResults;

@@ -741,6 +741,139 @@ public partial class CertificateViewModel : ViewModelBase, INavigableViewModel
       }
    }
 
+   /// <summary>
+   /// Exports the selected surface and nearest seek session for the SAME disk
+   /// to one A4 page. Source test grades and technician notes remain independent.
+   /// Pairing is restricted to 48 hours to avoid mixing unrelated diagnostics.
+   /// </summary>
+   [RelayCommand]
+   private async Task ExportCombinedPdfAsync()
+   {
+      int selectedId = SelectedSessionItem?.Id ?? Certificate?.TestSessionId ?? 0;
+      if(selectedId <= 0)
+      {
+         await _dialogService.ShowWarningAsync(L.Get("Common.Warning"),
+            L.Get("CertificateView.Combined.NoSession"));
+         return;
+      }
+
+      try
+      {
+         IsLoading = true;
+         var selected = await _diskCardRepository.GetTestSessionWithoutSamplesAsync(selectedId);
+         if(selected == null)
+            throw new InvalidOperationException(L.Get("CertificateView.Combined.NoSession"));
+
+         bool selectedSeek = selected.TestType == DiskChecker.Core.Models.TestType.Seek;
+         if(!selectedSeek && !IsSurfaceCertificateSession(selected.TestType))
+            throw new InvalidOperationException(L.Get("CertificateView.Combined.Unsupported"));
+
+         var sessions = await _diskCardRepository.GetTestSessionsAsync(selected.DiskCardId);
+         var counterpart = sessions
+            .Where(s => s.Id != selected.Id
+                && s.DiskCardId == selected.DiskCardId
+                && (selectedSeek ? IsSurfaceCertificateSession(s.TestType) : s.TestType == DiskChecker.Core.Models.TestType.Seek))
+            .OrderBy(s => Math.Abs((s.StartedAt - selected.StartedAt).TotalMinutes))
+            .FirstOrDefault();
+
+         if(counterpart == null ||
+             Math.Abs((counterpart.StartedAt - selected.StartedAt).TotalHours) > 48)
+         {
+            await _dialogService.ShowWarningAsync(L.Get("Common.Warning"),
+               L.Get("CertificateView.Combined.NoPair"));
+            return;
+         }
+
+         var card = await _diskCardRepository.GetByIdAsync(selected.DiskCardId)
+            ?? throw new InvalidOperationException(L.Get("CertificateView.Error.CardNotFound"));
+
+         var surface = selectedSeek ? counterpart : selected;
+         var seek = selectedSeek ? selected : counterpart;
+         var surfaceCertificate = await BuildCombinedPartAsync(surface.Id, card);
+         var seekCertificate = await BuildCombinedPartAsync(seek.Id, card);
+         surfaceCertificate.PairedCertificate = seekCertificate;
+         surfaceCertificate.CertificateNumber = $"PAIR-{surface.Id}-{seek.Id}";
+         surfaceCertificate.GeneratedAt = DateTime.UtcNow;
+
+         string pdfPath = await _certificateGenerator.GeneratePdfAsync(surfaceCertificate);
+         StatusMessage = string.Format(L.Get("CertificateView.Status.PdfSaved"), pdfPath);
+         if(await _dialogService.ShowConfirmationAsync(
+               L.Get("CertificateView.Dialog.PdfExport"),
+               string.Format(L.Get("CertificateView.Dialog.PdfSavedMessage"), pdfPath)))
+         {
+            DocumentLauncher.OpenFile(pdfPath);
+         }
+      }
+      catch(Exception ex) when (ex is InvalidOperationException or ArgumentException or IOException)
+      {
+         await _dialogService.ShowErrorAsync(L.Get("Common.Error"), ex.Message);
+      }
+      finally
+      {
+         IsLoading = false;
+      }
+   }
+
+   private static bool IsSurfaceCertificateSession(DiskChecker.Core.Models.TestType type) =>
+      type is DiskChecker.Core.Models.TestType.QuickRead or DiskChecker.Core.Models.TestType.FullRead or DiskChecker.Core.Models.TestType.SurfaceScan
+         or DiskChecker.Core.Models.TestType.FullReadWrite or DiskChecker.Core.Models.TestType.Sanitization or DiskChecker.Core.Models.TestType.AbsoluteDestructive;
+
+   /// <summary>Builds one half of the report with bounded sampled telemetry.</summary>
+   private async Task<DiskCertificate> BuildCombinedPartAsync(int sessionId, DiskCard card)
+   {
+      var session = await _diskCardRepository.GetTestSessionWithoutSamplesAsync(sessionId)
+         ?? throw new InvalidOperationException($"Test {sessionId} nebyl nalezen.");
+      if(session.DiskCardId != card.Id)
+         throw new InvalidOperationException("Combined PDF: odlišná identita disku.");
+
+      if(session.TestType == DiskChecker.Core.Models.TestType.Seek)
+      {
+         var seeks = await _diskCardRepository.GetSeekSamplesDownsampledAsync(sessionId, 1024);
+         var cert = await _certificateGenerator.GenerateCertificateAsync(session, card);
+         if(seeks.Count > 0)
+         {
+            var measured = seeks.Where(s => !s.HasError && s.LatencyMs > 0)
+               .OrderBy(s => s.Index).Select(s => s.LatencyMs).ToList();
+            cert.SeekLatencyPoints = measured;
+            if(measured.Count > 0)
+            {
+               // Exact summary statistics normally come from the persisted seek
+               // result; if a large legacy JSON envelope was intentionally not
+               // deserialized, provide explicitly sampled estimates instead.
+               var sorted = measured.OrderBy(v => v).ToArray();
+               cert.SeekAvgLatencyMs ??= measured.Average();
+               cert.SeekMinLatencyMs ??= sorted[0];
+               cert.SeekMaxLatencyMs ??= sorted[^1];
+               cert.SeekP95LatencyMs ??= sorted[(int)Math.Floor(0.95 * (sorted.Length - 1))];
+               cert.SeekP99LatencyMs ??= sorted[(int)Math.Floor(0.99 * (sorted.Length - 1))];
+               cert.SeekTestSummary ??= "Odhad latencí z omezeného vzorku; detailní hodnoty zůstávají v historii.";
+            }
+         }
+         await CopyTechnicianCommentAsync(cert, sessionId);
+         return cert;
+      }
+
+      var speeds = await _diskCardRepository.GetSpeedSampleSeriesDownsampledAsync(sessionId, 512);
+      session.WriteSamples = speeds.WriteSamples;
+      session.ReadSamples = speeds.ReadSamples;
+      session.TemperatureSamples = await _diskCardRepository.GetTemperatureSampleSeriesDownsampledAsync(sessionId, 256);
+      var result = await _certificateGenerator.GenerateCertificateAsync(session, card);
+      await CopyTechnicianCommentAsync(result, sessionId);
+      return result;
+   }
+
+   private async Task CopyTechnicianCommentAsync(DiskCertificate certificate, int sessionId)
+   {
+      var existing = await _diskCardRepository.GetCertificatesAsync(certificate.DiskCardId);
+      var matched = existing.Where(c => c.TestSessionId == sessionId)
+         .OrderByDescending(c => c.GeneratedAt).FirstOrDefault();
+      if(matched != null)
+      {
+         certificate.TechnicianAssessment = matched.TechnicianAssessment;
+         certificate.TechnicianAssessmentUpdatedAtUtc = matched.TechnicianAssessmentUpdatedAtUtc;
+      }
+   }
+
    [RelayCommand]
    private async Task ExportPdfAsync()
    {
@@ -1277,12 +1410,12 @@ public partial class CertificateViewModel : ViewModelBase, INavigableViewModel
 
       if(!hasWriteProfile)
       {
-         certificate.WriteProfilePoints = DownsampleSpeedSamples(_writeGraphSamples.Select(s => s.SpeedMBps), 32);
+         certificate.WriteProfilePoints = DownsampleSpeedSamples(_writeGraphSamples.Select(s => s.SpeedMBps), 512);
       }
 
       if(!hasReadProfile)
       {
-         certificate.ReadProfilePoints = DownsampleSpeedSamples(_readGraphSamples.Select(s => s.SpeedMBps), 32);
+         certificate.ReadProfilePoints = DownsampleSpeedSamples(_readGraphSamples.Select(s => s.SpeedMBps), 512);
       }
 
       BackfillCertificatePerformanceFromSamples(certificate, _writeGraphSamples, _readGraphSamples);
@@ -1314,12 +1447,12 @@ public partial class CertificateViewModel : ViewModelBase, INavigableViewModel
 
       if(certificate.WriteProfilePoints.Count == 0 && _writeGraphSamples.Count > 0)
       {
-         certificate.WriteProfilePoints = DownsampleSpeedSamples(_writeGraphSamples.Select(s => s.SpeedMBps), 32);
+         certificate.WriteProfilePoints = DownsampleSpeedSamples(_writeGraphSamples.Select(s => s.SpeedMBps), 512);
       }
 
       if(certificate.ReadProfilePoints.Count == 0 && _readGraphSamples.Count > 0)
       {
-         certificate.ReadProfilePoints = DownsampleSpeedSamples(_readGraphSamples.Select(s => s.SpeedMBps), 32);
+         certificate.ReadProfilePoints = DownsampleSpeedSamples(_readGraphSamples.Select(s => s.SpeedMBps), 512);
       }
 
       BackfillCertificatePerformanceFromSamples(certificate, _writeGraphSamples, _readGraphSamples);
@@ -1394,12 +1527,9 @@ public partial class CertificateViewModel : ViewModelBase, INavigableViewModel
    {
       try
       {
-         // Seek tests are intentionally much smaller than surface/sanitization
-         // telemetry (UI maximum is 10k seeks). For certificate analysis we want
-         // every measured dot, not a reduced line, so the characteristic
-         // full-stroke V/diamond pattern remains visible just like in SeekTestView
-         // and in the generated PDF certificate.
-         var records = await _diskCardRepository.GetSeekSamplesAsync(sessionId);
+         // Certificate views query at most 1,024 representative seek samples.
+         // Full-resolution history stays in the database and is not copied to memory.
+         var records = await _diskCardRepository.GetSeekSamplesDownsampledAsync(sessionId, 1024);
          var successful = records
             .Where(s => !s.HasError && s.LatencyMs > 0)
             .ToList();
