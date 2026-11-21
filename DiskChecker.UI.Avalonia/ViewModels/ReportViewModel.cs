@@ -29,6 +29,7 @@ namespace DiskChecker.UI.Avalonia.ViewModels
         private readonly ICertificateGenerator _certificateGenerator;
         private readonly ReportDocumentState _reportDocumentState;
         private readonly CertificateExportService _certificateExportService;
+        private readonly ISelectedDiskService? _selectedDiskService;
         private ObservableCollection<TestReportItem> _reports = new();
         private ObservableCollection<TestReportItem> _filteredReports = new();
         private TestReportItem? _selectedReport;
@@ -44,7 +45,8 @@ namespace DiskChecker.UI.Avalonia.ViewModels
             INavigationService navigationService,
             ICertificateGenerator certificateGenerator,
             ReportDocumentState reportDocumentState,
-            CertificateExportService certificateExportService)
+            CertificateExportService certificateExportService,
+            ISelectedDiskService? selectedDiskService = null)
         {
             _diskCardRepository = diskCardRepository ?? throw new ArgumentNullException(nameof(diskCardRepository));
             _dialogService = dialogService ?? throw new ArgumentNullException(nameof(dialogService));
@@ -52,9 +54,12 @@ namespace DiskChecker.UI.Avalonia.ViewModels
             _certificateGenerator = certificateGenerator ?? throw new ArgumentNullException(nameof(certificateGenerator));
             _reportDocumentState = reportDocumentState ?? throw new ArgumentNullException(nameof(reportDocumentState));
             _certificateExportService = certificateExportService ?? throw new ArgumentNullException(nameof(certificateExportService));
+            _selectedDiskService = selectedDiskService ?? App.GetService<ISelectedDiskService>();
             
             DeleteReportCommand = new AsyncRelayCommand(DeleteReportAsync, () => SelectedReport != null);
             ExportReportCommand = new AsyncRelayCommand(ExportReportAsync, () => SelectedReport != null);
+            OpenCertificateDetailsCommand = new AsyncRelayCommand(OpenCertificateDetailsAsync,
+                () => SelectedReport != null);
             OpenFullReportCommand = new AsyncRelayCommand(OpenFullReportAsync, () => SelectedReport != null);
             ViewGeneratedReportCommand = new AsyncRelayCommand(ViewGeneratedReportAsync, () => _reportDocumentState.HasReport);
             NavigateBackCommand = new RelayCommand(NavigateBack);
@@ -107,6 +112,7 @@ namespace DiskChecker.UI.Avalonia.ViewModels
                 {
                     DeleteReportCommand.NotifyCanExecuteChanged();
                     ExportReportCommand.NotifyCanExecuteChanged();
+                    OpenCertificateDetailsCommand.NotifyCanExecuteChanged();
                     OpenFullReportCommand.NotifyCanExecuteChanged();
                 }
             }
@@ -144,6 +150,7 @@ namespace DiskChecker.UI.Avalonia.ViewModels
 
         public IAsyncRelayCommand DeleteReportCommand { get; }
         public IAsyncRelayCommand ExportReportCommand { get; }
+        public IAsyncRelayCommand OpenCertificateDetailsCommand { get; }
         public IAsyncRelayCommand LoadReportsCommand { get; }
         public IAsyncRelayCommand OpenFullReportCommand { get; }
         public IRelayCommand NavigateBackCommand { get; }
@@ -207,6 +214,43 @@ namespace DiskChecker.UI.Avalonia.ViewModels
                 StatusMessage = $"Chyba při mazání testu: {ex.Message}";
                 await _dialogService.ShowErrorAsync(L.Get("Common.Error"), string.Format(L.Get("Common.DeleteFailed"), ex.Message));
             }
+        }
+
+        /// <summary>
+        /// Opens the exact selected historical test in the shared certificate
+        /// screen, where both single and explicitly paired PDFs are available.
+        /// </summary>
+        private async Task OpenCertificateDetailsAsync()
+        {
+            if (SelectedReport is not { } report || _selectedDiskService == null)
+                return;
+
+            var card = await _diskCardRepository.GetByIdAsync(report.DiskCardId);
+            var session = await _diskCardRepository.GetTestSessionWithoutSamplesAsync(report.Id);
+            if (card == null || session == null || session.DiskCardId != card.Id)
+            {
+                await _dialogService.ShowErrorAsync(L.Get("Common.Error"),
+                    L.Get("ReportView.CertificateNotFound"));
+                return;
+            }
+
+            var certificate = (await _diskCardRepository.GetCertificatesAsync(card.Id))
+                .Where(c => c.TestSessionId == session.Id)
+                .OrderByDescending(c => c.GeneratedAt).FirstOrDefault();
+            _selectedDiskService.SelectedDisk = new CoreDriveInfo
+            {
+                Path = card.DevicePath,
+                Name = card.ModelName,
+                TotalSize = card.Capacity,
+                SerialNumber = card.SerialNumber,
+                FirmwareVersion = card.FirmwareVersion
+            };
+            _selectedDiskService.SelectedDiskCardId = card.Id;
+            _selectedDiskService.SelectedDiskDisplayName = card.ModelName;
+            _selectedDiskService.IsSelectedDiskLocked = card.IsLocked;
+            _selectedDiskService.SelectedTestSessionId = session.Id;
+            _selectedDiskService.SelectedCertificateId = certificate?.Id;
+            _navigationService.NavigateTo<CertificateViewModel>();
         }
 
         private async Task ExportReportAsync()
