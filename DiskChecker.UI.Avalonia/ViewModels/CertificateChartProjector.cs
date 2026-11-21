@@ -34,9 +34,6 @@ public static class CertificateChartProjector
         var writeData = Prepare(write, certificate.IsReadOnlyTest ? [] : certificate.WriteProfilePoints,
             certificate.IsReadOnlyTest);
         var readData = Prepare(read, certificate.ReadProfilePoints);
-        if (writeData.Count == 0 && readData.Count == 0)
-            return CertificateGraphData.Default;
-
         // Temperature is a separate °C chart, NEVER a dimensionless overlay on
         // the speed MB/s axis. A seek-only test may have temperature without
         // a speed profile; in that case its temperature chart still renders.
