@@ -243,6 +243,26 @@
                         
                         
                         
+                        <Grid ColumnDefinitions="200,*" ColumnSpacing="8">
+                            <TextBlock Grid.Column="0" Text="{Binding L[Settings.SelectBackup]}" FontSize="11"
+                                       VerticalAlignment="Center" Foreground="{DynamicResource ThemeTextSecondaryBrush}"/>
+                            <ComboBox Grid.Column="1" ItemsSource="{Binding AvailableBackups}"
+                                      SelectedItem="{Binding SelectedBackup}"
+                                      HorizontalAlignment="Stretch">
+                                <ComboBox.ItemTemplate>
+                                    <DataTemplate>
+                                        <StackPanel Orientation="Horizontal" Spacing="8">
+                                            <TextBlock Text="{Binding FileName}"/>
+                                            <TextBlock Text="{Binding CreatedAt, StringFormat='{}{0:dd.MM.yyyy HH:mm}'}"
+                                                       Foreground="{DynamicResource ThemeTextSecondaryBrush}"/>
+                                        </StackPanel>
+                                    </DataTemplate>
+                                </ComboBox.ItemTemplate>
+                            </ComboBox>
+                        </Grid>
+                        <Button Content="{Binding L[Settings.RefreshBackups]}" Command="{Binding RefreshBackupsCommand}"
+                                HorizontalAlignment="Left" Padding="10,6"/>
+
                         <Grid ColumnDefinitions="200,*">
                             <TextBlock Grid.Column="0" Text="{Binding L[Settings.LastBackup]}" 
                                       FontSize="11" VerticalAlignment="Center"

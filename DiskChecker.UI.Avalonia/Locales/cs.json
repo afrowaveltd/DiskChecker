@@ -3019,5 +3019,7 @@
   "DiskComparison.ScoreChart": "Skóre zdraví (0–100)",
   "DiskComparison.SpeedChart": "Naměřené rychlosti (MB/s)",
   "DiskComparison.MissingMeasurement": "Chybějící měření se nepovažují za nulovou rychlost. Skóre a MB/s používají oddělené grafy.",
-  "Settings.EmailSettingsUnavailable": "Upozornění: Nastavení SMTP není dostupné; volba přílohy je dočasně vypnutá."
+  "Settings.EmailSettingsUnavailable": "Upozornění: Nastavení SMTP není dostupné; volba přílohy je dočasně vypnutá.",
+  "Settings.SelectBackup": "Záloha pro obnovení:",
+  "Settings.RefreshBackups": "Obnovit seznam záloh"
 }

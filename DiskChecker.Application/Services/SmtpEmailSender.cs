@@ -3,8 +3,7 @@ using DiskChecker.Core.Models;
 using MailKit.Net.Smtp;
 using MailKit.Security;
 using MimeKit;
-using System.Net.Security;
-using System.Security.Cryptography.X509Certificates;
+using System.Net;
 
 namespace DiskChecker.Application.Services;
 
@@ -58,45 +57,18 @@ public class SmtpEmailSender : IEmailSender
 
         email.Body = bodyBuilder.ToMessageBody();
 
-        using var client = new SmtpClient();
-#pragma warning disable CA5359 // Intranet-compatible tolerant SMTP mode requested by user
-        client.ServerCertificateValidationCallback = static (_, _, _, _) => true;
-#pragma warning restore CA5359
-        client.CheckCertificateRevocation = false;
-
-        var secureOptions = settings.UseSsl
-            ? new[] { SecureSocketOptions.StartTls, SecureSocketOptions.Auto, SecureSocketOptions.SslOnConnect, SecureSocketOptions.None }
-            : new[] { SecureSocketOptions.Auto, SecureSocketOptions.None, SecureSocketOptions.StartTls, SecureSocketOptions.SslOnConnect };
-
-        Exception? lastConnectError = null;
-        var connected = false;
-        foreach (var option in secureOptions)
+        // TLS is authenticated with the platform trust store; do not bypass
+        // certificate validation and never silently fall back to plaintext.
+        var security = ResolveSocketSecurity(settings);
+        if (security == SecureSocketOptions.None &&
+            !string.IsNullOrWhiteSpace(settings.UserName) && !IsLoopback(settings.Host))
         {
-            try
-            {
-                await client.ConnectAsync(settings.Host, settings.Port, option, cancellationToken);
-                connected = true;
-                break;
-            }
-            catch (AuthenticationException ex)
-            {
-                lastConnectError = ex;
-            }
-            catch (SslHandshakeException ex)
-            {
-                lastConnectError = ex;
-            }
-            catch (InvalidOperationException ex)
-            {
-                lastConnectError = ex;
-            }
+            throw new InvalidOperationException(
+                "SMTP authentication without TLS is refused for non-loopback servers.");
         }
 
-        if (!connected)
-        {
-            throw lastConnectError as InvalidOperationException ?? new InvalidOperationException("SMTP connection failed for all security modes.", lastConnectError);
-        }
-
+        using var client = new SmtpClient { Timeout = 20000 };
+        await client.ConnectAsync(settings.Host, settings.Port, security, cancellationToken);
         if (!string.IsNullOrWhiteSpace(settings.UserName))
         {
             await client.AuthenticateAsync(settings.UserName, settings.Password, cancellationToken);
@@ -105,4 +77,22 @@ public class SmtpEmailSender : IEmailSender
         await client.SendAsync(email, cancellationToken);
         await client.DisconnectAsync(true, cancellationToken);
     }
+    /// <summary>Applies one explicit, non-downgrading transport policy.</summary>
+    public static SecureSocketOptions ResolveSocketSecurity(EmailSettings settings)
+    {
+        ArgumentNullException.ThrowIfNull(settings);
+        if (settings.Port is < 1 or > 65535)
+            throw new ArgumentOutOfRangeException(nameof(settings), "SMTP port must be in range 1–65535.");
+        if (!settings.UseSsl)
+            return SecureSocketOptions.None;
+        return settings.Port == 465 ? SecureSocketOptions.SslOnConnect : SecureSocketOptions.StartTls;
+    }
+
+    private static bool IsLoopback(string host)
+    {
+        if (string.Equals(host.Trim(), "localhost", StringComparison.OrdinalIgnoreCase))
+            return true;
+        return IPAddress.TryParse(host, out var ip) && IPAddress.IsLoopback(ip);
+    }
+
 }

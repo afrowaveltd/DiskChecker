@@ -78,9 +78,10 @@ public partial class TestCompletionNotificationService
 
             LogNotificationSent(resolvedRecipient);
         }
-        catch (InvalidOperationException ex)
+        catch (Exception ex) when (ex is not OperationCanceledException)
         {
             LogNotificationFailed(ex, resolvedRecipient);
+            throw; // Caller must see the real delivery failure.
         }
     }
 
@@ -134,9 +135,10 @@ public partial class TestCompletionNotificationService
 
             LogNotificationWithReportSent(resolvedRecipient);
         }
-        catch (InvalidOperationException ex)
+        catch (Exception ex) when (ex is not OperationCanceledException)
         {
             LogNotificationWithReportFailed(ex, resolvedRecipient);
+            throw; // Do not report a sent certificate that never left the machine.
         }
     }
 
@@ -181,7 +183,7 @@ public partial class TestCompletionNotificationService
 
         <div class='content'>
             <h2>Informace o Testu</h2>
-            {(!string.IsNullOrEmpty(diskName) ? $"<div class='stat-row'><div class='stat-label'>Disk:</div><div>{diskName}</div></div>" : "")}
+            {(!string.IsNullOrEmpty(diskName) ? $"<div class='stat-row'><div class='stat-label'>Disk:</div><div>{WebUtility.HtmlEncode(diskName)}</div></div>" : "")}
             <div class='stat-row'><div class='stat-label'>Profil:</div><div>{result.Profile}</div></div>
             <div class='stat-row'><div class='stat-label'>Trvání:</div><div>{testDuration:F0} minut</div></div>
             <div class='stat-row'><div class='stat-label'>Čas začátku:</div><div>{result.StartedAtUtc:dd.MM.yyyy HH:mm:ss}</div></div>
@@ -194,7 +196,7 @@ public partial class TestCompletionNotificationService
             <div class='stat-row'><div class='stat-label'>Chyby:</div><div {(result.ErrorCount > 0 ? "class='error'" : "")}>{result.ErrorCount}</div></div>
             <div class='stat-row'><div class='stat-label'>Vzorky:</div><div>{result.Samples.Count}</div></div>
 
-            {(!string.IsNullOrEmpty(result.Notes) ? $"<h2>Poznámky</h2><p>{result.Notes}</p>" : "")}
+            {(!string.IsNullOrEmpty(result.Notes) ? $"<h2>Poznámky</h2><p>{WebUtility.HtmlEncode(result.Notes)}</p>" : "")}
 
             {(includeReport ? "<p><strong>Podrobnější zpráva je v příloze PDF.</strong></p>" : "")}
         </div>
