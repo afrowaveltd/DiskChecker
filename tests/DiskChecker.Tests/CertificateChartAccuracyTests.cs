@@ -99,6 +99,7 @@ public sealed class CertificateChartAccuracyTests
         Assert.Equal("57 °C", graph.TemperatureMaxLabel);
         Assert.Equal("23 °C", graph.TemperatureMinLabel);
         Assert.Contains("886,", graph.TemperatureProfilePoints);
+        Assert.Contains("pouze naměřený průběh teploty", graph.ChartSourceNote);
     }
 
     [Fact]
@@ -113,6 +114,7 @@ public sealed class CertificateChartAccuracyTests
             new DiskCertificate { TestType = "FullRead" }, [], samples);
         Assert.Contains("471,", graph.ReadProfilePoints);
         Assert.DoesNotContain("886,", graph.ReadProfilePoints);
+        Assert.Contains("50 %", graph.ChartSourceNote);
     }
 
     [Fact]
