@@ -3055,5 +3055,12 @@
   "Settings.SmtpInsecureLabel": "Insecure intranet server:",
   "Settings.SmtpAllowInsecure": "Allow insecure SMTP connection",
   "Settings.SmtpInsecureWarning": "Trusted intranet only. To use plaintext SMTP, disable TLS AND explicitly enable this exception. Messages, PDF attachments and any credentials will be sent without encryption. TLS failures never trigger an automatic downgrade.",
-  "Settings.SmtpInsecurePermissionRequired": "To use plaintext SMTP, explicitly enable 'Allow insecure SMTP connection'."
+  "Settings.SmtpInsecurePermissionRequired": "To use plaintext SMTP, explicitly enable 'Allow insecure SMTP connection'.",
+  "Settings.CertificatePathLabel": "PDF certificate folder",
+  "Settings.CertificatePathBrowse": "Choose folder",
+  "Settings.CertificatePathDefault": "Blank = default location",
+  "Settings.CertificatePathHint": "PDFs are saved to the Certificates subfolder of the selected folder. When elevated with another administrator account, choose a directory accessible to the testing user. Changes take effect as soon as saved; existing PDFs are not moved.",
+  "Settings.CertificatePathAbsolute": "Please enter an absolute certificate directory path.",
+  "Settings.CertificatePathMissing": "The selected certificate folder does not exist or is unavailable."
+
 }
