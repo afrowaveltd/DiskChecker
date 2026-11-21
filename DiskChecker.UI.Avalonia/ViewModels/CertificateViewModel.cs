@@ -764,7 +764,7 @@ public partial class CertificateViewModel : ViewModelBase, INavigableViewModel
          if(selected == null)
             throw new InvalidOperationException(L.Get("CertificateView.Combined.NoSession"));
 
-         bool selectedSeek = selected.TestType == TestType.Seek;
+         bool selectedSeek = selected.TestType == DiskChecker.Core.Models.TestType.Seek;
          if(!selectedSeek && !IsSurfaceCertificateSession(selected.TestType))
             throw new InvalidOperationException(L.Get("CertificateView.Combined.Unsupported"));
 
@@ -772,7 +772,7 @@ public partial class CertificateViewModel : ViewModelBase, INavigableViewModel
          var counterpart = sessions
             .Where(s => s.Id != selected.Id
                 && s.DiskCardId == selected.DiskCardId
-                && (selectedSeek ? IsSurfaceCertificateSession(s.TestType) : s.TestType == TestType.Seek))
+                && (selectedSeek ? IsSurfaceCertificateSession(s.TestType) : s.TestType == DiskChecker.Core.Models.TestType.Seek))
             .OrderBy(s => Math.Abs((s.StartedAt - selected.StartedAt).TotalMinutes))
             .FirstOrDefault();
 
@@ -814,9 +814,9 @@ public partial class CertificateViewModel : ViewModelBase, INavigableViewModel
       }
    }
 
-   private static bool IsSurfaceCertificateSession(TestType type) =>
-      type is TestType.QuickRead or TestType.FullRead or TestType.SurfaceScan
-         or TestType.FullReadWrite or TestType.Sanitization or TestType.AbsoluteDestructive;
+   private static bool IsSurfaceCertificateSession(DiskChecker.Core.Models.TestType type) =>
+      type is DiskChecker.Core.Models.TestType.QuickRead or DiskChecker.Core.Models.TestType.FullRead or DiskChecker.Core.Models.TestType.SurfaceScan
+         or DiskChecker.Core.Models.TestType.FullReadWrite or DiskChecker.Core.Models.TestType.Sanitization or DiskChecker.Core.Models.TestType.AbsoluteDestructive;
 
    /// <summary>Builds one half of the report with bounded sampled telemetry.</summary>
    private async Task<DiskCertificate> BuildCombinedPartAsync(int sessionId, DiskCard card)
@@ -826,7 +826,7 @@ public partial class CertificateViewModel : ViewModelBase, INavigableViewModel
       if(session.DiskCardId != card.Id)
          throw new InvalidOperationException("Combined PDF: odlišná identita disku.");
 
-      if(session.TestType == TestType.Seek)
+      if(session.TestType == DiskChecker.Core.Models.TestType.Seek)
       {
          var seeks = await _diskCardRepository.GetSeekSamplesDownsampledAsync(sessionId, 1024);
          var cert = await _certificateGenerator.GenerateCertificateAsync(session, card);
