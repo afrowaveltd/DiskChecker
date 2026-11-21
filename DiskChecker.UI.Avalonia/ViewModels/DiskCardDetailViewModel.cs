@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
+using System.Data.Common;
 using System.Linq;
 using System.Text;
 using System.Text.Json;
@@ -53,6 +54,7 @@ public partial class DiskCardDetailViewModel : ViewModelBase, INavigableViewMode
     private string _selectedSessionDiagnosticSummary = "Vyberte test pro diagnostický rozbor průběhu výkonu.";
     private string _selectedSessionDiagnosticHighlights = string.Empty;
     private PlotModel? _seekChartModel;
+    private int _seekChartRequestGeneration;
 
     public DiskCardDetailViewModel(
         IDiskCardRepository diskCardRepository,
@@ -76,8 +78,6 @@ public partial class DiskCardDetailViewModel : ViewModelBase, INavigableViewMode
         TestSessions = new ObservableCollection<TestSession>();
         Certificates = new ObservableCollection<DiskCertificate>();
         SmartHistory = new ObservableCollection<SmartHistoryItem>();
-        SpeedChartModel = new PlotModel { Title = L.Get("DiskCardDetail.Status.SpeedTest") };
-        TemperatureChartModel = new PlotModel { Title = L.Get("DiskCardDetail.Status.TemperatureDuringTest") };
     }
 
     #region Properties
@@ -114,6 +114,12 @@ public partial class DiskCardDetailViewModel : ViewModelBase, INavigableViewMode
             if (SetProperty(ref _selectedSession, value))
             {
                 UpdateSelectedSessionDetails();
+                int generation = ++_seekChartRequestGeneration;
+                SeekChartModel = null;
+                if (value != null &&
+                    (value.TestType is TestType.Seek or TestType.AbsoluteDestructive ||
+                     !string.IsNullOrWhiteSpace(value.SeekResultsJson)))
+                    _ = LoadSeekScatterChartAsync(value, generation);
                 OnPropertyChanged(nameof(HasSelectedSession));
                 OnPropertyChanged(nameof(SelectedSessionHasCriticalDiagnostics));
                 OnPropertyChanged(nameof(SelectedSessionHasWarningDiagnostics));
@@ -149,8 +155,6 @@ public partial class DiskCardDetailViewModel : ViewModelBase, INavigableViewMode
 
     public ObservableCollection<SmartHistoryItem> SmartHistory { get; }
 
-    public PlotModel SpeedChartModel { get; }
-    public PlotModel TemperatureChartModel { get; }
     public PlotModel? SeekChartModel
     {
         get => _seekChartModel;
@@ -681,7 +685,6 @@ public partial class DiskCardDetailViewModel : ViewModelBase, INavigableViewMode
 
         SelectedSessionDiagnosticSummary = BuildDiagnosticSummary(SelectedSession);
         SelectedSessionDiagnosticHighlights = BuildDiagnosticHighlights(SelectedSession.Notes);
-        BuildSeekScatterChart(SelectedSession);
 
         var smartSnapshot = SelectedSession.SmartBefore;
         if (smartSnapshot == null)
@@ -922,76 +925,56 @@ public partial class DiskCardDetailViewModel : ViewModelBase, INavigableViewMode
         }
     }
 
-    private void BuildSeekScatterChart(TestSession session)
+    /// <summary>
+    /// Loads only bounded SQL seek samples for the selected historical session.
+    /// The old synchronous view parsed potentially enormous embedded JSON on the
+    /// Avalonia UI thread and showed no seek plot if the JSON field was absent.
+    /// </summary>
+    private async Task LoadSeekScatterChartAsync(TestSession session, int requestGeneration)
     {
-        SeekChartModel = null;
-
-        if (string.IsNullOrWhiteSpace(session.SeekResultsJson))
-            return;
-
-        var latencies = ExtractSeekLatencies(session.SeekResultsJson);
-        if (latencies.Count == 0)
-            return;
-
-        var maxLatency = latencies.Max();
-        var yMax = Math.Max(maxLatency * 1.15, maxLatency + 1);
-
-        var model = new PlotModel
+        List<SeekChartDatum> data = [];
+        try
         {
-            Title = L.Get("DiskCardDetail.Status.SeekLatency"),
-            TitleFontSize = 13,
-            TitleFontWeight = 700,
-            PlotMargins = new OxyThickness(60, 10, 20, 40),
-            Background = OxyColors.White
-        };
-
-        model.Axes.Add(new LinearAxis
+            // Full-stroke seeks preserve the most useful head-travel signature.
+            var rows = await _diskCardRepository.GetSeekSamplesDownsampledAsync(
+                session.Id, DiskCardSeekChartBuilder.MaxMarkers, SeekTestType.FullStroke);
+            if (rows.Count == 0)
+                rows = await _diskCardRepository.GetSeekSamplesDownsampledAsync(
+                    session.Id, DiskCardSeekChartBuilder.MaxMarkers);
+            data = rows.Where(r => !r.HasError && r.Index > 0 &&
+                        double.IsFinite(r.LatencyMs) && r.LatencyMs > 0)
+                .OrderBy(r => r.Index)
+                .Select(r => new SeekChartDatum(r.Index, r.LatencyMs))
+                .ToList();
+        }
+        catch (Exception ex) when (ex is DbException or IOException or InvalidOperationException)
         {
-            Position = AxisPosition.Left,
-            Title = L.Get("DiskCardDetail.Status.LatencyMs"),
-            TitleFontSize = 11,
-            Minimum = 0,
-            Maximum = yMax,
-            MajorStep = yMax > 10 ? Math.Ceiling(yMax / 5) : yMax / 5,
-            MinorStep = 1,
-            MajorGridlineStyle = LineStyle.Dot,
-            MajorGridlineColor = OxyColor.FromArgb(30, 0, 0, 0),
-            TickStyle = TickStyle.Outside,
-            FontSize = 10
-        });
-
-        model.Axes.Add(new LinearAxis
-        {
-            Position = AxisPosition.Bottom,
-            Title = L.Get("DiskCardDetail.Status.SampleIndex"),
-            TitleFontSize = 11,
-            Minimum = 1,
-            Maximum = latencies.Count,
-            MajorStep = Math.Max(1, latencies.Count / 5),
-            MinorStep = 1,
-            MajorGridlineStyle = LineStyle.Dot,
-            MajorGridlineColor = OxyColor.FromArgb(30, 0, 0, 0),
-            TickStyle = TickStyle.Outside,
-            FontSize = 10
-        });
-
-        var scatterSeries = new ScatterSeries
-        {
-            Title = L.Get("DiskCardDetail.Status.Latency"),
-            MarkerType = MarkerType.Circle,
-            MarkerSize = 2.4,
-            MarkerFill = OxyColor.FromRgb(220, 38, 38),
-            MarkerStroke = OxyColor.FromRgb(220, 38, 38),
-            MarkerStrokeThickness = 0
-        };
-
-        for (var i = 0; i < latencies.Count; i++)
-        {
-            scatterSeries.Points.Add(new ScatterPoint(i + 1, latencies[i]));
+            // Historical databases may not have the SeekSamples table yet.
+            // Fall back to a small legacy JSON snapshot below, if available.
         }
 
-        model.Series.Add(scatterSeries);
-        SeekChartModel = model;
+        if (data.Count == 0 &&
+            !string.IsNullOrWhiteSpace(session.SeekResultsJson) &&
+            session.SeekResultsJson.Length <= 2_000_000)
+        {
+            // Legacy JSON is parsed off the UI thread and never if oversized.
+            var legacy = await Task.Run(() => ExtractSeekLatencies(session.SeekResultsJson));
+            data = legacy.Select((ms, i) => new SeekChartDatum(i + 1, ms)).ToList();
+        }
+
+        // A previous async query must never overwrite the newly selected card
+        // or test's plot when it completes later.
+        if (requestGeneration != _seekChartRequestGeneration ||
+            SelectedSession?.Id != session.Id ||
+            CurrentCard?.Id != session.DiskCardId)
+            return;
+
+        SeekChartModel = DiskCardSeekChartBuilder.Build(
+            data,
+            L.Get("DiskCardDetail.Status.SeekLatency"),
+            L.Get("DiskCardDetail.Status.LatencyMs"),
+            L.Get("DiskCardDetail.Status.SampleIndex"),
+            L.Get("DiskCardDetail.Status.Latency"));
     }
 
     private static List<double> ExtractSeekLatencies(string seekResultsJson)
@@ -1013,12 +996,19 @@ public partial class DiskCardDetailViewModel : ViewModelBase, INavigableViewMode
         try
         {
             var envelope = JsonSerializer.Deserialize<SeekResultsEnvelope>(seekResultsJson);
-            return new[] { envelope?.FullStroke, envelope?.Random, envelope?.Skip }
-                .Where(r => r != null)
-                .SelectMany(r => r!.Samples)
-                .Where(s => !s.HasError && s.LatencyMs > 0)
-                .OrderBy(s => s.Index)
-                .Select(s => s.LatencyMs)
+            // Do not interleave FullStroke/Random/Skip operations that share
+            // sample indices; that fabricates a zig-zag timeline in the chart.
+            // Prefer full stroke when it exists, otherwise concatenate remaining
+            // modes in their original phase order.
+            var source = envelope?.FullStroke?.Samples.Count > 0
+                ? envelope.FullStroke.Samples.AsEnumerable()
+                : new[] { envelope?.Random, envelope?.Skip }
+                    .Where(r => r != null)
+                    .SelectMany(r => r!.Samples);
+            return source.Where(sample => !sample.HasError &&
+                    double.IsFinite(sample.LatencyMs) && sample.LatencyMs > 0)
+                .OrderBy(sample => sample.TimestampUtc)
+                .Select(sample => sample.LatencyMs)
                 .ToList();
         }
         catch (JsonException)
