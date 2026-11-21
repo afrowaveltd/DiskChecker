@@ -489,6 +489,13 @@ public sealed class TuiImageBackupService
         }
 
         // A nonzero payload offset is permitted only for a verified fixed VHDX.
+        if (request.DataStartOffset == 0 &&
+            parts.Any(part => string.Equals(Path.GetExtension(part), ".vhdx", StringComparison.OrdinalIgnoreCase)))
+        {
+            throw new InvalidDataException("VHDX nelze obnovit jako prostý RAW soubor bez validace.");
+        }
+
+        long? virtualDiskBytes = null;
         if (request.DataStartOffset > 0)
         {
             if (parts.Length != 1 ||
@@ -498,6 +505,8 @@ public sealed class TuiImageBackupService
             {
                 throw new InvalidDataException("Obraz VHDX neprošel validací nebo neodpovídá manifestu.");
             }
+
+            virtualDiskBytes = info.VirtualDiskSizeBytes;
         }
 
         long available = 0;
@@ -513,7 +522,7 @@ public sealed class TuiImageBackupService
             available = checked(available + size - offset);
         }
 
-        long totalBytes = request.TotalBytes > 0 ? request.TotalBytes : available;
+        long totalBytes = request.TotalBytes > 0 ? request.TotalBytes : virtualDiskBytes ?? available;
         if (totalBytes <= 0 || available < totalBytes)
         {
             throw new InvalidDataException("Záložní obraz je kratší než požadovaná obnova.");
@@ -634,16 +643,42 @@ public sealed class TuiImageBackupService
         }
     }
 
-    /// <summary>Canonicalizes direct symbolic links when checking for image/target aliases.</summary>
+    /// <summary>Resolves file and ancestor-directory symlinks before comparing paths.</summary>
     private static string ResolveExistingPath(string path)
     {
         string fullPath = Path.GetFullPath(path);
+        string? parent = Path.GetDirectoryName(fullPath);
+        if (!string.IsNullOrEmpty(parent))
+        {
+            fullPath = Path.Combine(ResolveDirectoryLinks(parent), Path.GetFileName(fullPath));
+        }
+
         if (File.Exists(fullPath) && new FileInfo(fullPath).ResolveLinkTarget(returnFinalTarget: true) is { } link)
+        {
+            return ResolveExistingPath(link.FullName);
+        }
+
+        return fullPath;
+    }
+
+    /// <summary>Canonicalizes each existing parent directory, including symlinked ancestors.</summary>
+    private static string ResolveDirectoryLinks(string path)
+    {
+        string fullPath = Path.GetFullPath(path);
+        string? parent = Path.GetDirectoryName(fullPath);
+        if (string.IsNullOrEmpty(parent) || parent == fullPath)
+        {
+            return fullPath;
+        }
+
+        string resolvedPath = Path.Combine(ResolveDirectoryLinks(parent), Path.GetFileName(fullPath));
+        var directory = new DirectoryInfo(resolvedPath);
+        if (directory.Exists && directory.ResolveLinkTarget(returnFinalTarget: true) is { } link)
         {
             return Path.GetFullPath(link.FullName);
         }
 
-        return fullPath;
+        return resolvedPath;
     }
 
     /// <summary>Hashes exactly the restored payload from a fresh read-only stream.</summary>
