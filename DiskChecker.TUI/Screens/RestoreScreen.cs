@@ -262,6 +262,7 @@ public sealed class RestoreScreen : ITuiScreen
                                 TotalBytes = backup.TotalBytes,
                                 DataStartOffset = backup.DataStartOffset,
                                 ExpectedSha256 = backup.Sha256,
+                                UnreadableBytes = backup.UnreadableBytes,
                             },
                             report,
                             operation.Token).ConfigureAwait(false);
