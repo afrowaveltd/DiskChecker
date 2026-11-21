@@ -1061,15 +1061,17 @@ public partial class CertificateBrowserViewModel : ViewModelBase, INavigableView
 
         foreach (var cert in AllCertificates)
         {
-            if (!string.IsNullOrEmpty(SearchText))
-            {
-                var searchLower = SearchText.ToLowerInvariant();
-                if (!cert.DiskModel.ToLowerInvariant().Contains(searchLower) &&
-                    !cert.SerialNumber.ToLowerInvariant().Contains(searchLower) &&
-                    !cert.CertificateNumber.ToLowerInvariant().Contains(searchLower))
+            var query = SearchText?.Trim();
+            if (!string.IsNullOrWhiteSpace(query) &&
+                !new[]
                 {
-                    continue;
-                }
+                    cert.DiskModel, cert.SerialNumber, cert.CertificateNumber,
+                    cert.TestType, cert.Grade,
+                    cert.GeneratedAt.ToString("dd.MM.yyyy"),
+                    cert.GeneratedAt.ToString("yyyy-MM-dd")
+                }.Any(value => value?.Contains(query, StringComparison.OrdinalIgnoreCase) == true))
+            {
+                continue;
             }
 
             if (!string.IsNullOrEmpty(SelectedGradeFilter) && SelectedGradeFilter != L.Get("CertificateBrowser.Status.All") && cert.Grade != SelectedGradeFilter)
@@ -1078,6 +1080,14 @@ public partial class CertificateBrowserViewModel : ViewModelBase, INavigableView
             }
 
             FilteredCertificates.Add(cert);
+        }
+
+        // The detail pane must always correspond to a visible row.
+        // A filter change must not leave an unrelated certificate displayed.
+        if (SelectedListItem == null ||
+            !FilteredCertificates.Any(c => c.Id == SelectedListItem.Id))
+        {
+            SelectedListItem = FilteredCertificates.FirstOrDefault();
         }
 
         OnPropertyChanged(nameof(FilteredCount));
