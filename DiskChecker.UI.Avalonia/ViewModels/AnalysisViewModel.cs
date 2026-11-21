@@ -659,6 +659,9 @@ public partial class AnalysisViewModel : ViewModelBase
         {
             AnalysisData = null;
             ResetSmartTrends();
+            // A cancelled/cleared selection has no successor request whose
+            // finally block could release the busy state.
+            IsLoadingAnalysis = false;
             return;
         }
 
