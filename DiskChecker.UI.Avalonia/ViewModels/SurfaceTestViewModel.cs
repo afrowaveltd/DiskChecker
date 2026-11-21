@@ -1463,6 +1463,7 @@ public partial class SurfaceTestViewModel : ViewModelBase, INavigableViewModel, 
 
                var savedSession = await _cardTestService.SaveSanitizationAsync(card, result, writeSamples, readSamples, smartSnapshot, smartAfterSnapshot, _borrowedSmartProvenance, cancellationToken);
                CommitTelemetryArchive(savedSession.SessionId);
+               await TrySendSavedCertificateAsync(savedSession, card, cancellationToken);
 
                StatusMessage = L.Get("SurfaceTest.Status.SanitizeSaved", card.ModelName, (writeSamples.Count + readSamples.Count).ToString());
                SetStatusMessage(L.Get("SurfaceTest.Status.SanitizeSavedSimple", card.ModelName));
@@ -1656,6 +1657,25 @@ public partial class SurfaceTestViewModel : ViewModelBase, INavigableViewModel, 
       {
          SetStickyErrorStatus("Test proběhl, ale výsledek se nepodařilo uložit: " + ex.Message);
          await _dialogService.ShowErrorAsync(L.Get("Common.Error"), StatusMessage);
+      }
+   }
+
+   private async Task TrySendSavedCertificateAsync(
+       TestSession session, DiskCard card, CancellationToken cancellationToken)
+   {
+      try
+      {
+         var recipient = await _settingsService.GetReportRecipientEmailAsync();
+         if (string.IsNullOrWhiteSpace(recipient)) return;
+         var certificate = await _certificateGenerator.GenerateCertificateAsync(session, card);
+         try { await _diskCardRepository.CreateCertificateAsync(certificate); }
+         catch (Exception) { /* The completed test session remains persisted. */ }
+         await _notificationService.SendGeneratedCertificateAsync(
+             certificate, _certificateGenerator, _settingsService, cancellationToken);
+      }
+      catch (Exception ex) when (ex is not OperationCanceledException)
+      {
+         StatusMessage = "Disk test completed; certificate email failed: " + ex.Message;
       }
    }
 
