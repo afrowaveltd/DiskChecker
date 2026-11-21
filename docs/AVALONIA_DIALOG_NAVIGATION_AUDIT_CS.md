@@ -36,3 +36,13 @@ U `Settings.ExportImport` se současně opravila vazba tlačítka na
 parent-selector výrazu. Kontrola zahrnovala pouze deklarované XAML
 lokalizační klíče; dynamicky složené popisky a runtime navigaci je stále
 třeba vizuálně ověřit.
+
+## Nastavení: sjednocení s aplikačními službami (navazující etapa)
+
+- XAML používá existující `AutoSaveInterval`, `SmartCacheTtlMinutes` a `SmartProbeTimeoutSeconds` místo nenapojených vlastností.
+- Oba e-mailové přepínače a USB recovery retry se načítají a ukládají přes `ISettingsService`.
+- Výběr exportní složky používá skutečný systémový picker a po zrušení zachová dosavadní cestu.
+- `GoBack`, otevření datové složky a vymazání výhradně **paměťové** cache mají skutečné příkazy.
+- Soubory databáze se nemažou. Velikost SQLite se čte pouze pro aktivní lokální backend; ostatní `N/A`.
+- Nefunkční volby „výchozí test“, obecná upozornění a „automatická záloha“ byly skryty, protože zde zatím nemají perzistentní funkci. Funkční přepínače mají vždy odpovídající stav a úložiště.
+- Po dokončení nutno vizuálně ověřit a projít regresní testy na Windows i Linuxu. Skia/Avalonia beze změny.

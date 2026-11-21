@@ -9,6 +9,9 @@ using Microsoft.EntityFrameworkCore;
 using System;
 using System.Collections.ObjectModel;
 using System.IO;
+using System.Linq;
+using System.Diagnostics;
+using Microsoft.Data.Sqlite;
 using System.Threading.Tasks;
 
 namespace DiskChecker.UI.Avalonia.ViewModels
@@ -19,6 +22,13 @@ namespace DiskChecker.UI.Avalonia.ViewModels
         private readonly IDialogService _dialogService;
         private readonly IBackupService _backupService;
         private readonly LocaleService _localizationService;
+        private readonly IDiskCacheService _diskCacheService;
+        private readonly INavigationService _navigationService;
+        private bool _emailSendOnlyForLongRunningTests;
+        private bool _emailIncludeCertificateAttachment;
+        private int _usbRecoveryRetryCount;
+        private string _databaseSize = "N/A";
+        private string _lastBackupText = "—";
         
         private bool _isSaving;
         private string _statusMessage = string.Empty;
@@ -42,12 +52,14 @@ namespace DiskChecker.UI.Avalonia.ViewModels
         private int _smartProbeTimeoutSeconds;
         private int _smartProbeParallelismValue;
 
-        public SettingsViewModel(ISettingsService settingsService, IDialogService dialogService, IBackupService backupService, LocaleService localizationService)
+        public SettingsViewModel(ISettingsService settingsService, IDialogService dialogService, IBackupService backupService, LocaleService localizationService, IDiskCacheService diskCacheService, INavigationService navigationService)
         {
             _settingsService = settingsService ?? throw new ArgumentNullException(nameof(settingsService));
             _dialogService = dialogService ?? throw new ArgumentNullException(nameof(dialogService));
             _backupService = backupService ?? throw new ArgumentNullException(nameof(backupService));
             _localizationService = localizationService ?? throw new ArgumentNullException(nameof(localizationService));
+            _diskCacheService = diskCacheService ?? throw new ArgumentNullException(nameof(diskCacheService));
+            _navigationService = navigationService ?? throw new ArgumentNullException(nameof(navigationService));
             
             SaveSettingsCommand = new AsyncRelayCommand(SaveSettingsAsync, () => !IsSaving);
             ResetSettingsCommand = new AsyncRelayCommand(ResetSettingsAsync);
@@ -57,6 +69,9 @@ namespace DiskChecker.UI.Avalonia.ViewModels
             RefreshBackupsCommand = new AsyncRelayCommand(RefreshBackupsAsync);
             SetLanguageCommand = new RelayCommand<string>(SetLanguage);
             TestDatabaseConnectionCommand = new AsyncRelayCommand(TestDatabaseConnectionAsync, () => !IsSaving);
+            GoBackCommand = new RelayCommand(() => _navigationService.NavigateTo<DiskSelectionViewModel>());
+            OpenDataFolderCommand = new AsyncRelayCommand(OpenDataFolderAsync);
+            ClearCacheCommand = new RelayCommand(ClearCache);
         NavigateToExportImportCommand = new RelayCommand(NavigateToExportImport);
 
             // Populate available languages
@@ -184,6 +199,31 @@ namespace DiskChecker.UI.Avalonia.ViewModels
         }
 
         public string DefaultBackupDirectory => _backupService.GetDefaultBackupDirectory();
+        public bool EmailSendOnlyForLongRunningTests
+        {
+            get => _emailSendOnlyForLongRunningTests;
+            set => SetProperty(ref _emailSendOnlyForLongRunningTests, value);
+        }
+        public bool EmailIncludeCertificateAttachment
+        {
+            get => _emailIncludeCertificateAttachment;
+            set => SetProperty(ref _emailIncludeCertificateAttachment, value);
+        }
+        public int UsbRecoveryRetryCount
+        {
+            get => _usbRecoveryRetryCount;
+            set => SetProperty(ref _usbRecoveryRetryCount, value);
+        }
+        public string DatabaseSize
+        {
+            get => _databaseSize;
+            private set => SetProperty(ref _databaseSize, value);
+        }
+        public string LastBackupText
+        {
+            get => _lastBackupText;
+            private set => SetProperty(ref _lastBackupText, value);
+        }
 
         public IAsyncRelayCommand SaveSettingsCommand { get; }
         public IAsyncRelayCommand ResetSettingsCommand { get; }
@@ -192,6 +232,9 @@ namespace DiskChecker.UI.Avalonia.ViewModels
         public IAsyncRelayCommand RestoreBackupCommand { get; }
         public IAsyncRelayCommand RefreshBackupsCommand { get; }
         public IRelayCommand<string> SetLanguageCommand { get; }
+        public IRelayCommand GoBackCommand { get; }
+        public IAsyncRelayCommand OpenDataFolderCommand { get; }
+        public IRelayCommand ClearCacheCommand { get; }
         public IAsyncRelayCommand TestDatabaseConnectionCommand { get; }
     public IRelayCommand NavigateToExportImportCommand { get; }
 
@@ -232,6 +275,9 @@ namespace DiskChecker.UI.Avalonia.ViewModels
                 EnableLogging = await _settingsService.GetEnableLoggingAsync();
                 LogLevel = await _settingsService.GetLogLevelAsync();
                 ReportRecipientEmail = await _settingsService.GetReportRecipientEmailAsync();
+                EmailSendOnlyForLongRunningTests = await _settingsService.GetEmailSendOnlyForLongRunningTestsAsync();
+                EmailIncludeCertificateAttachment = await _settingsService.GetEmailIncludeCertificateAttachmentAsync();
+                UsbRecoveryRetryCount = await _settingsService.GetUsbRecoveryRetryCountAsync();
                 var dbSettings = await _settingsService.GetDatabaseStorageSettingsAsync();
                 DatabaseProvider = dbSettings.Provider.ToString();
                 DatabaseConnectionString = dbSettings.ConnectionString ?? DatabaseStorageSettings.Default.ConnectionString!;
@@ -247,6 +293,8 @@ namespace DiskChecker.UI.Avalonia.ViewModels
                 var concreteSettings = _settingsService as DiskChecker.Application.Services.SettingsService;
                 var dbLocationWarning = concreteSettings?.OtherDatabaseCandidates;
                 var active = concreteSettings?.StartupDatabaseStorageSettings ?? dbSettings;
+                // Display only the currently active local SQLite file, not a pending backend.
+                DatabaseSize = GetActiveDatabaseSize(active);
                 // Never display non-SQLite connection strings here: they may include credentials.
                 var activeDescription = active.Provider == DatabaseProviderKind.Sqlite
                     ? active.ConnectionString ?? "(bez cesty)"
@@ -259,7 +307,7 @@ namespace DiskChecker.UI.Avalonia.ViewModels
                     ? $"{databaseMessage}. Pozor: nalezeny i další databáze: {string.Join("; ", dbLocationWarning)}. Nebyly změněny."
                     : databaseMessage;
             }
-            catch (InvalidOperationException ex)
+            catch (Exception ex)
             {
                 StatusMessage = $"Chyba při načítání nastavení: {ex.Message}";
                 await _dialogService.ShowErrorAsync(L.Get("Common.Error"), string.Format(L.Get("Common.SettingsLoadFailed"), ex.Message));
@@ -273,6 +321,12 @@ namespace DiskChecker.UI.Avalonia.ViewModels
                 IsSaving = true;
                 StatusMessage = "Ukládám nastavení...";
                 
+                if (AutoSaveInterval is < 0 or > 1440 ||
+                    SmartCacheTtlMinutes is < 0 or > 1440 ||
+                    SmartProbeTimeoutSeconds is < 1 or > 300 ||
+                    UsbRecoveryRetryCount is < 0 or > 10)
+                    throw new InvalidOperationException(L.Get("Settings.InvalidNumberRange"));
+
                 // Uložíme nastavení do služby
                 await _settingsService.SetAutoCheckForUpdatesAsync(AutoCheckForUpdates);
                 await _settingsService.SetRunAtStartupAsync(RunAtStartup);
@@ -283,6 +337,9 @@ namespace DiskChecker.UI.Avalonia.ViewModels
                 await _settingsService.SetEnableLoggingAsync(EnableLogging);
                 await _settingsService.SetLogLevelAsync(LogLevel);
                 await _settingsService.SetReportRecipientEmailAsync(ReportRecipientEmail);
+                await _settingsService.SetEmailSendOnlyForLongRunningTestsAsync(EmailSendOnlyForLongRunningTests);
+                await _settingsService.SetEmailIncludeCertificateAttachmentAsync(EmailIncludeCertificateAttachment);
+                await _settingsService.SetUsbRecoveryRetryCountAsync(UsbRecoveryRetryCount);
                 var providerKind = Enum.TryParse<DatabaseProviderKind>(DatabaseProvider, ignoreCase: true, out var parsedProvider)
                     ? parsedProvider
                     : DatabaseProviderKind.Sqlite;
@@ -298,7 +355,7 @@ namespace DiskChecker.UI.Avalonia.ViewModels
                 
                 StatusMessage = "Nastavení úspěšně uloženo";
             }
-            catch (InvalidOperationException ex)
+            catch (Exception ex)
             {
                 StatusMessage = $"Chyba při ukládání nastavení: {ex.Message}";
                 await _dialogService.ShowErrorAsync(L.Get("Common.Error"), string.Format(L.Get("Common.SettingsSaveFailed"), ex.Message));
@@ -342,11 +399,14 @@ namespace DiskChecker.UI.Avalonia.ViewModels
             try
             {
                 StatusMessage = "Vyberte složku pro export...";
-                // Zde bychom normálně otevřeli dialog pro výběr složky
-                // Pro demo účely použijeme placeholder
-                var selectedPath = Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments);
-                DefaultExportPath = selectedPath;
-                StatusMessage = "Složka pro export vybrána";
+                var folders = await _dialogService.PickFoldersAsync(L.Get("Settings.SelectExportFolder"), false);
+                if (folders.Count == 0)
+                {
+                    StatusMessage = L.Get("Settings.ExportSelectionCancelled");
+                    return;
+                }
+                DefaultExportPath = folders[0];
+                StatusMessage = L.Get("Settings.ExportFolderSelected");
             }
             catch (Exception ex)
             {
@@ -455,7 +515,10 @@ namespace DiskChecker.UI.Avalonia.ViewModels
             {
                 IsLoadingBackups = true;
                 var backups = await _backupService.GetAvailableBackupsAsync();
-                AvailableBackups = new ObservableCollection<IBackupService.BackupInfo>(backups);
+                var ordered = backups.OrderByDescending(b => b.CreatedAt).ToList();
+                AvailableBackups = new ObservableCollection<IBackupService.BackupInfo>(ordered);
+                LastBackupText = ordered.Count == 0 ? "—" :
+                    ordered[0].CreatedAt.ToString("g", System.Globalization.CultureInfo.CurrentCulture);
             }
             catch (Exception ex)
             {
@@ -464,6 +527,54 @@ namespace DiskChecker.UI.Avalonia.ViewModels
             finally
             {
                 IsLoadingBackups = false;
+            }
+        }
+
+        private static string GetActiveDatabaseSize(DatabaseStorageSettings settings)
+        {
+            if (settings.Provider != DatabaseProviderKind.Sqlite ||
+                string.IsNullOrWhiteSpace(settings.ConnectionString))
+                return "N/A";
+            try
+            {
+                var path = new SqliteConnectionStringBuilder(settings.ConnectionString).DataSource;
+                return File.Exists(path) ? $"{new FileInfo(path).Length / 1048576d:F1} MiB" : "N/A";
+            }
+            catch (Exception ex) when (ex is ArgumentException or IOException or UnauthorizedAccessException)
+            {
+                return "N/A";
+            }
+        }
+
+        private void ClearCache()
+        {
+            // Only invalidate the 30-second in-memory disk discovery cache.
+            // Never delete history, telemetry or any persisted database files.
+            _diskCacheService.ClearCache();
+            StatusMessage = L.Get("Settings.CacheCleared");
+        }
+
+        private async Task OpenDataFolderAsync()
+        {
+            try
+            {
+                var path = (_settingsService as DiskChecker.Application.Services.SettingsService)?.SettingsFilePath;
+                var folder = !string.IsNullOrWhiteSpace(path)
+                    ? Path.GetDirectoryName(path)
+                    : _backupService.GetDefaultBackupDirectory();
+                if (string.IsNullOrWhiteSpace(folder) || !Directory.Exists(folder))
+                    throw new DirectoryNotFoundException(folder);
+                await Task.Run(() => Process.Start(new ProcessStartInfo
+                {
+                    FileName = folder,
+                    UseShellExecute = true
+                }) ?? throw new InvalidOperationException("Folder opener was unavailable."));
+                StatusMessage = L.Get("Settings.DataFolderOpened");
+            }
+            catch (Exception ex)
+            {
+                StatusMessage = ex.Message;
+                await _dialogService.ShowErrorAsync(L.Get("Common.Error"), ex.Message);
             }
         }
 

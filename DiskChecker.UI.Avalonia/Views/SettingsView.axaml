@@ -66,23 +66,23 @@
                             </ComboBox>
                         </Grid>
                         
+                        <Grid ColumnDefinitions="200,*,Auto" ColumnSpacing="8">
+                            <TextBlock Grid.Column="0" Text="{Binding L[Settings.ExportPath]}" VerticalAlignment="Center"
+                                       Foreground="{DynamicResource ThemeTextSecondaryBrush}"/>
+                            <TextBox Grid.Column="1" Text="{Binding DefaultExportPath}" />
+                            <Button Grid.Column="2" Content="{Binding L[Settings.SelectExportFolder]}"
+                                    Command="{Binding BrowseExportPathCommand}" Padding="10,6"/>
+                        </Grid>
+
                         <Grid ColumnDefinitions="200,*">
-                            <TextBlock Grid.Column="0" Text="{Binding L[Settings.AutoSaveLabel]}" 
+                            <TextBlock Grid.Column="0" Text="{Binding L[Settings.AutoSaveInterval]}" 
                                       FontSize="11" VerticalAlignment="Center"
                                       Foreground="{DynamicResource ThemeTextSecondaryBrush}"/>
-                            <CheckBox Grid.Column="1" Content="{Binding L[Settings.AutoSaveContent]}"
-                                     IsChecked="{Binding AutoSaveResults}"
-                                     FontSize="11"/>
+                            <TextBox Grid.Column="1" Text="{Binding AutoSaveInterval}" FontSize="11"
+                                     Watermark="0–1440" />
                         </Grid>
                         
-                        <Grid ColumnDefinitions="200,*">
-                            <TextBlock Grid.Column="0" Text="{Binding L[Settings.Notifications]}" 
-                                      FontSize="11" VerticalAlignment="Center"
-                                      Foreground="{DynamicResource ThemeTextSecondaryBrush}"/>
-                            <CheckBox Grid.Column="1" Content="{Binding L[Settings.NotificationsContent]}"
-                                     IsChecked="{Binding ShowNotifications}"
-                                     FontSize="11"/>
-                        </Grid>
+                        
                         
                         <Grid ColumnDefinitions="200,*">
                             <TextBlock Grid.Column="0" Text="{Binding L[Settings.EmailRecipientLabel]}" 
@@ -130,26 +130,14 @@
                                   Foreground="{DynamicResource ThemeTextPrimaryBrush}"
                                   Margin="0,0,0,8"/>
                         
-                        <Grid ColumnDefinitions="200,*">
-                            <TextBlock Grid.Column="0" Text="{Binding L[Settings.DefaultTest]}" 
-                                      FontSize="11" VerticalAlignment="Center"
-                                      Foreground="{DynamicResource ThemeTextSecondaryBrush}"/>
-                            <ComboBox Grid.Column="1" SelectedIndex="0"
-                                      HorizontalAlignment="Stretch"
-                                      Background="{DynamicResource ThemeCardBackgroundBrush}"
-                                      BorderBrush="{DynamicResource ThemeBorderBrush}">
-                                <ComboBoxItem Content="{Binding L[Settings.DefaultTestQuick]}"/>
-                                <ComboBoxItem Content="{Binding L[Settings.DefaultTestFull]}"/>
-                                <ComboBoxItem Content="{Binding L[Settings.DefaultTestSanitize]}"/>
-                            </ComboBox>
-                        </Grid>
+                        
                         
                         <Grid ColumnDefinitions="200,*">
                             <TextBlock Grid.Column="0" Text="{Binding L[Settings.SmartCacheTTL]}" 
                                       FontSize="11" VerticalAlignment="Center"
                                       Foreground="{DynamicResource ThemeTextSecondaryBrush}"/>
                             <TextBox Grid.Column="1" 
-                                    Text="{Binding SmartCacheTtl}"
+                                    Text="{Binding SmartCacheTtlMinutes}"
                                     Background="{DynamicResource ThemeCardBackgroundBrush}"
                                     BorderBrush="{DynamicResource ThemeBorderBrush}"
                                     Padding="8,4"/>
@@ -167,11 +155,11 @@
                         </Grid>
                           
                         <Grid ColumnDefinitions="200,*">
-                            <TextBlock Grid.Column="0" Text="{Binding L[Settings.TestTimeoutLabel]}" 
+                            <TextBlock Grid.Column="0" Text="{Binding L[Settings.SmartProbeTimeoutLabel]}" 
                                       FontSize="11" VerticalAlignment="Center"
                                       Foreground="{DynamicResource ThemeTextSecondaryBrush}"/>
                             <TextBox Grid.Column="1" 
-                                    Text="{Binding TestTimeout}"
+                                    Text="{Binding SmartProbeTimeoutSeconds}"
                                     Background="{DynamicResource ThemeCardBackgroundBrush}"
                                     BorderBrush="{DynamicResource ThemeBorderBrush}"
                                     Padding="8,4"/>
@@ -284,21 +272,14 @@
                                   Foreground="{DynamicResource ThemeTextPrimaryBrush}"
                                   Margin="0,0,0,8"/>
                         
-                        <Grid ColumnDefinitions="200,*">
-                            <TextBlock Grid.Column="0" Text="{Binding L[Settings.AutoBackupLabel]}" 
-                                      FontSize="11" VerticalAlignment="Center"
-                                      Foreground="{DynamicResource ThemeTextSecondaryBrush}"/>
-                            <CheckBox Grid.Column="1" Content="{Binding L[Settings.AutoBackupContent]}"
-                                     IsChecked="{Binding AutoBackup}"
-                                     FontSize="11"/>
-                        </Grid>
+                        
                         
                         <Grid ColumnDefinitions="200,*">
                             <TextBlock Grid.Column="0" Text="{Binding L[Settings.LastBackup]}" 
                                       FontSize="11" VerticalAlignment="Center"
                                       Foreground="{DynamicResource ThemeTextSecondaryBrush}"/>
                             <TextBlock Grid.Column="1" 
-                                      Text="{Binding LastBackup, StringFormat='{}{0:dd.MM.yyyy HH:mm}'}"
+                                      Text="{Binding LastBackupText}"
                                       FontSize="11"
                                       Foreground="{DynamicResource ThemeTextSecondaryBrush}"
                                       VerticalAlignment="Center"/>
