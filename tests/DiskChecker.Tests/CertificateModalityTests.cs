@@ -148,7 +148,7 @@ public sealed class CertificateModalityTests
             };
             surface.PairedCertificate = seek;
             var pdf = await generator.GeneratePdfAsync(surface);
-            var text = Encoding.Latin1.GetString(await File.ReadAllBytesAsync(pdf));
+            var text = Encoding.Latin1.GetString(await File.ReadAllBytesAsync(pdf, TestContext.Current.CancellationToken));
 
             Assert.StartsWith("%PDF-", text, StringComparison.Ordinal);
             Assert.Contains("/Count 1", text, StringComparison.Ordinal);
