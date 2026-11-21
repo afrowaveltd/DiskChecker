@@ -77,8 +77,8 @@ namespace DiskChecker.UI.Avalonia.ViewModels
             SaveSettingsCommand = new AsyncRelayCommand(SaveSettingsAsync, () => !IsSaving);
             ResetSettingsCommand = new AsyncRelayCommand(ResetSettingsAsync);
             BrowseExportPathCommand = new AsyncRelayCommand(BrowseExportPathAsync);
-            CreateBackupCommand = new AsyncRelayCommand(CreateBackupAsync, () => !IsSaving);
-            RestoreBackupCommand = new AsyncRelayCommand(RestoreBackupAsync, () => !IsSaving && SelectedBackup != null);
+            CreateBackupCommand = new AsyncRelayCommand(CreateBackupAsync, () => !IsSaving && CanUseSqliteBackup);
+            RestoreBackupCommand = new AsyncRelayCommand(RestoreBackupAsync, () => !IsSaving && CanUseSqliteBackup && SelectedBackup != null);
             RefreshBackupsCommand = new AsyncRelayCommand(RefreshBackupsAsync);
             SetLanguageCommand = new RelayCommand<string>(SetLanguage);
             TestDatabaseConnectionCommand = new AsyncRelayCommand(TestDatabaseConnectionAsync, () => !IsSaving);
@@ -218,6 +218,9 @@ namespace DiskChecker.UI.Avalonia.ViewModels
         }
 
         public string DefaultBackupDirectory => _backupService.GetDefaultBackupDirectory();
+        /// <summary>The ZIP backup service supports only the active SQLite database.</summary>
+        public bool CanUseSqliteBackup => (_settingsService as DiskChecker.Application.Services.SettingsService)?
+            .StartupDatabaseStorageSettings.Provider == DatabaseProviderKind.Sqlite;
         public bool EmailSendOnlyForLongRunningTests
         {
             get => _emailSendOnlyForLongRunningTests;

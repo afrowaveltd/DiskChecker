@@ -3049,5 +3049,7 @@
   "Settings.RestoreSelectionHint": "Select a backup explicitly before restore. Restoring can replace current data and requires restarting DiskChecker.",
   "Notification.CertificateAccepted": "PDF certificate accepted by the SMTP server for delivery.",
   "Notification.CertificateSendCancelled": "The disk test was saved; certificate emailing was cancelled.",
-  "Notification.CertificateNotSaved": "Disk test completed, but the certificate record could not be saved to the database."
+  "Notification.CertificateNotSaved": "Disk test completed, but the certificate record could not be saved to the database.",
+  "Settings.SmtpAutomaticHint": "With a recipient configured, completed tests automatically send an email. When PDF attachment is enabled, the actual test certificate is attached. The SMTP test sends only a test message, not a certificate.",
+  "Settings.SqliteBackupHint": "Built-in ZIP backup/restore supports only the active SQLite database. Use database-specific tools for other backends."
 }

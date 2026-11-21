@@ -3049,5 +3049,7 @@
   "Settings.RestoreSelectionHint": "Před obnovou výslovně vyberte zálohu. Obnova databáze může nahradit aktuální data a vyžaduje restart.",
   "Notification.CertificateAccepted": "PDF certifikát přijat SMTP serverem k doručení.",
   "Notification.CertificateSendCancelled": "Diskový test byl uložen, odeslání certifikátu bylo zrušeno.",
-  "Notification.CertificateNotSaved": "Diskový test byl dokončen, ale záznam certifikátu se nepodařilo uložit do databáze."
+  "Notification.CertificateNotSaved": "Diskový test byl dokončen, ale záznam certifikátu se nepodařilo uložit do databáze.",
+  "Settings.SmtpAutomaticHint": "Pokud vyplníte příjemce, po dokončení testu bude automaticky odesláno e-mailové oznámení. Se zapnutou volbou PDF se připojí skutečný certifikát testu. Zkušební e-mail pouze ověřuje SMTP, neobsahuje certifikát.",
+  "Settings.SqliteBackupHint": "Vestavěná ZIP záloha/obnova podporuje pouze aktivní SQLite databázi. Pro jiné databáze použijte odpovídající databázové nástroje."
 }
