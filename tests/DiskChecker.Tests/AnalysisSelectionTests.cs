@@ -87,16 +87,16 @@ public class AnalysisSelectionTests
         var analysis = Substitute.For<ITestAnalysisDataService>();
         var repo = Substitute.For<IDiskCardRepository>();
         var settings = Substitute.For<ISettingsService>();
-        settings.GetAnalysisWorkspaceModeAsync().Returns(AnalysisWorkspaceMode.Compact);
-        repo.GetAllAsync().Returns(new List<DiskCard>());
-        repo.GetSmartSnapshotsAsync(Arg.Any<int>()).Returns(new List<SmartSnapshotRecord>());
+        settings.GetAnalysisWorkspaceModeAsync().Returns(Task.FromResult(AnalysisWorkspaceMode.Compact));
+        repo.GetAllAsync().Returns(Task.FromResult(new List<DiskCard>()));
+        repo.GetSmartSnapshotsAsync(Arg.Any<int>()).Returns(Task.FromResult(new List<SmartSnapshotRecord>()));
 
         var oldQuery = new TaskCompletionSource<TestAnalysisData?>(
             TaskCreationOptions.RunContinuationsAsynchronously);
         analysis.GetAnalysisDataAsync(1, Arg.Any<CancellationToken>())
             .Returns(_ => oldQuery.Task);
         analysis.GetAnalysisDataAsync(2, Arg.Any<CancellationToken>())
-            .Returns(new TestAnalysisData { Session = new TestSession { Id = 2 } });
+            .Returns(Task.FromResult<TestAnalysisData?>(new TestAnalysisData { Session = new TestSession { Id = 2 } }));
 
         var vm = new AnalysisViewModel(
             dialog, analysis, repo, settings, new SmartTrendService(repo));
