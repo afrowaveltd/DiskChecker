@@ -97,6 +97,25 @@ public sealed class CertificateModalityTests
     }
 
     [Fact]
+    public async Task SlowSeekWithoutIoOrSmartFaults_DoesNotDeclareDiskBroken()
+    {
+        var test = new TestSession
+        {
+            Id = 303, DiskCardId = 202, TestType = TestType.Seek,
+            Status = TestStatus.Completed, Result = TestResult.Pass,
+            Grade = "E", Score = 18,
+            SmartBefore = new SmartaData { IsHealthy = true }
+        };
+        var certificate = await NewGenerator().GenerateCertificateAsync(test, Card());
+
+        Assert.Equal("E", certificate.Grade);
+        Assert.Contains("Samotná vyšší latence není důkazem fyzické poruchy",
+            certificate.RecommendationNotes);
+        Assert.DoesNotContain("okamžitě vyřadit", certificate.RecommendationNotes,
+            StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public async Task CombinedPdf_HasSinglePageAndDoesNotRewriteIndependentTestGrades()
     {
         string root = Path.Combine(Path.GetTempPath(), "DiskChecker-Modality-" + Guid.NewGuid().ToString("N"));
