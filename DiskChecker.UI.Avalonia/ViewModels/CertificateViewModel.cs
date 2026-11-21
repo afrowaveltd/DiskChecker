@@ -56,6 +56,7 @@ public partial class CertificateViewModel : ViewModelBase, INavigableViewModel
    private string _seekRandomPoints = string.Empty;
    private string _seekSkipPoints = string.Empty;
    private string _seekLegacyPoints = string.Empty;
+   private string _chartSourceNote = CertificateGraphData.Default.ChartSourceNote;
    private string _temperatureMaxLabel = "N/A";
    private string _temperatureMidLabel = "N/A";
    private string _temperatureMinLabel = "N/A";
@@ -346,6 +347,12 @@ public partial class CertificateViewModel : ViewModelBase, INavigableViewModel
    public bool HasSeekRandom => SeekRandomPoints.Length > 0;
    public bool HasSeekSkip => SeekSkipPoints.Length > 0;
    public bool HasSeekLegacy => SeekLegacyPoints.Length > 0;
+
+   public string ChartSourceNote
+   {
+       get => _chartSourceNote;
+       private set => SetProperty(ref _chartSourceNote, value);
+   }
 
    public string TemperatureMaxLabel
    {
@@ -1827,12 +1834,17 @@ public partial class CertificateViewModel : ViewModelBase, INavigableViewModel
        TemperatureMaxLabel = graphData.TemperatureMaxLabel;
        TemperatureMidLabel = graphData.TemperatureMidLabel;
        TemperatureMinLabel = graphData.TemperatureMinLabel;
+       ChartSourceNote = graphData.ChartSourceNote;
+       ChartSourceNote = graphData.ChartSourceNote;
        ChartMaxSpeedLabel = graphData.ChartMaxSpeedLabel;
        ChartMidSpeedLabel = graphData.ChartMidSpeedLabel;
        ChartMinSpeedLabel = graphData.ChartMinSpeedLabel;
        ChartXAxisStartLabel = graphData.ChartXAxisStartLabel;
        ChartXAxisMidLabel = graphData.ChartXAxisMidLabel;
        ChartXAxisEndLabel = graphData.ChartXAxisEndLabel;
+       if(IsSeekChart &&
+          !HasThroughputChart && !HasTemperatureProfile)
+          ChartSourceNote = "Seek: naměřené latence podle pořadí operací, fáze jsou oddělené.";
     }
 
     private void ResetGraphToDefaults()
