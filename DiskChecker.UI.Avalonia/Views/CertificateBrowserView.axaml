@@ -325,7 +325,8 @@
                         </Border>
 
                         <!-- Performance Graph -->
-                        <Border Background="{Binding PanelBackground}" Padding="12" CornerRadius="8">
+                        <Border Background="{Binding PanelBackground}" Padding="12" CornerRadius="8"
+                                IsVisible="{Binding HasSpeedGraph}">
                             <StackPanel Spacing="6">
                                 <TextBlock Text="{Binding L[CertificateBrowser.PerformanceProfile]}" FontWeight="Bold" FontSize="12"/>
 
