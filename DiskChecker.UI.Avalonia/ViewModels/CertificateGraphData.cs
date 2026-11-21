@@ -13,7 +13,10 @@ public readonly record struct CertificateGraphData(
     string ChartMinSpeedLabel,
     string ChartXAxisStartLabel,
     string ChartXAxisMidLabel,
-    string ChartXAxisEndLabel)
+    string ChartXAxisEndLabel,
+    string TemperatureMaxLabel,
+    string TemperatureMidLabel,
+    string TemperatureMinLabel)
 {
     /// <summary>Never display demo curves as though they were measurements.</summary>
     public static CertificateGraphData Default { get; } = new(
@@ -26,5 +29,8 @@ public readonly record struct CertificateGraphData(
         "0 MB/s",
         "0 %",
         "50 %",
-        "100 %");
+        "100 %",
+        "N/A",
+        "N/A",
+        "N/A");
 }
