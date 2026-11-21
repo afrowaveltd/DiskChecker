@@ -1081,7 +1081,21 @@ public partial class CertificateViewModel : ViewModelBase, INavigableViewModel
          return;
       }
 
-      Certificate = await _certificateGenerator.GenerateCertificateAsync(_selectedSession, card);
+      // Do not let speed/seek samples from the previously selected test
+      // leak into the newly selected session's on-screen graphs.
+      _writeGraphSamples = [];
+      _readGraphSamples = [];
+      _seekLatencyGraphSamples = [];
+      SeekScatterPoints = new ObservableCollection<ObservablePoint>();
+      _selectedDiskService.SelectedTestSessionId = _selectedSession.Id;
+
+      // Reuse the persisted certificate for THIS session, including the
+      // technician's comment; never silently show the latest of another test.
+      var matching = (await _diskCardRepository.GetCertificatesAsync(card.Id))
+         .Where(c => c.TestSessionId == _selectedSession.Id)
+         .OrderByDescending(c => c.GeneratedAt).FirstOrDefault();
+      _selectedDiskService.SelectedCertificateId = matching?.Id;
+      Certificate = matching ?? await _certificateGenerator.GenerateCertificateAsync(_selectedSession, card);
       await PrepareCertificateGraphAsync(Certificate, updateView: true);
       UpdateDetailedSummaries(_selectedSession);
    }
@@ -1684,7 +1698,10 @@ public partial class CertificateViewModel : ViewModelBase, INavigableViewModel
           certificate.MaxWriteSpeed > 0 ||
           certificate.MaxReadSpeed > 0;
 
-       var graphData = await Task.Run(() => BuildGraphData(certificate, writeGraphSamples, readGraphSamples, temperatureSamples)).ConfigureAwait(true);
+       var graphData = await Task.Run(() => CertificateChartProjector.Build(
+          certificate, writeGraphSamples, readGraphSamples, temperatureSamples)).ConfigureAwait(true);
+       HasThroughputChart = !string.IsNullOrWhiteSpace(graphData.WriteProfilePoints) ||
+          !string.IsNullOrWhiteSpace(graphData.ReadProfilePoints);
 
        WriteProfilePoints = graphData.WriteProfilePoints;
        ReadProfilePoints = graphData.ReadProfilePoints;
@@ -1704,7 +1721,7 @@ public partial class CertificateViewModel : ViewModelBase, INavigableViewModel
        _readGraphSamples = [];
        _seekLatencyGraphSamples = [];
        SeekScatterPoints = new ObservableCollection<ObservablePoint>();
-       HasThroughputChart = true;
+       HasThroughputChart = false;
        SeekChartMaxLabel = "0 ms";
        SeekChartMidLabel = "0 ms";
        SeekChartMinLabel = "0 ms";
