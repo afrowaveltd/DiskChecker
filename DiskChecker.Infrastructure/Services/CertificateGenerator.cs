@@ -371,7 +371,7 @@ public class CertificateGenerator : ICertificateGenerator
             index++;
         } while (File.Exists(Path.Combine(certificatesDirectory, fileName)));
 
-        var filePath = Path.Combine(_certificatesDirectory, fileName);
+        var filePath = Path.Combine(certificatesDirectory, fileName);
 
         // Single A4 page with real searchable/selectable text and vector charts.
         // Combined certificates keep two independently graded tests on that page.
