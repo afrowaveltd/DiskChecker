@@ -368,3 +368,19 @@ safe in-memory-only disk discovery cache invalidation. Disk comparison selects
 and exports formula-safe CSV without inventing missing measurements. See the
 [Avalonia UX audit](docs/AVALONIA_DIALOG_NAVIGATION_AUDIT_CS.md)
 for scope, remaining limitations and manual verification.
+
+### SMTP configuration and PDF certificate email
+
+The Avalonia **Settings** screen now exposes actual SMTP host, port, verified
+TLS, login, sender identity, recipient and a **Save and send test email**
+action that performs a real SMTP send. On a completed surface test,
+including a completed test with errors, DiskChecker generates the specific
+test's PDF certificate and emails it to the configured recipient when
+attachments are enabled. Failed delivery is reported separately from the
+recorded disk-test result. TLS uses normal server certificate validation and
+never silently falls back to plaintext. Install private CA roots in the OS
+trust store if applicable.
+
+The SMTP password is persisted in the application configuration database,
+not a system keychain; protect that database and its backups. An SMTP server
+accepting a message is not proof of final inbox delivery.

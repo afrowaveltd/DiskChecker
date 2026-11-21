@@ -400,3 +400,18 @@ a bezpečné vyprázdnění pouze paměťové cache disků. Porovnání disků p
 záznamů, výsledky testů, oddělené grafy skóre/MB/s a CSV export s ochranou proti
 vzorcům. Graf nezobrazuje nezměřené hodnoty jako nulovou rychlost. Podrobnosti,
 omezení a postup ověření: [audit Avalonia](docs/AVALONIA_DIALOG_NAVIGATION_AUDIT_CS.md).
+
+### SMTP a certifikát po dokončeném testu
+
+V Avalonia > **Nastavení** nastavte SMTP server, port, ověřené TLS, přihlašovací
+údaje, adresu odesílatele a příjemce. Volba „Uložit a odeslat zkušební e-mail“
+provádí skutečné SMTP odeslání. Po dokončení povrchového testu (i pokud
+obsahuje chyby) se při vyplněném příjemci vygeneruje PDF certifikát daného
+testu a odešle e-mailem, je-li povolena příloha. Chyby odeslání se zobrazí
+odděleně od výsledku testování disku. Při TLS se ověřuje certifikát serveru
+a nedochází k přepnutí na nešifrované spojení. Důvěryhodnou soukromou CA
+je třeba přidat do systémového úložiště certifikátů.
+
+SMTP heslo je uložené v konfigurační databázi aplikace, nikoli v systémové
+klíčence; dbejte na práva k databázi a jejím zálohám. Samotné přijetí
+zprávy SMTP serverem nezaručuje její doručení do cílové schránky.
