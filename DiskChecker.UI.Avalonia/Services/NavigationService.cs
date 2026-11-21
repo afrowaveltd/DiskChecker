@@ -32,6 +32,11 @@ public class NavigationService : INavigationService
 
     public void NavigateTo<T>() where T : ViewModelBase
     {
+        // All navigation paths (side menu, back buttons, cross-view actions)
+        // use this service. A running I/O operation must not lose its scope.
+        if (CurrentViewModel is INavigationActivity { IsNavigationBlocked: true })
+            return;
+
         var scope = _serviceProvider.CreateScope();
         T viewModel;
         try

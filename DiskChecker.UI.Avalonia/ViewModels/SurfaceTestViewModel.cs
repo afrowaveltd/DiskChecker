@@ -23,8 +23,11 @@ using Microsoft.EntityFrameworkCore;
 
 namespace DiskChecker.UI.Avalonia.ViewModels;
 
-public partial class SurfaceTestViewModel : ViewModelBase, INavigableViewModel, IDisposable
+public partial class SurfaceTestViewModel : ViewModelBase, INavigableViewModel, IDisposable, INavigationActivity
 {
+    /// <inheritdoc />
+    public bool IsNavigationBlocked => IsTesting;
+
    private const int MaxGraphPoints = 8000;
 
    private const double GbInBytes = 1024d * 1024d * 1024d;

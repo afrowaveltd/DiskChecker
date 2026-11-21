@@ -67,8 +67,11 @@ public enum RestorePhase
 /// Orchestrates restore of a backup to a new disk.
 /// Supports file-level restore and raw image restore.
 /// </summary>
-public partial class RestoreViewModel : ViewModelBase, INavigableViewModel, IDisposable
+public partial class RestoreViewModel : ViewModelBase, INavigableViewModel, IDisposable, INavigationActivity
 {
+    /// <inheritdoc />
+    public bool IsNavigationBlocked => Phase is RestorePhase.Running or RestorePhase.Verifying;
+
     private readonly INavigationService _navigationService;
     private readonly ISelectedDiskService _selectedDiskService;
     private readonly IDialogService _dialogService;

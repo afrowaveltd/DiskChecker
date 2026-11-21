@@ -44,8 +44,11 @@ public enum SafeDestructiveMode
    ImageRoundTrip
 }
 
-public partial class SafeDestructiveTestViewModel : ViewModelBase, INavigableViewModel, IDisposable
+public partial class SafeDestructiveTestViewModel : ViewModelBase, INavigableViewModel, IDisposable, INavigationActivity
 {
+    /// <inheritdoc />
+    public bool IsNavigationBlocked => Phase is SafeDestructivePhase.Backup or SafeDestructivePhase.Test or SafeDestructivePhase.Restore or SafeDestructivePhase.Partition;
+
    // ──────────────────────────────────────────────
    //  Dependencies
    // ──────────────────────────────────────────────

@@ -84,8 +84,11 @@ public enum BackupPhase
 /// Orchestrates intelligent backup of a failing disk before destructive testing.
 /// Supports file-level backup (with cross-platform filesystem reading) and raw sector imaging.
 /// </summary>
-public partial class BackupViewModel : ViewModelBase, INavigableViewModel, IDisposable
+public partial class BackupViewModel : ViewModelBase, INavigableViewModel, IDisposable, INavigationActivity
 {
+    /// <inheritdoc />
+    public bool IsNavigationBlocked => Phase == BackupPhase.Running;
+
     private readonly INavigationService _navigationService;
     private readonly ISelectedDiskService _selectedDiskService;
     private readonly IDialogService _dialogService;

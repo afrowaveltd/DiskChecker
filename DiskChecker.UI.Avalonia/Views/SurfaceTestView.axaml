@@ -45,6 +45,7 @@
                 <Button Grid.Column="1"
                         Content="{Binding L[SurfaceTest.BackToOverview]}"
                         Command="{Binding GoBackCommand}"
+                        IsEnabled="{Binding IsTesting, Converter={StaticResource InverseBooleanConverter}}"
                         Background="{DynamicResource ThemeSecondaryBackgroundBrush}"
                         Foreground="{DynamicResource ThemeTextPrimaryBrush}"
                         BorderBrush="{DynamicResource ThemeBorderBrush}"

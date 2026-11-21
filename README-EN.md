@@ -354,3 +354,8 @@ The test project (190 tests) covers:
 ## License
 
 See the [`LICENSE`](LICENSE) file.
+
+### Avalonia dialog and navigation audit (November 2026)
+
+See [docs/AVALONIA_DIALOG_NAVIGATION_AUDIT_CS.md](docs/AVALONIA_DIALOG_NAVIGATION_AUDIT_CS.md)
+for dialog localization, operation-safe navigation and smoke-test guidance.

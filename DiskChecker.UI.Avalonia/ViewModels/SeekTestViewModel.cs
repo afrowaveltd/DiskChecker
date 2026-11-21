@@ -23,8 +23,11 @@ namespace DiskChecker.UI.Avalonia.ViewModels;
 /// ViewModel for the Seek Test feature – measures disk head positioning latency
 /// using SMART-informed recommendations (full-stroke, random, or skip seeks).
 /// </summary>
-public partial class SeekTestViewModel : ViewModelBase, INavigableViewModel, IDisposable
+public partial class SeekTestViewModel : ViewModelBase, INavigableViewModel, IDisposable, INavigationActivity
 {
+    /// <inheritdoc />
+    public bool IsNavigationBlocked => IsTesting;
+
     private readonly INavigationService _navigationService;
     private readonly ISelectedDiskService _selectedDiskService;
     private readonly IDialogService _dialogService;

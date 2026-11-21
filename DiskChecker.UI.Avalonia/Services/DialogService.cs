@@ -145,8 +145,10 @@ public class DialogService : IDialogService
             return await messageBox.ShowDialog<MessageBoxResult>(mainWindow);
         }
         
+        // Do not treat a dialog without an owner as consent. In particular,
+        // this must never authorize a destructive operation without a click.
         messageBox.Show();
-        return MessageBoxResult.OK;
+        return MessageBoxResult.Cancel;
     }
 
     private static Window? GetMainWindow()

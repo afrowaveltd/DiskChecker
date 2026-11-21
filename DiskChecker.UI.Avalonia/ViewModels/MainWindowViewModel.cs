@@ -644,23 +644,15 @@ public partial class MainWindowViewModel : ViewModelBase
     /// </summary>
     public bool CanNavigateFromCurrentView => !IsNavigationLocked();
 
-    private bool IsNavigationLocked() => CurrentContent switch
-    {
-        SurfaceTestViewModel surface => surface.IsTesting,
-        SeekTestViewModel seek => seek.IsTesting,
-        AbsoluteDestructiveTestViewModel absolute => absolute.IsTesting,
-        SafeDestructiveTestViewModel safe => safe.Phase is SafeDestructivePhase.Backup or SafeDestructivePhase.Test or SafeDestructivePhase.Restore or SafeDestructivePhase.Partition,
-        BackupViewModel backup => backup.Phase == BackupPhase.Running,
-        RestoreViewModel restore => restore.Phase is RestorePhase.Running or RestorePhase.Verifying,
-        _ => false
-    };
+    private bool IsNavigationLocked() =>
+        CurrentContent is INavigationActivity { IsNavigationBlocked: true };
 
     private bool GuardNavigation()
     {
         if (CanNavigateFromCurrentView)
             return true;
 
-        StatusMessage = "Probíhá test nebo operace s diskem – nejprve ji dokončete nebo přerušte.";
+        StatusMessage = _localeService.Get("Common.NavigationBlocked");
         return false;
     }
 

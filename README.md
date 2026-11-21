@@ -387,3 +387,8 @@ Testovací projekt (190 testů) pokrývá:
 ## Licence
 
 Viz soubor [`LICENSE`](LICENSE).
+
+### Kontrola navigace a dialogů (listopad 2026)
+
+Kontrola konzistence vstupních dialogů, ochrany při běžících diskových operacích
+a postup ověření: [docs/AVALONIA_DIALOG_NAVIGATION_AUDIT_CS.md](docs/AVALONIA_DIALOG_NAVIGATION_AUDIT_CS.md).
