@@ -231,6 +231,19 @@ public class DiskCertificate
     public string? ChartImagePath { get; set; }
 
     /// <summary>
+    /// Optional companion test on the same disk for a one-page combined PDF.
+    /// Runtime-only: the source certificates and their distinct scores remain unchanged.
+    /// </summary>
+    [NotMapped]
+    public DiskCertificate? PairedCertificate { get; set; }
+
+    /// <summary>True when no write phase was performed (zero write speed is N/A).</summary>
+    [NotMapped]
+    public bool IsReadOnlyTest =>
+        TestType is "QuickRead" or "FullRead" ||
+        (TestType == "SurfaceScan" && AvgWriteSpeed <= 0 && AvgReadSpeed > 0);
+
+    /// <summary>
     /// Downsampled write speed points for certificate chart rendering (runtime only, not persisted).
     /// </summary>
     [NotMapped]
