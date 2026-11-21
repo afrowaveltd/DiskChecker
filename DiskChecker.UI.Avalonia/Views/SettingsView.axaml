@@ -92,6 +92,16 @@
 
                         
 
+                        <TextBlock Text="SMTP — odesílání certifikátů" FontSize="14" FontWeight="Bold"/>
+                        <Grid ColumnDefinitions="200,*"><TextBlock Grid.Column="0" Text="SMTP server" VerticalAlignment="Center"/><TextBox Grid.Column="1" Text="{Binding SmtpHost}"/></Grid>
+                        <Grid ColumnDefinitions="200,*"><TextBlock Grid.Column="0" Text="Port" VerticalAlignment="Center"/><TextBox Grid.Column="1" Text="{Binding SmtpPort}"/></Grid>
+                        <Grid ColumnDefinitions="200,*"><TextBlock Grid.Column="0" Text="TLS" VerticalAlignment="Center"/><CheckBox Grid.Column="1" IsChecked="{Binding SmtpUseTls}" Content="Vyžadovat TLS"/></Grid>
+                        <TextBlock Text="Vypnutím TLS výslovně povolíš nešifrované spojení pro intranet. Zapnuté TLS nikdy nepřejde na plaintext." TextWrapping="Wrap" FontSize="11"/>
+                        <Grid ColumnDefinitions="200,*"><TextBlock Grid.Column="0" Text="SMTP uživatel" VerticalAlignment="Center"/><TextBox Grid.Column="1" Text="{Binding SmtpUsername}"/></Grid>
+                        <Grid ColumnDefinitions="200,*"><TextBlock Grid.Column="0" Text="SMTP heslo" VerticalAlignment="Center"/><TextBox Grid.Column="1" Text="{Binding SmtpPassword}" PasswordChar="●"/></Grid>
+                        <Grid ColumnDefinitions="200,*"><TextBlock Grid.Column="0" Text="Adresa odesílatele" VerticalAlignment="Center"/><TextBox Grid.Column="1" Text="{Binding SmtpFromAddress}"/></Grid>
+                        <Grid ColumnDefinitions="200,*"><TextBlock Grid.Column="0" Text="Jméno odesílatele" VerticalAlignment="Center"/><TextBox Grid.Column="1" Text="{Binding SmtpFromName}"/></Grid>
+                        <Button Content="Uložit SMTP a poslat testovací e-mail" Command="{Binding SendTestEmailCommand}" IsEnabled="{Binding IsEmailAttachmentAvailable}" HorizontalAlignment="Left"/>
                         <Grid ColumnDefinitions="200,*">
                             <TextBlock Grid.Column="0" Text="{Binding L[Settings.CertificateAttachment]}" 
                                       FontSize="11" VerticalAlignment="Center"

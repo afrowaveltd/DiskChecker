@@ -78,9 +78,10 @@ public partial class TestCompletionNotificationService
 
             LogNotificationSent(resolvedRecipient);
         }
-        catch (InvalidOperationException ex)
+        catch (Exception ex) when (ex is not OperationCanceledException)
         {
             LogNotificationFailed(ex, resolvedRecipient);
+            throw;
         }
     }
 
@@ -134,9 +135,10 @@ public partial class TestCompletionNotificationService
 
             LogNotificationWithReportSent(resolvedRecipient);
         }
-        catch (InvalidOperationException ex)
+        catch (Exception ex) when (ex is not OperationCanceledException)
         {
             LogNotificationWithReportFailed(ex, resolvedRecipient);
+            throw;
         }
     }
 
@@ -196,7 +198,7 @@ public partial class TestCompletionNotificationService
 
             {(!string.IsNullOrEmpty(result.Notes) ? $"<h2>Poznámky</h2><p>{result.Notes}</p>" : "")}
 
-            {(includeReport ? "<p><strong>Podrobnější zpráva je v příloze PDF.</strong></p>" : "")}
+            {(includeReport ? "<p><strong>PDF příloha závisí na nastavení aplikace.</strong></p>" : "")}
         </div>
 
         <div class='footer'>

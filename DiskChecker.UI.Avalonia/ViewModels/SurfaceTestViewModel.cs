@@ -1680,7 +1680,7 @@ public partial class SurfaceTestViewModel : ViewModelBase, INavigableViewModel, 
          {
             await _diskCardRepository.CreateCertificateAsync(certificate);
          }
-         catch { /* non-critical — certificate saved to DB for later viewing */ }
+         catch (Exception) { /* Best effort: still generate the PDF. */ }
 
          var certificatePath = await _certificateGenerator.GeneratePdfAsync(certificate);
 
@@ -1708,10 +1708,10 @@ public partial class SurfaceTestViewModel : ViewModelBase, INavigableViewModel, 
            StatusMessage = L.Get("SurfaceTest.Status.SmtpNotConfigured");
            SetStatusMessage(L.Get("SurfaceTest.Status.SmtpNotConfigured"));
       }
-      catch (IOException)
+      catch (Exception ex) when (ex is not OperationCanceledException)
       {
-           StatusMessage = L.Get("SurfaceTest.Status.EmailPrepareFailed");
-           SetStatusMessage(L.Get("SurfaceTest.Status.EmailPrepareFailed"));
+           StatusMessage = L.Get("SurfaceTest.Status.EmailPrepareFailed") + ": " + ex.Message;
+           SetStatusMessage(StatusMessage);
       }
    }
 
