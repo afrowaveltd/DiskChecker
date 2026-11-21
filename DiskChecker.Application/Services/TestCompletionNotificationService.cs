@@ -55,7 +55,7 @@ public partial class TestCompletionNotificationService
         CancellationToken cancellationToken = default)
     {
         var emailSettings = await _emailSettingsService.GetAsync(cancellationToken);
-        var resolvedRecipient = ResolveRecipient(recipientEmail, emailSettings.FromAddress);
+        var resolvedRecipient = ResolveRecipient(recipientEmail);
         if (string.IsNullOrWhiteSpace(resolvedRecipient))
         {
             LogEmptyEmail();
@@ -78,9 +78,10 @@ public partial class TestCompletionNotificationService
 
             LogNotificationSent(resolvedRecipient);
         }
-        catch (InvalidOperationException ex)
+        catch (Exception ex) when (ex is not OperationCanceledException)
         {
             LogNotificationFailed(ex, resolvedRecipient);
+            throw;
         }
     }
 
@@ -97,7 +98,7 @@ public partial class TestCompletionNotificationService
         CancellationToken cancellationToken = default)
     {
         var emailSettings = await _emailSettingsService.GetAsync(cancellationToken);
-        var resolvedRecipient = ResolveRecipient(recipientEmail, emailSettings.FromAddress);
+        var resolvedRecipient = ResolveRecipient(recipientEmail);
         if (string.IsNullOrWhiteSpace(resolvedRecipient))
         {
             LogEmptyEmail();
@@ -118,8 +119,13 @@ public partial class TestCompletionNotificationService
                 HtmlBody = body
             };
 
-            if (emailSettings.IncludeCertificateAttachment && reportPdf is { Length: > 0 })
+            if (emailSettings.IncludeCertificateAttachment)
             {
+                if (reportPdf is not { Length: > 5 } ||
+                    reportPdf[0] != (byte)'%' || reportPdf[1] != (byte)'P' ||
+                    reportPdf[2] != (byte)'D' || reportPdf[3] != (byte)'F' ||
+                    reportPdf[4] != (byte)'-')
+                    throw new InvalidDataException("The disk certificate PDF was not generated or is invalid.");
                 message.Attachments.Add(new EmailAttachment
                 {
                     FileName = string.IsNullOrWhiteSpace(attachmentFileName)
@@ -134,9 +140,10 @@ public partial class TestCompletionNotificationService
 
             LogNotificationWithReportSent(resolvedRecipient);
         }
-        catch (InvalidOperationException ex)
+        catch (Exception ex) when (ex is not OperationCanceledException)
         {
             LogNotificationWithReportFailed(ex, resolvedRecipient);
+            throw;
         }
     }
 
@@ -299,18 +306,11 @@ public partial class TestCompletionNotificationService
         return $"{b:F1} {sizes[i]}";
     }
 
-    private static string? ResolveRecipient(string? preferredRecipient, string? fallbackRecipient)
+    private static string? ResolveRecipient(string? preferredRecipient)
     {
-        if (!string.IsNullOrWhiteSpace(preferredRecipient))
-        {
-            return preferredRecipient.Trim();
-        }
-
-        if (!string.IsNullOrWhiteSpace(fallbackRecipient))
-        {
-            return fallbackRecipient.Trim();
-        }
-
-        return null;
+        // A configured sender is never an implicit notification recipient.
+        // Mail is sent only to the explicitly configured destination.
+        return string.IsNullOrWhiteSpace(preferredRecipient) ? null : preferredRecipient.Trim();
     }
+
 }
