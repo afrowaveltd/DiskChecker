@@ -54,6 +54,7 @@ public class EmailSettingsService : IEmailSettingsService
         record.Host = settings.Host;
         record.Port = settings.Port;
         record.UseSsl = settings.UseSsl;
+        record.AllowInsecureSmtp = settings.AllowInsecureSmtp;
         record.UserName = settings.UserName;
         record.Password = settings.Password;
         record.FromName = settings.FromName;
@@ -71,6 +72,7 @@ public class EmailSettingsService : IEmailSettingsService
             Host = record.Host,
             Port = record.Port,
             UseSsl = record.UseSsl,
+            AllowInsecureSmtp = record.AllowInsecureSmtp,
             UserName = record.UserName,
             Password = record.Password,
             FromName = record.FromName ?? "DiskChecker",

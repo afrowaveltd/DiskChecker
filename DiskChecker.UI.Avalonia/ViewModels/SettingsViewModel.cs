@@ -23,6 +23,7 @@ namespace DiskChecker.UI.Avalonia.ViewModels
         private string _smtpHost = string.Empty;
         private int _smtpPort = 587;
         private bool _smtpUseTls = true;
+        private bool _smtpAllowInsecure;
         private string _smtpUserName = string.Empty;
         private string _smtpPassword = string.Empty;
         private bool _clearStoredSmtpPassword;
@@ -243,6 +244,7 @@ namespace DiskChecker.UI.Avalonia.ViewModels
         public string SmtpHost { get => _smtpHost; set => SetProperty(ref _smtpHost, value); }
         public int SmtpPort { get => _smtpPort; set => SetProperty(ref _smtpPort, value); }
         public bool SmtpUseTls { get => _smtpUseTls; set => SetProperty(ref _smtpUseTls, value); }
+        public bool SmtpAllowInsecure { get => _smtpAllowInsecure; set => SetProperty(ref _smtpAllowInsecure, value); }
         public string SmtpUserName { get => _smtpUserName; set => SetProperty(ref _smtpUserName, value); }
         public string SmtpPassword { get => _smtpPassword; set => SetProperty(ref _smtpPassword, value); }
         public bool ClearStoredSmtpPassword { get => _clearStoredSmtpPassword; set => SetProperty(ref _clearStoredSmtpPassword, value); }
@@ -333,6 +335,7 @@ namespace DiskChecker.UI.Avalonia.ViewModels
                     SmtpHost = smtp.Host;
                     SmtpPort = smtp.Port;
                     SmtpUseTls = smtp.UseSsl;
+                    SmtpAllowInsecure = smtp.AllowInsecureSmtp;
                     SmtpUserName = smtp.UserName;
                     SmtpPassword = string.Empty;
                     ClearStoredSmtpPassword = false;
@@ -406,8 +409,8 @@ namespace DiskChecker.UI.Avalonia.ViewModels
                 {
                     if (SmtpPort is < 1 or > 65535)
                         throw new InvalidOperationException(L.Get("Settings.SmtpInvalidPort"));
-                    if (!SmtpUseTls && !string.IsNullOrWhiteSpace(SmtpUserName))
-                        throw new InvalidOperationException(L.Get("Settings.SmtpNoPlaintextCredentials"));
+                    if (!SmtpUseTls && !SmtpAllowInsecure)
+                        throw new InvalidOperationException(L.Get("Settings.SmtpInsecurePermissionRequired"));
                 }
 
                 // Uložíme nastavení do služby
@@ -427,6 +430,7 @@ namespace DiskChecker.UI.Avalonia.ViewModels
                     smtp.Host = SmtpHost.Trim();
                     smtp.Port = SmtpPort;
                     smtp.UseSsl = SmtpUseTls;
+                    smtp.AllowInsecureSmtp = SmtpAllowInsecure;
                     smtp.UserName = SmtpUserName.Trim();
                     smtp.FromName = SmtpFromName.Trim();
                     smtp.FromAddress = SmtpFromAddress.Trim();

@@ -7,8 +7,9 @@ using MimeKit;
 namespace DiskChecker.Application.Services;
 
 /// <summary>
-/// Sends SMTP messages without TLS downgrade or bypassing server certificate validation.
-/// For a private CA, install the root certificate in the OS trust store.
+/// Sends SMTP messages with mandatory, validated TLS by default.
+/// Plaintext SMTP requires an explicit, persisted opt-in; TLS is never
+/// downgraded automatically. Trust private CAs via the OS certificate store.
 /// </summary>
 public sealed class SmtpEmailSender : IEmailSender
 {
@@ -26,13 +27,16 @@ public sealed class SmtpEmailSender : IEmailSender
         ArgumentNullException.ThrowIfNull(settings);
         if (settings.Port is < 1 or > 65535)
             throw new ArgumentOutOfRangeException(nameof(settings), settings.Port, "SMTP port must be 1–65535.");
-        if (!settings.UseSsl && !string.IsNullOrWhiteSpace(settings.UserName))
-            throw new InvalidOperationException("SMTP credentials require TLS. Enable TLS for this server.");
+        if (!settings.UseSsl && !settings.AllowInsecureSmtp)
+            throw new InvalidOperationException(
+                "Plaintext SMTP is disabled. Explicitly enable 'Allow insecure SMTP server' in settings.");
 
+        // Even when the opt-in exists, TLS remains required as long as UseSsl is true.
+        // A certificate or STARTTLS error is NEVER a reason to fall back to plaintext.
         // Port 465 is implicit TLS; other ports require explicit STARTTLS.
-        // Never silently fall back to plaintext when TLS was requested.
-        return !settings.UseSsl ? SecureSocketOptions.None :
-            settings.Port == 465 ? SecureSocketOptions.SslOnConnect : SecureSocketOptions.StartTls;
+        return settings.UseSsl
+            ? (settings.Port == 465 ? SecureSocketOptions.SslOnConnect : SecureSocketOptions.StartTls)
+            : SecureSocketOptions.None;
     }
 
     /// <inheritdoc/>

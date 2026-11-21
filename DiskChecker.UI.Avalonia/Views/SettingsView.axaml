@@ -111,6 +111,17 @@
                                       Content="{Binding L[Settings.SmtpTlsRequired]}"/>
                         </Grid>
                         <Grid ColumnDefinitions="200,*">
+                            <TextBlock Text="{Binding L[Settings.SmtpInsecureLabel]}" VerticalAlignment="Center"/>
+                            <StackPanel Grid.Column="1" Spacing="4">
+                                <CheckBox x:Name="SmtpAllowInsecureInput"
+                                          IsChecked="{Binding SmtpAllowInsecure}"
+                                          Content="{Binding L[Settings.SmtpAllowInsecure]}"/>
+                                <TextBlock Text="{Binding L[Settings.SmtpInsecureWarning]}"
+                                           TextWrapping="Wrap" FontSize="11"
+                                           Foreground="{DynamicResource ThemeTextSecondaryBrush}"/>
+                            </StackPanel>
+                        </Grid>
+                        <Grid ColumnDefinitions="200,*">
                             <TextBlock Text="{Binding L[Settings.SmtpUser]}" VerticalAlignment="Center"/>
                             <TextBox Grid.Column="1" Text="{Binding SmtpUserName}"/>
                         </Grid>

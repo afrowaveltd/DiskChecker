@@ -3025,7 +3025,7 @@
   "Settings.SmtpPort": "Port:",
   "Settings.SmtpTls": "Encryption:",
   "Settings.SmtpTlsRequired": "Require verified TLS",
-  "Settings.SmtpTlsHint": "Port 465 uses implicit TLS; other ports require STARTTLS. Certificates must be trusted; TLS errors never fall back to plaintext.",
+  "Settings.SmtpTlsHint": "Port 465 uses implicit TLS, other ports require STARTTLS. TLS server certificates are always verified; unencrypted SMTP requires an explicit opt-in.",
   "Settings.SmtpUser": "Username:",
   "Settings.SmtpPassword": "Password / app password:",
   "Settings.SmtpPasswordHint": "Blank = keep the stored password",
@@ -3051,5 +3051,9 @@
   "Notification.CertificateSendCancelled": "The disk test was saved; certificate emailing was cancelled.",
   "Notification.CertificateNotSaved": "Disk test completed, but the certificate record could not be saved to the database.",
   "Settings.SmtpAutomaticHint": "With a recipient configured, completed tests automatically send an email. When PDF attachment is enabled, the actual test certificate is attached. The SMTP test sends only a test message, not a certificate.",
-  "Settings.SqliteBackupHint": "Built-in ZIP backup/restore supports only the active SQLite database. Use database-specific tools for other backends."
+  "Settings.SqliteBackupHint": "Built-in ZIP backup/restore supports only the active SQLite database. Use database-specific tools for other backends.",
+  "Settings.SmtpInsecureLabel": "Insecure intranet server:",
+  "Settings.SmtpAllowInsecure": "Allow insecure SMTP connection",
+  "Settings.SmtpInsecureWarning": "Trusted intranet only. To use plaintext SMTP, disable TLS AND explicitly enable this exception. Messages, PDF attachments and any credentials will be sent without encryption. TLS failures never trigger an automatic downgrade.",
+  "Settings.SmtpInsecurePermissionRequired": "To use plaintext SMTP, explicitly enable 'Allow insecure SMTP connection'."
 }

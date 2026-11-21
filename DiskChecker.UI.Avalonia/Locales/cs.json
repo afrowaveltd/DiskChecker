@@ -3025,7 +3025,7 @@
   "Settings.SmtpPort": "Port:",
   "Settings.SmtpTls": "Šifrování:",
   "Settings.SmtpTlsRequired": "Vyžadovat ověřené TLS",
-  "Settings.SmtpTlsHint": "Port 465 používá přímé TLS, ostatní porty povinné STARTTLS. Certifikát musí být důvěryhodný; při chybě zabezpečení se spojení nepřepne na nešifrované.",
+  "Settings.SmtpTlsHint": "Port 465 používá přímé TLS, ostatní porty povinné STARTTLS. V režimu TLS se vždy ověřuje certifikát; nešifrované SMTP je možné jen po výslovném povolení.",
   "Settings.SmtpUser": "Přihlašovací jméno:",
   "Settings.SmtpPassword": "Heslo / heslo aplikace:",
   "Settings.SmtpPasswordHint": "Prázdné = ponechat uložené heslo",
@@ -3051,5 +3051,9 @@
   "Notification.CertificateSendCancelled": "Diskový test byl uložen, odeslání certifikátu bylo zrušeno.",
   "Notification.CertificateNotSaved": "Diskový test byl dokončen, ale záznam certifikátu se nepodařilo uložit do databáze.",
   "Settings.SmtpAutomaticHint": "Pokud vyplníte příjemce, po dokončení testu bude automaticky odesláno e-mailové oznámení. Se zapnutou volbou PDF se připojí skutečný certifikát testu. Zkušební e-mail pouze ověřuje SMTP, neobsahuje certifikát.",
-  "Settings.SqliteBackupHint": "Vestavěná ZIP záloha/obnova podporuje pouze aktivní SQLite databázi. Pro jiné databáze použijte odpovídající databázové nástroje."
+  "Settings.SqliteBackupHint": "Vestavěná ZIP záloha/obnova podporuje pouze aktivní SQLite databázi. Pro jiné databáze použijte odpovídající databázové nástroje.",
+  "Settings.SmtpInsecureLabel": "Interní nezabezpečený server:",
+  "Settings.SmtpAllowInsecure": "Povolit nezabezpečené SMTP spojení",
+  "Settings.SmtpInsecureWarning": "Pouze pro důvěryhodný intranet. Pro nešifrované SMTP vypněte TLS A zapněte tuto výjimku. Zpráva, PDF příloha i případné heslo se potom přenášejí bez šifrování. Nikdy se automaticky nepřepíná z TLS na nezabezpečené spojení.",
+  "Settings.SmtpInsecurePermissionRequired": "Pro nešifrované SMTP musíte výslovně zapnout možnost „Povolit nezabezpečené SMTP spojení“."
 }
