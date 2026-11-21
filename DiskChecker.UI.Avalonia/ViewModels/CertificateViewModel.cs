@@ -832,9 +832,22 @@ public partial class CertificateViewModel : ViewModelBase, INavigableViewModel
          var cert = await _certificateGenerator.GenerateCertificateAsync(session, card);
          if(seeks.Count > 0)
          {
-            cert.SeekLatencyPoints = seeks
-               .Where(s => !s.HasError && s.LatencyMs > 0)
+            var measured = seeks.Where(s => !s.HasError && s.LatencyMs > 0)
                .OrderBy(s => s.Index).Select(s => s.LatencyMs).ToList();
+            cert.SeekLatencyPoints = measured;
+            if(measured.Count > 0)
+            {
+               // Exact summary statistics normally come from the persisted seek
+               // result; if a large legacy JSON envelope was intentionally not
+               // deserialized, provide explicitly sampled estimates instead.
+               var sorted = measured.OrderBy(v => v).ToArray();
+               cert.SeekAvgLatencyMs ??= measured.Average();
+               cert.SeekMinLatencyMs ??= sorted[0];
+               cert.SeekMaxLatencyMs ??= sorted[^1];
+               cert.SeekP95LatencyMs ??= sorted[(int)Math.Floor(0.95 * (sorted.Length - 1))];
+               cert.SeekP99LatencyMs ??= sorted[(int)Math.Floor(0.99 * (sorted.Length - 1))];
+               cert.SeekTestSummary ??= "Odhad latencí z omezeného vzorku; detailní hodnoty zůstávají v historii.";
+            }
          }
          await CopyTechnicianCommentAsync(cert, sessionId);
          return cert;
