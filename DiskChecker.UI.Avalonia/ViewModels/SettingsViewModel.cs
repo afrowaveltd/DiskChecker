@@ -30,6 +30,7 @@ namespace DiskChecker.UI.Avalonia.ViewModels
         private int _usbRecoveryRetryCount;
         private string _databaseSize = "N/A";
         private string _lastBackupText = "—";
+        private bool _isEmailAttachmentAvailable;
         
         private bool _isSaving;
         private string _statusMessage = string.Empty;
@@ -210,6 +211,12 @@ namespace DiskChecker.UI.Avalonia.ViewModels
             get => _emailSendOnlyForLongRunningTests;
             set => SetProperty(ref _emailSendOnlyForLongRunningTests, value);
         }
+        public bool IsEmailAttachmentAvailable
+        {
+            get => _isEmailAttachmentAvailable;
+            private set => SetProperty(ref _isEmailAttachmentAvailable, value);
+        }
+
         public bool EmailIncludeCertificateAttachment
         {
             get => _emailIncludeCertificateAttachment;
@@ -289,10 +296,13 @@ namespace DiskChecker.UI.Avalonia.ViewModels
                 {
                     var smtp = await _emailSettingsService.GetAsync();
                     EmailIncludeCertificateAttachment = smtp.IncludeCertificateAttachment;
+                    IsEmailAttachmentAvailable = true;
                 }
-                catch (Exception ex) when (ex is InvalidOperationException or Microsoft.EntityFrameworkCore.DbUpdateException)
+                catch (Exception ex) when (ex is InvalidOperationException or Microsoft.EntityFrameworkCore.DbUpdateException or System.Data.Common.DbException or IOException)
                 {
-                    StatusMessage = $"Nastavení SMTP není dostupné: {ex.Message}";
+                    // The main Settings panel must remain editable if SMTP
+                    // storage is unavailable. Disable its unsupported toggle.
+                    IsEmailAttachmentAvailable = false;
                 }
                 UsbRecoveryRetryCount = await _settingsService.GetUsbRecoveryRetryCountAsync();
                 var dbSettings = await _settingsService.GetDatabaseStorageSettingsAsync();
@@ -320,9 +330,10 @@ namespace DiskChecker.UI.Avalonia.ViewModels
                     !string.Equals(active.ConnectionString, dbSettings.ConnectionString, StringComparison.Ordinal);
                 var databaseMessage = $"Aktivní DB: {activeDescription}" +
                     (pendingChanges ? ". Nastavení nové databáze se použije až po restartu." : "");
-                StatusMessage = dbLocationWarning is { Count: > 0 }
+                StatusMessage = (dbLocationWarning is { Count: > 0 }
                     ? $"{databaseMessage}. Pozor: nalezeny i další databáze: {string.Join("; ", dbLocationWarning)}. Nebyly změněny."
-                    : databaseMessage;
+                    : databaseMessage) +
+                    (IsEmailAttachmentAvailable ? "" : " " + L.Get("Settings.EmailSettingsUnavailable"));
             }
             catch (Exception ex)
             {
@@ -355,12 +366,15 @@ namespace DiskChecker.UI.Avalonia.ViewModels
                 await _settingsService.SetLogLevelAsync(LogLevel);
                 await _settingsService.SetReportRecipientEmailAsync(ReportRecipientEmail);
                 await _settingsService.SetEmailSendOnlyForLongRunningTestsAsync(EmailSendOnlyForLongRunningTests);
-                await _settingsService.SetEmailIncludeCertificateAttachmentAsync(EmailIncludeCertificateAttachment);
-                var smtp = await _emailSettingsService.GetAsync();
-                if (smtp.IncludeCertificateAttachment != EmailIncludeCertificateAttachment)
+                if (IsEmailAttachmentAvailable)
                 {
-                    smtp.IncludeCertificateAttachment = EmailIncludeCertificateAttachment;
-                    await _emailSettingsService.SaveAsync(smtp);
+                    var smtp = await _emailSettingsService.GetAsync();
+                    if (smtp.IncludeCertificateAttachment != EmailIncludeCertificateAttachment)
+                    {
+                        smtp.IncludeCertificateAttachment = EmailIncludeCertificateAttachment;
+                        await _emailSettingsService.SaveAsync(smtp);
+                    }
+                    await _settingsService.SetEmailIncludeCertificateAttachmentAsync(EmailIncludeCertificateAttachment);
                 }
                 await _settingsService.SetUsbRecoveryRetryCountAsync(UsbRecoveryRetryCount);
                 var providerKind = Enum.TryParse<DatabaseProviderKind>(DatabaseProvider, ignoreCase: true, out var parsedProvider)

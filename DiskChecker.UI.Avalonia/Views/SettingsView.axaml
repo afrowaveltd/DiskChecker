@@ -99,6 +99,7 @@
                             <CheckBox Grid.Column="1"
                                      Content="{Binding L[Settings.CertificateAttachmentContent]}"
                                      IsChecked="{Binding EmailIncludeCertificateAttachment}"
+                                     IsEnabled="{Binding IsEmailAttachmentAvailable}"
                                      FontSize="11"/>
                         </Grid>
                     </StackPanel>

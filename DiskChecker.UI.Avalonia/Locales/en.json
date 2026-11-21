@@ -3018,5 +3018,6 @@
   "DiskComparison.SelectionCount": "Disks selected: {0}",
   "DiskComparison.ScoreChart": "Health scores (0–100)",
   "DiskComparison.SpeedChart": "Measured speeds (MB/s)",
-  "DiskComparison.MissingMeasurement": "Missing readings are not zero-speed measurements. Scores and MB/s have separate charts."
+  "DiskComparison.MissingMeasurement": "Missing readings are not zero-speed measurements. Scores and MB/s have separate charts.",
+  "Settings.EmailSettingsUnavailable": "Warning: SMTP settings are unavailable; attachment option is disabled."
 }
