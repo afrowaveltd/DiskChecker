@@ -85,6 +85,8 @@ public class CertificateGenerator : ICertificateGenerator
         if (!RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
         {
             var sudoUser = Environment.GetEnvironmentVariable("SUDO_USER");
+            if (string.IsNullOrWhiteSpace(sudoUser))
+                sudoUser = Environment.GetEnvironmentVariable("PKEXEC_UID"); // polkit GUI launch
             if (!string.IsNullOrWhiteSpace(sudoUser) && !string.Equals(sudoUser, "root", StringComparison.OrdinalIgnoreCase))
             {
                 var home = GetOriginalUserHome(sudoUser);
@@ -154,8 +156,13 @@ public class CertificateGenerator : ICertificateGenerator
 
         var uid = Environment.GetEnvironmentVariable("SUDO_UID");
         var gid = Environment.GetEnvironmentVariable("SUDO_GID");
-        if (string.IsNullOrWhiteSpace(uid) || string.IsNullOrWhiteSpace(gid))
+        if (string.IsNullOrWhiteSpace(uid))
+            uid = Environment.GetEnvironmentVariable("PKEXEC_UID"); // Desktop launcher through polkit.
+        if (!uint.TryParse(uid, NumberStyles.None, CultureInfo.InvariantCulture, out var ownerUid) || ownerUid == 0)
             return;
+        if (!string.IsNullOrWhiteSpace(gid) &&
+            !uint.TryParse(gid, NumberStyles.None, CultureInfo.InvariantCulture, out _))
+            gid = null;
 
         try
         {
@@ -165,7 +172,10 @@ public class CertificateGenerator : ICertificateGenerator
                 UseShellExecute = false,
                 CreateNoWindow = true
             };
-            startInfo.ArgumentList.Add($"{uid}:{gid}");
+            // chown to the invoking user. With pkexec only UID is supplied;
+            // ownership is enough to make the generated PDF readable to the tester.
+            startInfo.ArgumentList.Add(string.IsNullOrWhiteSpace(gid) ? uid! : $"{uid}:{gid}");
+            startInfo.ArgumentList.Add("--");
             startInfo.ArgumentList.Add(path);
             using var process = Process.Start(startInfo);
             process?.WaitForExit(1000);
