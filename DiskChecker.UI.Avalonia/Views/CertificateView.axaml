@@ -252,7 +252,7 @@
                                                 <TextBlock Grid.Row="2" Text="{Binding ChartMinSpeedLabel}" FontSize="10" Foreground="#FF64748B" VerticalAlignment="Bottom"/>
                                             </Grid>
 
-                                            <Viewbox Grid.Row="0" Grid.Column="1" Stretch="Fill" StretchDirection="Both" MinHeight="240">
+                                            <Viewbox Grid.Row="0" Grid.Column="1" Stretch="Uniform" StretchDirection="Both" MinHeight="240">
                                                 <Canvas Width="920" Height="260" Background="#FFFFFFFF" ClipToBounds="True">
                                                     <Rectangle Canvas.Left="56" Canvas.Top="18" Width="830" Height="208" Stroke="#FFCBD5E1" StrokeThickness="1" Fill="#00FFFFFF"/>
                                                     <Line StartPoint="56,70" EndPoint="886,70" Stroke="#FFE2E8F0" StrokeThickness="1"/>
@@ -296,7 +296,7 @@
                                                     <TextBlock Grid.Row="2" Text="{Binding SeekChartMinLabel}" FontSize="10" Foreground="#FF64748B" VerticalAlignment="Bottom"/>
                                                 </Grid>
 
-                                                <Viewbox Grid.Row="0" Grid.Column="1" Stretch="Fill" StretchDirection="Both" MinHeight="220">
+                                                <Viewbox Grid.Row="0" Grid.Column="1" Stretch="Uniform" StretchDirection="Both" MinHeight="220">
                                                     <Canvas Width="920" Height="250" Background="#FFFFFFFF" ClipToBounds="True">
                                                         <Rectangle Canvas.Left="56" Canvas.Top="18" Width="830" Height="208" Stroke="#FFCBD5E1" StrokeThickness="1" Fill="#00FFFFFF"/>
                                                         <Line StartPoint="56,70" EndPoint="886,70" Stroke="#FFE2E8F0" StrokeThickness="1"/>
