@@ -1514,11 +1514,8 @@ public partial class CertificateViewModel : ViewModelBase, INavigableViewModel
    {
       try
       {
-         // Seek tests are intentionally much smaller than surface/sanitization
-         // telemetry (UI maximum is 10k seeks). For certificate analysis we want
-         // every measured dot, not a reduced line, so the characteristic
-         // full-stroke V/diamond pattern remains visible just like in SeekTestView
-         // and in the generated PDF certificate.
+         // Certificate views query at most 1,024 representative seek samples.
+         // Full-resolution history stays in the database and is not copied to memory.
          var records = await _diskCardRepository.GetSeekSamplesDownsampledAsync(sessionId, 1024);
          var successful = records
             .Where(s => !s.HasError && s.LatencyMs > 0)
