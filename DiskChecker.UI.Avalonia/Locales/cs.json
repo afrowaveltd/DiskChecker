@@ -2789,6 +2789,7 @@
   "Tui.Restore.Log.Done": "Obnova dokončena: {0}",
   "Tui.Restore.Log.Mismatch": "SHA-256 obnoveného disku NESOUHLASÍ se zálohou.",
   "Tui.Restore.Log.NoChecksum": "Záloha neobsahuje SHA-256 — obnovu nelze ověřit kontrolním součtem.",
+  "Tui.Restore.Log.Partial": "ČÁSTEČNÁ záchrana: {0} bajtů zdroje bylo nečitelných. Přenesená data byla ověřena, původní data ale nelze potvrdit jako kompletní.",
   "Tui.Restore.Log.Verified": "SHA-256 obnoveného disku souhlasí se zálohou.",
   "Tui.Restore.ManifestAsk": "Cesta k backup_manifest.json:",
   "Tui.Restore.Manual": "Zadat manifest ručně…",
