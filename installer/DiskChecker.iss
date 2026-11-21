@@ -1,38 +1,35 @@
-; DiskChecker Inno Setup Script
-; Creates Windows installer for DiskChecker
-
+; DiskChecker Windows installer; consumes dotnet publish --runtime win-x64 output.
+#ifndef MyAppVersion
+  #define MyAppVersion "1.0.0"
+#endif
 #define MyAppName "DiskChecker"
-#define MyAppVersion "1.0.0"
-#define MyAppPublisher "DiskChecker"
-#define MyAppURL "https://github.com/diskchecker/diskchecker"
+#define MyAppPublisher "Afrowave Community"
+#define MyAppURL "https://github.com/afrowaveltd/DiskChecker"
 #define MyAppExeName "DiskChecker.UI.Avalonia.exe"
 
 [Setup]
-; Basic info
 AppId={{A7B8C9D0-E1F2-3456-7890-ABCDEF123456}
 AppName={#MyAppName}
 AppVersion={#MyAppVersion}
 AppVerName={#MyAppName} {#MyAppVersion}
 AppPublisher={#MyAppPublisher}
 AppPublisherURL={#MyAppURL}
-AppSupportURL={#MyAppURL}
-AppUpdatesURL={#MyAppURL}
-
-; Installation settings
+AppSupportURL={#MyAppURL}/issues
+AppUpdatesURL={#MyAppURL}/releases
 DefaultDirName={autopf}\{#MyAppName}
 DefaultGroupName={#MyAppName}
 AllowNoIcons=yes
 LicenseFile=..\LICENSE
 PrivilegesRequired=admin
-OutputDir=..\installer
-OutputBaseFilename=DiskChecker-{#MyAppVersion}-Setup
-SetupIconFile=DiskChecker.UI.Avalonia\Assets\avalonia-logo.ico
-Compression=lzma
+OutputDir=..\packages
+OutputBaseFilename=DiskChecker-{#MyAppVersion}-win-x64-Setup
+SetupIconFile=..\DiskChecker.UI.Avalonia\Assets\icon.ico
+Compression=lzma2
 SolidCompression=yes
-
-; Windows version requirements
 MinVersion=10.0
-ArchitecturesInstallIn64BitMode=x64
+ArchitecturesAllowed=x64compatible
+ArchitecturesInstallIn64BitMode=x64compatible
+WizardStyle=modern
 
 [Languages]
 Name: "czech"; MessagesFile: "compiler:Languages\Czech.isl"
@@ -42,52 +39,15 @@ Name: "english"; MessagesFile: "compiler:Default.isl"
 Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"; Flags: unchecked
 
 [Files]
-; Main Avalonia application
-Source: "publish\avalonia-win\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
+; Self-contained build: no system .NET runtime required.
+Source: "..\publish\win-x64\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
 
 [Icons]
 Name: "{group}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"
 Name: "{group}\{cm:UninstallProgram,{#MyAppName}}"; Filename: "{uninstallexe}"
 Name: "{autodesktop}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; Tasks: desktopicon
 
-[Run]
-Filename: "{app}\{#MyAppExeName}"; Description: "{cm:LaunchProgram,{#StringChange(MyAppName, '&', '&&')}}"; Flags: nowait postinstall skipifsilent
-
-[Code]
-// Check for .NET runtime
-function IsDotNetInstalled(): Boolean;
-var
-  ResultCode: Integer;
-begin
-  Result := Exec('dotnet', '--list-runtimes', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
-  Result := Result and (ResultCode = 0);
-end;
-
-function InitializeSetup(): Boolean;
-begin
-  Result := True;
-  
-  // Check for admin rights
-  if not IsAdmin() then
-  begin
-    MsgBox('DiskChecker vyžaduje administrátorská práva pro přístup k SMART datům disků.' + #13#10 + 
-           'Prosím spusťte instalátor jako správce.', mbError, MB_OK);
-  end;
-end;
-
-procedure CurStepChanged(CurStep: TSetupStep);
-begin
-  if CurStep = ssPostInstall then
-  begin
-    // Copy database file to user's AppData
-    CreateDir(ExpandConstant('{userappdata}\DiskChecker'));
-    if FileExists(ExpandConstant('{app}\DiskChecker.db')) then
-    begin
-      if not FileExists(ExpandConstant('{userappdata}\DiskChecker\DiskChecker.db')) then
-      begin
-        FileCopy(ExpandConstant('{app}\DiskChecker.db'), 
-                 ExpandConstant('{userappdata}\DiskChecker\DiskChecker.db'), False);
-      end;
-    end;
-  end;
-end;
+; Intentionally do not launch automatically at installer completion.
+; Installation can run under another administrator's credentials. Running the
+; app then would create configuration/PDFs in that administrator's profile.
+; The packaged Windows executable carries requireAdministrator in app.manifest.
