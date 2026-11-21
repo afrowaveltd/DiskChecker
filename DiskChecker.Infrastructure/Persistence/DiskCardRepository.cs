@@ -628,7 +628,7 @@ public class DiskCardRepository : IDiskCardRepository
          }
 
          // Large dataset: modulo sampling (no window function)
-         var step = (int)Math.Max(1, totalCount / maxPoints);
+         var step = DiskChecker.Core.Services.TelemetrySampling.CalculateStride(totalCount, maxPoints);
 
          await using var command = connection.CreateCommand();
          command.CommandText = $@"
@@ -769,7 +769,7 @@ public class DiskCardRepository : IDiskCardRepository
       }
 
       // Large dataset: modulo sampling on Id (no window function = no temp files)
-      var step = (int)Math.Max(1, totalCount / maxPoints);
+      var step = DiskChecker.Core.Services.TelemetrySampling.CalculateStride(totalCount, maxPoints);
 
       await using var command = connection.CreateCommand();
       command.CommandText = hasIsStalledColumn
@@ -1321,7 +1321,7 @@ public class DiskCardRepository : IDiskCardRepository
       }
 
       // Velký dataset: modulo sampling na Id (stejný přístup jako u speed samples)
-      var step = Math.Max(1, totalCount / maxPoints);
+      var step = DiskChecker.Core.Services.TelemetrySampling.CalculateStride(totalCount, maxPoints);
 
       return await queryBase
           .Where(s => s.Id % step == 0)
