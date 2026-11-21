@@ -499,6 +499,11 @@ public class CertificateDownsamplingRepositoryTests : IDisposable
         Assert.InRange(samples.Count, 1, 512);
         Assert.True(samples.Max(s => s.Index) > 3650,
             "Old floor-stride+LIMIT truncated the end of the seek recording.");
+        Assert.Contains(samples, s => s.Index == 1);
+        Assert.Contains(samples, s => s.Index == 3700);
+        // This single unusually slow operation must not disappear in the
+        // modulo downsampling. It is potentially the important diagnostic.
+        Assert.Contains(samples, s => s.Index == 3695 && s.LatencyMs == 300d);
     }
 
 }
