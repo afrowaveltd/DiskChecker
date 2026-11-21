@@ -73,6 +73,7 @@ public partial class CertificateViewModel : ViewModelBase, INavigableViewModel
    private string _selectedSessionThermalSummary = string.Empty;
    private string _selectedSessionSmartSummary = string.Empty;
    private TestSession? _selectedSessionItem;
+   private TestSession? _selectedPairSession;
 
    public CertificateViewModel(
        ICertificateGenerator certificateGenerator,
@@ -91,6 +92,7 @@ public partial class CertificateViewModel : ViewModelBase, INavigableViewModel
       SelectedSessionThermalSummary = L.Get("CertificateView.Session.ThermalAvailableAfterSelection");
       SelectedSessionSmartSummary = L.Get("CertificateView.Session.SmartAvailableAfterSelection");
       AvailableSessions = new ObservableCollection<TestSession>();
+      PairCandidateSessions = new ObservableCollection<TestSession>();
    }
 
    #region Properties
@@ -371,6 +373,40 @@ public partial class CertificateViewModel : ViewModelBase, INavigableViewModel
    /// </summary>
    public ObservableCollection<TestSession> AvailableSessions { get; }
 
+   /// <summary>Compatible seek or surface sessions on the selected disk.</summary>
+   public ObservableCollection<TestSession> PairCandidateSessions { get; }
+
+   /// <summary>Explicit other test to include in one combined A4 certificate.</summary>
+   public TestSession? SelectedPairSession
+   {
+      get => _selectedPairSession;
+      set => SetProperty(ref _selectedPairSession, value);
+   }
+
+   private void RefreshPairCandidates(TestSession? chosen)
+   {
+      PairCandidateSessions.Clear();
+      SelectedPairSession = null;
+      if(chosen == null) return;
+      bool isSeek = chosen.TestType == DiskChecker.Core.Models.TestType.Seek;
+      if(!isSeek && !IsSurfaceCertificateSession(chosen.TestType)) return;
+      foreach(var session in AvailableSessions.Where(s => s.Id != chosen.Id &&
+         s.DiskCardId == chosen.DiskCardId &&
+         (isSeek ? IsSurfaceCertificateSession(s.TestType) :
+             s.TestType == DiskChecker.Core.Models.TestType.Seek))
+         .OrderBy(s => Math.Abs((s.StartedAt - chosen.StartedAt).TotalMinutes)))
+      {
+         PairCandidateSessions.Add(session);
+      }
+
+      // Nearby tests are auto-suggested; an older session can be chosen
+      // explicitly by the operator without a hidden 48-hour exclusion.
+      var nearest = PairCandidateSessions.FirstOrDefault();
+      if(nearest != null &&
+         Math.Abs((nearest.StartedAt - chosen.StartedAt).TotalHours) <= 48)
+         SelectedPairSession = nearest;
+   }
+
    /// <summary>
    /// Gets or sets currently selected session for detailed in-app certificate analysis.
    /// </summary>
@@ -381,6 +417,7 @@ public partial class CertificateViewModel : ViewModelBase, INavigableViewModel
       {
          if(SetProperty(ref _selectedSessionItem, value))
          {
+            RefreshPairCandidates(value);
             _ = SelectSessionAsync(value);
          }
       }
@@ -769,15 +806,21 @@ public partial class CertificateViewModel : ViewModelBase, INavigableViewModel
             throw new InvalidOperationException(L.Get("CertificateView.Combined.Unsupported"));
 
          var sessions = await _diskCardRepository.GetTestSessionsAsync(selected.DiskCardId);
-         var counterpart = sessions
+         // Prefer the operator's explicit choice. Without it, pair only with
+         // a nearby test (48h), never silently combine unrelated diagnostics.
+         var eligible = sessions
             .Where(s => s.Id != selected.Id
                 && s.DiskCardId == selected.DiskCardId
-                && (selectedSeek ? IsSurfaceCertificateSession(s.TestType) : s.TestType == DiskChecker.Core.Models.TestType.Seek))
+                && (selectedSeek ? IsSurfaceCertificateSession(s.TestType) :
+                    s.TestType == DiskChecker.Core.Models.TestType.Seek))
             .OrderBy(s => Math.Abs((s.StartedAt - selected.StartedAt).TotalMinutes))
-            .FirstOrDefault();
+            .ToList();
+         var counterpart = SelectedPairSession == null
+            ? eligible.FirstOrDefault(s =>
+                Math.Abs((s.StartedAt - selected.StartedAt).TotalHours) <= 48)
+            : eligible.FirstOrDefault(s => s.Id == SelectedPairSession.Id);
 
-         if(counterpart == null ||
-             Math.Abs((counterpart.StartedAt - selected.StartedAt).TotalHours) > 48)
+         if(counterpart == null)
          {
             await _dialogService.ShowWarningAsync(L.Get("Common.Warning"),
                L.Get("CertificateView.Combined.NoPair"));
