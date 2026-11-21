@@ -1835,7 +1835,6 @@ public partial class CertificateViewModel : ViewModelBase, INavigableViewModel
        TemperatureMidLabel = graphData.TemperatureMidLabel;
        TemperatureMinLabel = graphData.TemperatureMinLabel;
        ChartSourceNote = graphData.ChartSourceNote;
-       ChartSourceNote = graphData.ChartSourceNote;
        ChartMaxSpeedLabel = graphData.ChartMaxSpeedLabel;
        ChartMidSpeedLabel = graphData.ChartMidSpeedLabel;
        ChartMinSpeedLabel = graphData.ChartMinSpeedLabel;
@@ -1869,6 +1868,7 @@ public partial class CertificateViewModel : ViewModelBase, INavigableViewModel
        TemperatureMaxLabel = graphData.TemperatureMaxLabel;
        TemperatureMidLabel = graphData.TemperatureMidLabel;
        TemperatureMinLabel = graphData.TemperatureMinLabel;
+       ChartSourceNote = graphData.ChartSourceNote;
        ChartMaxSpeedLabel = graphData.ChartMaxSpeedLabel;
        ChartMidSpeedLabel = graphData.ChartMidSpeedLabel;
        ChartMinSpeedLabel = graphData.ChartMinSpeedLabel;
