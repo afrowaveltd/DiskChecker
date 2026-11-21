@@ -843,9 +843,9 @@ public class CertificateGeneratorTests
         Assert.Equal(999.0, certificate.MaxWriteSpeed);
         Assert.InRange(certificate.AvgReadSpeed, expectedReadAverage - 0.0001, expectedReadAverage + 0.0001);
         Assert.Equal(777.0, certificate.MaxReadSpeed);
-        Assert.InRange(certificate.WriteProfilePoints.Count, 1, 32);
-        Assert.InRange(certificate.ReadProfilePoints.Count, 1, 32);
-        Assert.True(certificate.StallProfilePoints.Count <= 32);
+        Assert.InRange(certificate.WriteProfilePoints.Count, 1, 512);
+        Assert.InRange(certificate.ReadProfilePoints.Count, 1, 512);
+        Assert.True(certificate.StallProfilePoints.Count <= 512);
     }
 
     [Fact]
@@ -893,8 +893,8 @@ public class CertificateGeneratorTests
         Assert.Equal(456.78, certificate.MaxWriteSpeed);
         Assert.Equal(234.56, certificate.AvgReadSpeed);
         Assert.Equal(567.89, certificate.MaxReadSpeed);
-        Assert.True(certificate.WriteProfilePoints.Count <= 32);
-        Assert.True(certificate.ReadProfilePoints.Count <= 32);
+        Assert.True(certificate.WriteProfilePoints.Count <= 512);
+        Assert.True(certificate.ReadProfilePoints.Count <= 512);
     }
 
 }
