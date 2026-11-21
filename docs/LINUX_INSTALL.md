@@ -1,100 +1,85 @@
-# DiskChecker – Instalace a použití na Linuxu
+# DiskChecker – Linux test installation (x86_64)
 
-## Požadavky
+DiskChecker's raw-disk operations require root. The Linux application checks its
+effective UID at startup; the packaged desktop shortcut uses `pkexec`. Depending
+on the display server and polkit configuration, graphical root access may not
+be available. The CLI fallback is `sudo diskchecker` in a suitable X11 session.
+Do not run destructive tests on a disk with valuable data.
 
-- **OS**: Ubuntu 20.04+, Debian 11+, Fedora 33+, nebo jakákoliv moderní distribuce
-- **Architektura**: x64 (amd64) nebo ARM64
-- **.NET Runtime**: Není vyžadován (self-contained build)
-- **Práva**: Root/sudo pro přístup k diskům
+## Test packages (before public release)
 
-## Závislosti
+The GitHub Actions workflow
+[`Build test installers (no release)`](../.github/workflows/test-installers.yml)
+produces downloadable test artifacts on pull requests or manual runs:
+- `diskchecker-1.0.0-linux-x64.deb`
+- `diskchecker-1.0.0-1.x86_64.rpm` (name may include distro suffix)
+- `diskchecker-1.0.0-linux-x64-installer.tar.gz`
+
+All contain the same self-contained .NET 10 `linux-x64` application, so the
+.NET runtime does not need to be installed separately. Install dependencies
+such as `smartmontools` and the OS graphical/font libraries using your package
+manager. Linux ARM64 and other architectures need separately built packages.
+
+### Debian / Ubuntu
 
 ```bash
-# Ubuntu/Debian
-sudo apt update && sudo apt install smartmontools
-
-# Fedora/RHEL/CentOS
-sudo dnf install smartmontools
-
-# Arch Linux
-sudo pacman -S smartmontools
+sudo apt install ./diskchecker-1.0.0-linux-x64.deb
+sudo diskchecker
 ```
 
-## Instalace
+### Fedora / RHEL
 
-### 1. Build ze zdrojového kódu
+```bash
+sudo dnf install ./diskchecker-1.0.0-1.x86_64.rpm
+sudo diskchecker
+```
+
+### Portable installer archive
+
+```bash
+tar -xzf diskchecker-1.0.0-linux-x64-installer.tar.gz -C ./diskchecker-package
+cd ./diskchecker-package
+sudo bash ./install-linux.sh
+sudo diskchecker
+```
+
+Create the extraction folder first (`mkdir -p diskchecker-package`) if needed.
+The installer copies the application to `/opt/diskchecker`, the privileged
+CLI launcher to `/usr/local/bin/diskchecker`, and the desktop entry to
+`/usr/share/applications/diskchecker.desktop`.
+
+### Building packages yourself
 
 ```bash
 git clone https://github.com/afrowaveltd/DiskChecker.git
 cd DiskChecker
 dotnet publish DiskChecker.UI.Avalonia/DiskChecker.UI.Avalonia.csproj \
-  -c Release -r linux-x64 --self-contained true -o ./publish/linux-x64
+  -c Release -r linux-x64 --self-contained true -o publish/linux-x64
+# Requires dpkg-deb and rpmbuild:
+bash installer/package-linux.sh 1.0.0
 ```
 
-### 2. Instalační skript
+## PDF certificate output and elevated users
 
-```bash
-sudo ./installer/install-linux.sh
-```
+In **Settings**, choose the `PDF certificate folder` and save it.
+PDF files are written into its `Certificates` subdirectory. Choose a
+writable folder accessible to the *test operator*, not an elevated service
+account's home. The choice is persisted by the settings service, changes
+take effect for subsequent PDFs without restarting the program, and
+existing PDFs remain in their original locations. If the chosen path
+is missing, export reports an error rather than silently redirecting
+to root's folder.
 
-Aplikace se nainstaluje do `/opt/diskchecker` a vytvoří symlink `/usr/local/bin/diskchecker`.
+## Known limits before release
 
-### 3. DEB balíček
+- Test in a real graphical X11/Wayland environment: `pkexec` can fail to
+  pass GUI display authorization on some distributions and compositors.
+- Verify PDF opening, directory ownership and SMTP attachment delivery
+  with both ordinary-user and sudo/polkit launches.
+- Keep Linux disk access restricted: adding ordinary users to the `disk`
+  group or granting `cap_sys_rawio` can expose all raw-disk contents and
+  is **not** a recommended installation shortcut.
+- The previous RPM spec removed `/var/lib/diskchecker` on uninstall.
+  This has been removed; user data must not be erased as a packaging side effect.
 
-```bash
-./package.sh          # Vytvoří DEB balíček v packages/
-sudo dpkg -i packages/diskchecker-1.0.0-linux-x64.deb
-```
-
-## Spuštění
-
-```bash
-# Přes symlink
-sudo diskchecker
-
-# Nebo přímo
-sudo /opt/diskchecker/DiskChecker.UI.Avalonia
-```
-
-## Práva
-
-Aplikace vyžaduje **root práva** pro:
-- Čtení SMART dat (`/dev/sd*`, `/dev/nvme*`)
-- Přímý přístup k disku (povrchové testy)
-- Zápis na úrovni sektorů (sanitzace)
-
-### Alternativy ke spouštění přes sudo
-
-```bash
-# Přidání uživatele do skupiny disk (vyžaduje odhlášení/refresh)
-sudo usermod -a -G disk $USER
-
-# Nastavení capabilities (bezpečnější než plný root)
-sudo setcap cap_sys_rawio+ep /opt/diskchecker/DiskChecker.UI.Avalonia
-```
-
-## Řešení problémů
-
-| Problém | Řešení |
-|---------|--------|
-| `smartctl: command not found` | `sudo apt install smartmontools` |
-| `Permission denied` na `/dev/sda` | Spusťte s `sudo` nebo přidejte uživatele do skupiny `disk` |
-| Nebyly nalezeny žádné disky | Ověřte: `lsblk -d -n -o NAME,SIZE,MODEL` |
-| SMART data nejsou dostupná | Ověřte: `sudo smartctl -i /dev/sda` |
-| Aplikace se zasekává na 3. disku | Opraveno – jednotlivé timeouty (15–30 s) na nereagující disky |
-
-## Kompatibilita
-
-| Funkce | Linux | Windows |
-|--------|-------|---------|
-| SMART data | ✅ `smartctl` | ✅ WMI/smartctl |
-| Výpis disků | ✅ `lsblk` / `/sys/block` | ✅ Win32_DiskDrive |
-| Povrchový test | ✅ `O_DIRECT` | ✅ Win32 NO_BUFFERING |
-| Sanitzace | ✅ Raw `/dev/sdX` | ✅ `\\.\PHYSICALDRIVE` |
-| PDF export | ✅ | ✅ |
-| Email reporty | ✅ SMTP | ✅ SMTP |
-
-## Podpora
-
-- **Issues**: [GitHub Issues](https://github.com/afrowaveltd/DiskChecker/issues)
-- **Licence**: viz [LICENSE](../LICENSE)
+For problems: https://github.com/afrowaveltd/DiskChecker/issues
