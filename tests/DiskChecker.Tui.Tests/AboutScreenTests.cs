@@ -77,6 +77,8 @@ public sealed class AboutScreenTests : IDisposable
         Assert.True(harness.Io.Contains("Password=***"));
         Assert.True(harness.Io.Contains("Username=***"));
         Assert.True(harness.Io.Contains("settings.json"));
+        // The complete absolute path must survive table rendering on Windows.
+        Assert.True(harness.Io.Contains(settings.SettingsFilePath));
         Assert.False(harness.Io.Contains("SuperSecret123"));
         Assert.False(harness.Io.Contains("diskadmin"));
     }
@@ -93,6 +95,7 @@ public sealed class AboutScreenTests : IDisposable
 
         Assert.True(harness.Io.Contains("SQLite"));
         Assert.True(harness.Io.Contains("DiskChecker.db"));
+        Assert.True(harness.Io.Contains(Path.Combine(_settingsDirectory, "DiskChecker.db")));
         Assert.False(harness.Io.Contains("Password=***"));
     }
 
