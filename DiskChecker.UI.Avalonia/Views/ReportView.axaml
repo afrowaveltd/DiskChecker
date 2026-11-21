@@ -207,6 +207,12 @@
                             Background="{DynamicResource ThemeInfoBrush}" Foreground="White" 
                             Padding="14,8" Margin="0,0,8,0"/>
 
+                    <Button Content="{Binding L[ReportView.OpenCertificate]}"
+                            Command="{Binding OpenCertificateDetailsCommand}"
+                            IsEnabled="{Binding SelectedReport, Converter={StaticResource NotNullConverter}}"
+                            Background="{DynamicResource ThemeSuccessBrush}" Foreground="White"
+                            Padding="14,8" Margin="0,0,8,0"/>
+
                     <Button Content="{Binding L[ReportView.Export]}" 
                             Command="{Binding ExportReportCommand}"
                             IsEnabled="{Binding SelectedReport, Converter={StaticResource NotNullConverter}}"
