@@ -203,11 +203,16 @@ public sealed class AboutScreen : ITuiScreen
         var active = context.GetService<DatabaseStorageSettings>();
         var configured = settings.StartupDatabaseStorageSettings;
 
+        var location = DescribeLocation(context, active ?? configured);
+        var settingsFile = settings.SettingsFilePath;
+        // Long absolute Windows paths have no whitespace. Spectre's two-column
+        // table can truncate their final filename in narrower terminals.
+        // Keep the table compact, and print the entire paths separately below.
         var rows = new List<(string Label, string Value)>
         {
             (context.L("Tui.About.Label.Provider"), DescribeProvider((active ?? configured).Provider)),
-            (context.L("Tui.About.Label.Location"), DescribeLocation(context, active ?? configured)),
-            (context.L("Tui.About.Label.SettingsFile"), settings.SettingsFilePath),
+            (context.L("Tui.About.Label.Location"), ShortLocation(active ?? configured, location)),
+            (context.L("Tui.About.Label.SettingsFile"), Path.GetFileName(settingsFile)),
         };
 
         if (active is not null && !IsSameDatabase(active, configured))
@@ -217,6 +222,13 @@ public sealed class AboutScreen : ITuiScreen
         }
 
         context.Io.Write(BuildKeyValueTable(context.L("Tui.About.Database"), rows));
+        // Full, copyable values must be visible even when a table column is
+        // narrow. These are paths, not connection strings or credentials.
+        if ((active ?? configured).Provider == DatabaseProviderKind.Sqlite)
+            context.Io.Line($"[grey]{Markup.Escape(context.L("Tui.About.Label.Location"))}: " +
+                            $"{Markup.Escape(location)}[/]");
+        context.Io.Line($"[grey]{Markup.Escape(context.L("Tui.About.Label.SettingsFile"))}: " +
+                        $"{Markup.Escape(settingsFile)}[/]");
 
         var database = active ?? configured;
         if (database.Provider != DatabaseProviderKind.Sqlite && !string.IsNullOrWhiteSpace(database.ConnectionString))
@@ -272,6 +284,13 @@ public sealed class AboutScreen : ITuiScreen
         DatabaseProviderKind.SqlServer => "SQL Server",
         _ => provider.ToString(),
     };
+
+    private static string ShortLocation(DatabaseStorageSettings database, string location)
+    {
+        if (database.Provider != DatabaseProviderKind.Sqlite)
+            return location;
+        return string.IsNullOrWhiteSpace(location) ? location : Path.GetFileName(location);
+    }
 
     private static string DescribeLocation(TuiContext context, DatabaseStorageSettings database)
     {
