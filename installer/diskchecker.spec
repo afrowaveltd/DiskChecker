@@ -15,10 +15,10 @@ and PDF disk certificates. Root rights are required for raw-disk operations.
 install -d %{buildroot}/opt/diskchecker
 install -d %{buildroot}/usr/bin
 install -d %{buildroot}/usr/share/applications
-cp -a publish/linux-x64/. %{buildroot}/opt/diskchecker/
+cp -a %{_diskchecker_source}/publish/linux-x64/. %{buildroot}/opt/diskchecker/
 chmod 755 %{buildroot}/opt/diskchecker/DiskChecker.UI.Avalonia
-install -m 755 installer/diskchecker-launcher %{buildroot}/usr/bin/diskchecker
-install -m 644 installer/diskchecker.desktop %{buildroot}/usr/share/applications/diskchecker.desktop
+install -m 755 %{_diskchecker_source}/installer/diskchecker-launcher %{buildroot}/usr/bin/diskchecker
+install -m 644 %{_diskchecker_source}/installer/diskchecker.desktop %{buildroot}/usr/share/applications/diskchecker.desktop
 
 %files
 /opt/diskchecker
