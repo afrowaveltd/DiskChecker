@@ -74,13 +74,7 @@
                                     Command="{Binding BrowseExportPathCommand}" Padding="10,6"/>
                         </Grid>
 
-                        <Grid ColumnDefinitions="200,*">
-                            <TextBlock Grid.Column="0" Text="{Binding L[Settings.AutoSaveInterval]}" 
-                                      FontSize="11" VerticalAlignment="Center"
-                                      Foreground="{DynamicResource ThemeTextSecondaryBrush}"/>
-                            <TextBox Grid.Column="1" Text="{Binding AutoSaveInterval}" FontSize="11"
-                                     Watermark="0–1440" />
-                        </Grid>
+                        
                         
                         
                         
@@ -96,15 +90,7 @@
                                     Padding="8,4"/>
                         </Grid>
 
-                        <Grid ColumnDefinitions="200,*">
-                            <TextBlock Grid.Column="0" Text="{Binding L[Settings.EmailWhenLabel]}" 
-                                      FontSize="11" VerticalAlignment="Center"
-                                      Foreground="{DynamicResource ThemeTextSecondaryBrush}"/>
-                            <CheckBox Grid.Column="1"
-                                     Content="{Binding L[Settings.EmailLongTests]}"
-                                     IsChecked="{Binding EmailSendOnlyForLongRunningTests}"
-                                     FontSize="11"/>
-                        </Grid>
+                        
 
                         <Grid ColumnDefinitions="200,*">
                             <TextBlock Grid.Column="0" Text="{Binding L[Settings.CertificateAttachment]}" 
@@ -132,16 +118,7 @@
                         
                         
                         
-                        <Grid ColumnDefinitions="200,*">
-                            <TextBlock Grid.Column="0" Text="{Binding L[Settings.SmartCacheTTL]}" 
-                                      FontSize="11" VerticalAlignment="Center"
-                                      Foreground="{DynamicResource ThemeTextSecondaryBrush}"/>
-                            <TextBox Grid.Column="1" 
-                                    Text="{Binding SmartCacheTtlMinutes}"
-                                    Background="{DynamicResource ThemeCardBackgroundBrush}"
-                                    BorderBrush="{DynamicResource ThemeBorderBrush}"
-                                    Padding="8,4"/>
-                        </Grid>
+                        
                         
                         <Grid ColumnDefinitions="200,*">
                             <TextBlock Grid.Column="0" Text="{Binding L[Settings.UsbRecoveryRetry]}" 
@@ -154,16 +131,7 @@
                                     Padding="8,4"/>
                         </Grid>
                           
-                        <Grid ColumnDefinitions="200,*">
-                            <TextBlock Grid.Column="0" Text="{Binding L[Settings.SmartProbeTimeoutLabel]}" 
-                                      FontSize="11" VerticalAlignment="Center"
-                                      Foreground="{DynamicResource ThemeTextSecondaryBrush}"/>
-                            <TextBox Grid.Column="1" 
-                                    Text="{Binding SmartProbeTimeoutSeconds}"
-                                    Background="{DynamicResource ThemeCardBackgroundBrush}"
-                                    BorderBrush="{DynamicResource ThemeBorderBrush}"
-                                    Padding="8,4"/>
-                        </Grid>
+                        
                     </StackPanel>
                 </Border>
 

@@ -19,6 +19,7 @@ namespace DiskChecker.UI.Avalonia.ViewModels
     public partial class SettingsViewModel : ViewModelBase, INavigationActivity
     {
         private readonly ISettingsService _settingsService;
+        private readonly IEmailSettingsService _emailSettingsService;
         private readonly IDialogService _dialogService;
         private readonly IBackupService _backupService;
         private readonly LocaleService _localizationService;
@@ -52,7 +53,7 @@ namespace DiskChecker.UI.Avalonia.ViewModels
         private int _smartProbeTimeoutSeconds;
         private int _smartProbeParallelismValue;
 
-        public SettingsViewModel(ISettingsService settingsService, IDialogService dialogService, IBackupService backupService, LocaleService localizationService, IDiskCacheService diskCacheService, INavigationService navigationService)
+        public SettingsViewModel(ISettingsService settingsService, IDialogService dialogService, IBackupService backupService, LocaleService localizationService, IDiskCacheService diskCacheService, INavigationService navigationService, IEmailSettingsService emailSettingsService)
         {
             _settingsService = settingsService ?? throw new ArgumentNullException(nameof(settingsService));
             _dialogService = dialogService ?? throw new ArgumentNullException(nameof(dialogService));
@@ -60,6 +61,7 @@ namespace DiskChecker.UI.Avalonia.ViewModels
             _localizationService = localizationService ?? throw new ArgumentNullException(nameof(localizationService));
             _diskCacheService = diskCacheService ?? throw new ArgumentNullException(nameof(diskCacheService));
             _navigationService = navigationService ?? throw new ArgumentNullException(nameof(navigationService));
+            _emailSettingsService = emailSettingsService ?? throw new ArgumentNullException(nameof(emailSettingsService));
             
             SaveSettingsCommand = new AsyncRelayCommand(SaveSettingsAsync, () => !IsSaving);
             ResetSettingsCommand = new AsyncRelayCommand(ResetSettingsAsync);
@@ -281,6 +283,17 @@ namespace DiskChecker.UI.Avalonia.ViewModels
                 ReportRecipientEmail = await _settingsService.GetReportRecipientEmailAsync();
                 EmailSendOnlyForLongRunningTests = await _settingsService.GetEmailSendOnlyForLongRunningTestsAsync();
                 EmailIncludeCertificateAttachment = await _settingsService.GetEmailIncludeCertificateAttachmentAsync();
+                // This is the actual source consumed by TestCompletionNotificationService.
+                // The legacy general settings flag alone did not affect attachments.
+                try
+                {
+                    var smtp = await _emailSettingsService.GetAsync();
+                    EmailIncludeCertificateAttachment = smtp.IncludeCertificateAttachment;
+                }
+                catch (Exception ex) when (ex is InvalidOperationException or Microsoft.EntityFrameworkCore.DbUpdateException)
+                {
+                    StatusMessage = $"Nastavení SMTP není dostupné: {ex.Message}";
+                }
                 UsbRecoveryRetryCount = await _settingsService.GetUsbRecoveryRetryCountAsync();
                 var dbSettings = await _settingsService.GetDatabaseStorageSettingsAsync();
                 DatabaseProvider = dbSettings.Provider.ToString();
@@ -343,6 +356,12 @@ namespace DiskChecker.UI.Avalonia.ViewModels
                 await _settingsService.SetReportRecipientEmailAsync(ReportRecipientEmail);
                 await _settingsService.SetEmailSendOnlyForLongRunningTestsAsync(EmailSendOnlyForLongRunningTests);
                 await _settingsService.SetEmailIncludeCertificateAttachmentAsync(EmailIncludeCertificateAttachment);
+                var smtp = await _emailSettingsService.GetAsync();
+                if (smtp.IncludeCertificateAttachment != EmailIncludeCertificateAttachment)
+                {
+                    smtp.IncludeCertificateAttachment = EmailIncludeCertificateAttachment;
+                    await _emailSettingsService.SaveAsync(smtp);
+                }
                 await _settingsService.SetUsbRecoveryRetryCountAsync(UsbRecoveryRetryCount);
                 var providerKind = Enum.TryParse<DatabaseProviderKind>(DatabaseProvider, ignoreCase: true, out var parsedProvider)
                     ? parsedProvider

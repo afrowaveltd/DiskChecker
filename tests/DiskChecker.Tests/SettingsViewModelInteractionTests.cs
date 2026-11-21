@@ -3,6 +3,9 @@ using System.Collections.Generic;
 using System.IO;
 using System.Threading.Tasks;
 using DiskChecker.Application.Services;
+using DiskChecker.Core.Interfaces;
+using DiskChecker.Core.Models;
+using System.Threading;
 using DiskChecker.UI.Avalonia.Services;
 using DiskChecker.UI.Avalonia.Services.Interfaces;
 using DiskChecker.UI.Avalonia.ViewModels;
@@ -27,8 +30,11 @@ public sealed class SettingsViewModelInteractionTests
             backup.GetAvailableBackupsAsync()
                 .Returns(Task.FromResult<IEnumerable<IBackupService.BackupInfo>>(Array.Empty<IBackupService.BackupInfo>()));
             var cache = Substitute.For<IDiskCacheService>();
+            var smtp = Substitute.For<IEmailSettingsService>();
+            smtp.GetAsync(Arg.Any<CancellationToken>())
+                .Returns(Task.FromResult(new EmailSettings { IncludeCertificateAttachment = true }));
             var vm = new SettingsViewModel(settings, dialog, backup,
-                new LocaleService(), cache, Substitute.For<INavigationService>());
+                new LocaleService(), cache, Substitute.For<INavigationService>(), smtp);
 
             vm.DefaultExportPath = "original";
             await vm.BrowseExportPathCommand.ExecuteAsync(null);
@@ -41,6 +47,11 @@ public sealed class SettingsViewModelInteractionTests
 
             vm.ClearCacheCommand.Execute(null);
             cache.Received(1).ClearCache();
+            vm.EmailIncludeCertificateAttachment = false;
+            await vm.SaveSettingsCommand.ExecuteAsync(null);
+            await smtp.Received(1).SaveAsync(
+                Arg.Is<EmailSettings>(s => !s.IncludeCertificateAttachment),
+                Arg.Any<CancellationToken>());
             Assert.True(File.Exists(settings.SettingsFilePath));
 
             vm.IsSaving = true;

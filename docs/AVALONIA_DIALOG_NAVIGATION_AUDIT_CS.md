@@ -83,3 +83,14 @@ skutečný výběr, mazání pouze paměťové cache a blokování navigace.
 `SettingsServiceTests` ověřuje uchování voleb přes restart služby.
 `DiskComparisonServiceRegressionTests` ověřuje skutečně poslední session
 a srovnání bez dělení nulou. Výsledky CI jsou nutné před sloučením.
+
+## Konfigurace bez falešných voleb
+
+Kontrola skutečných call-site prokázala, že auto-save interval,
+`EmailSendOnlyForLongRunningTests`, SMART cache TTL a SMART probe timeout
+dosud nikdo v běžném Avalonia provozu nečte. Jejich hodnoty zůstávají v
+konfiguraci kvůli kompatibilitě s TUI/plánovaným využitím, ale GUI je
+nenabízí jako funkční přepínače. Výběr výchozí exportní složky je nově
+skutečně respektován v `ExportImportViewModel.BrowseExportPathAsync`.
+Volba přikládání certifikátu do e-mailu je nyní synchronizována s
+`IEmailSettingsService` (SMTP DB), který čte skutečná odesílací služba.
