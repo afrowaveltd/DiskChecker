@@ -56,6 +56,13 @@ public partial class CertificateBrowserViewModel : ViewModelBase, INavigableView
     private string _chartXAxisMidLabel = CertificateGraphData.Default.ChartXAxisMidLabel;
     private string _chartXAxisEndLabel = CertificateGraphData.Default.ChartXAxisEndLabel;
     private ObservableCollection<ObservablePoint> _seekScatterPoints = new();
+    private string _seekFullStrokePoints = string.Empty;
+    private string _seekRandomPoints = string.Empty;
+    private string _seekSkipPoints = string.Empty;
+    private string _seekLegacyPoints = string.Empty;
+    private string _temperatureMaxLabel = "N/A";
+    private string _temperatureMidLabel = "N/A";
+    private string _temperatureMinLabel = "N/A";
     private string _seekChartMaxLabel = "0 ms";
     private string _seekChartMidLabel = "0 ms";
     private string _seekChartMinLabel = "0 ms";
@@ -419,7 +426,44 @@ public partial class CertificateBrowserViewModel : ViewModelBase, INavigableView
         }
     }
 
-    public bool IsSeekChart => SeekScatterPoints.Count > 0;
+    public string SeekFullStrokePoints
+    {
+        get => _seekFullStrokePoints;
+        private set => SetProperty(ref _seekFullStrokePoints, value);
+    }
+    public string SeekRandomPoints
+    {
+        get => _seekRandomPoints;
+        private set => SetProperty(ref _seekRandomPoints, value);
+    }
+    public string SeekSkipPoints
+    {
+        get => _seekSkipPoints;
+        private set => SetProperty(ref _seekSkipPoints, value);
+    }
+    public string SeekLegacyPoints
+    {
+        get => _seekLegacyPoints;
+        private set => SetProperty(ref _seekLegacyPoints, value);
+    }
+    public bool IsSeekChart => SeekFullStrokePoints.Length > 0 ||
+        SeekRandomPoints.Length > 0 || SeekSkipPoints.Length > 0 || SeekLegacyPoints.Length > 0;
+
+    public string TemperatureMaxLabel
+    {
+        get => _temperatureMaxLabel;
+        private set => SetProperty(ref _temperatureMaxLabel, value);
+    }
+    public string TemperatureMidLabel
+    {
+        get => _temperatureMidLabel;
+        private set => SetProperty(ref _temperatureMidLabel, value);
+    }
+    public string TemperatureMinLabel
+    {
+        get => _temperatureMinLabel;
+        private set => SetProperty(ref _temperatureMinLabel, value);
+    }
 
     public string SeekChartMaxLabel
     {
@@ -732,15 +776,15 @@ public partial class CertificateBrowserViewModel : ViewModelBase, INavigableView
     {
         ArgumentNullException.ThrowIfNull(certificate);
 
-        if (certificate.TestSessionId > 0 &&
-            (certificate.SeekAvgLatencyMs.HasValue ||
-             certificate.TestType.Contains("Seek", StringComparison.OrdinalIgnoreCase)))
+        if (certificate.SeekAvgLatencyMs.HasValue ||
+            certificate.SeekLatencyPoints.Count > 0 ||
+            certificate.TestType.Contains("Seek", StringComparison.OrdinalIgnoreCase))
         {
-            var latency = await LoadSeekLatencySamplesAsync(certificate.TestSessionId);
+            var seek = await CertificateSeekChartLoader.LoadAsync(_diskCardRepository,
+                certificate.TestSessionId, _selectedSession?.SeekResultsJson,
+                certificate.SeekLatencyPoints);
             if (generation != _detailSelectionGeneration) return;
-            if (latency.Count == 0)
-                latency = certificate.SeekLatencyPoints;
-            ApplySeekScatterGraph(latency);
+            ApplySeekChart(seek);
         }
         else
         {
@@ -772,6 +816,9 @@ public partial class CertificateBrowserViewModel : ViewModelBase, INavigableView
         ReadProfilePoints = graph.ReadProfilePoints;
         TemperatureProfilePoints = graph.TemperatureProfilePoints;
         HasTemperatureProfile = graph.HasTemperatureProfile;
+        TemperatureMaxLabel = graph.TemperatureMaxLabel;
+        TemperatureMidLabel = graph.TemperatureMidLabel;
+        TemperatureMinLabel = graph.TemperatureMinLabel;
         ChartMaxSpeedLabel = graph.ChartMaxSpeedLabel;
         ChartMidSpeedLabel = graph.ChartMidSpeedLabel;
         ChartMinSpeedLabel = graph.ChartMinSpeedLabel;
@@ -788,6 +835,9 @@ public partial class CertificateBrowserViewModel : ViewModelBase, INavigableView
         ReadProfilePoints = defaults.ReadProfilePoints;
         TemperatureProfilePoints = defaults.TemperatureProfilePoints;
         HasTemperatureProfile = defaults.HasTemperatureProfile;
+        TemperatureMaxLabel = defaults.TemperatureMaxLabel;
+        TemperatureMidLabel = defaults.TemperatureMidLabel;
+        TemperatureMinLabel = defaults.TemperatureMinLabel;
         ChartMaxSpeedLabel = defaults.ChartMaxSpeedLabel;
         ChartMidSpeedLabel = defaults.ChartMidSpeedLabel;
         ChartMinSpeedLabel = defaults.ChartMinSpeedLabel;
@@ -882,46 +932,22 @@ public partial class CertificateBrowserViewModel : ViewModelBase, INavigableView
         }
     }
 
-    private void ApplySeekScatterGraph(IReadOnlyList<double> latencies)
+    private void ApplySeekChart(CertificateSeekGraphData graph)
     {
-        var values = latencies.Where(v => double.IsFinite(v) && v > 0).Take(1024).ToList();
-        if (values.Count == 0)
-        {
-            ResetSeekGraph();
-            return;
-        }
-
-        var yMax = Math.Max(values.Max() * 1.15, values.Max() + 1);
-        var points = new ObservableCollection<ObservablePoint>();
-
-        for (var i = 0; i < values.Count; i++)
-        {
-            var x = values.Count == 1
-                ? ChartStartX
-                : ChartStartX + (i / (double)(values.Count - 1)) * (ChartEndX - ChartStartX);
-            var y = ChartMaxY - ((ChartMaxY - ChartMinY) * Math.Clamp(values[i] / yMax, 0d, 1d));
-            points.Add(new ObservablePoint(x, y));
-        }
-
-        SeekScatterPoints = points;
-        SeekChartMaxLabel = $"{yMax:F1} ms";
-        SeekChartMidLabel = $"{(yMax / 2):F1} ms";
-        SeekChartMinLabel = "0 ms";
-        SeekChartXAxisStartLabel = "1";
-        SeekChartXAxisMidLabel = Math.Max(1, values.Count / 2).ToString(CultureInfo.InvariantCulture);
-        SeekChartXAxisEndLabel = values.Count.ToString(CultureInfo.InvariantCulture);
+        SeekFullStrokePoints = graph.FullStrokePoints;
+        SeekRandomPoints = graph.RandomPoints;
+        SeekSkipPoints = graph.SkipPoints;
+        SeekLegacyPoints = graph.LegacyPoints;
+        SeekChartMaxLabel = graph.MaxLabel;
+        SeekChartMidLabel = graph.MidLabel;
+        SeekChartMinLabel = graph.MinLabel;
+        SeekChartXAxisStartLabel = graph.StartLabel;
+        SeekChartXAxisMidLabel = graph.MidIndexLabel;
+        SeekChartXAxisEndLabel = graph.EndLabel;
+        OnPropertyChanged(nameof(IsSeekChart));
     }
 
-    private void ResetSeekGraph()
-    {
-        SeekScatterPoints = new ObservableCollection<ObservablePoint>();
-        SeekChartMaxLabel = "0 ms";
-        SeekChartMidLabel = "0 ms";
-        SeekChartMinLabel = "0 ms";
-        SeekChartXAxisStartLabel = "1";
-        SeekChartXAxisMidLabel = "-";
-        SeekChartXAxisEndLabel = "-";
-    }
+    private void ResetSeekGraph() => ApplySeekChart(CertificateSeekGraphData.Empty);
 
     private sealed class SeekResultsEnvelope
     {
