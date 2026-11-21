@@ -1698,6 +1698,8 @@
   "Report.Text.Test": "Test: {0}",
   "Report.Title": "Report",
   "Report.UseExternalPDF": "Use an external PDF viewer for printing.",
+  "ReportView.OpenCertificate": "Open test / combined PDF",
+  "ReportView.CertificateNotFound": "The selected disk card or test session is no longer available.",
   "ReportView.AllTestsHistory": "All Tests History",
   "ReportView.AvgRead": "Avg Read",
   "ReportView.AvgWrite": "Avg Write",
