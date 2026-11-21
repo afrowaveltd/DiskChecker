@@ -25,7 +25,7 @@ public sealed class SmtpEmailSender : IEmailSender
     {
         ArgumentNullException.ThrowIfNull(settings);
         if (settings.Port is < 1 or > 65535)
-            throw new ArgumentOutOfRangeException(nameof(settings.Port), "SMTP port must be 1–65535.");
+            throw new ArgumentOutOfRangeException(nameof(settings), settings.Port, "SMTP port must be 1–65535.");
         if (!settings.UseSsl && !string.IsNullOrWhiteSpace(settings.UserName))
             throw new InvalidOperationException("SMTP credentials require TLS. Enable TLS for this server.");
 
