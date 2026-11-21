@@ -419,7 +419,7 @@ public partial class CertificateBrowserViewModel : ViewModelBase, INavigableView
         }
     }
 
-    public bool IsSeekChart => HasSeekMetrics && SeekScatterPoints.Count > 0;
+    public bool IsSeekChart => SeekScatterPoints.Count > 0;
 
     public string SeekChartMaxLabel
     {
