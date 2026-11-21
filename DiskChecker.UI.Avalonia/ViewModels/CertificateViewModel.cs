@@ -52,7 +52,7 @@ public partial class CertificateViewModel : ViewModelBase, INavigableViewModel
    private List<SpeedSample> _readGraphSamples = [];
    private List<double> _seekLatencyGraphSamples = [];
    private ObservableCollection<ObservablePoint> _seekScatterPoints = new();
-   private bool _hasThroughputChart = true;
+   private bool _hasThroughputChart;
    private string _seekChartMaxLabel = "0 ms";
    private string _seekChartMidLabel = "0 ms";
    private string _seekChartMinLabel = "0 ms";
@@ -312,7 +312,7 @@ public partial class CertificateViewModel : ViewModelBase, INavigableViewModel
       }
    }
 
-   public bool IsSeekChart => HasSeekMetrics && SeekScatterPoints.Count > 0;
+   public bool IsSeekChart => SeekScatterPoints.Count > 0;
 
    public bool IsThroughputChart => HasThroughputChart;
 
@@ -1730,7 +1730,8 @@ public partial class CertificateViewModel : ViewModelBase, INavigableViewModel
     {
        ArgumentNullException.ThrowIfNull(certificate);
 
-       if(HasSeekMetrics)
+       if(HasSeekMetrics || certificate.SeekLatencyPoints.Count > 0 ||
+          certificate.TestType.Contains("Seek", StringComparison.OrdinalIgnoreCase))
        {
           var seekValues = _seekLatencyGraphSamples.Count > 0
              ? _seekLatencyGraphSamples
@@ -1756,6 +1757,7 @@ public partial class CertificateViewModel : ViewModelBase, INavigableViewModel
 
        var graphData = await Task.Run(() => CertificateChartProjector.Build(
           certificate, writeGraphSamples, readGraphSamples, temperatureSamples)).ConfigureAwait(true);
+       if(!ReferenceEquals(certificate, Certificate)) return;
        HasThroughputChart = !string.IsNullOrWhiteSpace(graphData.WriteProfilePoints) ||
           !string.IsNullOrWhiteSpace(graphData.ReadProfilePoints);
 
