@@ -183,21 +183,20 @@ internal static class CertificatePdfPageRenderer
         Wrapped(c, primary.DiskModel, 67, 209, 650, body, Ink, 2);
         Text(c, $"S/N: {primary.SerialNumber}", 67, 274, body, Ink);
         Text(c, $"Kapacita: {primary.Capacity}    Typ: {primary.DiskType}", 650, 215, small, Ink);
-        Text(c, $"Rozhraní: {primary.Interface}    FW: {primary.Firmware}", 650, 249, small, Ink);
+        Text(c, $"Rozhraní: {Display(primary.Interface)}    FW: {Display(primary.Firmware)}", 650, 249, small, Ink);
         Text(c, $"Test: {primary.TestType}" + (combined ? $" + {paired!.TestType}" : ""), 650, 284, small, Muted);
 
         Box(c, 48, 344, 1144, 147, SKColors.White);
         Text(c, "SMART / HARDWAROVÉ SIGNÁLY", 67, 379, title, Blue);
-        bool smartObserved = primary.PowerOnHours > 0 || primary.PowerCycles > 0
-            || primary.SmartAttributes.Count > 0 || primary.ReallocatedSectors > 0
-            || primary.PendingSectors > 0 || (paired != null &&
-                (paired.PowerOnHours > 0 || paired.SmartAttributes.Count > 0));
-        Text(c, $"SMART: {(smartObserved ? (primary.SmartPassed ? "bez hlášeného selhání" : "varování") : "nedostupné")}",
-            67, 417, body, smartObserved && !primary.SmartPassed ? Red : Ink);
-        Text(c, $"Hodiny: {NullableNumber(primary.PowerOnHours)}", 67, 455, small, Ink);
-        Text(c, $"Starty: {NullableNumber(primary.PowerCycles)}", 332, 455, small, Ink);
-        Text(c, $"Realokace: {primary.ReallocatedSectors}", 617, 417, body, Ink);
-        Text(c, $"Pending: {primary.PendingSectors}", 909, 417, body, Ink);
+        bool primarySmartObserved = HasSmartData(primary);
+        var smart = primarySmartObserved || paired == null ? primary : paired;
+        bool smartObserved = HasSmartData(smart);
+        Text(c, $"SMART: {(smartObserved ? (smart.SmartPassed ? "bez hlášeného selhání" : "varování") : "nedostupné")}",
+            67, 417, body, smartObserved && !smart.SmartPassed ? Red : Ink);
+        Text(c, $"Hodiny: {(smartObserved ? NullableNumber(smart.PowerOnHours) : "N/A")}", 67, 455, small, Ink);
+        Text(c, $"Starty: {(smartObserved ? NullableNumber(smart.PowerCycles) : "N/A")}", 332, 455, small, Ink);
+        Text(c, $"Realokace: {(smartObserved ? smart.ReallocatedSectors.ToString() : "N/A")}", 617, 417, body, Ink);
+        Text(c, $"Pending: {(smartObserved ? smart.PendingSectors.ToString() : "N/A")}", 909, 417, body, Ink);
         Text(c, "SMART je doplňující diagnostika, nikoli záruka bezchybnosti média.", 617, 462, small, Muted);
 
         float testWidth = combined ? 558f : 1144f;
@@ -219,6 +218,12 @@ internal static class CertificatePdfPageRenderer
     }
 
     private static string NullableNumber(int n) => n > 0 ? n.ToString("N0", CultureInfo.InvariantCulture) : "N/A";
+
+    private static string Display(string? text) => string.IsNullOrWhiteSpace(text) ? "N/A" : text;
+
+    private static bool HasSmartData(DiskCertificate c) =>
+        c.PowerOnHours > 0 || c.PowerCycles > 0 || c.SmartAttributes.Count > 0
+        || c.ReallocatedSectors > 0 || c.PendingSectors > 0;
 
     private static bool Seek(DiskCertificate cert) =>
         cert.SeekAvgLatencyMs.HasValue ||
@@ -246,7 +251,7 @@ internal static class CertificatePdfPageRenderer
         Text(c, $"Známka: {cert.Grade}    Skóre: {cert.Score:F0}/100",
             left, y + 91, title, GradeColor(cert.Grade));
         Text(c, $"Test: {cert.TestType}    Čas: {cert.TestDuration.ToString(@"hh\:mm\:ss")}", left, y + 128, small, Ink);
-        Text(c, $"Chyby: {cert.ErrorCount}    Teplota: {cert.TemperatureRange}", left, y + 160, small, Ink);
+        Text(c, $"Chyby: {cert.ErrorCount}    Teplota: {Display(cert.TemperatureRange)}", left, y + 160, small, Ink);
 
         bool seekOnly = Seek(cert) && cert.TestType != "AbsoluteDestructive";
         if (seekOnly)
