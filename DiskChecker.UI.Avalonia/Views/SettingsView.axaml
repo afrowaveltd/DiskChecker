@@ -92,6 +92,7 @@
 
                         
 
+                        <StackPanel Spacing="8" IsEnabled="{Binding IsEmailAttachmentAvailable}">
                         <TextBlock Text="{Binding L[Settings.SmtpSection]}" FontSize="14"
                                    FontWeight="SemiBold" Margin="0,12,0,2"/>
                         <TextBlock Text="{Binding L[Settings.SmtpTlsHint]}" TextWrapping="Wrap"
@@ -135,6 +136,7 @@
                         <Button x:Name="SmtpSendTestButton" Content="{Binding L[Settings.SmtpTestButton]}"
                                 Command="{Binding TestSmtpCommand}" HorizontalAlignment="Left"
                                 IsEnabled="{Binding IsEmailAttachmentAvailable}" Padding="12,7"/>
+                        </StackPanel>
                         <Grid ColumnDefinitions="200,*">
                             <TextBlock Grid.Column="0" Text="{Binding L[Settings.CertificateAttachment]}" 
                                       FontSize="11" VerticalAlignment="Center"
