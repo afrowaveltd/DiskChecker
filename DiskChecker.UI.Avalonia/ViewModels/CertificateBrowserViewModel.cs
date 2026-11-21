@@ -964,8 +964,20 @@ public partial class CertificateBrowserViewModel : ViewModelBase, INavigableView
         if (certificate.AvgReadSpeed <= 0 && readValues.Count > 0) certificate.AvgReadSpeed = readValues.Average();
         if (certificate.MaxReadSpeed <= 0 && readValues.Count > 0) certificate.MaxReadSpeed = readValues.Max();
 
-        certificate.WriteProfilePoints = DownsampleSpeedValues(writeValues, GraphTargetPoints);
-        certificate.ReadProfilePoints = DownsampleSpeedValues(readValues, GraphTargetPoints);
+        // Never replace previously stored stall-preserving profiles with a
+        // freshly averaged subset. Historical SQL downsampling may have fewer
+        // points than the original persistent certificate data.
+        if (!certificate.IsReadOnlyTest && certificate.WriteProfilePoints.Count == 0)
+            certificate.WriteProfilePoints = DownsampleSpeedValues(writeValues, GraphTargetPoints);
+        if (certificate.ReadProfilePoints.Count == 0)
+            certificate.ReadProfilePoints = DownsampleSpeedValues(readValues, GraphTargetPoints);
+
+        if (certificate.SeekLatencyPoints.Count == 0 &&
+            (certificate.SeekAvgLatencyMs.HasValue ||
+             certificate.TestType.Contains("Seek", StringComparison.OrdinalIgnoreCase)))
+        {
+            certificate.SeekLatencyPoints = await LoadSeekLatencySamplesAsync(certificate.TestSessionId);
+        }
     }
 
     /// <summary>
@@ -987,20 +999,23 @@ public partial class CertificateBrowserViewModel : ViewModelBase, INavigableView
 
     private static List<double> DownsampleSpeedValues(List<double> values, int targetPoints)
     {
-        values = values.Where(v => v > 0).ToList();
-        if (values.Count <= targetPoints)
-        {
-            return values;
-        }
+        values = values.Where(v => double.IsFinite(v) && v >= 0).ToList();
+        if (values.Count <= targetPoints) return values;
 
+        // Preserve brief zero-speed stalls: one average per bucket previously
+        // flattened a 0 MB/s pause into a healthy-looking speed.
         var result = new List<double>(targetPoints);
-        var bucketSize = values.Count / (double)targetPoints;
-        for (var i = 0; i < targetPoints; i++)
+        int bucketCount = Math.Max(1, targetPoints / 4);
+        for (int i = 0; i < bucketCount; i++)
         {
-            var start = (int)Math.Floor(i * bucketSize);
-            var end = (int)Math.Floor((i + 1) * bucketSize);
-            end = Math.Clamp(end, start + 1, values.Count);
-            result.Add(values.Skip(start).Take(end - start).Average());
+            int start = i * values.Count / bucketCount;
+            int end = Math.Min(values.Count, (i + 1) * values.Count / bucketCount);
+            if (end <= start) continue;
+            var window = values.Skip(start).Take(end - start).ToArray();
+            result.Add(window[0]);
+            result.Add(window.Min());
+            result.Add(window.Max());
+            result.Add(window[^1]);
         }
         return result;
     }
