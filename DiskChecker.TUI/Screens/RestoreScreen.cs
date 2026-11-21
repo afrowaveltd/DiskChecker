@@ -298,7 +298,7 @@ public sealed class RestoreScreen : ITuiScreen
             TuiFormats.DecimalSize(result.BytesWritten),
             result.Message ?? string.Empty);
 
-        if (string.IsNullOrWhiteSpace(backup.Sha256))
+        if (result.Partial || string.IsNullOrWhiteSpace(backup.Sha256))
         {
             context.Dialogs.Warning(context.L("Restore.Completed"), body);
         }
