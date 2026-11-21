@@ -699,6 +699,8 @@ public partial class SafeDestructiveTestViewModel : ViewModelBase, INavigableVie
          await BuildResultsAsync();
          await BuildCertificateAsync();
          var certificateStored = await SaveTestSessionAsync();
+         if(!certificateStored)
+            StatusMessage = L.Get("Notification.CertificateNotSaved");
          if(certificateStored && Certificate != null)
          {
             try

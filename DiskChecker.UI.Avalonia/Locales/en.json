@@ -3048,5 +3048,6 @@
   "Settings.RefreshBackups": "Refresh list",
   "Settings.RestoreSelectionHint": "Select a backup explicitly before restore. Restoring can replace current data and requires restarting DiskChecker.",
   "Notification.CertificateAccepted": "PDF certificate accepted by the SMTP server for delivery.",
-  "Notification.CertificateSendCancelled": "The disk test was saved; certificate emailing was cancelled."
+  "Notification.CertificateSendCancelled": "The disk test was saved; certificate emailing was cancelled.",
+  "Notification.CertificateNotSaved": "Disk test completed, but the certificate record could not be saved to the database."
 }

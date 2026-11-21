@@ -1087,11 +1087,14 @@ public partial class AbsoluteDestructiveTestViewModel : ViewModelBase, INavigabl
             // Persist before any notification.
             certificatePersisted = await SaveTestSessionAsync();
 
-            SetPhase(6, TestPhaseStatus.Completed, "Hotovo — certifikát připraven");
+            SetPhase(6, TestPhaseStatus.Completed,
+                certificatePersisted ? "Hotovo — certifikát uložen" : "Test hotov, certifikát se nepodařilo uložit");
             IsCompleted = true;
             HasResults = true;
-            IsCertificateReady = true;
-            StatusMessage = L.Get("DestructiveTest.Completed");
+            IsCertificateReady = Certificate != null;
+            StatusMessage = certificatePersisted
+                ? L.Get("DestructiveTest.Completed")
+                : L.Get("Notification.CertificateNotSaved");
         }, ct);
 
         // Phase 7: Create partition

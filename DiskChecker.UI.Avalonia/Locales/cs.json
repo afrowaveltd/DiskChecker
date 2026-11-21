@@ -3048,5 +3048,6 @@
   "Settings.RefreshBackups": "Obnovit seznam",
   "Settings.RestoreSelectionHint": "Před obnovou výslovně vyberte zálohu. Obnova databáze může nahradit aktuální data a vyžaduje restart.",
   "Notification.CertificateAccepted": "PDF certifikát přijat SMTP serverem k doručení.",
-  "Notification.CertificateSendCancelled": "Diskový test byl uložen, odeslání certifikátu bylo zrušeno."
+  "Notification.CertificateSendCancelled": "Diskový test byl uložen, odeslání certifikátu bylo zrušeno.",
+  "Notification.CertificateNotSaved": "Diskový test byl dokončen, ale záznam certifikátu se nepodařilo uložit do databáze."
 }
