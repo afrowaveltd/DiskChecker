@@ -102,14 +102,18 @@ public static class CertificateChartProjector
         if (historical is not { Count: > 0 })
             return [];
 
-        var history = historical.Where(v => double.IsFinite(v) && v >= 0)
-            .Take(MaxSamplesPerPhase).ToList();
-
-        return history.Select((speed, i) => new SpeedSample
-        {
-            ProgressPercent = history.Count == 1 ? 50 : i * 100d / (history.Count - 1),
-            SpeedMBps = speed
-        }).ToList();
+        // Historical certificates have only ordinal samples; preserve their
+        // original positions BEFORE bounding them. Take(1024) previously
+        // chopped the end of a long historical chart just like SQL LIMIT did.
+        var history = historical.Select((speed, index) => new { speed, index })
+            .Where(p => double.IsFinite(p.speed) && p.speed >= 0)
+            .Select(p => new SpeedSample
+            {
+                ProgressPercent = historical.Count == 1 ? 50 :
+                    p.index * 100d / (historical.Count - 1),
+                SpeedMBps = p.speed
+            }).ToList();
+        return Bound(history, MaxSamplesPerPhase);
     }
 
     private static List<SpeedSample> Bound(IReadOnlyList<SpeedSample> samples, int limit)
@@ -125,11 +129,19 @@ public static class CertificateChartProjector
             int start = i * samples.Count / buckets;
             int end = Math.Min(samples.Count, (i + 1) * samples.Count / buckets);
             if (end <= start) continue;
-            var part = samples.Skip(start).Take(end - start).ToList();
-            output.Add(part[0]);
-            output.Add(part.MinBy(s => s.SpeedMBps)!);
-            output.Add(part.MaxBy(s => s.SpeedMBps)!);
-            output.Add(part[^1]);
+            var first = samples[start];
+            var last = samples[end - 1];
+            var min = first;
+            var max = first;
+            for(int p = start + 1; p < end; p++)
+            {
+                if(samples[p].SpeedMBps < min.SpeedMBps) min = samples[p];
+                if(samples[p].SpeedMBps > max.SpeedMBps) max = samples[p];
+            }
+            output.Add(first);
+            output.Add(min);
+            output.Add(max);
+            output.Add(last);
         }
 
         return output.OrderBy(s => s.ProgressPercent).ToList();
