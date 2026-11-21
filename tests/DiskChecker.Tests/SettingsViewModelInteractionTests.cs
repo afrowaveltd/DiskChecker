@@ -40,10 +40,16 @@ public sealed class SettingsViewModelInteractionTests
             await vm.BrowseExportPathCommand.ExecuteAsync(null);
             Assert.Equal("original", vm.DefaultExportPath);
 
+            vm.CertificatePath = "original";
+            await vm.BrowseCertificatePathCommand.ExecuteAsync(null);
+            Assert.Equal("original", vm.CertificatePath); // Cancel does not lose the draft.
+
             dialog.PickFoldersAsync(Arg.Any<string>(), false)
                 .Returns(Task.FromResult<IReadOnlyList<string>>(new[] { directory }));
             await vm.BrowseExportPathCommand.ExecuteAsync(null);
             Assert.Equal(directory, vm.DefaultExportPath);
+            await vm.BrowseCertificatePathCommand.ExecuteAsync(null);
+            Assert.Equal(directory, vm.CertificatePath);
 
             vm.ClearCacheCommand.Execute(null);
             cache.Received(1).ClearCache();
@@ -53,6 +59,8 @@ public sealed class SettingsViewModelInteractionTests
                 Arg.Is<EmailSettings>(s => !s.IncludeCertificateAttachment),
                 Arg.Any<CancellationToken>());
             Assert.True(File.Exists(settings.SettingsFilePath));
+            Assert.Equal(directory, await settings.GetCertificatePathAsync());
+            Assert.Equal(directory, await new SettingsService(directory).GetCertificatePathAsync());
 
             vm.IsSaving = true;
             Assert.True(vm.IsNavigationBlocked);

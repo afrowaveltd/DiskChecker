@@ -73,6 +73,21 @@
                             <Button Grid.Column="2" Content="{Binding L[Settings.SelectExportFolder]}"
                                     Command="{Binding BrowseExportPathCommand}" Padding="10,6"/>
                         </Grid>
+                        <!-- PDF output is separate from generic report export. This setting
+                             is persisted and used by the live certificate generator. -->
+                        <Grid ColumnDefinitions="200,*,Auto" ColumnSpacing="8">
+                            <TextBlock Grid.Column="0" Text="{Binding L[Settings.CertificatePathLabel]}"
+                                       VerticalAlignment="Center"
+                                       Foreground="{DynamicResource ThemeTextSecondaryBrush}"/>
+                            <TextBox x:Name="CertificatePathInput" Grid.Column="1" Text="{Binding CertificatePath}"
+                                     Watermark="{Binding L[Settings.CertificatePathDefault]}"/>
+                            <Button Grid.Column="2" Content="{Binding L[Settings.CertificatePathBrowse]}"
+                                    Command="{Binding BrowseCertificatePathCommand}" Padding="10,6"/>
+                        </Grid>
+                        <TextBlock Text="{Binding L[Settings.CertificatePathHint]}" FontSize="11"
+                                   TextWrapping="Wrap"
+                                   Foreground="{DynamicResource ThemeTextSecondaryBrush}"/>
+
 
                         
                         

@@ -63,6 +63,11 @@ public sealed class SettingsViewBindingTests(SeekUiFixture fixture)
                     Assert.Equal(string.Empty, secret.Text);
                     Assert.Equal('●', secret.PasswordChar);
 
+                    var certificatePathInput = Assert.Single(inputs, c => c.Name == "CertificatePathInput");
+                    vm.CertificatePath = folder;
+                    Assert.Equal(folder, certificatePathInput.Text);
+                    Assert.NotNull(vm.BrowseCertificatePathCommand);
+
                     var backupPicker = Assert.Single(window.GetVisualDescendants().OfType<ComboBox>(),
                         c => c.Name == "BackupSelection");
                     Assert.Single(vm.AvailableBackups);

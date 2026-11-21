@@ -26,7 +26,6 @@ public class CertificateGenerator : ICertificateGenerator
     private readonly ILogger<CertificateGenerator>? _logger;
     private readonly ISettingsService? _settingsService;
     private readonly ILocaleProvider? _locale;
-    private readonly string _certificatesDirectory;
     private readonly string _labelsDirectory;
     private readonly string _chartCacheDirectory;
 
@@ -52,15 +51,12 @@ public class CertificateGenerator : ICertificateGenerator
         _locale = locale;
 
         var basePath = GetCertificateBasePath();
-        _certificatesDirectory = Path.Combine(basePath, "Certificates");
         _labelsDirectory = Path.Combine(basePath, "Labels");
         _chartCacheDirectory = Path.Combine(basePath, "ChartCache");
 
-        Directory.CreateDirectory(_certificatesDirectory);
         Directory.CreateDirectory(_labelsDirectory);
         Directory.CreateDirectory(_chartCacheDirectory);
 
-        TryAssignOwnershipToSudoUser(_certificatesDirectory);
         TryAssignOwnershipToSudoUser(_labelsDirectory);
         TryAssignOwnershipToSudoUser(_chartCacheDirectory);
     }
@@ -70,7 +66,9 @@ public class CertificateGenerator : ICertificateGenerator
         if (_settingsService != null)
         {
             var customPath = _settingsService.GetCertificatePathAsync().GetAwaiter().GetResult();
-            if (!string.IsNullOrWhiteSpace(customPath) && Directory.Exists(customPath))
+            // Never silently fall back to the elevated account's profile when the configured
+            // destination is temporarily missing or inaccessible. Export should fail explicitly.
+            if (!string.IsNullOrWhiteSpace(customPath))
                 return customPath;
         }
 
@@ -87,6 +85,8 @@ public class CertificateGenerator : ICertificateGenerator
         if (!RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
         {
             var sudoUser = Environment.GetEnvironmentVariable("SUDO_USER");
+            if (string.IsNullOrWhiteSpace(sudoUser))
+                sudoUser = Environment.GetEnvironmentVariable("PKEXEC_UID"); // polkit GUI launch
             if (!string.IsNullOrWhiteSpace(sudoUser) && !string.Equals(sudoUser, "root", StringComparison.OrdinalIgnoreCase))
             {
                 var home = GetOriginalUserHome(sudoUser);
@@ -156,8 +156,13 @@ public class CertificateGenerator : ICertificateGenerator
 
         var uid = Environment.GetEnvironmentVariable("SUDO_UID");
         var gid = Environment.GetEnvironmentVariable("SUDO_GID");
-        if (string.IsNullOrWhiteSpace(uid) || string.IsNullOrWhiteSpace(gid))
+        if (string.IsNullOrWhiteSpace(uid))
+            uid = Environment.GetEnvironmentVariable("PKEXEC_UID"); // Desktop launcher through polkit.
+        if (!uint.TryParse(uid, NumberStyles.None, CultureInfo.InvariantCulture, out var ownerUid) || ownerUid == 0)
             return;
+        if (!string.IsNullOrWhiteSpace(gid) &&
+            !uint.TryParse(gid, NumberStyles.None, CultureInfo.InvariantCulture, out _))
+            gid = null;
 
         try
         {
@@ -167,7 +172,10 @@ public class CertificateGenerator : ICertificateGenerator
                 UseShellExecute = false,
                 CreateNoWindow = true
             };
-            startInfo.ArgumentList.Add($"{uid}:{gid}");
+            // chown to the invoking user. With pkexec only UID is supplied;
+            // ownership is enough to make the generated PDF readable to the tester.
+            startInfo.ArgumentList.Add(string.IsNullOrWhiteSpace(gid) ? uid! : $"{uid}:{gid}");
+            startInfo.ArgumentList.Add("--");
             startInfo.ArgumentList.Add(path);
             using var process = Process.Start(startInfo);
             process?.WaitForExit(1000);
@@ -353,6 +361,15 @@ public class CertificateGenerator : ICertificateGenerator
         if (string.IsNullOrWhiteSpace(certificate.CertificateNumber))
             certificate.CertificateNumber = $"TMP-{DateTime.UtcNow:yyyyMMddHHmmss}";
 
+        // Resolve per export: the user can change the folder while the application is running.
+        // A singleton generator must not retain the old administrator-profile destination.
+        var certificateRoot = GetCertificateBasePath();
+        if (!Directory.Exists(certificateRoot))
+            throw new DirectoryNotFoundException($"Certificate destination is unavailable: {certificateRoot}");
+        var certificatesDirectory = Path.Combine(certificateRoot, "Certificates");
+        Directory.CreateDirectory(certificatesDirectory);
+        TryAssignOwnershipToSudoUser(certificatesDirectory);
+
         var safeSerial = SanitizeFileName(certificate.SerialNumber ?? "NOSN");
         var datePart = certificate.GeneratedAt.ToString("yyyyMMdd");
         var baseName = $"{safeSerial}_{datePart}";
@@ -362,9 +379,9 @@ public class CertificateGenerator : ICertificateGenerator
         {
             fileName = $"{baseName}_{index}.pdf";
             index++;
-        } while (File.Exists(Path.Combine(_certificatesDirectory, fileName)));
+        } while (File.Exists(Path.Combine(certificatesDirectory, fileName)));
 
-        var filePath = Path.Combine(_certificatesDirectory, fileName);
+        var filePath = Path.Combine(certificatesDirectory, fileName);
 
         // Single A4 page with real searchable/selectable text and vector charts.
         // Combined certificates keep two independently graded tests on that page.

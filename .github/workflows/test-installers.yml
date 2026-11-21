@@ -1,0 +1,70 @@
+name: Build test installers (no release)
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - 'installer/**'
+      - 'DiskChecker.UI.Avalonia/**'
+      - 'DiskChecker.Application/**'
+      - 'DiskChecker.Infrastructure/**'
+      - 'DiskChecker.Core/**'
+      - '.github/workflows/test-installers.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  windows-installer:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - name: Publish self-contained Windows app (admin manifest)
+        run: dotnet publish DiskChecker.UI.Avalonia/DiskChecker.UI.Avalonia.csproj --configuration Release --runtime win-x64 --self-contained true --output publish/win-x64
+      - name: Install Inno Setup
+        run: choco install innosetup --yes --no-progress
+      - name: Compile Windows installer
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force packages | Out-Null
+          $iscc = Join-Path ${env:ProgramFiles(x86)} 'Inno Setup 6\ISCC.exe'
+          if (-not (Test-Path $iscc)) { throw "Inno Setup compiler not found: $iscc" }
+          & $iscc 'installer\DiskChecker.iss'
+          if ($LASTEXITCODE -ne 0) { throw "Inno Setup failed with $LASTEXITCODE" }
+      - uses: actions/upload-artifact@v4
+        with:
+          name: diskchecker-windows-installer-test
+          path: packages/*-Setup.exe
+          if-no-files-found: error
+          retention-days: 14
+
+  linux-installers:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - name: Install RPM packaging tools
+        run: sudo apt-get update -qq && sudo apt-get install -y rpm
+      - name: Publish self-contained Linux app
+        run: dotnet publish DiskChecker.UI.Avalonia/DiskChecker.UI.Avalonia.csproj --configuration Release --runtime linux-x64 --self-contained true --output publish/linux-x64
+      - name: Build DEB, RPM and portable installation archive
+        run: bash installer/package-linux.sh 1.0.0
+      - name: Validate package metadata and install archive
+        run: |
+          dpkg-deb -I packages/*.deb
+          rpm -qpi packages/*.rpm
+          tar -tzf packages/*installer.tar.gz | grep -F './install-linux.sh'
+      - uses: actions/upload-artifact@v4
+        with:
+          name: diskchecker-linux-installers-test
+          path: |
+            packages/*.deb
+            packages/*.rpm
+            packages/*installer.tar.gz
+          if-no-files-found: error
+          retention-days: 14

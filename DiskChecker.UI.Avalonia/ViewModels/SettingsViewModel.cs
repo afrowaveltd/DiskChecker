@@ -56,6 +56,7 @@ namespace DiskChecker.UI.Avalonia.ViewModels
         private bool _minimizeToTray;
         private int _autoSaveInterval;
         private string _defaultExportPath = string.Empty;
+        private string _certificatePath = string.Empty;
         private string _language = string.Empty;
         private bool _enableLogging;
         private string _logLevel = "Information";
@@ -78,6 +79,7 @@ namespace DiskChecker.UI.Avalonia.ViewModels
             SaveSettingsCommand = new AsyncRelayCommand(SaveSettingsAsync, () => !IsSaving);
             ResetSettingsCommand = new AsyncRelayCommand(ResetSettingsAsync, () => !IsSaving);
             BrowseExportPathCommand = new AsyncRelayCommand(BrowseExportPathAsync);
+            BrowseCertificatePathCommand = new AsyncRelayCommand(BrowseCertificatePathAsync);
             CreateBackupCommand = new AsyncRelayCommand(CreateBackupAsync, () => !IsSaving && CanUseSqliteBackup);
             RestoreBackupCommand = new AsyncRelayCommand(RestoreBackupAsync, () => !IsSaving && CanUseSqliteBackup && SelectedBackup != null);
             RefreshBackupsCommand = new AsyncRelayCommand(RefreshBackupsAsync);
@@ -130,6 +132,13 @@ namespace DiskChecker.UI.Avalonia.ViewModels
         {
             get => _defaultExportPath;
             set => SetProperty(ref _defaultExportPath, value);
+        }
+
+        /// <summary>Base directory for generated PDFs; blank uses the built-in default.</summary>
+        public string CertificatePath
+        {
+            get => _certificatePath;
+            set => SetProperty(ref _certificatePath, value);
         }
 
         public string Language
@@ -276,6 +285,7 @@ namespace DiskChecker.UI.Avalonia.ViewModels
         public IAsyncRelayCommand SaveSettingsCommand { get; }
         public IAsyncRelayCommand ResetSettingsCommand { get; }
         public IAsyncRelayCommand BrowseExportPathCommand { get; }
+        public IAsyncRelayCommand BrowseCertificatePathCommand { get; }
         public IAsyncRelayCommand CreateBackupCommand { get; }
         public IAsyncRelayCommand RestoreBackupCommand { get; }
         public IAsyncRelayCommand RefreshBackupsCommand { get; }
@@ -320,6 +330,7 @@ namespace DiskChecker.UI.Avalonia.ViewModels
                 MinimizeToTray = await _settingsService.GetMinimizeToTrayAsync();
                 AutoSaveInterval = await _settingsService.GetAutoSaveIntervalAsync();
                 DefaultExportPath = await _settingsService.GetDefaultExportPathAsync();
+                CertificatePath = await _settingsService.GetCertificatePathAsync() ?? string.Empty;
                 Language = await _settingsService.GetLanguageAsync();
                 EnableLogging = await _settingsService.GetEnableLoggingAsync();
                 LogLevel = await _settingsService.GetLogLevelAsync();
@@ -413,12 +424,39 @@ namespace DiskChecker.UI.Avalonia.ViewModels
                         throw new InvalidOperationException(L.Get("Settings.SmtpInsecurePermissionRequired"));
                 }
 
+                // Validate the output directory before saving any settings. In Windows UAC
+                // credential elevation, MyDocuments belongs to the administrator, not the
+                // interactive tester. The operator must be able to select their own folder.
+                string? certificateRoot = null;
+                if (!string.IsNullOrWhiteSpace(CertificatePath))
+                {
+                    if (!Path.IsPathFullyQualified(CertificatePath.Trim()))
+                        throw new InvalidOperationException(L.Get("Settings.CertificatePathAbsolute"));
+                    certificateRoot = Path.GetFullPath(CertificatePath.Trim());
+                    if (!Directory.Exists(certificateRoot))
+                        throw new DirectoryNotFoundException(L.Get("Settings.CertificatePathMissing"));
+
+                    // Verify the real PDF target is writable, not just the parent folder.
+                    var pdfDirectory = Path.Combine(certificateRoot, "Certificates");
+                    Directory.CreateDirectory(pdfDirectory);
+                    var probe = Path.Combine(pdfDirectory, $".diskchecker-{Guid.NewGuid():N}.tmp");
+                    try
+                    {
+                        using (new FileStream(probe, FileMode.CreateNew, FileAccess.Write, FileShare.None)) { }
+                    }
+                    finally
+                    {
+                        if (File.Exists(probe)) File.Delete(probe);
+                    }
+                }
+
                 // Uložíme nastavení do služby
                 await _settingsService.SetAutoCheckForUpdatesAsync(AutoCheckForUpdates);
                 await _settingsService.SetRunAtStartupAsync(RunAtStartup);
                 await _settingsService.SetMinimizeToTrayAsync(MinimizeToTray);
                 await _settingsService.SetAutoSaveIntervalAsync(AutoSaveInterval);
                 await _settingsService.SetDefaultExportPathAsync(DefaultExportPath);
+                await _settingsService.SetCertificatePathAsync(certificateRoot);
                 await _settingsService.SetLanguageAsync(Language);
                 await _settingsService.SetEnableLoggingAsync(EnableLogging);
                 await _settingsService.SetLogLevelAsync(LogLevel);
@@ -558,6 +596,20 @@ namespace DiskChecker.UI.Avalonia.ViewModels
             {
                 StatusMessage = $"Chyba při výběru složky: {ex.Message}";
                 await _dialogService.ShowErrorAsync(L.Get("Common.Error"), $"Nepodařilo se vybrat složku: {ex.Message}");
+            }
+        }
+
+        private async Task BrowseCertificatePathAsync()
+        {
+            try
+            {
+                var folders = await _dialogService.PickFoldersAsync(L.Get("Settings.CertificatePathBrowse"), false);
+                if (folders.Count == 0) return; // Cancel does not change saved or draft value.
+                CertificatePath = folders[0];
+            }
+            catch (Exception ex)
+            {
+                await _dialogService.ShowErrorAsync(L.Get("Common.Error"), ex.Message);
             }
         }
 

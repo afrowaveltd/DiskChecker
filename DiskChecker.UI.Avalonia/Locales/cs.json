@@ -3055,5 +3055,12 @@
   "Settings.SmtpInsecureLabel": "Interní nezabezpečený server:",
   "Settings.SmtpAllowInsecure": "Povolit nezabezpečené SMTP spojení",
   "Settings.SmtpInsecureWarning": "Pouze pro důvěryhodný intranet. Pro nešifrované SMTP vypněte TLS A zapněte tuto výjimku. Zpráva, PDF příloha i případné heslo se potom přenášejí bez šifrování. Nikdy se automaticky nepřepíná z TLS na nezabezpečené spojení.",
-  "Settings.SmtpInsecurePermissionRequired": "Pro nešifrované SMTP musíte výslovně zapnout možnost „Povolit nezabezpečené SMTP spojení“."
+  "Settings.SmtpInsecurePermissionRequired": "Pro nešifrované SMTP musíte výslovně zapnout možnost „Povolit nezabezpečené SMTP spojení“.",
+  "Settings.CertificatePathLabel": "Složka PDF certifikátů",
+  "Settings.CertificatePathBrowse": "Vybrat složku",
+  "Settings.CertificatePathDefault": "Prázdné = výchozí umístění",
+  "Settings.CertificatePathHint": "PDF se ukládají do podsložky Certificates zvolené složky. Při spuštění pod jiným správcem vyberte složku přístupnou testujícímu uživateli. Změna platí po uložení ihned; staré certifikáty se nepřesouvají.",
+  "Settings.CertificatePathAbsolute": "Zadejte úplnou (absolutní) cestu k adresáři certifikátů.",
+  "Settings.CertificatePathMissing": "Vybraná složka certifikátů neexistuje nebo není dostupná."
+
 }
