@@ -1,5 +1,10 @@
 using System;
 using System.Collections.Generic;
+using System.Data.Common;
+using System.IO;
+using System.Text.Json;
+using System.Threading.Tasks;
+using DiskChecker.Core.Interfaces;
 using System.Globalization;
 using System.Linq;
 using DiskChecker.Core.Models;
@@ -82,6 +87,68 @@ public static class CertificateSeekChartProjector
             "1",
             Math.Max(1, lastIndex / 2).ToString(CultureInfo.InvariantCulture),
             last);
+    }
+
+    /// <summary>
+    /// Compatible fallback for old certificate sessions that predate the SQL
+    /// seek sample table. A bounded JSON envelope preserves the three phases
+    /// instead of re-sorting all indices from 1 for each different mode.
+    /// </summary>
+    public static CertificateSeekGraphData FromLegacy(
+        string? json, IReadOnlyList<double>? historical = null)
+    {
+        if (!string.IsNullOrWhiteSpace(json) && json.Length <= 2_000_000)
+        {
+            try
+            {
+                var single = JsonSerializer.Deserialize<SeekTestResult>(json);
+                if (single?.Samples is { Count: > 0 })
+                {
+                    return Build(single.Samples.Select(s => new SeekSampleRecord
+                    {
+                        TestType = single.TestType,
+                        Index = s.Index,
+                        LatencyMs = s.LatencyMs,
+                        HasError = s.HasError
+                    }));
+                }
+            }
+            catch (JsonException) { /* Try multi-phase envelope. */ }
+
+            try
+            {
+                var envelope = JsonSerializer.Deserialize<LegacySeekEnvelope>(json);
+                if (envelope != null)
+                {
+                    var combined = new List<SeekSampleRecord>();
+                    AddPhase(combined, envelope.FullStroke, SeekTestType.FullStroke);
+                    AddPhase(combined, envelope.Random, SeekTestType.Random);
+                    AddPhase(combined, envelope.Skip, SeekTestType.Skip);
+                    if (combined.Count > 0) return Build(combined);
+                }
+            }
+            catch (JsonException) { /* Use the anonymous historical curve. */ }
+        }
+
+        return Build(Array.Empty<SeekSampleRecord>(), historical);
+    }
+
+    private static void AddPhase(
+        List<SeekSampleRecord> target, SeekTestResult? result, SeekTestType type)
+    {
+        if (result?.Samples == null) return;
+        target.AddRange(result.Samples.Select(s => new SeekSampleRecord
+        {
+            TestType = type, Index = s.Index, LatencyMs = s.LatencyMs,
+            HasError = s.HasError
+        }));
+    }
+
+    private sealed class LegacySeekEnvelope
+    {
+        public SeekTestResult? FullStroke { get; set; }
+        public SeekTestResult? Random { get; set; }
+        public SeekTestResult? Skip { get; set; }
     }
 
     private static string Points(
