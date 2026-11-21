@@ -37,7 +37,12 @@
                             IsEnabled="{Binding HasSelectedCertificate}"
                             Background="{DynamicResource ThemeSuccessBrush}" Foreground="White"
                             FontWeight="Bold" Padding="12,6" Cursor="Hand"/>
-                    <Button Content="💾 Karta disku"
+                    <Button Content="{Binding L[CertificateBrowser.OpenDetails]}"
+                            Command="{Binding OpenCertificateDetailsCommand}"
+                            IsEnabled="{Binding HasSelectedCertificate}"
+                            Background="{DynamicResource ThemeInfoBrush}" Foreground="White"
+                            FontWeight="Bold" Padding="12,6" Cursor="Hand"/>
+                    <Button Content="{Binding L[CertificateBrowser.OpenDiskCard]}"
                             Command="{Binding ViewDiskCardCommand}"
                             IsEnabled="{Binding HasSelectedCertificate}"
                             Background="{DynamicResource ThemePrimaryBrush}" Foreground="White"
