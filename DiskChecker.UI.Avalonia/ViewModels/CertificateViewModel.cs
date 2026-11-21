@@ -342,6 +342,10 @@ public partial class CertificateViewModel : ViewModelBase, INavigableViewModel
 
    public bool IsSeekChart => SeekFullStrokePoints.Length > 0 ||
       SeekRandomPoints.Length > 0 || SeekSkipPoints.Length > 0 || SeekLegacyPoints.Length > 0;
+   public bool HasSeekFullStroke => SeekFullStrokePoints.Length > 0;
+   public bool HasSeekRandom => SeekRandomPoints.Length > 0;
+   public bool HasSeekSkip => SeekSkipPoints.Length > 0;
+   public bool HasSeekLegacy => SeekLegacyPoints.Length > 0;
 
    public string TemperatureMaxLabel
    {
@@ -1729,6 +1733,10 @@ public partial class CertificateViewModel : ViewModelBase, INavigableViewModel
       SeekChartXAxisMidLabel = graph.MidIndexLabel;
       SeekChartXAxisEndLabel = graph.EndLabel;
       OnPropertyChanged(nameof(IsSeekChart));
+   OnPropertyChanged(nameof(HasSeekFullStroke));
+   OnPropertyChanged(nameof(HasSeekRandom));
+   OnPropertyChanged(nameof(HasSeekSkip));
+   OnPropertyChanged(nameof(HasSeekLegacy));
    }
 
    private void ResetSeekChart() => ApplySeekChart(CertificateSeekGraphData.Empty);
