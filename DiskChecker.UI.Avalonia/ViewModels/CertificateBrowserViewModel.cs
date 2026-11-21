@@ -808,7 +808,7 @@ public partial class CertificateBrowserViewModel : ViewModelBase, INavigableView
                 temperatures = await _diskCardRepository.GetTemperatureSampleSeriesDownsampledAsync(
                     certificate.TestSessionId, 256);
             }
-            catch (Exception ex) when (ex is System.IO.IOException or InvalidOperationException)
+            catch (Exception ex) when (ex is System.IO.IOException or System.Data.Common.DbException or InvalidOperationException)
             {
                 // Temperature telemetry is optional; speeds remain usable.
             }
