@@ -84,4 +84,71 @@ public sealed class SmtpCompletionNotificationTests
                 new SurfaceTestResult(), "recipient@example.test",
                 new byte[] { 37, 80, 68, 70 }, cancellationToken: TestContext.Current.CancellationToken));
     }
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task CompletedDestructiveCertificateSendsTheRealPdfWhenEnabled(bool attach)
+    {
+        var preferences = Substitute.For<ISettingsService>();
+        preferences.GetReportRecipientEmailAsync().Returns("recipient@example.test");
+        var settings = Substitute.For<IEmailSettingsService>();
+        settings.GetAsync(Arg.Any<CancellationToken>())
+            .Returns(Task.FromResult(new EmailSettings { IncludeCertificateAttachment = attach }));
+        var generator = Substitute.For<ICertificateGenerator>();
+        var sender = Substitute.For<IEmailSender>();
+        var locale = Substitute.For<ILocaleProvider>();
+        locale.GetString(Arg.Any<string>(), Arg.Any<string>())
+            .Returns(ci => ci.ArgAt<string>(1));
+        var service = new TestCompletionNotificationService(sender, settings,
+            NullLogger<TestCompletionNotificationService>.Instance, locale);
+        var path = System.IO.Path.GetTempFileName();
+        try
+        {
+            var bytes = new byte[] { 37, 80, 68, 70, 45, 49, 46, 55 };
+            await System.IO.File.WriteAllBytesAsync(path, bytes);
+            generator.GeneratePdfAsync(Arg.Any<DiskCertificate>())
+                .Returns(Task.FromResult(path));
+
+            await service.SendGeneratedCertificateAsync(
+                new DiskCertificate { CertificateNumber = "DEST-123", DiskModel = "Test SSD" },
+                generator, preferences, TestContext.Current.CancellationToken);
+
+            await sender.Received(1).SendAsync(
+                Arg.Is<EmailMessage>(m =>
+                    m.ToAddress == "recipient@example.test" &&
+                    m.Subject.Contains("DEST-123") &&
+                    m.Attachments.Count == (attach ? 1 : 0) &&
+                    (!attach || (m.Attachments[0].ContentType == "application/pdf" &&
+                                 m.Attachments[0].Content.SequenceEqual(bytes)))),
+                Arg.Any<CancellationToken>());
+            if (attach)
+                await generator.Received(1).GeneratePdfAsync(Arg.Any<DiskCertificate>());
+            else
+                await generator.DidNotReceive().GeneratePdfAsync(Arg.Any<DiskCertificate>());
+        }
+        finally
+        {
+            System.IO.File.Delete(path);
+        }
+    }
+
+    [Fact]
+    public async Task MissingCompletionRecipientDoesNotGenerateOrSendPdf()
+    {
+        var preferences = Substitute.For<ISettingsService>();
+        preferences.GetReportRecipientEmailAsync().Returns(string.Empty);
+        var generator = Substitute.For<ICertificateGenerator>();
+        var sender = Substitute.For<IEmailSender>();
+        var service = new TestCompletionNotificationService(sender,
+            Substitute.For<IEmailSettingsService>(),
+            NullLogger<TestCompletionNotificationService>.Instance,
+            Substitute.For<ILocaleProvider>());
+        await service.SendGeneratedCertificateAsync(
+            new DiskCertificate(), generator, preferences,
+            TestContext.Current.CancellationToken);
+        await generator.DidNotReceive().GeneratePdfAsync(Arg.Any<DiskCertificate>());
+        await sender.DidNotReceive().SendAsync(
+            Arg.Any<EmailMessage>(), Arg.Any<CancellationToken>());
+    }
+
 }
