@@ -22,6 +22,19 @@ public class SmtpEmailSender : IEmailSender
         _settingsService = settingsService;
     }
 
+    /// <summary>
+    /// Resolves SMTP transport security. Plain SMTP is used only if explicitly selected.
+    /// </summary>
+    public static SecureSocketOptions GetSocketOptions(EmailSettings settings)
+    {
+        ArgumentNullException.ThrowIfNull(settings);
+        return !settings.UseSsl
+            ? SecureSocketOptions.None
+            : settings.Port == 465
+                ? SecureSocketOptions.SslOnConnect
+                : SecureSocketOptions.StartTls;
+    }
+
     /// <inheritdoc />
     public async Task SendAsync(EmailMessage message, CancellationToken cancellationToken = default)
     {
@@ -59,11 +72,7 @@ public class SmtpEmailSender : IEmailSender
         using var client = new SmtpClient();
         // TLS is mandatory when selected: do not silently fall back to plaintext.
         // For an explicitly configured intranet relay, TLS can be turned off.
-        var socketOptions = !settings.UseSsl
-            ? SecureSocketOptions.None
-            : settings.Port == 465
-                ? SecureSocketOptions.SslOnConnect
-                : SecureSocketOptions.StartTls;
+        var socketOptions = GetSocketOptions(settings);
         await client.ConnectAsync(settings.Host, settings.Port, socketOptions, cancellationToken);
 
         if (!string.IsNullOrWhiteSpace(settings.UserName))
