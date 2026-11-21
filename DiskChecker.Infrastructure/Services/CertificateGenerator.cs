@@ -1631,6 +1631,25 @@ public class CertificateGenerator : ICertificateGenerator
                 ?? "Disk NENÍ vhodný k dalšímu používání. Doporučení: okamžitě vyřadit z provozu, nepoužívat pro žádná data a případná důležitá data obnovovat pouze ze záloh. Test sice mohl technicky doběhnout, ale výsledná známka/SMART/stally ukazují na kritickou degradaci média.";
         }
 
+        // Seek latency and read throughput are performance observations.
+        // A slow seek or a slow read is not, by itself, proof that the disk is
+        // unsafe for data or that the medium must be discarded.
+        if (session.TestType == TestType.Seek)
+        {
+            return $"Seek test: známka {effectiveGrade}, skóre {effectiveScore:F0}/100. " +
+                "Hodnocení vychází z latence, stability a chyb vyhledávání. " +
+                "Samotná vyšší latence není důkazem fyzické poruchy. " +
+                "Pro spolehlivost zohledněte SMART, chyby I/O a případný povrchový test.";
+        }
+
+        if (session.TestType is TestType.QuickRead or TestType.FullRead)
+        {
+            return $"Čtecí test bez zápisu: známka {effectiveGrade}, skóre {effectiveScore:F0}/100. " +
+                "Nebyla testována rychlost ani spolehlivost zápisu. " +
+                "Pomalé čtení samo o sobě nepotvrzuje poškození média. " +
+                "Pro úplnější posouzení použijte SMART a podle potřeby seek test.";
+        }
+
         if (!recommended)
         {
             return _locale?.GetString(
@@ -1821,11 +1840,17 @@ public class CertificateGenerator : ICertificateGenerator
 
     private static bool HasCriticalRetirementSignals(TestSession session, string effectiveGrade, double effectiveScore)
     {
-        if (string.Equals(effectiveGrade, "E", StringComparison.OrdinalIgnoreCase) ||
-            string.Equals(effectiveGrade, "F", StringComparison.OrdinalIgnoreCase) ||
-            effectiveScore < 40 ||
-            session.HealthAssessment == HealthAssessment.Critical ||
-            session.Result == TestResult.Fail)
+        bool performanceOnly = session.TestType is TestType.Seek or TestType.QuickRead
+            or TestType.FullRead or TestType.SurfaceScan;
+        if (session.Result == TestResult.Fail ||
+            session.Status == TestStatus.Failed ||
+            session.ReadErrors > 0 || session.WriteErrors > 0 ||
+            session.VerificationErrors > 0 || session.Errors.Any(e => e.IsCritical) ||
+            (!performanceOnly &&
+                (string.Equals(effectiveGrade, "E", StringComparison.OrdinalIgnoreCase) ||
+                 string.Equals(effectiveGrade, "F", StringComparison.OrdinalIgnoreCase) ||
+                 effectiveScore < 40 ||
+                 session.HealthAssessment == HealthAssessment.Critical)))
         {
             return true;
         }
@@ -1871,7 +1896,7 @@ public class CertificateGenerator : ICertificateGenerator
             return true;
         }
 
-        if (!string.IsNullOrWhiteSpace(session.Notes) &&
+        if (!performanceOnly && !string.IsNullOrWhiteSpace(session.Notes) &&
             (session.Notes.Contains("krit", StringComparison.OrdinalIgnoreCase) ||
              session.Notes.Contains("failure", StringComparison.OrdinalIgnoreCase) ||
              session.Notes.Contains("failing", StringComparison.OrdinalIgnoreCase) ||
