@@ -1939,6 +1939,13 @@ public class CertificateGenerator : ICertificateGenerator
         if (string.IsNullOrWhiteSpace(session.SeekResultsJson))
             return;
 
+        // The historical JSON envelope can embed every single seek operation.
+        // Large tests must rely on bounded SQL queries rather than deserializing
+        // an unbounded object graph during certificate generation.
+        const int MaxInlineSeekJsonChars = 2_000_000;
+        if (session.SeekResultsJson.Length > MaxInlineSeekJsonChars)
+            return;
+
         List<SeekTestResult> seekResults;
         try
         {
