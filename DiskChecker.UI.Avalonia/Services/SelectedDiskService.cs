@@ -14,9 +14,27 @@ public class SelectedDiskService : ISelectedDiskService
         get => _selectedDisk;
         set
         {
+            // Reset contextual selections only when the physical drive changes.
+            // Recreating CoreDriveInfo for the SAME card during navigation must
+            // not silently erase the card/session/certificate identity.
+            bool sameDrive = _selectedDisk != null && value != null &&
+                (!string.IsNullOrWhiteSpace(_selectedDisk.SerialNumber) &&
+                 !string.IsNullOrWhiteSpace(value.SerialNumber)
+                    ? string.Equals(_selectedDisk.SerialNumber, value.SerialNumber,
+                        System.StringComparison.OrdinalIgnoreCase)
+                    : string.Equals(_selectedDisk.Path, value.Path,
+                        System.StringComparison.OrdinalIgnoreCase) &&
+                      _selectedDisk.TotalSize == value.TotalSize &&
+                      string.Equals(_selectedDisk.Name, value.Name,
+                        System.StringComparison.OrdinalIgnoreCase));
+            if (!sameDrive)
+            {
+                SelectedDiskCardId = null;
+                SelectedTestSessionId = null;
+                SelectedCertificateId = null;
+            }
+
             _selectedDisk = value;
-            // A different physical-disk selection must not inherit a card-list identity.
-            SelectedDiskCardId = null;
         }
     }
     public int? SelectedDiskCardId { get; set; }
