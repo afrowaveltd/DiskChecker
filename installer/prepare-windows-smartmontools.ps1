@@ -1,34 +1,43 @@
-# Downloads ONLY the pinned official upstream pre-release.
-# The SHA256 must match GitHub's published release asset digest.
-# The verified original installer is embedded in DiskChecker's own setup,
-# making installation on a target machine fully offline.
+# Downloads ONLY the pinned official upstream prerelease and its matching
+# complete source tarball (GPLv2 redistribution). Rejects mismatched SHA256.
+# Both files are embedded in DiskChecker setup for fully offline installation.
 $ErrorActionPreference = 'Stop'
 $Version = '8.0-623-gd788ad8c38ee'
-$FileName = "smartmontools-win32-setup-$Version.exe"
-$ReleaseUrl = "https://github.com/smartmontools/smartmontools-builds/releases/download/smartmontools-$Version/$FileName"
-$ExpectedSha256 = 'b2c77ffb58c223e8e4494442e4cd751006c00af1cfd77e834fc9f97d2fcc9f3e'
+$ExpectedFiles = @(
+    @{
+        Name = "smartmontools-win32-setup-$Version.exe"
+        Sha256 = 'b2c77ffb58c223e8e4494442e4cd751006c00af1cfd77e834fc9f97d2fcc9f3e'
+    },
+    @{
+        Name = "smartmontools-$Version.tar.gz"
+        Sha256 = '9da427312bb8aee04b867b487f4cdebfbe510d9e6b16d5726daec5a71260662e'
+    }
+)
 $Vendor = Join-Path $PSScriptRoot 'vendor'
-$Destination = Join-Path $Vendor $FileName
-
 New-Item -Path $Vendor -ItemType Directory -Force | Out-Null
-if (Test-Path -LiteralPath $Destination) {
-    $Existing = (Get-FileHash -LiteralPath $Destination -Algorithm SHA256).Hash.ToLowerInvariant()
-    if ($Existing -ne $ExpectedSha256) {
-        throw "Previously downloaded smartmontools checksum mismatch: $Existing"
-    }
-    Write-Host "smartmontools $Version is already present and verified."
-    exit 0
-}
 
-try {
-    Write-Host "Downloading pinned upstream smartmontools $Version..."
-    Invoke-WebRequest -Uri $ReleaseUrl -OutFile $Destination -MaximumRedirection 10
-    $ActualSha256 = (Get-FileHash -LiteralPath $Destination -Algorithm SHA256).Hash.ToLowerInvariant()
-    if ($ActualSha256 -ne $ExpectedSha256) {
-        throw "smartmontools SHA256 mismatch. Expected $ExpectedSha256; got $ActualSha256"
+foreach ($Item in $ExpectedFiles) {
+    $Destination = Join-Path $Vendor $Item.Name
+    $Expected = $Item.Sha256
+    if (Test-Path -LiteralPath $Destination) {
+        $Actual = (Get-FileHash -LiteralPath $Destination -Algorithm SHA256).Hash.ToLowerInvariant()
+        if ($Actual -ne $Expected) {
+            throw "Previously downloaded $($Item.Name) checksum mismatch: $Actual"
+        }
+        Write-Host "Already present and verified: $($Item.Name)"
+        continue
     }
-    Write-Host "Verified official smartmontools SHA256: $ActualSha256"
-} catch {
-    Remove-Item -LiteralPath $Destination -Force -ErrorAction SilentlyContinue
-    throw
+    $Url = "https://github.com/smartmontools/smartmontools-builds/releases/download/smartmontools-$Version/$($Item.Name)"
+    try {
+        Write-Host "Downloading official upstream $($Item.Name)"
+        Invoke-WebRequest -Uri $Url -OutFile $Destination -MaximumRedirection 10
+        $Actual = (Get-FileHash -LiteralPath $Destination -Algorithm SHA256).Hash.ToLowerInvariant()
+        if ($Actual -ne $Expected) {
+            throw "SHA256 mismatch for $($Item.Name). Expected $Expected; got $Actual"
+        }
+        Write-Host "Verified SHA256: $Actual"
+    } catch {
+        Remove-Item -LiteralPath $Destination -Force -ErrorAction SilentlyContinue
+        throw
+    }
 }
