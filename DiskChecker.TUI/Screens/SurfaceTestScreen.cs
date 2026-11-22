@@ -18,6 +18,7 @@ public sealed class SurfaceTestScreen : ITuiScreen
     private TuiSurfaceTestReport? _report;
     private SanitizationResult? _sanitization;
     private int? _lastSessionId;
+    private bool _lastCertificatePdfSaved;
     private string _status = string.Empty;
 
     public string Id => ScreenIds.SurfaceTest;
@@ -373,6 +374,7 @@ public sealed class SurfaceTestScreen : ITuiScreen
         }
 
         _lastSessionId = null;
+        _lastCertificatePdfSaved = false;
         string? pauseInput = context.Dialogs.Ask(
             "Pauza po každých 10 GiB zápisu, v sekundách (0 = bez pauzy, 1–60):", "0");
         if (pauseInput is null)
@@ -474,7 +476,7 @@ public sealed class SurfaceTestScreen : ITuiScreen
 
         await PersistSanitizationAsync(context, result, cancellationToken).ConfigureAwait(false);
 
-        if (result.Success && _lastSessionId.HasValue)
+        if (result.Success && _lastSessionId.HasValue && _lastCertificatePdfSaved)
         {
             var prepared = await PostTestPartitionPreparation.OfferAsync(
                 context, sanitization, _disk.Path, _disk.Name, cancellationToken).ConfigureAwait(false);
@@ -513,7 +515,10 @@ public sealed class SurfaceTestScreen : ITuiScreen
             certificate = await repository.CreateCertificateAsync(certificate).ConfigureAwait(false);
             try
             {
-                await certificateGenerator.GeneratePdfAsync(certificate).ConfigureAwait(false);
+                var pdfPath = await certificateGenerator.GeneratePdfAsync(certificate).ConfigureAwait(false);
+                _lastCertificatePdfSaved = File.Exists(pdfPath);
+                if (!_lastCertificatePdfSaved)
+                    _status += " Export PDF nevrátil existující soubor.";
             }
             catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or InvalidOperationException)
             {

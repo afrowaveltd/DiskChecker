@@ -27,6 +27,8 @@ public sealed class AbsoluteDestructiveScreen : ITuiScreen
     private readonly List<(double Percent, double Speed)> _pass2Write = new();
     private readonly List<(double Percent, double Speed)> _pass2Read = new();
     private DiskCertificate? _certificate;
+    private bool _certificatePdfSaved;
+    private string? _certificatePdfWarning;
     private int? _sessionId;
     private string _status = "Připraven ke spuštění.";
     private string _results = string.Empty;
@@ -229,6 +231,8 @@ public sealed class AbsoluteDestructiveScreen : ITuiScreen
         _pass2Read.Clear();
         _final = null;
         _certificate = null;
+        _certificatePdfSaved = false;
+        _certificatePdfWarning = null;
         _results = string.Empty;
         _minTemperature = int.MaxValue;
         _maxTemperature = 0;
@@ -237,7 +241,7 @@ public sealed class AbsoluteDestructiveScreen : ITuiScreen
         foreach (string phase in new[]
                  {
                      "Příprava", "Sanitizace 1", "Seek: Full Stroke", "Seek: Random",
-                     "Seek: Skip", "Sanitizace 2", "Finalizace", "Vytvoření oddílu",
+                     "Seek: Skip", "Sanitizace 2", "Finalizace", "Volitelná příprava disku",
                  })
         {
             progress.AddPhase(phase);
@@ -311,7 +315,7 @@ public sealed class AbsoluteDestructiveScreen : ITuiScreen
         if (!aborted)
         {
             await FinalizeAsync(context, startedAt, cancellationToken).ConfigureAwait(false);
-            if (_certificate != null && _disk != null)
+            if (_certificate != null && _certificatePdfSaved && _disk != null)
             {
                 var prepared = await PostTestPartitionPreparation.OfferAsync(
                     context, sanitization, _disk.Path, _disk.Name, cancellationToken).ConfigureAwait(false);
@@ -653,14 +657,18 @@ public sealed class AbsoluteDestructiveScreen : ITuiScreen
             context.Selection.SelectedTestSessionId = session.Id;
             context.Selection.SelectedCertificateId = certificate.Id;
 
-            _status = $"Test dokončen – známka {_grade}, skóre {score:F0}/100, certifikát {certificate.CertificateNumber} uložen.";
+            _status = $"Test dokončen – známka {_grade}, skóre {score:F0}/100, certifikát {certificate.CertificateNumber} uložen."
+                + (_certificatePdfWarning == null ? string.Empty : $" PDF export selhal: {_certificatePdfWarning}");
             try
             {
-                await certificateGenerator.GeneratePdfAsync(certificate).ConfigureAwait(false);
+                var pdfPath = await certificateGenerator.GeneratePdfAsync(certificate).ConfigureAwait(false);
+                _certificatePdfSaved = File.Exists(pdfPath);
+                if (!_certificatePdfSaved)
+                    _certificatePdfWarning = "PDF soubor po exportu neexistuje.";
             }
             catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or InvalidOperationException)
             {
-                _status += " PDF export selhal: " + ex.Message;
+                _certificatePdfWarning = ex.Message;
             }
         }
         catch (Exception ex) when (ex is IOException or InvalidOperationException or Microsoft.EntityFrameworkCore.DbUpdateException)
