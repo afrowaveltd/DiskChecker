@@ -23,9 +23,16 @@ if [[ ! -f "${PUBLISH_DIR}/DiskChecker.UI.Avalonia" ]]; then
     exit 1
 fi
 
-install -d -m 755 "${INSTALL_DIR}" /usr/local/bin /usr/share/applications
+install -d -m 755 "${INSTALL_DIR}" /usr/bin /usr/lib/diskchecker \
+    /usr/share/applications /usr/share/polkit-1/actions \
+    /usr/share/icons/hicolor/scalable/apps
 cp -a "${PUBLISH_DIR}/." "${INSTALL_DIR}/"
 chmod 755 "${INSTALL_DIR}/DiskChecker.UI.Avalonia"
-install -m 755 "${SCRIPT_DIR}/diskchecker-launcher" /usr/local/bin/diskchecker
+install -m 755 "${SCRIPT_DIR}/diskchecker-launcher" /usr/bin/diskchecker
+install -m 755 "${SCRIPT_DIR}/diskchecker-elevated" /usr/lib/diskchecker/diskchecker-elevated
 install -m 644 "${SCRIPT_DIR}/diskchecker.desktop" /usr/share/applications/diskchecker.desktop
-echo "Installed DiskChecker. Launch with: sudo diskchecker"
+install -m 644 "${SCRIPT_DIR}/org.afrowave.diskchecker.policy" \
+    /usr/share/polkit-1/actions/org.afrowave.diskchecker.policy
+install -m 644 "${SCRIPT_DIR}/diskchecker.svg" \
+    /usr/share/icons/hicolor/scalable/apps/diskchecker.svg
+echo "Installed DiskChecker. Open it from the desktop menu or launch: diskchecker"
