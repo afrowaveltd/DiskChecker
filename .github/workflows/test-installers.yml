@@ -43,10 +43,17 @@ jobs:
           if (-not (Test-Path $iscc)) { throw "Inno Setup compiler not found: $iscc" }
           & $iscc 'installer\DiskChecker.iss'
           if ($LASTEXITCODE -ne 0) { throw "Inno Setup failed with $LASTEXITCODE" }
+      - name: Smoke test mandatory offline smartmontools install and exact-version reuse
+        shell: pwsh
+        timeout-minutes: 10
+        run: ./installer/tests/test-windows-smartmontools.ps1
       - uses: actions/upload-artifact@v4
+        if: always()
         with:
           name: diskchecker-windows-installer-test
-          path: packages/*-Setup.exe
+          path: |
+            packages/*-Setup.exe
+            packages/smartmontools-*.log
           if-no-files-found: error
           retention-days: 14
 
