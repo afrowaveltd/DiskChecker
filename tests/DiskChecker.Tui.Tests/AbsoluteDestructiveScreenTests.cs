@@ -62,13 +62,60 @@ public sealed class AbsoluteDestructiveScreenTests
 
         Assert.Equal(ScreenAction.Back, result.Action);
         Assert.Equal(2, sanitization.SanitizeCalls);
-        Assert.Equal(1, sanitization.PartitionCalls);
+        // Without a separate post-test approval no new filesystem is created.
+        Assert.Equal(0, sanitization.PartitionCalls);
         Assert.NotNull(harness.Io.LastProgress);
         Assert.Equal(100, harness.Io.LastProgress!.Percent, 3);
 
         var progress = harness.Io.LastProgress!.Snapshot();
         Assert.Equal(8, progress.Phases.Count);
         Assert.All(progress.Phases, phase => Assert.NotEqual(TuiPhaseState.Pending, phase.State));
+    }
+
+    [Fact]
+    public async Task CompletedTest_FormatsOnlyAfterSeparateExplicitConfirmation()
+    {
+        var sanitization = new FakeSanitizationService();
+        using var harness = CreateHarness(
+            new FakeSmartaProvider { Data = FakeSmartaProvider.Sample() },
+            sanitization,
+            new FakeSeekExecutor(),
+            out var detection);
+
+        harness.Context.Selection.SelectedDisk = detection.Drives[0];
+        harness.Io.EnqueueChoice("start");
+        harness.Io.EnqueueConfirm(true); // permit destructive test
+        harness.Io.EnqueueConfirm(true); // opt into post-test filesystem
+        harness.Io.EnqueueConfirm(true); // separately confirm irreversible GPT format
+        harness.Io.EnqueueChoice("back");
+
+        await CreateScreen().ShowAsync(harness.Context, TestContext.Current.CancellationToken);
+
+        Assert.Equal(2, sanitization.SanitizeCalls);
+        Assert.Equal(1, sanitization.PartitionCalls);
+    }
+
+    [Fact]
+    public async Task CompletedTest_RejectingFinalFormatConfirmationDoesNotCreatePartition()
+    {
+        var sanitization = new FakeSanitizationService();
+        using var harness = CreateHarness(
+            new FakeSmartaProvider { Data = FakeSmartaProvider.Sample() },
+            sanitization,
+            new FakeSeekExecutor(),
+            out var detection);
+
+        harness.Context.Selection.SelectedDisk = detection.Drives[0];
+        harness.Io.EnqueueChoice("start");
+        harness.Io.EnqueueConfirm(true); // destructive test
+        harness.Io.EnqueueConfirm(true); // preparation menu
+        harness.Io.EnqueueConfirm(false); // refuse actual formatter
+        harness.Io.EnqueueChoice("back");
+
+        await CreateScreen().ShowAsync(harness.Context, TestContext.Current.CancellationToken);
+
+        Assert.Equal(2, sanitization.SanitizeCalls);
+        Assert.Equal(0, sanitization.PartitionCalls);
     }
 
     [Fact]
