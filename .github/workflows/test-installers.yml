@@ -10,6 +10,12 @@ on:
       - 'DiskChecker.Infrastructure/**'
       - 'DiskChecker.Core/**'
       - '.github/workflows/test-installers.yml'
+  push:
+    branches:
+      - master
+    paths:
+      - 'installer/**'
+      - '.github/workflows/test-installers.yml'
 
 permissions:
   contents: read
