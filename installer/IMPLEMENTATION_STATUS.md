@@ -163,3 +163,25 @@
   passed after the earlier CA1512 fix; a new Inno
   compilation/runtime confirmation is still pending.
 - Details in `docs/Installer-Dependencies/en.md`.
+
+## 2026-11-22 — installer CI build verified; runtime smoke pending
+
+- After fixing CA1512 in the safe-destructive PDF helper,
+  the Linux/Windows **Build test installers (no release)**
+  workflow passed at
+  [GitHub Actions run 45009823681](https://github.com/afrowaveltd/DiskChecker/actions/runs/45009823681).
+  This includes scripted DEB/RPM/portable package checks
+  and the mocked missing/existing smartmontools scenarios.
+- The Windows Inno Setup source was extended to check and
+  auto-install absent smartmontools through the exact
+  WinGet package identifier. The subsequent full **Windows
+  Inno and Linux installer workflow passed** at
+  [run 45010055347](https://github.com/afrowaveltd/DiskChecker/actions/runs/45010055347)
+  (commit `bbcca4ad35d30c79b0c0dbcdfb31ce9bcf4049da`).
+- These green results establish CI **packaging/build success**.
+  A real Windows installer test on a machine missing smartctl,
+  and a graphical DEB installation/login test on the
+  maintainer's machine, are still pending. Do not
+  equate compilation with successful runtime dependency
+  installation or X11/Wayland authorization.
+
