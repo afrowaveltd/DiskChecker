@@ -1,5 +1,7 @@
 using DiskChecker.Core.Models;
 using DiskChecker.Infrastructure.Services;
+using DiskChecker.UI.Avalonia.ViewModels;
+using LiveChartsCore.Defaults;
 using Xunit;
 
 namespace DiskChecker.Tests;
@@ -31,6 +33,28 @@ public sealed class LocalizedCertificateCategoryTests
         Assert.Equal("KOMPLEXNÍ DESTRUKTIVNÍ TEST",
             CertificatePdfPageRenderer.Name(certificate));
         Assert.False(CertificatePdfPageRenderer.IsSeekOnly(certificate));
+    }
+
+    [Fact]
+    public void SafeDestructiveChartSamplingKeepsActualOrderAndBoundedMemory()
+    {
+        var measured = Enumerable.Range(0, 100)
+            .Select(i => new ObservablePoint(i, 100 - i)).ToList();
+        var samples = SafeDestructiveTestViewModel.DownsampleCertificateSeries(measured);
+        Assert.Equal(32, samples.Count);
+        Assert.Equal(100, samples[0]);
+        Assert.Equal(4, samples[^1]);
+        Assert.Equal(100, measured.Count);
+    }
+
+    [Fact]
+    public void SafeDestructiveChartSamplingHandlesEmptyDataAndRejectsInvalidBudget()
+    {
+        Assert.Empty(SafeDestructiveTestViewModel.DownsampleCertificateSeries(
+            new List<ObservablePoint>()));
+        Assert.Throws<ArgumentOutOfRangeException>(() =>
+            SafeDestructiveTestViewModel.DownsampleCertificateSeries(
+                new List<ObservablePoint>(), 0));
     }
 
     [Fact]
