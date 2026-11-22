@@ -155,6 +155,7 @@ end;
 function SmartctlCliVersion(const Exe: String): String;
 var
   TempFile, CmdArgs, Output: String;
+  OutputAnsi: AnsiString;
   Code, P: Integer;
 begin
   Result := '';
@@ -163,8 +164,9 @@ begin
     ' --version > ' + AddQuotes(TempFile) + ' 2>&1"';
   if Exec(ExpandConstant('{cmd}'), CmdArgs, '', SW_HIDE,
     ewWaitUntilTerminated, Code) and (Code = 0) and
-    LoadStringFromFile(TempFile, Output) then
+    LoadStringFromFile(TempFile, OutputAnsi) then
   begin
+    Output := String(OutputAnsi);
     P := Pos('smartctl ', Output);
     if P > 0 then
     begin
