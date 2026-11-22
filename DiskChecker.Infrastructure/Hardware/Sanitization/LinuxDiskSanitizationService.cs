@@ -1097,7 +1097,8 @@ public class LinuxDiskSanitizationService : IDiskSanitizationService
 
     private async Task<SanitizationPhaseResult> CreateGptPartitionAsync(
         string devicePath,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        string fileSystem = "ext4")
     {
         var result = new SanitizationPhaseResult();
 
@@ -1109,7 +1110,10 @@ public class LinuxDiskSanitizationService : IDiskSanitizationService
             // First, use sfdisk (most portable). Omitting size lets sfdisk use all
             // remaining space; this is more compatible with older util-linux builds
             // and small legacy disks than passing size=0.
-            var script = "label: gpt\nstart=2048, type=0FC63DAF-8483-4772-8E79-3D69D8477DE4\n";
+            var guid = fileSystem is "ntfs" or "vfat"
+                ? "EBD0A0A2-B9E5-4433-87C0-68B6B72699C7"
+                : "0FC63DAF-8483-4772-8E79-3D69D8477DE4";
+            var script = $"label: gpt\nstart=2048, type={guid}\n";
 
             var sfdiskSuccess = false;
             string? sfdiskError = null;
@@ -1174,7 +1178,7 @@ public class LinuxDiskSanitizationService : IDiskSanitizationService
                     var partedPsi = new ProcessStartInfo
                     {
                         FileName = "parted",
-                        Arguments = $"-s \"{devicePath}\" mklabel gpt mkpart primary ext4 1MiB 100%",
+                        Arguments = $"-s \"{devicePath}\" mklabel gpt mkpart primary {(fileSystem is "ntfs" or "vfat" ? "ntfs" : "ext4")} 1MiB 100%",
                         RedirectStandardOutput = true,
                         RedirectStandardError = true,
                         UseShellExecute = false,
@@ -1402,6 +1406,97 @@ public class LinuxDiskSanitizationService : IDiskSanitizationService
         return result;
     }
 
+    private async Task<SanitizationPhaseResult> FormatSelectedFileSystemAsync(
+        string devicePath,
+        string fileSystem,
+        string volumeLabel,
+        CancellationToken cancellationToken)
+    {
+        if (fileSystem == "ext4")
+            return await FormatExt4Async(devicePath, volumeLabel, cancellationToken);
+
+        var result = new SanitizationPhaseResult();
+        try
+        {
+            var tool = FindExecutable("mkfs." + fileSystem);
+            if (tool == null)
+            {
+                result.ErrorMessage = $"Nástroj mkfs.{fileSystem} chybí.";
+                return result;
+            }
+
+            var partition = GetPartitionPath(devicePath);
+            if (!await WaitForPartitionAsync(partition, TimeSpan.FromSeconds(15), cancellationToken))
+            {
+                result.ErrorMessage = $"Oddíl nebyl nalezen: {partition}";
+                return result;
+            }
+
+            var psi = new ProcessStartInfo(tool)
+            {
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                UseShellExecute = false,
+                CreateNoWindow = true
+            };
+            switch (fileSystem)
+            {
+                case "ext2":
+                case "ext3":
+                    psi.ArgumentList.Add("-F");
+                    psi.ArgumentList.Add("-L");
+                    break;
+                case "xfs":
+                case "btrfs":
+                    psi.ArgumentList.Add("-f");
+                    psi.ArgumentList.Add("-L");
+                    break;
+                case "f2fs":
+                    psi.ArgumentList.Add("-f");
+                    psi.ArgumentList.Add("-l");
+                    break;
+                case "vfat":
+                    psi.ArgumentList.Add("-F");
+                    psi.ArgumentList.Add("32");
+                    psi.ArgumentList.Add("-n");
+                    break;
+                case "ntfs":
+                    psi.ArgumentList.Add("-Q");
+                    psi.ArgumentList.Add("-L");
+                    break;
+                default:
+                    result.ErrorMessage = $"Nepodporovaný formát: {fileSystem}";
+                    return result;
+            }
+            psi.ArgumentList.Add(volumeLabel);
+            psi.ArgumentList.Add(partition);
+
+            using var process = Process.Start(psi);
+            if (process == null)
+            {
+                result.ErrorMessage = $"Nelze spustit mkfs.{fileSystem}.";
+                return result;
+            }
+            var stdout = process.StandardOutput.ReadToEndAsync(cancellationToken);
+            var stderr = process.StandardError.ReadToEndAsync(cancellationToken);
+            await process.WaitForExitAsync(cancellationToken);
+            string error = await stderr;
+            await stdout;
+            if (process.ExitCode != 0)
+            {
+                result.ErrorMessage = $"mkfs.{fileSystem} selhal ({process.ExitCode}): {error}";
+                return result;
+            }
+            result.Success = true;
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            _logger?.LogError(ex, "Formatting {Path} as {Format} failed", devicePath, fileSystem);
+            result.ErrorMessage = ex.Message;
+        }
+        return result;
+    }
+
     private async Task<string?> ExecuteCommandAndGetOutputAsync(string command, string arguments, CancellationToken cancellationToken)
     {
         try
@@ -1456,15 +1551,68 @@ public class LinuxDiskSanitizationService : IDiskSanitizationService
     }
 
     /// <summary>
-    /// Create a GPT partition on the device and optionally format it.
-    /// Does NOT write zeros or verify — only creates partition structure.
+    /// Detect actual installed formatting tools. NTFS additionally requires ntfs-3g;
+    /// missing optional tools are not advertised as available formats.
     /// </summary>
-    public async Task<SanitizationResult> CreatePartitionAsync(
+    public Task<IReadOnlyList<string>> GetSupportedFileSystemsAsync(CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        var formats = new List<string>();
+        foreach (var fs in new[] { "ext4", "ext3", "ext2", "xfs", "btrfs", "f2fs", "vfat" })
+        {
+            if (FindExecutable("mkfs." + fs) != null)
+                formats.Add(fs);
+        }
+        if (FindExecutable("ntfs-3g") != null && FindExecutable("mkfs.ntfs") != null)
+            formats.Add("ntfs");
+        return Task.FromResult<IReadOnlyList<string>>(formats);
+    }
+
+    private static string? FindExecutable(string command)
+    {
+        var searchPaths = (Environment.GetEnvironmentVariable("PATH") ?? string.Empty)
+            .Split(Path.PathSeparator, StringSplitOptions.RemoveEmptyEntries)
+            .Concat(new[] { "/usr/sbin", "/sbin", "/usr/bin", "/bin" })
+            .Distinct(StringComparer.Ordinal);
+        foreach (var directory in searchPaths)
+        {
+            var path = Path.Combine(directory, command);
+            if (File.Exists(path))
+                return path;
+        }
+        return null;
+    }
+
+    /// <summary>Original entry point: default Linux formatter is ext4.</summary>
+    public Task<SanitizationResult> CreatePartitionAsync(
         string devicePath,
         string volumeLabel = "Tested",
         bool format = true,
         IProgress<SanitizationProgress>? progress = null,
         CancellationToken cancellationToken = default)
+        => CreatePartitionCoreAsync(devicePath, "ext4", volumeLabel, format, progress, cancellationToken);
+
+    /// <summary>Explicit post-test GPT preparation with an installed file system.</summary>
+    public async Task<SanitizationResult> CreatePartitionWithFileSystemAsync(
+        string devicePath,
+        string fileSystem,
+        string volumeLabel = "SCCM",
+        IProgress<SanitizationProgress>? progress = null,
+        CancellationToken cancellationToken = default)
+    {
+        var available = await GetSupportedFileSystemsAsync(cancellationToken);
+        if (!available.Contains(fileSystem, StringComparer.OrdinalIgnoreCase))
+            return new SanitizationResult { ErrorMessage = $"Souborový systém '{fileSystem}' není dostupný." };
+        return await CreatePartitionCoreAsync(devicePath, fileSystem.ToLowerInvariant(), volumeLabel, true, progress, cancellationToken);
+    }
+
+    private async Task<SanitizationResult> CreatePartitionCoreAsync(
+        string devicePath,
+        string fileSystem,
+        string volumeLabel,
+        bool format,
+        IProgress<SanitizationProgress>? progress,
+        CancellationToken cancellationToken)
     {
         var result = new SanitizationResult();
         var stopwatch = Stopwatch.StartNew();
@@ -1508,7 +1656,7 @@ public class LinuxDiskSanitizationService : IDiskSanitizationService
                 ProgressPercent = 50
             });
 
-            var partitionResult = await CreateGptPartitionAsync(normalizedPath, cancellationToken);
+            var partitionResult = await CreateGptPartitionAsync(normalizedPath, cancellationToken, fileSystem);
             if (!partitionResult.Success)
             {
                 result.ErrorMessage = partitionResult.ErrorMessage;
@@ -1516,23 +1664,23 @@ public class LinuxDiskSanitizationService : IDiskSanitizationService
             }
             result.PartitionCreated = true;
 
-            // Phase 3: Format (ext4 on Linux)
+            // Phase 3: Format selected filesystem
             if (format)
             {
                 progress?.Report(new SanitizationProgress
                 {
-                    Phase = "Formátování ext4",
+                    Phase = $"Formátování {fileSystem}",
                     ProgressPercent = 80
                 });
 
-                var formatResult = await FormatExt4Async(normalizedPath, volumeLabel, cancellationToken);
+                var formatResult = await FormatSelectedFileSystemAsync(normalizedPath, fileSystem, volumeLabel, cancellationToken);
                 if (!formatResult.Success)
                 {
                     result.ErrorMessage = formatResult.ErrorMessage;
                     return result;
                 }
                 result.Formatted = true;
-                result.FileSystem = "ext4";
+                result.FileSystem = fileSystem;
                 result.VolumeLabel = volumeLabel;
             }
 
