@@ -938,7 +938,9 @@ create partition primary" +
                 result.PartitionFormatted = format;
                 if (_logger != null && _logger.IsEnabled(LogLevel.Information))
                 {
-                    _logger.LogInformation("GPT partition created and formatted successfully for disk {DriveNumber}", driveNumber);
+                    _logger.LogInformation(
+                        format ? "GPT/NTFS formatted for disk {DriveNumber}" : "GPT partition created (unformatted) for disk {DriveNumber}",
+                        driveNumber);
                 }
             }
             finally
@@ -1499,7 +1501,7 @@ if ($disk -and $disk.PartitionStyle -eq 'GPT') {{
     /// </summary>
     public async Task<SanitizationResult> CreatePartitionAsync(
         string devicePath,
-        string volumeLabel = "Tested",
+        string volumeLabel = "SCCM",
         bool format = true,
         IProgress<SanitizationProgress>? progress = null,
         CancellationToken cancellationToken = default)
