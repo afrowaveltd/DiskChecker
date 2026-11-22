@@ -1649,6 +1649,11 @@ public partial class SafeDestructiveTestViewModel : ViewModelBase, INavigableVie
             c.SeekMinLatencyMs = allSeekPoints.Min();
             c.SeekMaxLatencyMs = allSeekPoints.Max();
             c.SeekP95LatencyMs = Percentile(allSeekPoints, 0.95);
+            c.SeekP99LatencyMs = Percentile(allSeekPoints, 0.99);
+            var orderedSamples = capturedSeekFullStroke
+               .Concat(capturedSeekRandom).Concat(capturedSeekSkip).ToList();
+            c.SeekTotalCount = orderedSamples.Count;
+            c.SeekLatencyPoints = DownsampleCertificateSeries(orderedSamples);
          }
 
          // Sanitize metrics
@@ -1661,12 +1666,48 @@ public partial class SafeDestructiveTestViewModel : ViewModelBase, INavigableVie
          if(capturedSanitizePass2Read.Count > 0)
             c.Sanitize2AvgReadMBps = capturedSanitizePass2Read.Average(p => p.Y ?? 0);
 
+         // PDF charts must include bounded measured series, not just averages.
+         c.Sanitize1WritePoints = DownsampleCertificateSeries(capturedSanitizePass1Write);
+         c.Sanitize1ReadPoints = DownsampleCertificateSeries(capturedSanitizePass1Read);
+         c.Sanitize2WritePoints = DownsampleCertificateSeries(capturedSanitizePass2Write);
+         c.Sanitize2ReadPoints = DownsampleCertificateSeries(capturedSanitizePass2Read);
+         c.WriteProfilePoints = c.Sanitize2WritePoints.Count > 0
+            ? c.Sanitize2WritePoints : c.Sanitize1WritePoints;
+         c.ReadProfilePoints = c.Sanitize2ReadPoints.Count > 0
+            ? c.Sanitize2ReadPoints : c.Sanitize1ReadPoints;
+         c.AvgWriteSpeed = c.Sanitize2AvgWriteMBps ?? c.Sanitize1AvgWriteMBps ?? 0;
+         c.AvgReadSpeed = c.Sanitize2AvgReadMBps ?? c.Sanitize1AvgReadMBps ?? 0;
+         c.MaxWriteSpeed = c.WriteProfilePoints.Count > 0
+            ? c.WriteProfilePoints.Max() : c.AvgWriteSpeed;
+         c.MaxReadSpeed = c.ReadProfilePoints.Count > 0
+            ? c.ReadProfilePoints.Max() : c.AvgReadSpeed;
+
          return c;
       });
 
       Certificate = cert;
       IsGeneratingCertificate = false;
       CertificateProgressText = string.Empty;
+   }
+
+   /// <summary>
+   /// Samples a bounded number of real measurements in source order rather
+   /// than using sorted percentiles as a synthetic graph.
+   /// </summary>
+   internal static List<double> DownsampleCertificateSeries(
+      IReadOnlyList<ObservablePoint> source, int maximumPoints = 32)
+   {
+      ArgumentNullException.ThrowIfNull(source);
+      if(maximumPoints < 1)
+         throw new ArgumentOutOfRangeException(nameof(maximumPoints));
+      var count = Math.Min(source.Count, maximumPoints);
+      var result = new List<double>(count);
+      for(var i = 0; i < count; i++)
+      {
+         var sourceIndex = (int)((long)i * source.Count / count);
+         result.Add(source[sourceIndex].Y ?? 0);
+      }
+      return result;
    }
 
    private DiskCertificate? Certificate { get; set; }
