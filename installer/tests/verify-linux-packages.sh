@@ -79,7 +79,7 @@ for portable in install-linux.sh ensure-smartmontools.sh diskchecker-launcher di
     }
 done
 depends="$(dpkg-deb -f "${debs[0]}" Depends)"
-[[ "$depends" == *pkexec* && "$depends" == *polkitd* ]] || {
+[[ "$depends" == *pkexec* && "$depends" == *polkitd* && "$depends" == *smartmontools* ]] || {
     echo "DEB is missing pkexec/polkitd dependency" >&2; exit 1;
 }
 echo "PASS: DEB, RPM and portable archive contain privileged helper, policy and icon"
