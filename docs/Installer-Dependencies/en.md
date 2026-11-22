@@ -41,8 +41,8 @@ The GPLv2 license and corresponding source tarball are included in
 
 The installer checks that the actual `smartctl.exe --version` runs,
 rather than trusting registry entries alone. It discovers an official
-machine-wide installation using the upstream HKLM uninstall key or known
-protected Program Files paths. For security, the elevated installer never
+machine-wide installation using the upstream HKLM uninstall key in
+**both 32-bit and 64-bit registry views** or known protected Program Files paths. For security, the elevated installer never
 executes arbitrary smartctl.exe files from the current user's PATH.
 Exact snapshot identity
 comes from the upstream NSIS `DisplayVersion`; the CLI version
