@@ -196,8 +196,11 @@ var
   StartAt: Integer;
 begin
   StartAt := AtPos;
-  while (AtPos <= Length(S)) and (S[AtPos] >= '0') and
-    (S[AtPos] <= '9') do Inc(AtPos);
+  while AtPos <= Length(S) do
+  begin
+    if (S[AtPos] < '0') or (S[AtPos] > '9') then Break;
+    Inc(AtPos);
+  end;
   Result := -1;
   if AtPos > StartAt then
     Result := StrToIntDef(Copy(S, StartAt, AtPos - StartAt), -1);
@@ -218,8 +221,9 @@ begin
   end;
   I := 1;
   Major := NextNumber(Version, I);
-  if (Major < 0) or (I > Length(Version)) or
-    (Version[I] <> '.') then Exit;
+  if Major < 0 then Exit;
+  if I > Length(Version) then Exit;
+  if Version[I] <> '.' then Exit;
   Inc(I);
   Minor := NextNumber(Version, I);
   if Minor < 0 then Exit;
@@ -239,7 +243,8 @@ begin
 
   // Bare '8.0' is ambiguous (portable nightly or final release), so
   // never label it exact or older without a build identity.
-  if (I > Length(Version)) or (Version[I] <> '-') then Exit;
+  if I > Length(Version) then Exit;
+  if Version[I] <> '-' then Exit;
   Inc(I);
   Build := NextNumber(Version, I);
   if Build < 0 then Exit;
