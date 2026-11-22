@@ -138,3 +138,27 @@ prefer privilege separation long term.
   passed after the earlier CA1512 fix; a new Inno
   compilation/runtime confirmation is still pending.
 - Details in `docs/Installer-Dependencies/en.md`.
+
+## 2026-11-22 — PR cleanup and CI verification checkpoint
+
+- Closed superseded PRs **#15** and **#17** without merging
+  their diverged branches into modern master; written
+  comments explain why merged **#16** and subsequent
+  forward fixes are now the source of truth.
+  All seven earlier Copilot review threads were resolved
+  and substantive issues were checked against master.
+- Windows smartmontools dependency check/install added
+  to Inno Setup; Linux DEB/RPM use native package metadata;
+  portable Linux now checks and installs smartmontools.
+- GitHub Actions
+  [installer run 45010055347](https://github.com/afrowaveltd/DiskChecker/actions/runs/45010055347)
+  passed for **Windows Inno and Linux DEB/RPM/portable**
+  packages; preceding
+  [run 45009823681](https://github.com/afrowaveltd/DiskChecker/actions/runs/45009823681)
+  also passed the Linux package dependency checks.
+  [surface/SMART run 45009823705](https://github.com/afrowaveltd/DiskChecker/actions/runs/45009823705)
+  passed after the CA1512 fix.
+- Broader safety workflows and real installed-app
+  validation remain separate pending checkpoints.
+  No new public release was created.
+
