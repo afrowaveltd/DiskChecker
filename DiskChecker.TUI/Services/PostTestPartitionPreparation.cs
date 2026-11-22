@@ -31,7 +31,7 @@ internal static class PostTestPartitionPreparation
         {
             var menu = new StringBuilder("Zvolte číslo souborového systému (prázdné = zrušit):");
             for (int i = 0; i < formats.Count; i++)
-                menu.Append("\n").Append(i + 1).Append(". ").Append(formats[i]);
+                menu.Append('\n').Append(i + 1).Append(". ").Append(formats[i]);
 
             var answer = context.Dialogs.Ask(menu.ToString(), "1");
             if (answer == null)
