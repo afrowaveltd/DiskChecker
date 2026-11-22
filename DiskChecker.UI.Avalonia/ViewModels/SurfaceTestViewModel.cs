@@ -13,6 +13,7 @@ using DiskChecker.Core.Models;
 using DiskChecker.Core.Services;
 using DiskChecker.Infrastructure.Hardware.Sanitization;
 using DiskChecker.Infrastructure.Hardware;
+using DiskChecker.UI.Avalonia.Services;
 using DiskChecker.UI.Avalonia.Services.Interfaces;
 using LiveChartsCore;
 using LiveChartsCore.Defaults;
@@ -1265,6 +1266,17 @@ public partial class SurfaceTestViewModel : ViewModelBase, INavigableViewModel, 
             else if(result?.Success == true && !string.IsNullOrWhiteSpace(successMessage))
             {
                await _dialogService.ShowSuccessAsync(L.Get("SurfaceTest.Status.SanitizeCompleted"), successMessage);
+
+               // The verified, persisted test remains complete whether the user
+               // elects to prepare a new filesystem or leaves the disk blank.
+               var prepared = await PostTestPartitionPreparation.OfferAsync(
+                   _dialogService, _sanitizationService,
+                   SelectedDrive.Path, SelectedDrive.Name, cancellationToken);
+               if(prepared?.Success == true)
+                  SetStatusMessage($"GPT / {prepared.FileSystem} (SCCM) byl vytvořen.");
+               else if(prepared is { Success: false })
+                  await _dialogService.ShowWarningAsync("Příprava disku",
+                      prepared.ErrorMessage ?? "Formátování se nezdařilo.");
             }
             else if(result?.Success == false)
             {
@@ -1412,9 +1424,9 @@ public partial class SurfaceTestViewModel : ViewModelBase, INavigableViewModel, 
       var pacing = SanitizationWritePacing.FromSeconds(_sanitizationWritePauseSeconds);
       var result = await Task.Run(() => pacing is null
           ? _sanitizationService.SanitizeDiskAsync(
-              drivePath, driveSize, true, true, "SCCM", progress, cancellationToken)
+              drivePath, driveSize, false, false, "SCCM", progress, cancellationToken)
           : _sanitizationService.SanitizeDiskPacedAsync(
-              drivePath, driveSize, true, true, "SCCM", pacing, progress, cancellationToken),
+              drivePath, driveSize, false, false, "SCCM", pacing, progress, cancellationToken),
           cancellationToken);
       _telemetryArchive?.Dispose(); // Flush the last partial block.
 
@@ -1463,6 +1475,13 @@ public partial class SurfaceTestViewModel : ViewModelBase, INavigableViewModel, 
 
                var savedSession = await _cardTestService.SaveSanitizationAsync(card, result, writeSamples, readSamples, smartSnapshot, smartAfterSnapshot, _borrowedSmartProvenance, cancellationToken);
                CommitTelemetryArchive(savedSession.SessionId);
+
+               // Persist a real certificate and its PDF using the same renderer
+               // as the other DiskChecker tests, before offering any reformat.
+               var certificate = await _certificateGenerator.GenerateCertificateAsync(savedSession, card);
+               certificate.TestSessionId = savedSession.Id;
+               certificate = await _diskCardRepository.CreateCertificateAsync(certificate);
+               await _certificateGenerator.GeneratePdfAsync(certificate);
 
                StatusMessage = L.Get("SurfaceTest.Status.SanitizeSaved", card.ModelName, (writeSamples.Count + readSamples.Count).ToString());
                SetStatusMessage(L.Get("SurfaceTest.Status.SanitizeSavedSimple", card.ModelName));

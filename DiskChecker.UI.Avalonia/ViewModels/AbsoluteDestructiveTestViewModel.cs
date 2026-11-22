@@ -12,6 +12,7 @@ using DiskChecker.Application.Services;
 using DiskChecker.Core.Interfaces;
 using DiskChecker.Core.Models;
 using DiskChecker.Core.Services;
+using DiskChecker.UI.Avalonia.Services;
 using DiskChecker.UI.Avalonia.Services.Interfaces;
 using LiveChartsCore;
 using LiveChartsCore.Defaults;
@@ -1101,48 +1102,48 @@ public partial class AbsoluteDestructiveTestViewModel : ViewModelBase, INavigabl
                 : L.Get("Notification.CertificateNotSaved");
         }, ct);
 
-        // Phase 7: Create partition
-        await RunPhaseAsync(7, "Vytvoření oddílu", async () =>
+        // Phase 7: optional preparation, ONLY after test results and certificate
+        // have been persisted. Never silently recreate partitions after a test.
+        await RunPhaseAsync(7, "Příprava disku", async () =>
         {
-            ct.ThrowIfCancellationRequested();
-            SetPhase(7, TestPhaseStatus.Running, "Vytvářím oddíl...");
-
-            if (SelectedDrive != null)
+            if (!certificatePersisted || SelectedDrive == null)
             {
-                try
-                {
-                    var partitionResult = await _sanitizationService.CreatePartitionAsync(
-                        SelectedDrive.Path,
-                        volumeLabel: "Tested",
-                        format: true,
-                        progress: new CallbackProgress<SanitizationProgress>(p =>
-                        {
-                            Dispatcher.UIThread.Post(() =>
-                            {
-                                if (_disposed) return;
-                                Phases[7].Detail = p.Phase;
-                                Phases[7].ProgressPercent = p.ProgressPercent;
-                            });
-                        }),
-                        ct);
+                SetPhase(7, TestPhaseStatus.Skipped, "Nejprve je nutné uložit certifikát.");
+                return;
+            }
 
-                    if (partitionResult.Success)
-                    {
-                        SetPhase(7, TestPhaseStatus.Completed, $"Oddíl vytvořen: {partitionResult.FileSystem}");
-                    }
-                    else
-                    {
-                        SetPhase(7, TestPhaseStatus.Completed, $"Oddíl: {partitionResult.ErrorMessage ?? "selhal"}");
-                    }
-                }
-                catch (Exception ex)
+            try
+            {
+                var prepared = await PostTestPartitionPreparation.OfferAsync(
+                    _dialogService, _sanitizationService,
+                    SelectedDrive.Path, SelectedDrive.Name, ct);
+
+                if (prepared == null)
                 {
-                    SetPhase(7, TestPhaseStatus.Completed, $"Oddíl: {ex.Message}");
+                    SetPhase(7, TestPhaseStatus.Skipped, "Příprava disku přeskočena uživatelem.");
+                }
+                else if (prepared.Success)
+                {
+                    SetPhase(7, TestPhaseStatus.Completed,
+                        $"Vytvořen oddíl GPT / {prepared.FileSystem}, název SCCM.");
+                }
+                else
+                {
+                    SetPhase(7, TestPhaseStatus.Failed,
+                        prepared.ErrorMessage ?? "Vytvoření oddílu selhalo.");
+                    await _dialogService.ShowWarningAsync("Příprava disku",
+                        prepared.ErrorMessage ?? "Nepodařilo se vytvořit souborový systém.");
                 }
             }
-            else
+            catch (OperationCanceledException)
             {
-                SetPhase(7, TestPhaseStatus.Skipped, "Disk není vybrán");
+                SetPhase(7, TestPhaseStatus.Skipped, "Příprava disku zrušena.");
+            }
+            catch (Exception ex)
+            {
+                // Certificate is durable; optional formatting must not invalidate it.
+                SetPhase(7, TestPhaseStatus.Failed, ex.Message);
+                await _dialogService.ShowWarningAsync("Příprava disku", ex.Message);
             }
         }, ct);
 
