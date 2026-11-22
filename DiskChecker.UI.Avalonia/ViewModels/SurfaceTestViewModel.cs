@@ -1271,7 +1271,7 @@ public partial class SurfaceTestViewModel : ViewModelBase, INavigableViewModel, 
                // elects to prepare a new filesystem or leaves the disk blank.
                var prepared = await PostTestPartitionPreparation.OfferAsync(
                    _dialogService, _sanitizationService,
-                   SelectedDrive.Path, SelectedDrive.Name, cancellationToken);
+                   SelectedDrive!.Path, SelectedDrive.Name ?? SelectedDrive.Path, cancellationToken);
                if(prepared?.Success == true)
                   SetStatusMessage($"GPT / {prepared.FileSystem} (SCCM) byl vytvořen.");
                else if(prepared is { Success: false })
