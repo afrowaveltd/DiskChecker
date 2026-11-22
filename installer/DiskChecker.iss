@@ -6,6 +6,8 @@
 #define MyAppPublisher "Afrowave Community"
 #define MyAppURL "https://github.com/afrowaveltd/DiskChecker"
 #define MyAppExeName "DiskChecker.UI.Avalonia.exe"
+#define SmartVersion "8.0-623-gd788ad8c38ee"
+#define SmartPackage "smartmontools-win32-setup-8.0-623-gd788ad8c38ee.exe"
 
 [Setup]
 AppId={{A7B8C9D0-E1F2-3456-7890-ABCDEF123456}
@@ -41,6 +43,11 @@ Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{
 [Files]
 ; Self-contained build: no system .NET runtime required.
 Source: "..\publish\win-x64\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
+; Official upstream installer is embedded offline and only extracted when needed.
+; Its SHA-256 is checked at package-build time; no network is needed on client PCs.
+Source: "vendor\{#SmartPackage}"; Flags: dontcopy
+; GNU GPL v2 license for the redistributed, unmodified upstream smartmontools installer.
+Source: "vendor\smartmontools-COPYING.txt"; DestDir: "{app}\licenses\smartmontools"; DestName: "COPYING.txt"; Flags: ignoreversion
 
 [Icons]
 Name: "{group}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"
@@ -53,72 +60,328 @@ Name: "{autodesktop}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; Tasks: de
 ; The packaged Windows executable carries requireAdministrator in app.manifest.
 
 [Code]
-// Smartmontools is a mandatory diagnostic dependency. Do not replace an
-// existing working installation or download unchecked arbitrary executables.
-// Windows Package Manager validates the official winget manifest hashes.
+const
+  SmartUninstallKey = 'SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\smartmontools';
+  SmartTargetMajor = 8;
+  SmartTargetMinor = 0;
+  SmartTargetBuild = 623;
+
+var
+  SmartOptionsPage: TWizardPage;
+  SmartInstallBox: TNewCheckBox;
+  SmartExplanation: TNewStaticText;
+  SmartCurrentPath: String;
+  SmartCurrentVersion: String;
+  SmartFound: Boolean;
+
+// Never determine availability from registry entries alone. A valid,
+// executable smartctl is required; machine-wide paths are preferred because
+// setup may be running under another administrator's UAC account.
 function SmartctlWorksAt(const FileName: String): Boolean;
 var
   ExitCode: Integer;
 begin
   Result := False;
-  if not FileExists(FileName) then
-    Exit;
+  if not FileExists(FileName) then Exit;
   Result := Exec(FileName, '--version', '', SW_HIDE,
     ewWaitUntilTerminated, ExitCode) and (ExitCode = 0);
 end;
 
-function SmartctlAvailable: Boolean;
+function SmartctlFromPath: String;
 var
-  ExitCode: Integer;
+  P, Part, Candidate: String;
+  StopAt: Integer;
 begin
-  Result := SmartctlWorksAt(ExpandConstant('{pf64}\smartmontools\bin\smartctl.exe')) or
-    SmartctlWorksAt(ExpandConstant('{pf32}\smartmontools\bin\smartctl.exe'));
-  if Result then
+  Result := '';
+  P := GetEnv('PATH');
+  while P <> '' do
+  begin
+    StopAt := Pos(';', P);
+    if StopAt = 0 then
+    begin
+      Part := P;
+      P := '';
+    end
+    else
+    begin
+      Part := Copy(P, 1, StopAt - 1);
+      Delete(P, 1, StopAt);
+    end;
+    Part := Trim(Part);
+    if Part <> '' then
+    begin
+      Candidate := AddBackslash(Part) + 'smartctl.exe';
+      if SmartctlWorksAt(Candidate) then
+      begin
+        Result := Candidate;
+        Exit;
+      end;
+    end;
+  end;
+end;
+
+function FindWorkingSmartctl: String;
+var
+  InstallDir, Candidate: String;
+begin
+  Result := '';
+  if ReadRegStr(HKLM, SmartUninstallKey, 'InstallLocation', InstallDir) and
+     (InstallDir <> '') then
+  begin
+    Candidate := AddBackslash(InstallDir) + 'bin\smartctl.exe';
+    if SmartctlWorksAt(Candidate) then
+    begin
+      Result := Candidate;
+      Exit;
+    end;
+  end;
+  Candidate := ExpandConstant('{pf64}\smartmontools\bin\smartctl.exe');
+  if SmartctlWorksAt(Candidate) then
+  begin
+    Result := Candidate;
     Exit;
-  // Also respect a valid pre-existing custom smartctl installation in PATH.
-  Result := Exec(ExpandConstant('{cmd}'),
-    '/D /C "smartctl --version >NUL 2>&1"', '', SW_HIDE,
-    ewWaitUntilTerminated, ExitCode) and (ExitCode = 0);
+  end;
+  Candidate := ExpandConstant('{pf32}\smartmontools\bin\smartctl.exe');
+  if SmartctlWorksAt(Candidate) then
+  begin
+    Result := Candidate;
+    Exit;
+  end;
+  Result := SmartctlFromPath();
+end;
+
+// Gets the CLI-reported base version when a portable installation has no
+// registered DisplayVersion. The complete prerelease identity is provided
+// by the upstream NSIS registry key when installed conventionally.
+function SmartctlCliVersion(const Exe: String): String;
+var
+  TempFile, CmdArgs, Output: String;
+  Code, P: Integer;
+begin
+  Result := '';
+  TempFile := ExpandConstant('{tmp}\diskchecker-smartctl-version.txt');
+  CmdArgs := '/D /S /C "' + AddQuotes(Exe) +
+    ' --version > ' + AddQuotes(TempFile) + ' 2>&1"';
+  if Exec(ExpandConstant('{cmd}'), CmdArgs, '', SW_HIDE,
+    ewWaitUntilTerminated, Code) and (Code = 0) and
+    LoadStringFromFile(TempFile, Output) then
+  begin
+    P := Pos('smartctl ', Output);
+    if P > 0 then
+    begin
+      Output := Copy(Output, P + 9, 80);
+      P := Pos(' ', Output);
+      if P > 0 then Output := Copy(Output, 1, P - 1);
+      Result := Trim(Output);
+    end;
+  end;
+  if FileExists(TempFile) then DeleteFile(TempFile);
+end;
+
+function NextNumber(const S: String; var AtPos: Integer): Integer;
+var
+  StartAt: Integer;
+begin
+  StartAt := AtPos;
+  while (AtPos <= Length(S)) and (S[AtPos] >= '0') and
+    (S[AtPos] <= '9') do Inc(AtPos);
+  Result := -1;
+  if AtPos > StartAt then
+    Result := StrToIntDef(Copy(S, StartAt, AtPos - StartAt), -1);
+end;
+
+// Comparison: -2 unknown/different same-build snapshot, -1 older,
+// 0 exact bundled version, 1 newer. Do not downgrade a stable 8.0
+// or a future 8.0 development build to the pinned 8.0 snapshot.
+function CompareSmartVersion(const Version: String): Integer;
+var
+  I, Major, Minor, Build: Integer;
+begin
+  Result := -2;
+  if CompareText(Trim(Version), '{#SmartVersion}') = 0 then
+  begin
+    Result := 0;
+    Exit;
+  end;
+  I := 1;
+  Major := NextNumber(Version, I);
+  if (Major < 0) or (I > Length(Version)) or
+    (Version[I] <> '.') then Exit;
+  Inc(I);
+  Minor := NextNumber(Version, I);
+  if Minor < 0 then Exit;
+
+  if (Major < SmartTargetMajor) or
+    ((Major = SmartTargetMajor) and (Minor < SmartTargetMinor)) then
+  begin
+    Result := -1;
+    Exit;
+  end;
+  if (Major > SmartTargetMajor) or
+    ((Major = SmartTargetMajor) and (Minor > SmartTargetMinor)) then
+  begin
+    Result := 1;
+    Exit;
+  end;
+
+  // Bare '8.0' is ambiguous (portable nightly or final release), so
+  // never label it exact or older without a build identity.
+  if (I > Length(Version)) or (Version[I] <> '-') then Exit;
+  Inc(I);
+  Build := NextNumber(Version, I);
+  if Build < 0 then Exit;
+  if Build < SmartTargetBuild then Result := -1
+  else if Build > SmartTargetBuild then Result := 1
+  else Result := -2; // same counter but another commit: not the same build.
+end;
+
+procedure RefreshSmartStatus;
+var
+  InstallDir, RegisteredPath, RegisteredVersion: String;
+begin
+  SmartCurrentPath := FindWorkingSmartctl();
+  SmartFound := SmartCurrentPath <> '';
+  SmartCurrentVersion := '';
+  if not SmartFound then Exit;
+
+  // Trust a registry version only when its installed binary actually works.
+  if ReadRegStr(HKLM, SmartUninstallKey, 'InstallLocation', InstallDir) and
+    (InstallDir <> '') then
+  begin
+    RegisteredPath := AddBackslash(InstallDir) + 'bin\smartctl.exe';
+    if CompareText(RegisteredPath, SmartCurrentPath) = 0 then
+    begin
+      if ReadRegStr(HKLM, SmartUninstallKey, 'DisplayVersion',
+          RegisteredVersion) then
+        SmartCurrentVersion := Trim(RegisteredVersion);
+    end;
+  end;
+
+  if SmartCurrentVersion = '' then
+    SmartCurrentVersion := SmartctlCliVersion(SmartCurrentPath);
+  Log('smartmontools: path=' + SmartCurrentPath +
+    '; version=' + SmartCurrentVersion);
+end;
+
+procedure InitializeWizard;
+var
+  Comparison: Integer;
+begin
+  RefreshSmartStatus();
+  SmartOptionsPage := CreateCustomPage(wpSelectTasks,
+    'smartmontools / SMART diagnostika',
+    'DiskChecker requires a working smartctl executable.');
+  SmartInstallBox := TNewCheckBox.Create(WizardForm);
+  SmartInstallBox.Parent := SmartOptionsPage.Surface;
+  SmartInstallBox.Left := ScaleX(0);
+  SmartInstallBox.Top := ScaleY(12);
+  SmartInstallBox.Width := SmartOptionsPage.SurfaceWidth;
+  SmartInstallBox.Height := ScaleY(30);
+
+  SmartExplanation := TNewStaticText.Create(WizardForm);
+  SmartExplanation.Parent := SmartOptionsPage.Surface;
+  SmartExplanation.Left := ScaleX(0);
+  SmartExplanation.Top := ScaleY(54);
+  SmartExplanation.Width := SmartOptionsPage.SurfaceWidth;
+  SmartExplanation.Height := ScaleY(125);
+  SmartExplanation.AutoSize := False;
+  SmartExplanation.WordWrap := True;
+
+  if not SmartFound then
+  begin
+    SmartInstallBox.Caption := 'Install smartmontools {#SmartVersion} (required)';
+    SmartInstallBox.Checked := True;
+    SmartInstallBox.Enabled := False;
+    SmartExplanation.Caption :=
+      'smartctl.exe was not found or could not run. The bundled official ' +
+      'smartmontools prerelease is required and will be installed automatically. ' +
+      'No internet connection is needed.';
+    Exit;
+  end;
+
+  Comparison := CompareSmartVersion(SmartCurrentVersion);
+  if Comparison = 0 then
+  begin
+    SmartInstallBox.Caption := 'smartmontools {#SmartVersion} already installed';
+    SmartInstallBox.Checked := False;
+    SmartInstallBox.Enabled := False;
+    SmartExplanation.Caption :=
+      'The same bundled version is installed and works. It will not be changed.';
+  end
+  else if Comparison = 1 then
+  begin
+    SmartInstallBox.Caption := 'Newer smartmontools installed — keep it';
+    SmartInstallBox.Checked := False;
+    SmartInstallBox.Enabled := False;
+    SmartExplanation.Caption :=
+      'Version ' + SmartCurrentVersion + ' is newer than the bundled snapshot. ' +
+      'DiskChecker will use the existing installation.';
+  end
+  else
+  begin
+    SmartInstallBox.Checked := (Comparison = -1);
+    SmartInstallBox.Enabled := True;
+    if Comparison = -1 then
+      SmartInstallBox.Caption := 'Upgrade smartmontools ' + SmartCurrentVersion +
+        ' to {#SmartVersion}'
+    else
+      SmartInstallBox.Caption :=
+        'Replace an existing, unverified build with {#SmartVersion}';
+    SmartExplanation.Caption :=
+      'Detected: ' + SmartCurrentPath + #13#10 +
+      'Version: ' + SmartCurrentVersion + #13#10 +
+      'You can keep the working installation by unchecking this option. ' +
+      'The upgrade uses the bundled upstream installer; no network is required.';
+  end;
 end;
 
 function PrepareToInstall(var NeedsRestart: Boolean): String;
 var
-  ExitCode: Integer;
-  Ran: Boolean;
+  Code: Integer;
+  FileName: String;
 begin
   Result := '';
-  if SmartctlAvailable then
+  if not SmartInstallBox.Checked then
   begin
-    Log('DiskChecker: existing smartctl verified; skipping installation.');
+    Log('smartmontools: existing working binary kept (no upgrade requested).');
     Exit;
   end;
 
-  Log('DiskChecker: smartctl absent; installing smartmontools with WinGet.');
-  // WinGet uses the published manifest and its installer SHA256 validation.
-  // Do not bypass hash checks or change the user's configured repositories.
-  Ran := Exec(ExpandConstant('{cmd}'),
-    '/D /C winget install --exact --id smartmontools.smartmontools ' +
-    '--source winget --scope machine --silent ' +
-    '--accept-package-agreements --accept-source-agreements',
-    '', SW_HIDE, ewWaitUntilTerminated, ExitCode);
-
-  if not Ran or (ExitCode <> 0) then
-  begin
-    Log('DiskChecker: smartmontools installation failed or WinGet unavailable.');
-    Result := 'DiskChecker requires smartmontools (smartctl). ' +
-      'Automatic installation failed or Windows Package Manager is unavailable. ' +
-      'Install smartmontools.smartmontools using WinGet or the official ' +
-      'smartmontools installer, then start DiskChecker setup again.';
+  try
+    ExtractTemporaryFile('{#SmartPackage}');
+    FileName := ExpandConstant('{tmp}\{#SmartPackage}');
+  except
+    Result := 'Unable to extract bundled smartmontools installer: ' +
+      GetExceptionMessage;
     Exit;
   end;
 
-  if not SmartctlAvailable then
+  Log('smartmontools: running verified bundled prerelease installer.');
+  // Use System PATH, not the elevated administrator's User PATH.
+  // Upstream installer documents /S and /SO component selection.
+  if not Exec(FileName,
+    '/S /SO x64,smartctl,smartd,smartctlnc,drivedb,doc,uninst,menu,syspath',
+    '', SW_HIDE, ewWaitUntilTerminated, Code) or (Code <> 0) then
   begin
-    Log('DiskChecker: WinGet finished, but smartctl could not be verified.');
-    Result := 'smartmontools installation did not provide a working smartctl.exe. ' +
-      'Please verify the installed tool and retry DiskChecker setup.';
+    Result := 'Bundled smartmontools installation failed (exit code ' +
+      IntToStr(Code) + '). DiskChecker installation was stopped.';
     Exit;
   end;
 
-  Log('DiskChecker: smartmontools installation and smartctl verified.');
+  RefreshSmartStatus();
+  if not SmartFound then
+  begin
+    Result := 'smartmontools installer completed but smartctl.exe is not ' +
+      'usable. DiskChecker installation was stopped.';
+    Exit;
+  end;
+
+  if CompareSmartVersion(SmartCurrentVersion) <> 0 then
+  begin
+    Result := 'smartmontools installation did not report the bundled ' +
+      'version {#SmartVersion} (detected: ' + SmartCurrentVersion + '). ' +
+      'DiskChecker installation was stopped.';
+    Exit;
+  end;
+  Log('smartmontools: bundled version verified successfully.');
 end;
