@@ -17,18 +17,26 @@ trap 'rm -rf "${STAGE}"' EXIT
 
 # Debian: no distribution-specific libicu SONAME pinned to an obsolete distro.
 DEB="${STAGE}/deb"
-install -d "${DEB}/DEBIAN" "${DEB}/opt/diskchecker" "${DEB}/usr/bin" "${DEB}/usr/share/applications"
+install -d "${DEB}/DEBIAN" "${DEB}/opt/diskchecker" "${DEB}/usr/bin" \
+  "${DEB}/usr/lib/diskchecker" "${DEB}/usr/share/applications" \
+  "${DEB}/usr/share/polkit-1/actions" \
+  "${DEB}/usr/share/icons/hicolor/scalable/apps"
 cp -a "${PUBLISH}/." "${DEB}/opt/diskchecker/"
 chmod 755 "${DEB}/opt/diskchecker/DiskChecker.UI.Avalonia"
 install -m 755 installer/diskchecker-launcher "${DEB}/usr/bin/diskchecker"
+install -m 755 installer/diskchecker-elevated "${DEB}/usr/lib/diskchecker/diskchecker-elevated"
 install -m 644 installer/diskchecker.desktop "${DEB}/usr/share/applications/diskchecker.desktop"
+install -m 644 installer/org.afrowave.diskchecker.policy "${DEB}/usr/share/polkit-1/actions/org.afrowave.diskchecker.policy"
+install -m 644 DiskChecker.UI.Avalonia/Assets/disk-checker-icon.svg \
+  "${DEB}/usr/share/icons/hicolor/scalable/apps/diskchecker.svg"
 cat > "${DEB}/DEBIAN/control" <<EOF
 Package: diskchecker
 Version: ${VERSION}
 Section: utils
 Priority: optional
 Architecture: amd64
-Depends: smartmontools
+Depends: smartmontools, polkitd, pkexec
+Recommends: hicolor-icon-theme
 Maintainer: Afrowave Community <noreply@afrowave.ltd>
 Description: Disk health analysis, surface diagnostics and PDF certificates
  Cross-platform self-contained .NET disk diagnostics.
@@ -50,7 +58,8 @@ find "${RPM_TOP}/RPMS" -name '*.rpm' -type f -exec cp -f {} "${PACKAGES}/" \;
 BUNDLE="${STAGE}/portable"
 mkdir -p "${BUNDLE}/publish/linux-x64"
 cp -a "${PUBLISH}/." "${BUNDLE}/publish/linux-x64/"
-cp installer/{install-linux.sh,diskchecker-launcher,diskchecker.desktop} "${BUNDLE}/"
-chmod 755 "${BUNDLE}/install-linux.sh" "${BUNDLE}/diskchecker-launcher"
+cp installer/{install-linux.sh,diskchecker-launcher,diskchecker-elevated,diskchecker.desktop,org.afrowave.diskchecker.policy} "${BUNDLE}/"
+cp DiskChecker.UI.Avalonia/Assets/disk-checker-icon.svg "${BUNDLE}/diskchecker.svg"
+chmod 755 "${BUNDLE}/install-linux.sh" "${BUNDLE}/diskchecker-launcher" "${BUNDLE}/diskchecker-elevated"
 tar -C "${BUNDLE}" -czf "${PACKAGES}/diskchecker-${VERSION}-linux-x64-installer.tar.gz" .
 echo "Produced packages in ${PACKAGES}"
