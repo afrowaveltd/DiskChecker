@@ -23,6 +23,14 @@ if [[ ! -f "${PUBLISH_DIR}/DiskChecker.UI.Avalonia" ]]; then
     exit 1
 fi
 
+# The portable archive has no package-manager dependency metadata.
+# Validate smartctl BEFORE changing the installed DiskChecker files.
+if [[ ! -f "${SCRIPT_DIR}/ensure-smartmontools.sh" ]]; then
+    echo "Missing smartmontools dependency installer in portable archive." >&2
+    exit 1
+fi
+bash "${SCRIPT_DIR}/ensure-smartmontools.sh"
+
 install -d -m 755 "${INSTALL_DIR}" /usr/bin /usr/lib/diskchecker \
     /usr/share/applications /usr/share/polkit-1/actions \
     /usr/share/icons/hicolor/scalable/apps
