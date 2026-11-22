@@ -318,6 +318,7 @@ begin
 
   if not SmartFound then
   begin
+    Log('smartmontools: state=missing, dependency installation mandatory');
     SmartInstallBox.Caption := ExpandConstant('{cm:SmartRequired}') + ' {#SmartVersion}';
     SmartInstallBox.Checked := True;
     SmartInstallBox.Enabled := False;
@@ -329,6 +330,7 @@ begin
   Comparison := CompareSmartVersion(SmartCurrentVersion);
   if Comparison = 0 then
   begin
+    Log('smartmontools: state=exact, checkbox disabled');
     SmartInstallBox.Caption := ExpandConstant('{cm:SmartSame}') + ' {#SmartVersion}';
     SmartInstallBox.Checked := False;
     SmartInstallBox.Enabled := False;
@@ -337,6 +339,7 @@ begin
   end
   else if Comparison = 1 then
   begin
+    Log('smartmontools: state=newer, checkbox disabled');
     SmartInstallBox.Caption := ExpandConstant('{cm:SmartNewer}');
     SmartInstallBox.Checked := False;
     SmartInstallBox.Enabled := False;
@@ -345,6 +348,10 @@ begin
   end
   else
   begin
+    if Comparison = -1 then
+      Log('smartmontools: state=older, optional upgrade preselected')
+    else
+      Log('smartmontools: state=unknown, replacement disabled by default');
     SmartInstallBox.Checked := (Comparison = -1);
     SmartInstallBox.Enabled := True;
     if Comparison = -1 then
