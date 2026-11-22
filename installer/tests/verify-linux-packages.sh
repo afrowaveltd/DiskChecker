@@ -72,7 +72,7 @@ for relative in \
 done
 [[ -x "$stage/deb/usr/bin/diskchecker" ]]
 [[ -x "$stage/deb/usr/lib/diskchecker/diskchecker-elevated" ]]
-for portable in install-linux.sh diskchecker-launcher diskchecker-elevated \
+for portable in install-linux.sh ensure-smartmontools.sh diskchecker-launcher diskchecker-elevated \
   diskchecker.desktop org.afrowave.diskchecker.policy diskchecker.svg; do
     tar -tzf "${bundles[0]}" | grep -Fx "./$portable" >/dev/null || {
         echo "Portable archive missing: $portable" >&2; exit 1;
