@@ -49,16 +49,17 @@ jobs:
         with:
           dotnet-version: '10.0.x'
       - name: Install RPM packaging tools
-        run: sudo apt-get update -qq && sudo apt-get install -y rpm
+        run: sudo apt-get update -qq && sudo apt-get install -y rpm desktop-file-utils
       - name: Publish self-contained Linux app
         run: dotnet publish DiskChecker.UI.Avalonia/DiskChecker.UI.Avalonia.csproj --configuration Release --runtime linux-x64 --self-contained true --output publish/linux-x64
       - name: Build DEB, RPM and portable installation archive
         run: bash installer/package-linux.sh 1.0.0
-      - name: Validate package metadata and install archive
+      - name: Validate Linux desktop entry and all packaged runtime assets
         run: |
+          desktop-file-validate installer/diskchecker.desktop
+          bash installer/tests/verify-linux-packages.sh
           dpkg-deb -I packages/*.deb
           rpm -qpi packages/*.rpm
-          tar -tzf packages/*installer.tar.gz | grep -F './install-linux.sh'
       - uses: actions/upload-artifact@v4
         with:
           name: diskchecker-linux-installers-test
