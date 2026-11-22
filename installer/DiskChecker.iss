@@ -104,7 +104,7 @@ var
   SmartFound: Boolean;
 
 // Never determine availability from registry entries alone. A valid,
-// executable smartctl is required; machine-wide paths are preferred because
+// executable smartctl is required; trust only machine-wide locations because
 // setup may be running under another administrator's UAC account.
 function SmartctlWorksAt(const FileName: String): Boolean;
 var
@@ -114,39 +114,6 @@ begin
   if not FileExists(FileName) then Exit;
   Result := Exec(FileName, '--version', '', SW_HIDE,
     ewWaitUntilTerminated, ExitCode) and (ExitCode = 0);
-end;
-
-function SmartctlFromPath: String;
-var
-  P, Part, Candidate: String;
-  StopAt: Integer;
-begin
-  Result := '';
-  P := GetEnv('PATH');
-  while P <> '' do
-  begin
-    StopAt := Pos(';', P);
-    if StopAt = 0 then
-    begin
-      Part := P;
-      P := '';
-    end
-    else
-    begin
-      Part := Copy(P, 1, StopAt - 1);
-      Delete(P, 1, StopAt);
-    end;
-    Part := Trim(Part);
-    if Part <> '' then
-    begin
-      Candidate := AddBackslash(Part) + 'smartctl.exe';
-      if SmartctlWorksAt(Candidate) then
-      begin
-        Result := Candidate;
-        Exit;
-      end;
-    end;
-  end;
 end;
 
 function FindWorkingSmartctl: String;
@@ -176,7 +143,10 @@ begin
     Result := Candidate;
     Exit;
   end;
-  Result := SmartctlFromPath();
+  // Do not execute a random smartctl.exe found on user-controlled PATH
+  // with elevated installer privileges. Only the HKLM installation path
+  // or protected Program Files locations are trusted.
+  Result := '';
 end;
 
 // Gets the CLI-reported base version when a portable installation has no
