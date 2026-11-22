@@ -1651,7 +1651,7 @@ public partial class AbsoluteDestructiveTestViewModel : ViewModelBase, INavigabl
     private async Task BuildCertificateAsync()
     {
         IsGeneratingCertificate = true;
-        CertificateProgressText = "PĹ™ipravuji data certifikĂˇtu...";
+        CertificateProgressText = "Připravuji data certifikátu...";
 
         var card = await _diskCardRepository.GetByDevicePathAsync(SelectedDrive!.Path);
         if (card == null)
@@ -1693,7 +1693,7 @@ public partial class AbsoluteDestructiveTestViewModel : ViewModelBase, INavigabl
         var capturedSanitizePass2Write = _sanitizePass2WritePoints.ToList();
         var capturedSanitizePass2Read = _sanitizePass2ReadPoints.ToList();
 
-        CertificateProgressText = "PoÄŤĂ­tĂˇm metriky a znĂˇmky...";
+        CertificateProgressText = "Počítám metriky a známky...";
 
         // Run heavy computations on background thread to keep UI responsive
         var cert = await Task.Run(() =>
@@ -1708,7 +1708,7 @@ public partial class AbsoluteDestructiveTestViewModel : ViewModelBase, INavigabl
                 SerialNumber = capturedSerial,
                 Capacity = capturedCapacity,
                 DiskType = capturedDiskType,
-                TestType = "AbsolutnĂ­ destruktivnĂ­ test",
+                TestType = "Absolutní destruktivní test",
                 TestDuration = capturedTestDuration,
                 Grade = CalculateGrade(),
                 Score = CalculateScore(),
@@ -1723,10 +1723,10 @@ public partial class AbsoluteDestructiveTestViewModel : ViewModelBase, INavigabl
                 ReallocatedSectors = capturedSmartFinal?.ReallocatedSectorCount ?? capturedSmartBaseline?.ReallocatedSectorCount ?? 0,
                 PendingSectors = capturedSmartFinal?.PendingSectorCount ?? capturedSmartBaseline?.PendingSectorCount ?? 0,
                 SanitizationPerformed = true,
-                SanitizationMethod = "Zero-fill + verify (2Ă—)",
+                SanitizationMethod = "Zero-fill + verify (2×)",
                 DataVerified = capturedSanitize2Result?.Success ?? false,
                 ErrorCount = (capturedSanitize1Result?.ErrorsDetected ?? 0) + (capturedSanitize2Result?.ErrorsDetected ?? 0),
-                TemperatureRange = $"{capturedMinTemperature}-{capturedMaxTemperature}Â°C"
+                TemperatureRange = $"{capturedMinTemperature}-{capturedMaxTemperature}°C"
             };
 
             // Seek metrics
@@ -1895,6 +1895,9 @@ public partial class AbsoluteDestructiveTestViewModel : ViewModelBase, INavigabl
                 Certificate.TestSessionId = session.Id;
                 Certificate.DiskCardId = card.Id;
                 await _diskCardRepository.CreateCertificateAsync(Certificate);
+                // Export the same A4 PDF as the other test types before
+                // offering a separate destructive partition-preparation step.
+                await _certificateGenerator.GeneratePdfAsync(Certificate);
                 StatusMessage = L.Get("DestructiveTest.Status.TestDoneCertSaved", Certificate.CertificateNumber);
                 return true;
             }
