@@ -459,3 +459,34 @@ relace. Pokud okno nevznikne, zkontroluj výpis
 Nová verze instalačních podkladů je commitovaná, ale její
 běh na konkrétním linuxovém desktopu čeká na ověření.
 [Návod a diagnostika](docs/LINUX_INSTALL.md).
+
+## Smartmontools installation and PR #17 reconciliation (November 22, 2026)
+
+Smartmontools is a mandatory external dependency for disk SMART
+inspection. **DEB already declares `Depends: smartmontools` and RPM
+already declares `Requires: smartmontools`**, so installing them
+with `apt install ./package.deb` or `dnf install ./package.rpm`
+automatically resolves this dependency through normal OS repositories.
+
+The **portable Linux installer** now also performs an explicit
+pre-install check: it verifies `smartctl --version`, installs
+`smartmontools` via the available system package manager if missing,
+and checks again. If the dependency cannot be installed, it stops
+before copying new DiskChecker application files.
+No package sources are changed.
+
+Mock-based regression tests cover already installed, missing and
+failed-installation cases; the Linux package verifier additionally
+checks DEB/RPM dependency metadata and the portable archive.
+[English dependency contract](docs/Installer-Dependencies/en.md).
+
+The older SMTP PR #17 was compared with contemporary master:
+PR #16 already merged most of its functionality, while the
+remaining identified status/PDF/chart issues have been
+forward-fixed directly on master with regression tests.
+[PR reconciliation](docs/Pull-Request-Reconciliation/en.md).
+
+**Verification:** package and .NET test execution after these
+commits still needs confirmation; do not assume a new release
+is ready solely because review threads were marked resolved.
+
