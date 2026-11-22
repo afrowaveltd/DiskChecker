@@ -1,8 +1,27 @@
 #!/bin/sh
-# CLI entry point for packages; do not silently run disk tools unprivileged.
+# Both the DEB/RPM desktop entry and the terminal use this installed path.
+# Keep the application privileged, but pass only explicit GUI coordinates
+# across the pkexec boundary (pkexec strips the GUI environment).
 set -eu
-if [ "$(id -u)" -ne 0 ]; then
-    echo "DiskChecker requires root for raw disk access. Run: sudo diskchecker" >&2
+
+APP=/opt/diskchecker/DiskChecker.UI.Avalonia
+ROOT_HELPER=/usr/lib/diskchecker/diskchecker-elevated
+
+if [ "$(id -u)" -eq 0 ]; then
+    exec "$APP" "$@"
+fi
+
+if [ ! -x /usr/bin/pkexec ]; then
+    echo "DiskChecker requires pkexec/polkit for graphical elevation." >&2
+    echo "Install pkexec, or use sudo diskchecker from a suitable terminal." >&2
+    exit 127
+fi
+if [ -z "${DISPLAY:-}" ] && [ -z "${WAYLAND_DISPLAY:-}" ]; then
+    echo "DiskChecker: no graphical X11/Wayland session detected." >&2
     exit 1
 fi
-exec /opt/diskchecker/DiskChecker.UI.Avalonia "$@"
+
+exec /usr/bin/pkexec "$ROOT_HELPER" \
+    "$(id -u)" "${DISPLAY:-}" "${XAUTHORITY:-}" \
+    "${WAYLAND_DISPLAY:-}" "${XDG_RUNTIME_DIR:-}" \
+    "${DBUS_SESSION_BUS_ADDRESS:-}" "$@"
