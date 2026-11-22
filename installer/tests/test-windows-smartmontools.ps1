@@ -3,7 +3,7 @@
 # identical smartmontools. Never run this on a production workstation.
 $ErrorActionPreference = 'Stop'
 $Expected = '8.0.0.623' # Canonical smartctl version written to DisplayVersion.
-$ExpectedCliVersion = '^smartctl 8\.0\.0\.623(?:\s|$)'
+$ExpectedCliVersion = '^smartctl 8\.0(?:\.0\.623)?(?:\s|$)' # smartctl CLI reports base 8.0; registry identifies exact build.
 $Installers = @(Get-ChildItem -Path 'packages' -Filter 'DiskChecker-*-win-x64-Setup.exe')
 if ($Installers.Count -ne 1) { throw "Expected exactly one DiskChecker setup EXE" }
 $Setup = $Installers[0].FullName
@@ -45,10 +45,22 @@ if ($Registered.DisplayVersion -ne $Expected) {
 }
 $Tool = Join-Path $Registered.InstallLocation 'bin\smartctl.exe'
 if (-not (Test-Path $Tool)) { throw "smartctl missing from $Tool" }
-$CliVersion = (& $Tool --version | Select-Object -First 1).Trim()
-if ($LASTEXITCODE -ne 0) { throw "Installed smartctl --version failed" }
+# Consume ALL output before checking the native process exit status.
+# Select-Object -First 1 on a live native pipeline can close stdout early,
+# leading to a broken pipe and a false nonzero exit code on Windows.
+$CliOutput = @(& $Tool --version 2>&1)
+$CliExitCode = $LASTEXITCODE
+if ($CliExitCode -ne 0) {
+    throw "Installed smartctl --version failed (exit code $CliExitCode): $($CliOutput -join ' | ')"
+}
+$CliVersion = @($CliOutput | Where-Object { $_ -match '^smartctl\s' } | Select-Object -First 1)
+if ($CliVersion.Count -ne 1) {
+    throw "smartctl --version returned no version line: $($CliOutput -join ' | ')"
+}
+$CliVersion = "$($CliVersion[0])".Trim()
+Write-Host "Verified smartctl CLI: $CliVersion (exact installed build $Expected from registry)"
 if ($CliVersion -notmatch $ExpectedCliVersion) {
-    throw "Expected smartctl CLI version 8.0.0.623, reported $CliVersion"
+    throw "Expected smartctl CLI base 8.0 or 8.0.0.623, reported $CliVersion"
 }
 if (-not $PreInstalled) {
     $Log = Get-Content -LiteralPath $FirstLog -Raw
