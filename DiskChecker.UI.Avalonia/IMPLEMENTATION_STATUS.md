@@ -34,3 +34,33 @@
   unprivileged GUI plus privileged disk service.
 - See `../installer/IMPLEMENTATION_STATUS.md`
   and `../docs/Linux-Desktop-Launcher/en.md`.
+
+## 2026-11-22 — PR17 Copilot follow-up corrections
+
+- Current master already contains the SMTP functionality
+  from merged PR #16; PR #17 was a 67-commits-behind
+  conflicting implementation, not a safe merge target.
+  All seven PR17 review threads had been marked
+  resolved, but the current master was checked
+  independently for the actual issues.
+- Corrected a remaining destructive-test status
+  issue: `StartTestAsync` no longer overwrites
+  completion/SMTP warnings with `PowerRestored`.
+  A power restore failure now appends a separate
+  warning instead of replacing the disk/mail result.
+- Safe destructive certificate delivery no longer
+  shares the cancellation token that navigation
+  disposes after the disk restore is complete.
+- Certificate builders now attach bounded actual
+  seek and sanitization speed series and generic
+  speed values for PDF graphs, not just summary
+  statistics. The PDF renderer identifies a
+  comprehensive test from measured sanitizer +
+  seek data independently of localized TestType.
+- Added `LocalizedCertificateCategoryTests`
+  including localized strings and bounded chronological
+  chart sample checks; physical disk tests were
+  **not** executed.
+- English rationale:
+  `docs/Pull-Request-Reconciliation/en.md`.
+  **.NET build/full test results pending**.
