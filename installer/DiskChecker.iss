@@ -8,6 +8,7 @@
 #define MyAppExeName "DiskChecker.UI.Avalonia.exe"
 #define SmartVersion "8.0-623-gd788ad8c38ee"
 #define SmartRegisteredVersion "pre-8.0-623"
+#define SmartCliVersion "8.0.0.623"
 #define SmartPackage "smartmontools-win32-setup-8.0-623-gd788ad8c38ee.exe"
 
 [Setup]
@@ -418,7 +419,10 @@ begin
     Exit;
   end;
 
-  if CompareSmartVersion(SmartCurrentVersion) <> 0 then
+  // The upstream binary reports its numeric release counter on the CLI,
+  // while its uninstall key may provide the prerelease identity.
+  if (CompareSmartVersion(SmartCurrentVersion) <> 0) and
+    (CompareText(Trim(SmartCurrentVersion), '{#SmartCliVersion}') <> 0) then
   begin
     Result := 'smartmontools installation did not report the bundled ' +
       'version {#SmartVersion} (detected: ' + SmartCurrentVersion + '). ' +

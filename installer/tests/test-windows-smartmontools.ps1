@@ -3,6 +3,7 @@
 # identical smartmontools. Never run this on a production workstation.
 $ErrorActionPreference = 'Stop'
 $Expected = 'pre-8.0-623' # Upstream NSIS DisplayVersion, not the asset tag.
+$ExpectedCliVersion = '^smartctl 8\.0\.0\.623(?:\s|$)'
 $Installers = @(Get-ChildItem -Path 'packages' -Filter 'DiskChecker-*-win-x64-Setup.exe')
 if ($Installers.Count -ne 1) { throw "Expected exactly one DiskChecker setup EXE" }
 $Setup = $Installers[0].FullName
@@ -44,8 +45,11 @@ if ($Registered.DisplayVersion -ne $Expected) {
 }
 $Tool = Join-Path $Registered.InstallLocation 'bin\smartctl.exe'
 if (-not (Test-Path $Tool)) { throw "smartctl missing from $Tool" }
-& $Tool --version
+$CliVersion = (& $Tool --version | Select-Object -First 1).Trim()
 if ($LASTEXITCODE -ne 0) { throw "Installed smartctl --version failed" }
+if ($CliVersion -notmatch $ExpectedCliVersion) {
+    throw "Expected smartctl CLI version 8.0.0.623, reported $CliVersion"
+}
 if (-not $PreInstalled) {
     $Log = Get-Content -LiteralPath $FirstLog -Raw
     if (-not $Log.Contains('smartmontools: state=missing')) {
