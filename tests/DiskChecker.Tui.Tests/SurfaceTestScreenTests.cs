@@ -1,4 +1,6 @@
 using DiskChecker.Core.Interfaces;
+using DiskChecker.Core.Models;
+using NSubstitute;
 using DiskChecker.TUI.Screens;
 using DiskChecker.TUI.Services;
 using DiskChecker.Tui.Tests.Support;
@@ -90,6 +92,55 @@ public sealed class SurfaceTestScreenTests
 
         Assert.Equal(1, sanitization.SanitizeCalls);
         Assert.Contains("Sanitizace", harness.Io.Output, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task CompletedSanitizationEmailsItsStoredPdfWhenRecipientConfigured()
+    {
+        var provider = new FakeSmartaProvider { Data = FakeSmartaProvider.Sample() };
+        var sanitization = new FakeSanitizationService();
+        var detection = new FakeDiskDetectionService();
+        detection.Drives.Add(FakeDiskDetectionService.Sample());
+        var sender = Substitute.For<IEmailSender>();
+        var smtpSettings = Substitute.For<IEmailSettingsService>();
+        smtpSettings.GetAsync(Arg.Any<CancellationToken>())
+            .Returns(Task.FromResult(new EmailSettings { IncludeCertificateAttachment = true }));
+
+        using var harness = TestHarness.Create(configure: services =>
+        {
+            services.RemoveAll<ISmartaProvider>();
+            services.AddSingleton<ISmartaProvider>(provider);
+            services.RemoveAll<IDiskDetectionService>();
+            services.AddSingleton<IDiskDetectionService>(detection);
+            services.RemoveAll<IDiskSanitizationService>();
+            services.AddSingleton<IDiskSanitizationService>(sanitization);
+            services.RemoveAll<IEmailSender>();
+            services.AddSingleton<IEmailSender>(sender);
+            services.RemoveAll<IEmailSettingsService>();
+            services.AddSingleton<IEmailSettingsService>(smtpSettings);
+        });
+        await harness.GetRequiredService<ISettingsService>()
+            .SetReportRecipientEmailAsync("technician@example.net");
+
+        harness.Context.Selection.SelectedDisk = detection.Drives[0];
+        harness.Io.EnqueueChoice("sanitize");
+        harness.Io.EnqueueConfirm(true);
+        harness.Io.EnqueueAsk("0");
+        harness.Io.EnqueueConfirm(false); // Do not partition/form at end.
+        harness.Io.EnqueueChoice("back");
+
+        await new SurfaceTestScreen().ShowAsync(
+            harness.Context, TestContext.Current.CancellationToken);
+
+        Assert.Equal(1, sanitization.SanitizeCalls);
+        await sender.Received(1).SendAsync(
+            Arg.Is<EmailMessage>(email =>
+                email.ToAddress == "technician@example.net" &&
+                email.Attachments.Count == 1 &&
+                email.Attachments[0].ContentType == "application/pdf" &&
+                email.Attachments[0].Content.Length > 5 &&
+                email.Attachments[0].Content[0] == (byte)'%'),
+            Arg.Any<CancellationToken>());
     }
 
     [Theory]

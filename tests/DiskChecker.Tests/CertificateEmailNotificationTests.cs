@@ -128,6 +128,89 @@ public sealed class CertificateEmailNotificationTests
     }
 
     [Fact]
+    public async Task StoredSanitizationCertificateAttachesExistingPdfWithoutRegeneration()
+    {
+        var pdfPath = Path.Combine(Path.GetTempPath(), $"dc-sanitization-mail-{Guid.NewGuid():N}.pdf");
+        var originalPdf = new byte[] { 37, 80, 68, 70, 45, 49, 46, 55, 10, 65, 66, 67 };
+        try
+        {
+            await File.WriteAllBytesAsync(pdfPath, originalPdf,
+                TestContext.Current.CancellationToken);
+            var sender = Substitute.For<IEmailSender>();
+            var smtp = Substitute.For<IEmailSettingsService>();
+            smtp.GetAsync(Arg.Any<CancellationToken>())
+                .Returns(Task.FromResult(new EmailSettings
+                {
+                    FromAddress = "sender@example.net",
+                    IncludeCertificateAttachment = true
+                }));
+            var appSettings = Substitute.For<ISettingsService>();
+            appSettings.GetReportRecipientEmailAsync()
+                .Returns(Task.FromResult("recipient@example.net"));
+            var generator = Substitute.For<ICertificateGenerator>();
+            var locale = Substitute.For<ILocaleProvider>();
+            locale.GetString(Arg.Any<string>(), Arg.Any<string>())
+                .Returns(call => call.ArgAt<string>(1));
+            var notification = new TestCompletionNotificationService(
+                sender, smtp, NullLogger<TestCompletionNotificationService>.Instance,
+                locale, appSettings, generator);
+            var certificate = new DiskCertificate
+            {
+                DiskCardId = 3,
+                TestSessionId = 7,
+                TestType = "Sanitization",
+                DiskModel = "Sanitized HDD",
+                SanitizationPerformed = true,
+                Grade = "A",
+                Score = 95
+            };
+
+            Assert.True(await notification.SendStoredCertificateIfConfiguredAsync(
+                certificate, pdfPath, TestContext.Current.CancellationToken));
+            await sender.Received(1).SendAsync(
+                Arg.Is<EmailMessage>(email =>
+                    email.ToAddress == "recipient@example.net" &&
+                    email.Attachments.Count == 1 &&
+                    email.Attachments[0].FileName == Path.GetFileName(pdfPath) &&
+                    email.Attachments[0].ContentType == "application/pdf" &&
+                    email.Attachments[0].Content.Length == originalPdf.Length &&
+                    email.Attachments[0].Content[0] == (byte)'%' &&
+                    email.Subject.Contains("95/100")),
+                Arg.Any<CancellationToken>());
+            await generator.DidNotReceiveWithAnyArgs()
+                .GeneratePdfAsync(default!);
+        }
+        finally
+        {
+            if (File.Exists(pdfPath)) File.Delete(pdfPath);
+        }
+    }
+
+    [Fact]
+    public async Task StoredSanitizationCertificateNeverEmailsNonexistentPdf()
+    {
+        var sender = Substitute.For<IEmailSender>();
+        var smtp = Substitute.For<IEmailSettingsService>();
+        var appSettings = Substitute.For<ISettingsService>();
+        appSettings.GetReportRecipientEmailAsync()
+            .Returns(Task.FromResult("recipient@example.net"));
+        var generator = Substitute.For<ICertificateGenerator>();
+        var notification = new TestCompletionNotificationService(
+            sender, smtp, NullLogger<TestCompletionNotificationService>.Instance,
+            Substitute.For<ILocaleProvider>(), appSettings, generator);
+        var missingPdf = Path.Combine(Path.GetTempPath(), $"missing-{Guid.NewGuid():N}.pdf");
+
+        await Assert.ThrowsAsync<FileNotFoundException>(() =>
+            notification.SendStoredCertificateIfConfiguredAsync(
+                new DiskCertificate { DiskCardId = 3, TestSessionId = 7 },
+                missingPdf, TestContext.Current.CancellationToken));
+        await sender.DidNotReceiveWithAnyArgs()
+            .SendAsync(default!, Arg.Any<CancellationToken>());
+        await generator.DidNotReceiveWithAnyArgs()
+            .GeneratePdfAsync(default!);
+    }
+
+    [Fact]
     public async Task NoRecipientNeverSendsStoredCertificate()
     {
         var sender = Substitute.For<IEmailSender>();
