@@ -372,6 +372,7 @@ public sealed class SurfaceTestScreen : ITuiScreen
             return;
         }
 
+        _lastSessionId = null;
         string? pauseInput = context.Dialogs.Ask(
             "Pauza po každých 10 GiB zápisu, v sekundách (0 = bez pauzy, 1–60):", "0");
         if (pauseInput is null)
@@ -385,10 +386,6 @@ public sealed class SurfaceTestScreen : ITuiScreen
             return;
         }
 
-        bool createPartition = context.Dialogs.Confirm(
-            "Oddíl po sanitizaci",
-            "Má se po dokončení vytvořit oddíl a formátovat jej?",
-            danger: false);
         var sanitization = context.GetRequiredService<IDiskSanitizationService>();
         var progress = new TuiProgress();
         var chart = new TuiChart { MinX = 0, MaxX = 100, XSuffix = " %", YFormat = "F0" };
@@ -445,11 +442,11 @@ public sealed class SurfaceTestScreen : ITuiScreen
                 result = await Task.Run(
                     () => pacing is null
                         ? sanitization.SanitizeDiskAsync(
-                            _disk.Path, _disk.TotalSize, createPartition, createPartition,
-                            "DiskChecker", reporter, linked.Token)
+                            _disk.Path, _disk.TotalSize, false, false,
+                            "SCCM", reporter, linked.Token)
                         : sanitization.SanitizeDiskPacedAsync(
-                            _disk.Path, _disk.TotalSize, createPartition, createPartition,
-                            "DiskChecker", pacing, reporter, linked.Token),
+                            _disk.Path, _disk.TotalSize, false, false,
+                            "SCCM", pacing, reporter, linked.Token),
                     linked.Token).ConfigureAwait(false);
             }
             catch (OperationCanceledException)
@@ -476,6 +473,16 @@ public sealed class SurfaceTestScreen : ITuiScreen
             : "Sanitizace selhala: " + (result.ErrorMessage ?? "neznámá chyba");
 
         await PersistSanitizationAsync(context, result, cancellationToken).ConfigureAwait(false);
+
+        if (result.Success && _lastSessionId.HasValue)
+        {
+            var prepared = await PostTestPartitionPreparation.OfferAsync(
+                context, sanitization, _disk.Path, _disk.Name, cancellationToken).ConfigureAwait(false);
+            if (prepared?.Success == true)
+                _status += $" GPT / {prepared.FileSystem} (SCCM) vytvořen.";
+            else if (prepared is { Success: false })
+                _status += " Příprava disku selhala: " + prepared.ErrorMessage;
+        }
     }
 
     private async Task PersistSanitizationAsync(TuiContext context, SanitizationResult result, CancellationToken cancellationToken)
@@ -498,6 +505,20 @@ public sealed class SurfaceTestScreen : ITuiScreen
                 smartaData: _smart,
                 smartAfter: result.SmartAfter,
                 cancellationToken).ConfigureAwait(false);
+
+            var certificateGenerator = scope.ServiceProvider.GetRequiredService<ICertificateGenerator>();
+            var repository = scope.ServiceProvider.GetRequiredService<IDiskCardRepository>();
+            var certificate = await certificateGenerator.GenerateCertificateAsync(session, card).ConfigureAwait(false);
+            certificate.TestSessionId = session.Id;
+            certificate = await repository.CreateCertificateAsync(certificate).ConfigureAwait(false);
+            try
+            {
+                await certificateGenerator.GeneratePdfAsync(certificate).ConfigureAwait(false);
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or InvalidOperationException)
+            {
+                _status += " Export PDF selhal: " + ex.Message;
+            }
 
             _lastSessionId = session.Id;
             context.Selection.SelectedDiskCardId = card.Id;

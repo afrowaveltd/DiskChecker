@@ -282,21 +282,9 @@ public sealed class AbsoluteDestructiveScreen : ITuiScreen
                 await CaptureFinalSmartAsync(context, linked.Token).ConfigureAwait(false);
                 state.SetPhaseState(6, TuiPhaseState.Completed, "výsledky připraveny");
 
-                // Phase 7 – partition
-                state.SetPhaseState(7, TuiPhaseState.Running, "vytvářím oddíl");
-                try
-                {
-                    var partition = await Task.Run(
-                        () => sanitization.CreatePartitionAsync(_disk.Path, "Tested", format: true, progress: null, linked.Token),
-                        linked.Token).ConfigureAwait(false);
-                    state.SetPhaseState(7, TuiPhaseState.Completed,
-                        partition.Success ? partition.FileSystem ?? "vytvořen" : partition.ErrorMessage ?? "selhalo");
-                }
-                catch (Exception ex) when (ex is IOException or InvalidOperationException or UnauthorizedAccessException)
-                {
-                    state.SetPhaseState(7, TuiPhaseState.Failed, ex.Message);
-                }
-
+                // Partitioning is not part of the test: ask only after
+                // the certificate has been saved, outside this live operation.
+                state.SetPhaseState(7, TuiPhaseState.Skipped, "příprava disku je volitelná");
                 state.Percent = 100;
             }
             catch (OperationCanceledException)
@@ -314,6 +302,25 @@ public sealed class AbsoluteDestructiveScreen : ITuiScreen
         if (!aborted)
         {
             await FinalizeAsync(context, startedAt, cancellationToken).ConfigureAwait(false);
+            if (_certificate != null && _disk != null)
+            {
+                var prepared = await PostTestPartitionPreparation.OfferAsync(
+                    context, sanitization, _disk.Path, _disk.Name, cancellationToken).ConfigureAwait(false);
+                if (prepared == null)
+                {
+                    progress.SetPhaseState(7, TuiPhaseState.Skipped, "přeskočeno");
+                }
+                else if (prepared.Success)
+                {
+                    progress.SetPhaseState(7, TuiPhaseState.Completed, prepared.FileSystem ?? "GPT");
+                    _status += $" Připraven GPT / {prepared.FileSystem}, SCCM.";
+                }
+                else
+                {
+                    progress.SetPhaseState(7, TuiPhaseState.Failed, prepared.ErrorMessage ?? "selhalo");
+                    _status += " Příprava disku selhala: " + prepared.ErrorMessage;
+                }
+            }
         }
         else
         {
@@ -590,6 +597,14 @@ public sealed class AbsoluteDestructiveScreen : ITuiScreen
             context.Selection.SelectedCertificateId = certificate.Id;
 
             _status = $"Test dokončen – známka {_grade}, skóre {score:F0}/100, certifikát {certificate.CertificateNumber} uložen.";
+            try
+            {
+                await certificateGenerator.GeneratePdfAsync(certificate).ConfigureAwait(false);
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or InvalidOperationException)
+            {
+                _status += " PDF export selhal: " + ex.Message;
+            }
         }
         catch (Exception ex) when (ex is IOException or InvalidOperationException or Microsoft.EntityFrameworkCore.DbUpdateException)
         {
