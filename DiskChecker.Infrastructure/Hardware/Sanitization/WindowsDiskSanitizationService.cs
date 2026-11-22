@@ -938,9 +938,10 @@ create partition primary" +
                 result.PartitionFormatted = format;
                 if (_logger != null && _logger.IsEnabled(LogLevel.Information))
                 {
-                    _logger.LogInformation(
-                        format ? "GPT/NTFS formatted for disk {DriveNumber}" : "GPT partition created (unformatted) for disk {DriveNumber}",
-                        driveNumber);
+                    if (format)
+                        _logger.LogInformation("GPT/NTFS formatted for disk {DriveNumber}", driveNumber);
+                    else
+                        _logger.LogInformation("GPT partition created (unformatted) for disk {DriveNumber}", driveNumber);
                 }
             }
             finally
