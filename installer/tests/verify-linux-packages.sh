@@ -11,6 +11,9 @@ sh -n installer/diskchecker-launcher
 sh -n installer/diskchecker-elevated
 bash -n installer/install-linux.sh
 bash -n installer/package-linux.sh
+bash -n installer/ensure-smartmontools.sh
+bash -n installer/tests/test-smartmontools-dependency.sh
+bash installer/tests/test-smartmontools-dependency.sh
 
 python3 - <<'PY'
 from pathlib import Path
