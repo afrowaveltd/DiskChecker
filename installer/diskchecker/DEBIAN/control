@@ -3,7 +3,8 @@ Version: 1.0.0
 Section: utils
 Priority: optional
 Architecture: amd64
-Depends: libicu72 (>= 72.0), libssl3 (>= 3.0.0), libglib2.0-0 (>= 2.68.0)
+Depends: smartmontools, polkitd, pkexec, util-linux, e2fsprogs, fdisk | parted, udev
+Recommends: ntfs-3g, xfsprogs, btrfs-progs, f2fs-tools, dosfstools
 Maintainer: DiskChecker <info@diskchecker.org>
 Description: Cross-platform disk diagnostics and SMART analysis tool
  DiskChecker is a comprehensive disk diagnostics tool that provides:

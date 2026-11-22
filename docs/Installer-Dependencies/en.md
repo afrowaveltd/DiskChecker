@@ -54,7 +54,7 @@ silently bypass the dependency check.
 The Debian package declares:
 
 ```text
-Depends: smartmontools, polkitd, pkexec
+Depends: smartmontools, polkitd, pkexec, util-linux, e2fsprogs, fdisk | parted, udev
 ```
 
 Using `sudo apt install ./diskchecker-1.0.0-linux-x64.deb`
@@ -63,8 +63,8 @@ configured trusted distribution repositories when absent.
 `dpkg -i` alone does not resolve absent dependencies; prefer
 `apt install`.
 
-The RPM spec declares both `Requires: smartmontools`
-and `Requires: polkit`. Install using `dnf install ./...`
+The RPM spec declares `Requires: smartmontools`, `polkit`,
+`util-linux` and `e2fsprogs`. Install using `dnf install ./...`
 (or the distribution's equivalent resolver) so missing
 `smartmontools` is installed through standard dependencies.
 
@@ -104,6 +104,24 @@ work after installation, the portable installer fails
 This dependency check is an installer operation, not a
 background action on every GUI startup, and does not bypass
 the application's existing mandatory administrator privileges.
+
+## GPT preparation and optional file systems
+
+The application checks *actual installed formatter commands* when it asks for
+a filesystem after a successful destructive test and persisted certificate.
+The default full-disk GPT/EXT4 preparation depends on `wipefs`,
+`sfdisk` (or `parted`), `udevadm` and `mkfs.ext4`.
+DEB and RPM packages install core utilities through native dependencies.
+The portable installer uses `ensure-partition-tools.sh` before copying app files.
+
+On Linux, additional formats are offered only when the corresponding
+`mkfs.*` tool is present. NTFS is offered only when **both** `ntfs-3g`
+and `mkfs.ntfs` are found. Optional formatter packages are recommended,
+not silently installed just to add menu entries.
+Windows offers GPT/NTFS with the fixed SCCM volume label.
+
+All preparation is optional and occurs after test persistence.
+A 'No' response does not change the verified test result.
 
 ## Regression checks
 

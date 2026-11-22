@@ -7,6 +7,8 @@ URL:            https://github.com/afrowaveltd/DiskChecker
 BuildArch:      x86_64
 Requires:       smartmontools
 Requires:       polkit
+Requires:       util-linux
+Requires:       e2fsprogs
 
 %description
 Self-contained .NET DiskChecker GUI with SMART monitoring, surface testing,

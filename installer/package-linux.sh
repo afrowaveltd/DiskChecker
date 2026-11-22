@@ -35,8 +35,8 @@ Version: ${VERSION}
 Section: utils
 Priority: optional
 Architecture: amd64
-Depends: smartmontools, polkitd, pkexec
-Recommends: hicolor-icon-theme
+Depends: smartmontools, polkitd, pkexec, util-linux, e2fsprogs, fdisk | parted, udev
+Recommends: hicolor-icon-theme, ntfs-3g, xfsprogs, btrfs-progs, f2fs-tools, dosfstools
 Maintainer: Afrowave Community <noreply@afrowave.ltd>
 Description: Disk health analysis, surface diagnostics and PDF certificates
  Cross-platform self-contained .NET disk diagnostics.
@@ -58,7 +58,7 @@ find "${RPM_TOP}/RPMS" -name '*.rpm' -type f -exec cp -f {} "${PACKAGES}/" \;
 BUNDLE="${STAGE}/portable"
 mkdir -p "${BUNDLE}/publish/linux-x64"
 cp -a "${PUBLISH}/." "${BUNDLE}/publish/linux-x64/"
-cp installer/{install-linux.sh,ensure-smartmontools.sh,diskchecker-launcher,diskchecker-elevated,diskchecker.desktop,org.afrowave.diskchecker.policy} "${BUNDLE}/"
+cp installer/{install-linux.sh,ensure-smartmontools.sh,ensure-partition-tools.sh,diskchecker-launcher,diskchecker-elevated,diskchecker.desktop,org.afrowave.diskchecker.policy} "${BUNDLE}/"
 cp DiskChecker.UI.Avalonia/Assets/disk-checker-icon.svg "${BUNDLE}/diskchecker.svg"
 chmod 755 "${BUNDLE}/install-linux.sh" "${BUNDLE}/diskchecker-launcher" "${BUNDLE}/diskchecker-elevated"
 tar -C "${BUNDLE}" -czf "${PACKAGES}/diskchecker-${VERSION}-linux-x64-installer.tar.gz" .

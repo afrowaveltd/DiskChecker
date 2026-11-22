@@ -31,6 +31,12 @@ if [[ ! -f "${SCRIPT_DIR}/ensure-smartmontools.sh" ]]; then
 fi
 bash "${SCRIPT_DIR}/ensure-smartmontools.sh"
 
+if [[ ! -f "${SCRIPT_DIR}/ensure-partition-tools.sh" ]]; then
+    echo "Missing required GPT/formatting dependency helper." >&2
+    exit 1
+fi
+bash "${SCRIPT_DIR}/ensure-partition-tools.sh"
+
 install -d -m 755 "${INSTALL_DIR}" /usr/bin /usr/lib/diskchecker \
     /usr/share/applications /usr/share/polkit-1/actions \
     /usr/share/icons/hicolor/scalable/apps
