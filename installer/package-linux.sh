@@ -58,7 +58,7 @@ find "${RPM_TOP}/RPMS" -name '*.rpm' -type f -exec cp -f {} "${PACKAGES}/" \;
 BUNDLE="${STAGE}/portable"
 mkdir -p "${BUNDLE}/publish/linux-x64"
 cp -a "${PUBLISH}/." "${BUNDLE}/publish/linux-x64/"
-cp installer/{install-linux.sh,diskchecker-launcher,diskchecker-elevated,diskchecker.desktop,org.afrowave.diskchecker.policy} "${BUNDLE}/"
+cp installer/{install-linux.sh,ensure-smartmontools.sh,diskchecker-launcher,diskchecker-elevated,diskchecker.desktop,org.afrowave.diskchecker.policy} "${BUNDLE}/"
 cp DiskChecker.UI.Avalonia/Assets/disk-checker-icon.svg "${BUNDLE}/diskchecker.svg"
 chmod 755 "${BUNDLE}/install-linux.sh" "${BUNDLE}/diskchecker-launcher" "${BUNDLE}/diskchecker-elevated"
 tar -C "${BUNDLE}" -czf "${PACKAGES}/diskchecker-${VERSION}-linux-x64-installer.tar.gz" .
