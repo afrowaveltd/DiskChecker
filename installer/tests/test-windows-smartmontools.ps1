@@ -6,12 +6,21 @@ $Expected = '8.0-623-gd788ad8c38ee'
 $Installers = @(Get-ChildItem -Path 'packages' -Filter 'DiskChecker-*-win-x64-Setup.exe')
 if ($Installers.Count -ne 1) { throw "Expected exactly one DiskChecker setup EXE" }
 $Setup = $Installers[0].FullName
-$RegPath = 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\smartmontools'
+$RegCandidates = @(
+    'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\smartmontools',
+    'HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\smartmontools'
+)
+function Find-SmartmontoolsRegistryKey {
+    foreach ($Candidate in $RegCandidates) {
+        if (Test-Path -LiteralPath $Candidate) { return $Candidate }
+    }
+    return $null
+}
 $FirstLog = Join-Path (Get-Location) 'packages\smartmontools-first-install.log'
 $SecondLog = Join-Path (Get-Location) 'packages\smartmontools-repeat-install.log'
 
 # The runner should not have smartmontools in its machine-level installation.
-$PreInstalled = Test-Path $RegPath
+$PreInstalled = $null -ne (Find-SmartmontoolsRegistryKey)
 if ($PreInstalled) {
     Write-Host 'Runner has preinstalled smartmontools; mandatory-missing case will be skipped.'
 }
@@ -27,7 +36,8 @@ function Invoke-DiskCheckerInstaller([string] $LogPath) {
 
 Write-Host 'First DiskChecker setup: test bundled offline smartmontools installation.'
 Invoke-DiskCheckerInstaller $FirstLog
-if (-not (Test-Path $RegPath)) { throw "smartmontools registry key missing after setup" }
+$RegPath = Find-SmartmontoolsRegistryKey
+if ($null -eq $RegPath) { throw "smartmontools registry key missing after setup (both views checked)" }
 $Registered = Get-ItemProperty -Path $RegPath
 if ($Registered.DisplayVersion -ne $Expected) {
     throw "Expected prerelease $Expected, registered $($Registered.DisplayVersion)"
