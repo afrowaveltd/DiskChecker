@@ -7,6 +7,7 @@
 #define MyAppURL "https://github.com/afrowaveltd/DiskChecker"
 #define MyAppExeName "DiskChecker.UI.Avalonia.exe"
 #define SmartVersion "8.0-623-gd788ad8c38ee"
+#define SmartRegisteredVersion "pre-8.0-623"
 #define SmartPackage "smartmontools-win32-setup-8.0-623-gd788ad8c38ee.exe"
 
 [Setup]
@@ -212,20 +213,29 @@ end;
 function CompareSmartVersion(const Version: String): Integer;
 var
   I, Major, Minor, Build: Integer;
+  Normalized: String;
 begin
   Result := -2;
-  if CompareText(Trim(Version), '{#SmartVersion}') = 0 then
+  // Official upstream NSIS intentionally registers "pre-8.0-623", whereas
+  // its release asset tag has the exact Git commit suffix. Both refer to the
+  // pinned 2026-11-21 snapshot (the original binary is SHA256-verified).
+  if (CompareText(Trim(Version), '{#SmartVersion}') = 0) or
+     (CompareText(Trim(Version), '{#SmartRegisteredVersion}') = 0) then
   begin
     Result := 0;
     Exit;
   end;
+  Normalized := Trim(Version);
+  if CompareText(Copy(Normalized, 1, 4), 'pre-') = 0 then
+    Delete(Normalized, 1, 4);
+
   I := 1;
-  Major := NextNumber(Version, I);
+  Major := NextNumber(Normalized, I);
   if Major < 0 then Exit;
-  if I > Length(Version) then Exit;
-  if Version[I] <> '.' then Exit;
+  if I > Length(Normalized) then Exit;
+  if Normalized[I] <> '.' then Exit;
   Inc(I);
-  Minor := NextNumber(Version, I);
+  Minor := NextNumber(Normalized, I);
   if Minor < 0 then Exit;
 
   if (Major < SmartTargetMajor) or
@@ -243,10 +253,10 @@ begin
 
   // Bare '8.0' is ambiguous (portable nightly or final release), so
   // never label it exact or older without a build identity.
-  if I > Length(Version) then Exit;
-  if Version[I] <> '-' then Exit;
+  if I > Length(Normalized) then Exit;
+  if Normalized[I] <> '-' then Exit;
   Inc(I);
-  Build := NextNumber(Version, I);
+  Build := NextNumber(Normalized, I);
   if Build < 0 then Exit;
   if Build < SmartTargetBuild then Result := -1
   else if Build > SmartTargetBuild then Result := 1
