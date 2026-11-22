@@ -12,42 +12,64 @@ milestone adds the missing **preflight and installation** to the
 portable Linux installer, while retaining package-manager-native
 dependency resolution for DEB/RPM.
 
-## Windows Inno Setup
+## Windows Inno Setup (offline, version aware)
 
-The Windows installer now uses an Inno Setup
-`PrepareToInstall` hook to check whether
-`smartctl.exe --version` runs from the standard
-Program Files installation directory or the system
-command search path.
+**Pinned upstream package:** [smartmontools 8.0-623-gd788ad8c38ee](https://github.com/smartmontools/smartmontools-builds/releases/tag/smartmontools-8.0-623-gd788ad8c38ee),
+official 2026-11-21 **prerelease** (not the latest stable 7.5).
+The build script `installer/prepare-windows-smartmontools.ps1` fetches two
+artifacts and compares SHA-256 hashes with the upstream release metadata:
 
-When a working executable is present, the installer
-does not change the existing smartmontools installation.
-Otherwise, before installing DiskChecker, it requests
-the exact publisher package identifier from Windows
-Package Manager:
+- `smartmontools-win32-setup-8.0-623-gd788ad8c38ee.exe`:
+  `b2c77ffb58c223e8e4494442e4cd751006c00af1cfd77e834fc9f97d2fcc9f3e`
+- Complete corresponding source `smartmontools-8.0-623-gd788ad8c38ee.tar.gz`:
+  `9da427312bb8aee04b867b487f4cdebfbe510d9e6b16d5726daec5a71260662e`
+
+The official installer is embedded in DiskChecker Setup with `dontcopy`.
+**No WinGet, download, or internet access is required on the target PC.**
+The GPLv2 license and corresponding source tarball are included in
+`{app}\licenses\smartmontools`.
+
+### Decision table (visible wizard checkbox)
+
+| Detected state | Selected | Enabled | Operation |
+| --- | --- | --- | --- |
+| No working `smartctl.exe` | Yes | No | Mandatory installation |
+| Exactly `8.0-623-gd788ad8c38ee` | No | No | Keep installed version |
+| Older version | Yes | Yes | Offer upgrade; can decline |
+| Newer version | No | No | Never downgrade |
+| Existing, version unidentifiable | No | Yes | Optional replacement; never overwrite silently |
+
+The installer checks that the actual `smartctl.exe --version` runs,
+rather than trusting registry entries alone. It discovers an official
+machine-wide installation using the upstream uninstall key, known
+Program Files paths, or a working copy on PATH. Exact snapshot identity
+comes from the upstream NSIS `DisplayVersion`; the CLI version
+alone may report `8.0` without a Git commit suffix.
+
+If selected, setup extracts and runs the embedded **official upstream
+NSIS** installer silently with system-wide PATH enabled:
+`/S /SO x64,smartctl,smartd,smartctlnc,drivedb,doc,uninst,menu,syspath`.
+It then verifies the executable is runnable and that the registered
+version matches the bundle. An error **aborts DiskChecker setup**.
+The older version can be kept, but `smartctl` must be usable.
+
+These checks happen during installation. They do not grant disk access
+to normal users; DiskChecker still requires UAC administrative rights.
+Existing administrator profile differences are addressed separately
+by the selectable PDF output directory.
+
+### Building the installer from source
 
 ```powershell
-winget install --exact --id smartmontools.smartmontools --source winget --scope machine --silent --accept-package-agreements --accept-source-agreements
+dotnet publish DiskChecker.UI.Avalonia/DiskChecker.UI.Avalonia.csproj -c Release -r win-x64 --self-contained true -o publish/win-x64
+pwsh -File installer/prepare-windows-smartmontools.ps1
+& "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe" "installer\DiskChecker.iss"
 ```
 
-WinGet resolves the package through the configured
-trusted source and validates the installation
-manifest's checksums. The DiskChecker installer does
-**not** download and execute an unverified third-party
-EXE on its own and does not modify WinGet sources.
-
-After installation, `smartctl --version` must succeed.
-If WinGet is unavailable, its installation fails, or
-smartctl remains unusable, Inno Setup reports the
-problem and stops before copying DiskChecker files,
-with instructions to install official smartmontools
-manually and retry.
-
-This requires a working Windows Package Manager
-and network access when smartmontools is not already
-installed. Offline installation requires preparing
-smartmontools separately. The installer does not
-silently bypass the dependency check.
+The GitHub Actions `Build test installers (no release)` workflow
+runs the same dependency preparation and publishes the combined setup
+as a test artifact. The pinned revision should only change after
+updating both download hashes and testing the new snapshot.
 
 ## DEB and RPM
 
@@ -144,12 +166,11 @@ privileges or modify machine packages.
 
 ## Status
 
-The Windows Inno Setup dependency preflight and the new
-Linux portable helper, package archive inclusion, tests and
-documentation are committed. **A fresh package build and
-runtime installation test are still required** before a
-new public release; neither is claimed as passed by the
-assistant environment.
+Windows packaging now embeds and SHA-256-verifies the upstream
+prerelease during the CI build instead of depending on WinGet.
+Linux native packages keep their distribution-managed dependencies.
+Final CI and an actual UAC/manual hardware smoke test are required
+before a new public release.
 
 See [Linux installation](../LINUX_INSTALL.md) and
 [installer implementation status](../../installer/IMPLEMENTATION_STATUS.md).
