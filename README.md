@@ -490,3 +490,21 @@ forward-fixed directly on master with regression tests.
 commits still needs confirmation; do not assume a new release
 is ready solely because review threads were marked resolved.
 
+## Automatic smartmontools detection in Windows setup (November 22, 2026)
+
+The Windows Inno Setup installer now checks whether a working
+`smartctl.exe --version` is already available. If absent,
+setup invokes the exact trusted WinGet package
+`smartmontools.smartmontools` and verifies the tool after
+installation. An unavailable package manager or failed
+dependency installation stops DiskChecker setup instead
+of installing a GUI without its SMART command-line tool.
+Working existing smartmontools installations are untouched.
+
+This completes coverage of DEB/RPM native dependency
+resolution and the portable Linux `smartctl` checker.
+No hardcoded third-party EXE is fetched without package
+manifest verification. [Technical details](docs/Installer-Dependencies/en.md).
+
+The new Windows setup is still awaiting its latest
+Inno Setup CI compilation and on-device smoke test.
