@@ -82,4 +82,13 @@ depends="$(dpkg-deb -f "${debs[0]}" Depends)"
 [[ "$depends" == *pkexec* && "$depends" == *polkitd* && "$depends" == *smartmontools* ]] || {
     echo "DEB is missing pkexec/polkitd dependency" >&2; exit 1;
 }
+rpm -qp --requires "${rpms[0]}" | grep -Fx smartmontools >/dev/null || {
+    echo "RPM is missing smartmontools dependency" >&2
+    exit 1
+}
+grep -q 'ensure-smartmontools.sh' installer/install-linux.sh || {
+    echo "Portable installer does not check smartctl" >&2
+    exit 1
+}
+echo "PASS: DEB/RPM auto-install smartmontools; portable preflight has tested fallback"
 echo "PASS: DEB, RPM and portable archive contain privileged helper, policy and icon"
