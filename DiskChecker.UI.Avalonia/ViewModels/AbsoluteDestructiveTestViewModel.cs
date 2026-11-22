@@ -1746,6 +1746,15 @@ public partial class AbsoluteDestructiveTestViewModel : ViewModelBase, INavigabl
                 c.SeekP99LatencyMs = Percentile(latencies, 0.99);
                 c.SeekTotalCount = allSeekSamples.Count;
                 c.SeekErrorCount = allSeekSamples.Count(s => s.HasError);
+                // PDF needs the measured latency series, not just sorted
+                // percentiles. Preserve source order for the seek chart.
+                const int maximumLatencyChartPoints = 32;
+                var latencyPointCount = Math.Min(maximumLatencyChartPoints, allSeekSamples.Count);
+                for (var point = 0; point < latencyPointCount; point++)
+                {
+                    var sourceIndex = (int)((long)point * allSeekSamples.Count / latencyPointCount);
+                    c.SeekLatencyPoints.Add(allSeekSamples[sourceIndex].LatencyMs);
+                }
                 c.SeekTestSummary =
                     $"FS: {capturedSeekFullStrokeResult?.AverageLatencyMs:F2}ms | " +
                     $"RND: {capturedSeekRandomResult?.AverageLatencyMs:F2}ms | " +
