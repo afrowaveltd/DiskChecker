@@ -388,3 +388,24 @@ accepting a message is not proof of final inbox delivery.
 Automatic PDF certificate email also covers completed seek, safe destructive
 and absolute destructive tests when their certificates were persisted.
 It never runs for a cancelled test or for an image-only backup mode.
+
+## Linux installed-app launch fix (November 22, 2026)
+
+The DEB, RPM and portable test installers now ship the
+same `/usr/bin/diskchecker` desktop launcher, a narrowly
+scoped polkit action with a root-owned helper and a
+system-wide SVG icon. The desktop entry no longer invokes
+`pkexec` directly on the Avalonia binary, which could
+authenticate successfully but lose the X11/Wayland
+display environment. Administrative authentication
+remains mandatory.
+
+Start the installed application from the desktop menu
+or by running `diskchecker` **without `sudo`** inside
+your active graphical session. If the window still
+fails to appear, inspect
+`sudo journalctl -b -t diskchecker --no-pager -n 150`.
+
+Packaging fixes are committed; runtime verification
+on the maintainer's Linux desktop is still pending.
+[Installation guide and diagnostics](docs/LINUX_INSTALL.md).
