@@ -154,7 +154,7 @@ var
   InstallDir, Candidate: String;
 begin
   Result := '';
-  if ReadRegStr(HKLM, SmartUninstallKey, 'InstallLocation', InstallDir) and
+  if RegQueryStringValue(HKLM, SmartUninstallKey, 'InstallLocation', InstallDir) and
      (InstallDir <> '') then
   begin
     Candidate := AddBackslash(InstallDir) + 'bin\smartctl.exe';
@@ -274,13 +274,13 @@ begin
   if not SmartFound then Exit;
 
   // Trust a registry version only when its installed binary actually works.
-  if ReadRegStr(HKLM, SmartUninstallKey, 'InstallLocation', InstallDir) and
+  if RegQueryStringValue(HKLM, SmartUninstallKey, 'InstallLocation', InstallDir) and
     (InstallDir <> '') then
   begin
     RegisteredPath := AddBackslash(InstallDir) + 'bin\smartctl.exe';
     if CompareText(RegisteredPath, SmartCurrentPath) = 0 then
     begin
-      if ReadRegStr(HKLM, SmartUninstallKey, 'DisplayVersion',
+      if RegQueryStringValue(HKLM, SmartUninstallKey, 'DisplayVersion',
           RegisteredVersion) then
         SmartCurrentVersion := Trim(RegisteredVersion);
     end;
