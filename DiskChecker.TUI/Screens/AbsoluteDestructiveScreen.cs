@@ -21,6 +21,11 @@ public sealed class AbsoluteDestructiveScreen : ITuiScreen
     private SanitizationResult? _sanitize1;
     private SanitizationResult? _sanitize2;
     private readonly Dictionary<SeekTestType, SeekTestResult> _seeks = new();
+    // Bounded source-order telemetry for the common A4 PDF charts.
+    private readonly List<(double Percent, double Speed)> _pass1Write = new();
+    private readonly List<(double Percent, double Speed)> _pass1Read = new();
+    private readonly List<(double Percent, double Speed)> _pass2Write = new();
+    private readonly List<(double Percent, double Speed)> _pass2Read = new();
     private DiskCertificate? _certificate;
     private int? _sessionId;
     private string _status = "Připraven ke spuštění.";
@@ -151,8 +156,8 @@ public sealed class AbsoluteDestructiveScreen : ITuiScreen
 
         io.Write(ScreenWidgets.Notice(
             "Pozor",
-            "Test opakovaně přepíše celý disk nulami, změří seek latence a na konci vytvoří oddíl. " +
-            "Všechna data budou nevratně zničena a test může trvat několik hodin.",
+            "Test opakovaně přepíše celý disk nulami a změří seek latence. " +
+            "Po uložení certifikátu lze volitelně vytvořit oddíl. Data budou nevratně zničena.",
             TuiTheme.Danger,
             "⛔"));
 
@@ -218,6 +223,10 @@ public sealed class AbsoluteDestructiveScreen : ITuiScreen
         _sanitize1 = null;
         _sanitize2 = null;
         _seeks.Clear();
+        _pass1Write.Clear();
+        _pass1Read.Clear();
+        _pass2Write.Clear();
+        _pass2Read.Clear();
         _final = null;
         _certificate = null;
         _results = string.Empty;
@@ -372,6 +381,17 @@ public sealed class AbsoluteDestructiveScreen : ITuiScreen
             {
                 var series = update.IsReadVerifyPhase ? readSeries : writeSeries;
                 series.Add(update.ProgressPercent, Math.Min(update.CurrentSpeedMBps, 2000));
+
+                var samples = phaseIndex == 1
+                    ? update.IsReadVerifyPhase ? _pass1Read : _pass1Write
+                    : update.IsReadVerifyPhase ? _pass2Read : _pass2Write;
+                // Preserve the whole 0–100% range, not just the first few
+                // callbacks of a long multi-hour test.
+                lock (samples)
+                {
+                    if (samples.Count == 0 || update.ProgressPercent - samples[^1].Percent >= 0.5)
+                        samples.Add((update.ProgressPercent, update.CurrentSpeedMBps));
+                }
             }
         });
 
@@ -401,6 +421,9 @@ public sealed class AbsoluteDestructiveScreen : ITuiScreen
             state.SetPhaseState(phaseIndex,
                 result.Success ? TuiPhaseState.Completed : TuiPhaseState.Failed,
                 $"Write {TuiFormats.SpeedNoUnit(result.WriteSpeedMBps)} MB/s | Read {TuiFormats.SpeedNoUnit(result.ReadSpeedMBps)} MB/s | chyby {result.ErrorsDetected}");
+
+            if (!result.Success)
+                throw new IOException(result.ErrorMessage ?? "Sanitizace selhala – test není dokončen.");
         }
         catch (OperationCanceledException)
         {
@@ -529,6 +552,8 @@ public sealed class AbsoluteDestructiveScreen : ITuiScreen
         }
 
         var smart = _final ?? _baseline;
+        var totalErrors = (_sanitize1?.ErrorsDetected ?? 0) + (_sanitize2?.ErrorsDetected ?? 0)
+                          + _seeks.Values.Sum(result => result.ErrorCount);
         double score = ComputeScore(smart);
         _score = score;
         _grade = TuiFormats.GradeFromScore(score);
@@ -553,7 +578,9 @@ public sealed class AbsoluteDestructiveScreen : ITuiScreen
                 Status = TestStatus.Completed,
                 IsDestructive = true,
                 WasLocked = _disk.IsSystemDisk,
-                Result = TestResult.Pass,
+                Result = totalErrors > 0 ? TestResult.Fail : TestResult.Pass,
+                WriteErrors = (_sanitize1?.ErrorsDetected ?? 0) + (_sanitize2?.ErrorsDetected ?? 0),
+                VerificationErrors = _seeks.Values.Sum(result => result.ErrorCount),
                 Grade = _grade,
                 Score = (int)Math.Round(score),
                 HealthAssessment = MapHealthAssessment(smart),
@@ -578,15 +605,45 @@ public sealed class AbsoluteDestructiveScreen : ITuiScreen
             certificate.Score = score;
             certificate.TestType = "Absolutní destruktivní test";
             certificate.TestDuration = session.Duration;
-            certificate.ErrorCount = (_sanitize1?.ErrorsDetected ?? 0) + (_sanitize2?.ErrorsDetected ?? 0);
+            certificate.ErrorCount = totalErrors;
             certificate.SanitizationPerformed = true;
             certificate.SanitizationMethod = "Zero-fill + verify (2×)";
-            certificate.DataVerified = _sanitize2?.Success ?? false;
+            certificate.DataVerified = _sanitize1?.Success == true
+                && _sanitize2?.Success == true && totalErrors == 0;
             certificate.TemperatureRange = _maxTemperature > 0 ? $"{_minTemperature}-{_maxTemperature}°C" : "-";
-            certificate.Recommended = score >= 70;
+            certificate.Recommended = score >= 70 && totalErrors == 0;
             certificate.Notes = BuildNotes(smart);
-            certificate.SeekAvgLatencyMs = _seeks.Values.SelectMany(result => result.Samples).Select(sample => sample.LatencyMs).DefaultIfEmpty(0).Average();
+            var seekLatencies = _seeks.Values.SelectMany(result => result.Samples)
+                .Where(sample => !sample.HasError && double.IsFinite(sample.LatencyMs) && sample.LatencyMs >= 0)
+                .Select(sample => sample.LatencyMs)
+                .ToArray();
+            certificate.SeekTotalCount = seekLatencies.Length;
+            if (seekLatencies.Length > 0)
+            {
+                var ordered = seekLatencies.OrderBy(v => v).ToArray();
+                certificate.SeekAvgLatencyMs = seekLatencies.Average();
+                certificate.SeekMinLatencyMs = ordered[0];
+                certificate.SeekMaxLatencyMs = ordered[^1];
+                certificate.SeekP95LatencyMs = ordered[(int)Math.Ceiling(ordered.Length * 0.95) - 1];
+                certificate.SeekP99LatencyMs = ordered[(int)Math.Ceiling(ordered.Length * 0.99) - 1];
+                certificate.SeekLatencyPoints = Downsample(seekLatencies, 200);
+            }
+            certificate.SeekErrorCount = _seeks.Values.Sum(result => result.ErrorCount);
             certificate.SeekTestSummary = string.Join(" | ", _seeks.Select(pair => $"{pair.Key}: {pair.Value.AverageLatencyMs:F2} ms"));
+            certificate.Sanitize1AvgWriteMBps = _sanitize1?.WriteSpeedMBps;
+            certificate.Sanitize1AvgReadMBps = _sanitize1?.ReadSpeedMBps;
+            certificate.Sanitize2AvgWriteMBps = _sanitize2?.WriteSpeedMBps;
+            certificate.Sanitize2AvgReadMBps = _sanitize2?.ReadSpeedMBps;
+            certificate.AvgWriteSpeed = _sanitize2?.WriteSpeedMBps ?? _sanitize1?.WriteSpeedMBps ?? 0;
+            certificate.AvgReadSpeed = _sanitize2?.ReadSpeedMBps ?? _sanitize1?.ReadSpeedMBps ?? 0;
+            certificate.Sanitize1WritePoints = _pass1Write.Select(p => p.Speed).ToList();
+            certificate.Sanitize1ReadPoints = _pass1Read.Select(p => p.Speed).ToList();
+            certificate.Sanitize2WritePoints = _pass2Write.Select(p => p.Speed).ToList();
+            certificate.Sanitize2ReadPoints = _pass2Read.Select(p => p.Speed).ToList();
+            certificate.WriteProfilePoints = certificate.Sanitize2WritePoints.Count > 0
+                ? certificate.Sanitize2WritePoints : certificate.Sanitize1WritePoints;
+            certificate.ReadProfilePoints = certificate.Sanitize2ReadPoints.Count > 0
+                ? certificate.Sanitize2ReadPoints : certificate.Sanitize1ReadPoints;
 
             certificate = await repository.CreateCertificateAsync(certificate).ConfigureAwait(false);
 
@@ -610,6 +667,20 @@ public sealed class AbsoluteDestructiveScreen : ITuiScreen
         {
             _status = $"Test dokončen, ale uložení selhalo: {ex.Message}";
         }
+    }
+
+    private static List<double> Downsample(IReadOnlyList<double> values, int maximum)
+    {
+        if (values.Count <= maximum)
+            return values.ToList();
+
+        var selected = new List<double>(maximum);
+        for (int i = 0; i < maximum; i++)
+        {
+            int index = (int)((long)i * (values.Count - 1) / (maximum - 1));
+            selected.Add(values[index]);
+        }
+        return selected;
     }
 
     private double ComputeScore(SmartaData? smart)
