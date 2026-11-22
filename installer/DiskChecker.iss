@@ -37,6 +37,34 @@ WizardStyle=modern
 Name: "czech"; MessagesFile: "compiler:Languages\Czech.isl"
 Name: "english"; MessagesFile: "compiler:Default.isl"
 
+[CustomMessages]
+english.SmartPageTitle=smartmontools - required disk diagnostics
+english.SmartPageSubtitle=Review the installed smartctl version and choose an upgrade if available.
+english.SmartRequired=Install smartmontools (required):
+english.SmartAbsent=No working smartctl.exe was found. The included official prerelease will be installed automatically. An internet connection is not required.
+english.SmartSame=Installed version is current:
+english.SmartSameNote=The identical bundled version is installed and working. No changes will be made.
+english.SmartNewer=Newer smartmontools installed - keep existing version
+english.SmartNewerNote=The installed version is newer than the bundled test build. DiskChecker will keep it.
+english.SmartOlder=Upgrade smartmontools to
+english.SmartUnknown=Replace existing version with
+english.SmartOptionalNote=An existing working smartctl was detected. You can decline the update; the installer will preserve it.
+english.SmartDetected=Detected executable:
+english.SmartVersion=Installed version:
+czech.SmartPageTitle=smartmontools - nutna diagnosticka soucast
+czech.SmartPageSubtitle=Kontrola nainstalovane verze smartctl a pripadna aktualizace.
+czech.SmartRequired=Instalovat smartmontools (povinne):
+czech.SmartAbsent=Nebyl nalezen funkcni smartctl.exe. Oficialni testovaci verze se nainstaluje automaticky z balicku. Internet neni potreba.
+czech.SmartSame=Aktualni verze je jiz nainstalovana:
+czech.SmartSameNote=Shodna verze smartmontools funguje. Nebude zmenena.
+czech.SmartNewer=Novější smartmontools je uz nainstalovan - ponechat
+czech.SmartNewerNote=Nainstalovana verze je novejsi nez prilozena testovaci verze. Neprovedeme downgrade.
+czech.SmartOlder=Aktualizovat smartmontools na
+czech.SmartUnknown=Nahradit stavajici verzi za
+czech.SmartOptionalNote=Byla nalezena funkcni instalace. Aktualizaci muzete odmitnout a zachovat stavajici verzi.
+czech.SmartDetected=Nalezeny soubor:
+czech.SmartVersion=Zjistena verze:
+
 [Tasks]
 Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"; Flags: unchecked
 
@@ -270,8 +298,8 @@ var
 begin
   RefreshSmartStatus();
   SmartOptionsPage := CreateCustomPage(wpSelectTasks,
-    'smartmontools / SMART diagnostika',
-    'DiskChecker requires a working smartctl executable.');
+    ExpandConstant('{cm:SmartPageTitle}'),
+    ExpandConstant('{cm:SmartPageSubtitle}'));
   SmartInstallBox := TNewCheckBox.Create(WizardForm);
   SmartInstallBox.Parent := SmartOptionsPage.Surface;
   SmartInstallBox.Left := ScaleX(0);
@@ -290,49 +318,44 @@ begin
 
   if not SmartFound then
   begin
-    SmartInstallBox.Caption := 'Install smartmontools {#SmartVersion} (required)';
+    SmartInstallBox.Caption := ExpandConstant('{cm:SmartRequired}') + ' {#SmartVersion}';
     SmartInstallBox.Checked := True;
     SmartInstallBox.Enabled := False;
     SmartExplanation.Caption :=
-      'smartctl.exe was not found or could not run. The bundled official ' +
-      'smartmontools prerelease is required and will be installed automatically. ' +
-      'No internet connection is needed.';
+      ExpandConstant('{cm:SmartAbsent}');
     Exit;
   end;
 
   Comparison := CompareSmartVersion(SmartCurrentVersion);
   if Comparison = 0 then
   begin
-    SmartInstallBox.Caption := 'smartmontools {#SmartVersion} already installed';
+    SmartInstallBox.Caption := ExpandConstant('{cm:SmartSame}') + ' {#SmartVersion}';
     SmartInstallBox.Checked := False;
     SmartInstallBox.Enabled := False;
     SmartExplanation.Caption :=
-      'The same bundled version is installed and works. It will not be changed.';
+      ExpandConstant('{cm:SmartSameNote}');
   end
   else if Comparison = 1 then
   begin
-    SmartInstallBox.Caption := 'Newer smartmontools installed — keep it';
+    SmartInstallBox.Caption := ExpandConstant('{cm:SmartNewer}');
     SmartInstallBox.Checked := False;
     SmartInstallBox.Enabled := False;
     SmartExplanation.Caption :=
-      'Version ' + SmartCurrentVersion + ' is newer than the bundled snapshot. ' +
-      'DiskChecker will use the existing installation.';
+      ExpandConstant('{cm:SmartNewerNote}') + ' ' + SmartCurrentVersion;
   end
   else
   begin
     SmartInstallBox.Checked := (Comparison = -1);
     SmartInstallBox.Enabled := True;
     if Comparison = -1 then
-      SmartInstallBox.Caption := 'Upgrade smartmontools ' + SmartCurrentVersion +
-        ' to {#SmartVersion}'
+      SmartInstallBox.Caption := ExpandConstant('{cm:SmartOlder}') + ' {#SmartVersion}'
     else
       SmartInstallBox.Caption :=
-        'Replace an existing, unverified build with {#SmartVersion}';
+        ExpandConstant('{cm:SmartUnknown}') + ' {#SmartVersion}';
     SmartExplanation.Caption :=
-      'Detected: ' + SmartCurrentPath + #13#10 +
-      'Version: ' + SmartCurrentVersion + #13#10 +
-      'You can keep the working installation by unchecking this option. ' +
-      'The upgrade uses the bundled upstream installer; no network is required.';
+      ExpandConstant('{cm:SmartDetected}') + ' ' + SmartCurrentPath + #13#10 +
+      ExpandConstant('{cm:SmartVersion}') + ' ' + SmartCurrentVersion + #13#10 +
+      ExpandConstant('{cm:SmartOptionalNote}');
   end;
 end;
 
