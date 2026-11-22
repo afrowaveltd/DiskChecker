@@ -351,27 +351,6 @@ public sealed class SurfaceTestScreen : ITuiScreen
             context.Selection.SelectedTestSessionId = session.Id;
             _status += " Výsledek uložen do historie.";
 
-            // Same completion email as the desktop sanitizer and Seek Test:
-            // only send a real persisted PDF, never a fabricated report.
-            if (result.Success && _lastCertificatePdfSaved && exportedPdfPath != null)
-            {
-                try
-                {
-                    var notification = scope.ServiceProvider.GetRequiredService<TestCompletionNotificationService>();
-                    if (await notification.SendStoredCertificateIfConfiguredAsync(
-                            certificate, exportedPdfPath, CancellationToken.None).ConfigureAwait(false))
-                        _status += " Certifikát byl odeslán e-mailem.";
-                }
-                catch (OperationCanceledException)
-                {
-                    _status += " Odesílání e-mailu bylo zrušeno; výsledek zůstává uložen.";
-                }
-                catch (Exception ex)
-                {
-                    // SMTP is independent of disk write/verify and persistence.
-                    _status += " Certifikát je uložen, ale odeslání e-mailu selhalo: " + ex.Message;
-                }
-            }
         }
         catch (Exception ex) when (ex is IOException or InvalidOperationException or Microsoft.EntityFrameworkCore.DbUpdateException)
         {
@@ -553,6 +532,29 @@ public sealed class SurfaceTestScreen : ITuiScreen
             context.Selection.SelectedDiskCardId = card.Id;
             context.Selection.SelectedTestSessionId = session.Id;
             _status += " Výsledek uložen do historie.";
+
+            // Same completion email as the desktop sanitizer and Seek Test:
+            // only send a real persisted PDF, never a fabricated report.
+            if (result.Success && _lastCertificatePdfSaved && exportedPdfPath != null)
+            {
+                try
+                {
+                    var notification = scope.ServiceProvider.GetRequiredService<TestCompletionNotificationService>();
+                    if (await notification.SendStoredCertificateIfConfiguredAsync(
+                            certificate, exportedPdfPath, CancellationToken.None).ConfigureAwait(false))
+                        _status += " Certifikát byl odeslán e-mailem.";
+                }
+                catch (OperationCanceledException)
+                {
+                    _status += " Odesílání e-mailu bylo zrušeno; výsledek zůstává uložen.";
+                }
+                catch (Exception ex)
+                {
+                    // SMTP is independent of disk write/verify and persistence.
+                    _status += " Certifikát je uložen, ale odeslání e-mailu selhalo: " + ex.Message;
+                }
+            }
+
         }
         catch (Exception ex) when (ex is IOException or InvalidOperationException or Microsoft.EntityFrameworkCore.DbUpdateException)
         {
