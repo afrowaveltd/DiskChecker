@@ -94,3 +94,32 @@
    CI, then preserve test results and move
    toward a new release only after maintainer
    verification.
+
+## 2026-11-22 — smartmontools dependency preflight
+
+- DEB was **already** declaring `Depends: smartmontools`;
+  RPM was **already** declaring `Requires: smartmontools`.
+  These native dependencies automatically install the
+  tool when `apt` or `dnf` resolves an absent dependency.
+- Portable `installer/install-linux.sh` previously
+  lacked that protection. It now executes
+  `ensure-smartmontools.sh` **before copying app files**.
+  The helper checks a usable `smartctl --version`,
+  skips installation if present, otherwise invokes
+  one of apt-get/dnf/yum/zypper/pacman with a fixed
+  `smartmontools` package name. It rechecks
+  usability and fails closed if missing or broken.
+- `installer/package-linux.sh` now bundles that
+  script in the portable archive.
+  `installer/tests/test-smartmontools-dependency.sh`
+  exercises three mock scenarios: installed,
+  absent-and-installed, package-manager failure.
+  The existing package verification runs those
+  tests and asserts the DEB and RPM dependency
+  metadata plus script presence in the tarball.
+- New English documentation at
+  `docs/Installer-Dependencies/en.md`; Linux
+  installation guide and README updated.
+- **Verification pending**: package build/CI and a
+  real isolated missing-smartctl runtime test are
+  not available locally. No new release published.
