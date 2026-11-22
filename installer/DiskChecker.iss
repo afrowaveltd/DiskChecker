@@ -121,7 +121,19 @@ var
   InstallDir, Candidate: String;
 begin
   Result := '';
-  if RegQueryStringValue(HKLM, SmartUninstallKey, 'InstallLocation', InstallDir) and
+  // Upstream NSIS is a 32-bit installer even when its x64 payload is selected.
+  // Its uninstall key may therefore reside in the WOW6432Node registry view.
+  if RegQueryStringValue(HKLM32, SmartUninstallKey, 'InstallLocation', InstallDir) and
+     (InstallDir <> '') then
+  begin
+    Candidate := AddBackslash(InstallDir) + 'bin\smartctl.exe';
+    if SmartctlWorksAt(Candidate) then
+    begin
+      Result := Candidate;
+      Exit;
+    end;
+  end;
+  if RegQueryStringValue(HKLM64, SmartUninstallKey, 'InstallLocation', InstallDir) and
      (InstallDir <> '') then
   begin
     Candidate := AddBackslash(InstallDir) + 'bin\smartctl.exe';
@@ -245,14 +257,26 @@ begin
   SmartCurrentVersion := '';
   if not SmartFound then Exit;
 
-  // Trust a registry version only when its installed binary actually works.
-  if RegQueryStringValue(HKLM, SmartUninstallKey, 'InstallLocation', InstallDir) and
+  // Look up the version in the SAME registry view as the working binary.
+  if RegQueryStringValue(HKLM32, SmartUninstallKey, 'InstallLocation', InstallDir) and
     (InstallDir <> '') then
   begin
     RegisteredPath := AddBackslash(InstallDir) + 'bin\smartctl.exe';
     if CompareText(RegisteredPath, SmartCurrentPath) = 0 then
     begin
-      if RegQueryStringValue(HKLM, SmartUninstallKey, 'DisplayVersion',
+      if RegQueryStringValue(HKLM32, SmartUninstallKey, 'DisplayVersion',
+          RegisteredVersion) then
+        SmartCurrentVersion := Trim(RegisteredVersion);
+    end;
+  end;
+  if (SmartCurrentVersion = '') and
+     RegQueryStringValue(HKLM64, SmartUninstallKey, 'InstallLocation', InstallDir) and
+     (InstallDir <> '') then
+  begin
+    RegisteredPath := AddBackslash(InstallDir) + 'bin\smartctl.exe';
+    if CompareText(RegisteredPath, SmartCurrentPath) = 0 then
+    begin
+      if RegQueryStringValue(HKLM64, SmartUninstallKey, 'DisplayVersion',
           RegisteredVersion) then
         SmartCurrentVersion := Trim(RegisteredVersion);
     end;
