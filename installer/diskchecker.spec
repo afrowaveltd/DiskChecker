@@ -30,6 +30,7 @@ install -m 644 %{_diskchecker_source}/DiskChecker.UI.Avalonia/Assets/disk-checke
 %files
 /opt/diskchecker
 /usr/bin/diskchecker
+%dir /usr/lib/diskchecker
 /usr/lib/diskchecker/diskchecker-elevated
 /usr/share/applications/diskchecker.desktop
 /usr/share/polkit-1/actions/org.afrowave.diskchecker.policy
