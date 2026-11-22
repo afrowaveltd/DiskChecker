@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE policyconfig PUBLIC
+    "-//freedesktop//DTD PolicyKit Policy Configuration 1.0//EN"
+    "http://www.freedesktop.org/standards/PolicyKit/1/policyconfig.dtd">
+<policyconfig>
+  <vendor>Afrowave</vendor>
+  <vendor_url>https://github.com/afrowaveltd/DiskChecker</vendor_url>
+  <action id="org.afrowave.diskchecker.run">
+    <description>Run DiskChecker with disk administration privileges</description>
+    <description xml:lang="cs">Spustit DiskChecker s oprávněním ke správě disků</description>
+    <message>Authentication is required to inspect and test disks with DiskChecker.</message>
+    <message xml:lang="cs">Pro kontrolu a testování disků v DiskCheckeru je vyžadováno ověření správce.</message>
+    <icon_name>diskchecker</icon_name>
+    <defaults>
+      <allow_any>no</allow_any>
+      <allow_inactive>no</allow_inactive>
+      <allow_active>auth_admin</allow_active>
+    </defaults>
+    <annotate key="org.freedesktop.policykit.exec.path">/usr/lib/diskchecker/diskchecker-elevated</annotate>
+  </action>
+</policyconfig>
