@@ -440,3 +440,22 @@ při nedostupném adresáři export skončí jasnou chybou, nikoli přesunem
 výstupu do profilu správce.
 
 Podrobnosti a testovací postupy: [Linux instalace](docs/LINUX_INSTALL.md).
+
+## Linux – oprava spuštění instalované aplikace (22. 11. 2026)
+
+Testovací balíčky DEB, RPM a přenosný instalátor nyní instalují
+stejný spouštěč `/usr/bin/diskchecker`, úzce vymezenou polkit
+akci, pomocný administrátorský launcher a systémovou SVG ikonu.
+Položka nabídky již nevolá přímo `pkexec` na Avalonia binárku;
+předává grafické relaci nezbytné parametry pro X11/Wayland.
+Nadále vyžaduje ověření správce; neuděluje uživatelům přímý
+přístup k diskům.
+
+Po instalaci spouštěj aplikaci z nabídky nebo příkazem
+`diskchecker` **bez `sudo`**, aby se zachovala grafická
+relace. Pokud okno nevznikne, zkontroluj výpis
+`sudo journalctl -b -t diskchecker --no-pager -n 150`.
+
+Nová verze instalačních podkladů je commitovaná, ale její
+běh na konkrétním linuxovém desktopu čeká na ověření.
+[Návod a diagnostika](docs/LINUX_INSTALL.md).
