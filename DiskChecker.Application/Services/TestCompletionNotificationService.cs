@@ -153,8 +153,19 @@ public partial class TestCompletionNotificationService
     /// seek, surface and destructive tests: never invents a surface-test sample.
     /// Returns false when no recipient was configured. SMTP errors propagate.
     /// </summary>
-    public async Task<bool> SendStoredCertificateIfConfiguredAsync(
+    public Task<bool> SendStoredCertificateIfConfiguredAsync(
         DiskCertificate certificate, CancellationToken cancellationToken = default)
+        => SendStoredCertificateIfConfiguredAsync(certificate, existingPdfPath: null, cancellationToken);
+
+    /// <summary>
+    /// Sends the already exported PDF of a completed, persisted test without
+    /// regenerating it. Sanitization exports its certificate before optional
+    /// formatting, and that exact file must be the email attachment.
+    /// Returns false when no recipient is configured. SMTP errors propagate.
+    /// </summary>
+    public async Task<bool> SendStoredCertificateIfConfiguredAsync(
+        DiskCertificate certificate, string? existingPdfPath,
+        CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(certificate);
         if (_completionSettings == null || _certificateGenerator == null)
@@ -164,7 +175,7 @@ public partial class TestCompletionNotificationService
         if (certificate.TestSessionId <= 0 || certificate.DiskCardId <= 0)
             throw new InvalidOperationException("A certificate must belong to a persisted disk test.");
 
-        var pdfPath = await _certificateGenerator.GeneratePdfAsync(certificate);
+        var pdfPath = existingPdfPath ?? await _certificateGenerator.GeneratePdfAsync(certificate);
         if (!File.Exists(pdfPath))
             throw new FileNotFoundException("The generated disk certificate PDF was not found.", pdfPath);
         var pdf = await File.ReadAllBytesAsync(pdfPath, cancellationToken);
