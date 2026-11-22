@@ -612,12 +612,16 @@ public partial class AbsoluteDestructiveTestViewModel : ViewModelBase, INavigabl
                     await _powerSession.RestoreAsync();
                     _powerSession.Dispose();
                     _powerSession = null;
-                    StatusMessage = L.Get("DestructiveTest.Status.PowerRestored");
+                    // A successful power restore must not replace the final
+                    // disk result or a later SMTP/PDF delivery warning.
                 }
                 catch (Exception ex)
                 {
-                    // Log but don't interrupt cleanup
-                    StatusMessage = L.Get("DestructiveTest.Status.PowerRestoreError", ex.Message);
+                    // Preserve an existing completion/notification message,
+                    // but still report the independent power restore failure.
+                    var powerWarning = L.Get("DestructiveTest.Status.PowerRestoreError", ex.Message);
+                    StatusMessage = string.IsNullOrWhiteSpace(StatusMessage)
+                        ? powerWarning : StatusMessage + Environment.NewLine + powerWarning;
                 }
             }
 
