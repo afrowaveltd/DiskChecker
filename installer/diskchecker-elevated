@@ -8,7 +8,7 @@ if [ "$(id -u)" -ne 0 ]; then
     echo "DiskChecker: elevated launcher requires administrative privileges." >&2
     exit 1
 fi
-if [ "$#" -lt 6 ]; then
+if [ "$#" -lt 7 ]; then
     echo "DiskChecker: missing graphical session parameters." >&2
     exit 2
 fi
@@ -19,7 +19,8 @@ xauthority="$3"
 wayland_display="$4"
 runtime_dir="$5"
 session_bus="$6"
-shift 6
+session_type="$7"
+shift 7
 
 case "$request_uid" in
     ''|*[!0-9]*)
@@ -51,6 +52,14 @@ if [ -z "$display" ] && [ -z "$wayland_display" ]; then
     exit 2
 fi
 
+case "$session_type" in
+    ''|x11|wayland) ;;
+    *)
+        echo "DiskChecker: unsupported graphical session type." >&2
+        exit 2
+        ;;
+esac
+
 # Preserve only the required display coordinates, never the calling user's
 # HOME or arbitrary environment configuration for a root process.
 PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
@@ -63,6 +72,7 @@ if [ -n "$xauthority" ]; then XAUTHORITY="$xauthority"; export XAUTHORITY; else 
 if [ -n "$wayland_display" ]; then WAYLAND_DISPLAY="$wayland_display"; export WAYLAND_DISPLAY; else unset WAYLAND_DISPLAY; fi
 if [ -n "$runtime_dir" ]; then XDG_RUNTIME_DIR="$runtime_dir"; export XDG_RUNTIME_DIR; else unset XDG_RUNTIME_DIR; fi
 if [ -n "$session_bus" ]; then DBUS_SESSION_BUS_ADDRESS="$session_bus"; export DBUS_SESSION_BUS_ADDRESS; else unset DBUS_SESSION_BUS_ADDRESS; fi
+if [ -n "$session_type" ]; then XDG_SESSION_TYPE="$session_type"; export XDG_SESSION_TYPE; else unset XDG_SESSION_TYPE; fi
 
 APP=/opt/diskchecker/DiskChecker.UI.Avalonia
 if [ ! -x "$APP" ]; then
