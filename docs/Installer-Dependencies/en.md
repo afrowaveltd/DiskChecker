@@ -1,4 +1,4 @@
-# Linux installer dependency handling: smartmontools
+# Installer dependency handling: smartmontools on Windows and Linux
 
 ## Purpose
 
@@ -11,6 +11,43 @@ The package dependency already existed for DEB and RPM. This
 milestone adds the missing **preflight and installation** to the
 portable Linux installer, while retaining package-manager-native
 dependency resolution for DEB/RPM.
+
+## Windows Inno Setup
+
+The Windows installer now uses an Inno Setup
+`PrepareToInstall` hook to check whether
+`smartctl.exe --version` runs from the standard
+Program Files installation directory or the system
+command search path.
+
+When a working executable is present, the installer
+does not change the existing smartmontools installation.
+Otherwise, before installing DiskChecker, it requests
+the exact publisher package identifier from Windows
+Package Manager:
+
+```powershell
+winget install --exact --id smartmontools.smartmontools --source winget --scope machine --silent --accept-package-agreements --accept-source-agreements
+```
+
+WinGet resolves the package through the configured
+trusted source and validates the installation
+manifest's checksums. The DiskChecker installer does
+**not** download and execute an unverified third-party
+EXE on its own and does not modify WinGet sources.
+
+After installation, `smartctl --version` must succeed.
+If WinGet is unavailable, its installation fails, or
+smartctl remains unusable, Inno Setup reports the
+problem and stops before copying DiskChecker files,
+with instructions to install official smartmontools
+manually and retry.
+
+This requires a working Windows Package Manager
+and network access when smartmontools is not already
+installed. Offline installation requires preparing
+smartmontools separately. The installer does not
+silently bypass the dependency check.
 
 ## DEB and RPM
 
@@ -107,7 +144,8 @@ privileges or modify machine packages.
 
 ## Status
 
-The new helper, package archive inclusion, tests and
+The Windows Inno Setup dependency preflight and the new
+Linux portable helper, package archive inclusion, tests and
 documentation are committed. **A fresh package build and
 runtime installation test are still required** before a
 new public release; neither is claimed as passed by the
