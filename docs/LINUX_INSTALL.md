@@ -149,6 +149,36 @@ broad raw-disk capabilities as a workaround.
 Do not blindly copy X11 authentication cookies or set
 unsafe blanket `xhost` access.
 
+## Mandatory smartmontools dependency
+
+DiskChecker requires a functioning `smartctl` from
+`smartmontools`. Installing a DEB with `sudo apt install
+./diskchecker-1.0.0-linux-x64.deb` automatically installs
+the package when absent, because the DEB declares
+`Depends: smartmontools`. The RPM declares
+`Requires: smartmontools`; use `dnf install ./...`
+to resolve it.
+
+For the **portable archive**, `install-linux.sh`
+now checks whether `smartctl --version` runs.
+If it does not, the installer invokes the available
+system package manager (`apt-get`, `dnf`, `yum`,
+`zypper`, or `pacman`) to install `smartmontools`
+and rechecks it before copying application files.
+Unsupported or failed dependency installation stops
+with a clear error. Already-installed working
+smartmontools are left unchanged.
+
+```bash
+command -v smartctl
+smartctl --version
+bash installer/tests/test-smartmontools-dependency.sh
+```
+
+The last command tests the helper with **mock commands**,
+not real system package installation. See
+[dependency design](Installer-Dependencies/en.md).
+
 ## PDF certificate folder under alternate administrators
 
 In **Settings**, choose and save the PDF certificate
