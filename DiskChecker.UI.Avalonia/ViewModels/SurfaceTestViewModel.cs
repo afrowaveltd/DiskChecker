@@ -1464,6 +1464,7 @@ public partial class SurfaceTestViewModel : ViewModelBase, INavigableViewModel, 
 
             // Save to disk card
             string? errorContext = null;
+            string? emailWarning = null;
             try
             {
                var card = await _cardTestService.GetOrCreateCardAsync(SelectedDrive!, _borrowedSmartProvenance == null ? smartSnapshot : null, cancellationToken);
@@ -1481,7 +1482,23 @@ public partial class SurfaceTestViewModel : ViewModelBase, INavigableViewModel, 
                var certificate = await _certificateGenerator.GenerateCertificateAsync(savedSession, card);
                certificate.TestSessionId = savedSession.Id;
                certificate = await _diskCardRepository.CreateCertificateAsync(certificate);
-               await _certificateGenerator.GeneratePdfAsync(certificate);
+               var pdfPath = await _certificateGenerator.GeneratePdfAsync(certificate);
+
+               // Send the saved PDF exactly once, independently of disk persistence.
+               // A failed SMTP transaction must not mark sanitization as unsaved.
+               try
+               {
+                  await _notificationService.SendStoredCertificateIfConfiguredAsync(
+                     certificate, pdfPath, CancellationToken.None);
+               }
+               catch (OperationCanceledException)
+               {
+                  emailWarning = L.Get("Notification.CertificateSendCancelled");
+               }
+               catch (Exception ex)
+               {
+                  emailWarning = L.Get("SurfaceTest.Status.EmailDeliveryFailed") + ": " + ex.Message;
+               }
 
                StatusMessage = L.Get("SurfaceTest.Status.SanitizeSaved", card.ModelName, (writeSamples.Count + readSamples.Count).ToString());
                SetStatusMessage(L.Get("SurfaceTest.Status.SanitizeSavedSimple", card.ModelName));
@@ -1509,6 +1526,8 @@ public partial class SurfaceTestViewModel : ViewModelBase, INavigableViewModel, 
          // Build success message but don't show dialog yet
          var successMessage =
              L.Get("SurfaceTest.Status.SanitizeSuccess");
+         if (!string.IsNullOrWhiteSpace(emailWarning))
+            successMessage += Environment.NewLine + emailWarning;
          if (!string.IsNullOrWhiteSpace(_telemetryArchiveWarning))
          {
             var warning = $"⚠ Detailní telemetrie nebyla kompletně uložena: {_telemetryArchiveWarning}";
