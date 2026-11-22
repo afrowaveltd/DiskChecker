@@ -23,7 +23,15 @@ public class BackupRestoreImageTests : IDisposable
 
     public BackupRestoreImageTests()
     {
-        _fixtureDir = Path.Combine(AppContext.BaseDirectory, "Fixtures", Guid.NewGuid().ToString("N"));
+        // Never create multi-GiB test images inside bin/Debug or the source
+        // checkout: those can reside on a small, nearly full project drive.
+        // A separate absolute path can be selected for constrained CI/hosts.
+        var testRoot = Environment.GetEnvironmentVariable("DISKCHECKER_TEST_TEMP");
+        if (string.IsNullOrWhiteSpace(testRoot))
+            testRoot = Path.GetTempPath();
+
+        _fixtureDir = Path.Combine(Path.GetFullPath(testRoot), "DiskChecker.Tests",
+            "BackupRestoreImageTests", Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(_fixtureDir);
     }
 
@@ -132,8 +140,19 @@ public class BackupRestoreImageTests : IDisposable
     [InlineData(131072)]
     public async Task FixedVhdx_ChunkBoundariesAreReadableByIndependentReader(int payloadBlocks)
     {
-        // Sparse files exercise real disk sizes without allocating GiB of test data.
-        // The last case also crosses the first 1 MiB BAT-region growth boundary.
+        // qemu-io is the independent VHDX reader used by this integration test.
+        // Skip BEFORE generating a 4-128 GiB fixed-length image: on NTFS,
+        // FileStream.SetLength may allocate the entire file (unlike sparse
+        // Linux files), exhausting the Windows project drive for no test value.
+        if (!OperatingSystem.IsLinux() ||
+            !File.Exists("/usr/bin/qemu-img") ||
+            !File.Exists("/usr/bin/qemu-io"))
+        {
+            Assert.Skip("Independent VHDX boundary verification requires qemu-utils on Linux.");
+        }
+
+        // Linux sparse files exercise real disk sizes without allocating GiB
+        // of test data. The last case crosses a BAT-region growth boundary.
         var bytes = (long)payloadBlocks * VhdxImageUtility.LogicalBlockSize + 512;
         var path = Path.Combine(_fixtureDir, $"boundary-{payloadBlocks}.vhdx");
         await VhdxImageUtility.WriteFixedHeaderAsync(path, bytes, CancellationToken.None);
@@ -151,9 +170,6 @@ public class BackupRestoreImageTests : IDisposable
                 stream.Write(marker);
             }
         }
-        if (!OperatingSystem.IsLinux() || !File.Exists("/usr/bin/qemu-io"))
-            Assert.Skip("Independent VHDX boundary verification requires qemu-utils on Linux.");
-
         await RunQemuAsync("info", "-f", "vhdx", path);
         foreach (var offset in offsets)
             await RunToolAsync("/usr/bin/qemu-io", "-r", "-f", "vhdx", "-c", $"read -P 0x5a {offset} 512", path);
