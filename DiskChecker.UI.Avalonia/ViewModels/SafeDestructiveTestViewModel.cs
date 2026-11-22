@@ -705,7 +705,10 @@ public partial class SafeDestructiveTestViewModel : ViewModelBase, INavigableVie
          {
             try
             {
-               if(await _notificationService.SendStoredCertificateIfConfiguredAsync(Certificate, ct))
+               // Disk restoration is complete. Navigating away disposes
+               // _cts, but independent SMTP delivery must not be cancelled.
+               if(await _notificationService.SendStoredCertificateIfConfiguredAsync(
+                  Certificate, CancellationToken.None))
                   Log(L.Get("Notification.CertificateAccepted"));
             }
             catch(OperationCanceledException)
