@@ -179,7 +179,7 @@ public class WindowsDiskSanitizationService : IDiskSanitizationService
                     ProgressPercent = 0
                 });
 
-                var partitionResult = await CreateGptPartitionAsync(devicePath, cancellationToken);
+                var partitionResult = await CreateGptPartitionAsync(devicePath, cancellationToken, format);
                 result.ErrorDetails.AddRange(partitionResult.ErrorDetails);
                 if (!partitionResult.Success)
                 {
@@ -874,7 +874,8 @@ offline disk";
 
     private async Task<SanitizationPhaseResult> CreateGptPartitionAsync(
         string devicePath,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        bool format = true)
     {
         var result = new SanitizationPhaseResult();
 
@@ -882,16 +883,15 @@ offline disk";
         {
             var driveNumber = new string(devicePath.Where(char.IsDigit).ToArray());
             
-            // Use diskpart to create GPT partition and format it directly
-            // This ensures the partition is immediately usable
+            // Respect format=false: writing a partition table must not silently
+            // format the volume. The Windows format and label remain NTFS/SCCM.
             var diskpartScript = $@"select disk {driveNumber}
 online disk
 attributes disk clear readonly
 clean
 convert gpt
-create partition primary
-format quick fs=ntfs label=""SCCM""
-assign";
+create partition primary" +
+                (format ? "\nformat quick fs=ntfs label=\"SCCM\"\nassign" : string.Empty);
 
             var tempScriptPath = Path.Combine(Path.GetTempPath(), $"diskpart_{Guid.NewGuid():N}.txt");
             try
@@ -935,7 +935,7 @@ assign";
                 }
 
                 result.Success = true;
-                result.PartitionFormatted = true; // diskpart already formatted the partition
+                result.PartitionFormatted = format;
                 if (_logger != null && _logger.IsEnabled(LogLevel.Information))
                 {
                     _logger.LogInformation("GPT partition created and formatted successfully for disk {DriveNumber}", driveNumber);
@@ -1473,6 +1473,26 @@ if ($disk -and $disk.PartitionStyle -eq 'GPT') {{
         };
     }
 
+    /// <summary>Windows post-test formatting is restricted to GPT/NTFS.</summary>
+    public Task<IReadOnlyList<string>> GetSupportedFileSystemsAsync(CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        return Task.FromResult<IReadOnlyList<string>>(new[] { "NTFS" });
+    }
+
+    public Task<SanitizationResult> CreatePartitionWithFileSystemAsync(
+        string devicePath,
+        string fileSystem,
+        string volumeLabel = "SCCM",
+        IProgress<SanitizationProgress>? progress = null,
+        CancellationToken cancellationToken = default)
+    {
+        if (!string.Equals(fileSystem, "NTFS", StringComparison.OrdinalIgnoreCase))
+            return Task.FromResult(new SanitizationResult { ErrorMessage = "Windows supports NTFS only." });
+
+        return CreatePartitionAsync(devicePath, "SCCM", true, progress, cancellationToken);
+    }
+
     /// <summary>
     /// Create a GPT partition on the device and optionally format it.
     /// Does NOT write zeros or verify — only creates partition structure.
@@ -1526,7 +1546,7 @@ if ($disk -and $disk.PartitionStyle -eq 'GPT') {{
                 ProgressPercent = 50
             });
 
-            var partitionResult = await CreateGptPartitionAsync(devicePath, cancellationToken);
+            var partitionResult = await CreateGptPartitionAsync(devicePath, cancellationToken, format);
             result.ErrorDetails.AddRange(partitionResult.ErrorDetails);
             if (!partitionResult.Success)
             {

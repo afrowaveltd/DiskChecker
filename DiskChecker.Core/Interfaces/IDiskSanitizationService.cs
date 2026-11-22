@@ -58,6 +58,32 @@ public interface IDiskSanitizationService
         bool format = true,
         IProgress<SanitizationProgress>? progress = null,
         CancellationToken cancellationToken = default);
+
+    /// <summary>File systems this installation can really format (no disk writes).</summary>
+    Task<IReadOnlyList<string>> GetSupportedFileSystemsAsync(CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        IReadOnlyList<string> available = OperatingSystem.IsWindows() ? new[] { "NTFS" } : new[] { "ext4" };
+        return Task.FromResult(available);
+    }
+
+    /// <summary>
+    /// Explicit, separately confirmed post-test preparation. Default implementations
+    /// retain compatibility with custom sanitizers supporting only the native format.
+    /// </summary>
+    Task<SanitizationResult> CreatePartitionWithFileSystemAsync(
+        string devicePath,
+        string fileSystem,
+        string volumeLabel = "SCCM",
+        IProgress<SanitizationProgress>? progress = null,
+        CancellationToken cancellationToken = default)
+    {
+        string nativeFormat = OperatingSystem.IsWindows() ? "NTFS" : "ext4";
+        if (!string.Equals(fileSystem, nativeFormat, StringComparison.OrdinalIgnoreCase))
+            return Task.FromResult(new SanitizationResult { ErrorMessage = $"Unsupported file system: {fileSystem}" });
+
+        return CreatePartitionAsync(devicePath, volumeLabel, true, progress, cancellationToken);
+    }
 }
 
 /// <summary>
