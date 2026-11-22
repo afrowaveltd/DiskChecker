@@ -12,9 +12,9 @@ On 2026-11-22, GitHub reported:
 - **PR #18**: merged to `master` in commit
   `7dda64b7df3a586302846a5e662fb7d04346c295`,
   adding newer certificate output and installer work.
-- **PR #15**: open, not mergeable, an older partial
+- **PR #15**: was open and not mergeable at inspection; subsequently closed as superseded (unmerged), an older partial
   SMTP implementation against pre-#16 `master`.
-- **PR #17**: open, not mergeable, 12 topic commits
+- **PR #17**: was open and not mergeable at inspection; subsequently closed as superseded (unmerged), 12 topic commits
   ahead but **67 commits behind** current master
   when inspected; 9 touched files. The branch
   overlaps SMTP changes superseded by #16.
@@ -25,8 +25,8 @@ On 2026-11-22, GitHub reported:
 
 Never force-merge or overwrite the contemporary
 master files with the stale #15/#17 branches.
-Closing those superseded branches (after recording
-the disposition) is safer than reverting newer
+Both superseded branches have now been closed with explanatory
+GitHub comments. Closing them instead of merging is safer than reverting newer
 SMTP/TLS, PDF, settings, localization or installer
 changes while resolving conflicts.
 
@@ -72,3 +72,17 @@ pre-#16 branches wholesale.
 See [install dependency notes](../Installer-Dependencies/en.md),
 [SMTP test implementation status](../../IMPLEMENTATION_STATUS.md)
 and the original [PR #17 review](https://github.com/afrowaveltd/DiskChecker/pull/17).
+
+## Final PR disposition
+
+- [PR #17](https://github.com/afrowaveltd/DiskChecker/pull/17):
+  **closed without merge**, with a repository comment explaining
+  the seven Copilot threads, superseding PR #16, and master fixes.
+- [PR #15](https://github.com/afrowaveltd/DiskChecker/pull/15):
+  **closed without merge** as an earlier partial SMTP branch.
+- [PR #16](https://github.com/afrowaveltd/DiskChecker/pull/16)
+  remains the **merged source** for the SMTP feature.
+- The GitHub installer test workflow now also checks relevant
+  pushes to `master`, not just manually dispatched builds and PRs.
+  Actual CI results and Linux runtime testing remain separate
+  verification checkpoints.
