@@ -140,3 +140,26 @@
   new workflow result is still pending; do not mark the
   DEB/RPM/portable binaries verified until CI succeeds.
 
+## 2026-11-22 — Windows smartmontools dependency preflight
+
+- Inno Setup now verifies that `smartctl.exe --version` works
+  from the standard Program Files directory or PATH before
+  installing DiskChecker.
+- If smartmontools is missing, the elevated installer requests
+  the exact `smartmontools.smartmontools` WinGet package
+  from the `winget` source, with silent installation
+  and source/package agreements explicitly accepted.
+  WinGet's manifest controls checksums; no arbitrary
+  unsigned remote EXE is executed directly by DiskChecker.
+- A failed WinGet installation or unusable smartctl
+  aborts DiskChecker setup before copying application
+  files, with a clear manual-install instruction.
+  Already installed usable smartctl is left unchanged.
+- Normal Windows deployments need working WinGet and
+  network access when the dependency is absent;
+  offline machines must install smartmontools separately.
+- The Linux DEB/RPM dependencies and portable helper
+  remain unchanged. GitHub Actions installer workflow
+  passed after the earlier CA1512 fix; a new Inno
+  compilation/runtime confirmation is still pending.
+- Details in `docs/Installer-Dependencies/en.md`.
