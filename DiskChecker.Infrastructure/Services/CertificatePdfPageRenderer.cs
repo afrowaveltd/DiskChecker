@@ -230,11 +230,25 @@ internal static class CertificatePdfPageRenderer
         cert.TestType.Contains("Seek", StringComparison.OrdinalIgnoreCase) ||
         cert.SeekLatencyPoints.Count > 0;
 
-    private static string Name(DiskCertificate cert)
+    // A localized human-readable TestType must not change certificate
+    // classification. Combined seek + sanitization is a comprehensive test,
+    // even when its display label is Czech or a different language.
+    private static bool IsComprehensive(DiskCertificate cert) =>
+        !cert.IsReadOnlyTest &&
+        (string.Equals(cert.TestType, "AbsoluteDestructive", StringComparison.OrdinalIgnoreCase) ||
+         (cert.SanitizationPerformed && Seek(cert)));
+
+    /// <summary>True only for seek-only results, never for a completed sanitization.</summary>
+    internal static bool IsSeekOnly(DiskCertificate cert) =>
+        Seek(cert) && !IsComprehensive(cert) &&
+        !cert.SanitizationPerformed && !cert.IsReadOnlyTest;
+
+    /// <summary>Describes the actual recorded test category, not its localized UI label.</summary>
+    internal static string Name(DiskCertificate cert)
     {
-        if (Seek(cert) && cert.TestType != "AbsoluteDestructive") return "SEEK / LATENCE";
+        if (IsComprehensive(cert)) return "KOMPLEXNÍ DESTRUKTIVNÍ TEST";
         if (cert.IsReadOnlyTest) return "ČTENÍ BEZ ZÁPISU";
-        if (cert.TestType == "AbsoluteDestructive") return "KOMPLEXNÍ DESTRUKTIVNÍ TEST";
+        if (IsSeekOnly(cert)) return "SEEK / LATENCE";
         if (cert.SanitizationPerformed) return "SANITIZACE / OVĚŘENÍ";
         if (cert.TestType.Contains("SMART", StringComparison.OrdinalIgnoreCase)) return "SMART DIAGNOSTIKA";
         return "POVRCH / VÝKON";
@@ -253,7 +267,7 @@ internal static class CertificatePdfPageRenderer
         Text(c, $"Test: {cert.TestType}    Čas: {cert.TestDuration.ToString(@"hh\:mm\:ss")}", left, y + 128, small, Ink);
         Text(c, $"Chyby: {cert.ErrorCount}    Teplota: {Display(cert.TemperatureRange)}", left, y + 160, small, Ink);
 
-        bool seekOnly = Seek(cert) && cert.TestType != "AbsoluteDestructive";
+        bool seekOnly = IsSeekOnly(cert);
         if (seekOnly)
         {
             Text(c, $"Seek průměr: {Ms(cert.SeekAvgLatencyMs)}    P95: {Ms(cert.SeekP95LatencyMs)}",
