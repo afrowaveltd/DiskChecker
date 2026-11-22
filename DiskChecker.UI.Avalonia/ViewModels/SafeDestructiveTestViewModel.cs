@@ -1698,8 +1698,7 @@ public partial class SafeDestructiveTestViewModel : ViewModelBase, INavigableVie
       IReadOnlyList<ObservablePoint> source, int maximumPoints = 32)
    {
       ArgumentNullException.ThrowIfNull(source);
-      if(maximumPoints < 1)
-         throw new ArgumentOutOfRangeException(nameof(maximumPoints));
+      ArgumentOutOfRangeException.ThrowIfLessThan(maximumPoints, 1);
       var count = Math.Min(source.Count, maximumPoints);
       var result = new List<double>(count);
       for(var i = 0; i < count; i++)
