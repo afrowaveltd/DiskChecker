@@ -44,9 +44,11 @@ rather than trusting registry entries alone. It discovers an official
 machine-wide installation using the upstream HKLM uninstall key in
 **both 32-bit and 64-bit registry views** or known protected Program Files paths. For security, the elevated installer never
 executes arbitrary smartctl.exe files from the current user's PATH.
-Exact snapshot identity
-comes from the upstream NSIS `DisplayVersion`; the CLI version
-alone may report `8.0` without a Git commit suffix.
+The official NSIS `DisplayVersion` is **`pre-8.0-623`** for
+this specific release asset (its Git tag has the longer suffix
+`8.0-623-gd788ad8c38ee`). DiskChecker recognizes either representation
+as the bundled build. The download hashes pin the exact binary and source.
+The CLI `--version` can show a shortened prerelease identifier.
 
 If selected, setup extracts and runs the embedded **official upstream
 NSIS** installer silently with system-wide PATH enabled:
