@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.Linq;
 using DiskChecker.Core.Models;
 using DiskChecker.UI.Avalonia.Services;
@@ -25,21 +26,35 @@ public sealed class CertificatePreviewNavigationTests
         Assert.Equal("N/A", graph.ChartMaxSpeedLabel);
     }
 
-    [Fact]
-    public void ReadOnlyScan_ShowsReadProfileAndZeroSpeedStallWithoutWriteCurve()
+    [Theory]
+    [InlineData("cs-CZ", "200,0 MB/s")]
+    [InlineData("en-US", "200.0 MB/s")]
+    public void ReadOnlyScan_ShowsReadProfileAndZeroSpeedStallWithoutWriteCurve(
+        string cultureName, string expectedMaximumLabel)
     {
-        var certificate = new DiskCertificate { TestType = "FullRead", AvgWriteSpeed = 0 };
-        var measured = new List<SpeedSample>
+        // Display labels follow the user's number format, while SVG-style
+        // polyline coordinates always use invariant decimal separators.
+        var previousCulture = CultureInfo.CurrentCulture;
+        try
         {
-            new() { ProgressPercent = 0, SpeedMBps = 100 },
-            new() { ProgressPercent = 50, SpeedMBps = 0, IsStalled = true },
-            new() { ProgressPercent = 100, SpeedMBps = 200 }
-        };
-        var graph = CertificateChartProjector.Build(certificate, [], measured);
-        Assert.Empty(graph.WriteProfilePoints);
-        Assert.Contains("471,226", graph.ReadProfilePoints, StringComparison.Ordinal);
-        Assert.Equal("0 MB/s", graph.ChartMinSpeedLabel);
-        Assert.Equal("200.0 MB/s", graph.ChartMaxSpeedLabel);
+            CultureInfo.CurrentCulture = CultureInfo.GetCultureInfo(cultureName);
+            var certificate = new DiskCertificate { TestType = "FullRead", AvgWriteSpeed = 0 };
+            var measured = new List<SpeedSample>
+            {
+                new() { ProgressPercent = 0, SpeedMBps = 100 },
+                new() { ProgressPercent = 50, SpeedMBps = 0, IsStalled = true },
+                new() { ProgressPercent = 100, SpeedMBps = 200 }
+            };
+            var graph = CertificateChartProjector.Build(certificate, [], measured);
+            Assert.Empty(graph.WriteProfilePoints);
+            Assert.Contains("471,226", graph.ReadProfilePoints, StringComparison.Ordinal);
+            Assert.Equal("0 MB/s", graph.ChartMinSpeedLabel);
+            Assert.Equal(expectedMaximumLabel, graph.ChartMaxSpeedLabel);
+        }
+        finally
+        {
+            CultureInfo.CurrentCulture = previousCulture;
+        }
     }
 
     [Fact]
