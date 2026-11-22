@@ -10,12 +10,6 @@ has_working_smartctl() {
     if [[ -n "$executable" ]] && "$executable" --version >/dev/null 2>&1; then
         return 0
     fi
-    # Preserve support for systems where sbin is not in a root script's PATH.
-    for executable in /usr/sbin/smartctl /sbin/smartctl; do
-        if [[ -x "$executable" ]] && "$executable" --version >/dev/null 2>&1; then
-            return 0
-        fi
-    done
     return 1
 }
 
