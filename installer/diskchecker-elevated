@@ -1,0 +1,79 @@
+#!/bin/sh
+# Root-owned polkit target: receives only display-session coordinates as
+# positional arguments. pkexec deliberately removes the caller's GUI
+# environment; never restore the entire untrusted environment.
+set -eu
+
+if [ "$(id -u)" -ne 0 ]; then
+    echo "DiskChecker: elevated launcher requires administrative privileges." >&2
+    exit 1
+fi
+if [ "$#" -lt 6 ]; then
+    echo "DiskChecker: missing graphical session parameters." >&2
+    exit 2
+fi
+
+request_uid="$1"
+display="$2"
+xauthority="$3"
+wayland_display="$4"
+runtime_dir="$5"
+session_bus="$6"
+shift 6
+
+case "$request_uid" in
+    ''|*[!0-9]*)
+        echo "DiskChecker: invalid requesting user ID." >&2
+        exit 2
+        ;;
+esac
+
+# PKEXEC_UID is supplied by pkexec, not by the normal session wrapper.
+# Binding the parameters to it also rejects a direct invocation of this
+# root-owned helper from an unrelated elevation mechanism.
+if [ -z "${PKEXEC_UID:-}" ] || [ "$PKEXEC_UID" != "$request_uid" ]; then
+    echo "DiskChecker: polkit requester identity mismatch." >&2
+    exit 1
+fi
+
+# A Wayland compositor lives in the requester's own runtime directory.
+# Never accept an arbitrary path or a path belonging to a different UID.
+if [ -n "$runtime_dir" ] && [ "$runtime_dir" != "/run/user/$request_uid" ]; then
+    echo "DiskChecker: invalid graphical runtime directory." >&2
+    exit 2
+fi
+if [ -n "$wayland_display" ] && [ -z "$runtime_dir" ]; then
+    echo "DiskChecker: Wayland session has no runtime directory." >&2
+    exit 2
+fi
+if [ -z "$display" ] && [ -z "$wayland_display" ]; then
+    echo "DiskChecker: no X11 or Wayland display is available." >&2
+    exit 2
+fi
+
+# Preserve only the required display coordinates, never the calling user's
+# HOME or arbitrary environment configuration for a root process.
+PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+HOME=/root
+XDG_CONFIG_HOME=/root/.config
+export PATH HOME XDG_CONFIG_HOME
+
+if [ -n "$display" ]; then DISPLAY="$display"; export DISPLAY; else unset DISPLAY; fi
+if [ -n "$xauthority" ]; then XAUTHORITY="$xauthority"; export XAUTHORITY; else unset XAUTHORITY; fi
+if [ -n "$wayland_display" ]; then WAYLAND_DISPLAY="$wayland_display"; export WAYLAND_DISPLAY; else unset WAYLAND_DISPLAY; fi
+if [ -n "$runtime_dir" ]; then XDG_RUNTIME_DIR="$runtime_dir"; export XDG_RUNTIME_DIR; else unset XDG_RUNTIME_DIR; fi
+if [ -n "$session_bus" ]; then DBUS_SESSION_BUS_ADDRESS="$session_bus"; export DBUS_SESSION_BUS_ADDRESS; else unset DBUS_SESSION_BUS_ADDRESS; fi
+
+APP=/opt/diskchecker/DiskChecker.UI.Avalonia
+if [ ! -x "$APP" ]; then
+    echo "DiskChecker: installed application executable is missing: $APP" >&2
+    exit 127
+fi
+
+# On systems with systemd, preserve .NET/Avalonia startup errors in the
+# journal even when this process is started from a graphical desktop icon.
+# The installed binary and scripts are root-owned and not user-writable.
+if [ -x /usr/bin/systemd-cat ]; then
+    exec /usr/bin/systemd-cat --identifier=diskchecker -- "$APP" "$@"
+fi
+exec "$APP" "$@"
