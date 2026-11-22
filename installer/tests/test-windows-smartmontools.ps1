@@ -3,7 +3,7 @@
 # identical smartmontools. Never run this on a production workstation.
 $ErrorActionPreference = 'Stop'
 $Expected = '8.0.0.623' # Canonical smartctl version written to DisplayVersion.
-$ExpectedCliVersion = '^smartctl 8\.0(?:\.0\.623)?(?:\s|$)' # smartctl CLI reports base 8.0; registry identifies exact build.
+$ExpectedCliVersion = '^smartctl pre-8\.0-623(?:\s|$)' # Upstream prerelease CLI identity; registry uses 8.0.0.623.
 $Installers = @(Get-ChildItem -Path 'packages' -Filter 'DiskChecker-*-win-x64-Setup.exe')
 if ($Installers.Count -ne 1) { throw "Expected exactly one DiskChecker setup EXE" }
 $Setup = $Installers[0].FullName
@@ -41,7 +41,7 @@ $RegPath = Find-SmartmontoolsRegistryKey
 if ($null -eq $RegPath) { throw "smartmontools registry key missing after setup (both views checked)" }
 $Registered = Get-ItemProperty -Path $RegPath
 if ($Registered.DisplayVersion -ne $Expected) {
-    throw "Expected prerelease $Expected, registered $($Registered.DisplayVersion)"
+    throw "Expected smartmontools registry DisplayVersion $Expected, registered $($Registered.DisplayVersion)"
 }
 $Tool = Join-Path $Registered.InstallLocation 'bin\smartctl.exe'
 if (-not (Test-Path $Tool)) { throw "smartctl missing from $Tool" }
@@ -60,7 +60,7 @@ if ($CliVersion.Count -ne 1) {
 $CliVersion = "$($CliVersion[0])".Trim()
 Write-Host "Verified smartctl CLI: $CliVersion (exact installed build $Expected from registry)"
 if ($CliVersion -notmatch $ExpectedCliVersion) {
-    throw "Expected smartctl CLI base 8.0 or 8.0.0.623, reported $CliVersion"
+    throw "Expected official smartctl prerelease pre-8.0-623, reported $CliVersion"
 }
 if (-not $PreInstalled) {
     $Log = Get-Content -LiteralPath $FirstLog -Raw
