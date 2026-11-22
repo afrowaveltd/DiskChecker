@@ -268,6 +268,7 @@ public partial class SafeDestructiveTestViewModel : ViewModelBase, INavigableVie
    // ──────────────────────────────────────────────
 
    private DateTime _phaseStartTime;
+   private DateTime _workflowStartedAtUtc; // complete backup -> test -> restore duration
    private long _phaseBytesProcessed;
 
    // ──────────────────────────────────────────────
@@ -637,6 +638,7 @@ public partial class SafeDestructiveTestViewModel : ViewModelBase, INavigableVie
 
       _cts = new CancellationTokenSource();
       var ct = _cts.Token;
+      _workflowStartedAtUtc = DateTime.UtcNow;
       _backupVerified = false;
       _destructivePhaseStarted = false;
       _restoreCompleted = false;
@@ -1556,7 +1558,7 @@ public partial class SafeDestructiveTestViewModel : ViewModelBase, INavigableVie
       if(SelectedDrive == null) return;
 
       IsGeneratingCertificate = true;
-      CertificateProgressText = "PĹ™ipravuji data certifikĂˇtu...";
+      CertificateProgressText = "Připravuji data certifikátu...";
 
       var card = await _diskCardRepository.GetByDevicePathAsync(SelectedDrive.Path);
       if(card == null)
@@ -1581,11 +1583,11 @@ public partial class SafeDestructiveTestViewModel : ViewModelBase, INavigableVie
       var capturedCapacity = DiskTotalSizeText;
       var capturedDiskType = _smartBefore?.DeviceType ?? "HDD";
       var capturedTestType = SelectedMode == SafeDestructiveMode.VhdxOnly
-          ? "BezpeÄŤnĂ˝ destruktivnĂ­ test (VHDx zĂˇloha â†’ test â†’ obnova)"
+          ? "Bezpečný destruktivní test (VHDx záloha → test → obnova)"
           : SelectedMode == SafeDestructiveMode.ImageRoundTrip
-              ? "Ĺ etrnĂ˝ image round-trip test (RAW zĂˇloha â†’ obnova â†’ ovÄ›Ĺ™enĂ­)"
-              : "BezpeÄŤnĂ˝ destruktivnĂ­ test (zĂˇloha â†’ test â†’ obnova)";
-      var capturedTestDuration = DateTime.UtcNow - _phaseStartTime;
+              ? "Šetrný image round-trip test (RAW záloha → obnova → ověření)"
+              : "Bezpečný destruktivní test (záloha → test → obnova)";
+      var capturedTestDuration = DateTime.UtcNow - _workflowStartedAtUtc;
       var capturedSmartAfter = _smartAfter;
       var capturedSmartBefore = _smartBefore;
       var capturedResultsSummary = ResultsSummary;
@@ -1601,7 +1603,7 @@ public partial class SafeDestructiveTestViewModel : ViewModelBase, INavigableVie
       var capturedSanitizePass2Write = SanitizePass2WritePoints.ToList();
       var capturedSanitizePass2Read = SanitizePass2ReadPoints.ToList();
 
-      CertificateProgressText = "PoÄŤĂ­tĂˇm metriky a znĂˇmky...";
+      CertificateProgressText = "Počítám metriky a známky...";
 
       // Run heavy computations on background thread to keep UI responsive
       var cert = await Task.Run(() =>
@@ -1624,19 +1626,19 @@ public partial class SafeDestructiveTestViewModel : ViewModelBase, INavigableVie
             Status = CertificateStatus.Active,
             Recommended = true,
             Notes = capturedSelectedMode == SafeDestructiveMode.VhdxOnly
-                   ? $"BezpeÄŤnĂ˝ destruktivnĂ­ test: VHDx zĂˇloha â†’ test â†’ obnova.\n{capturedResultsSummary}"
+                   ? $"Bezpečný destruktivní test: VHDx záloha → test → obnova.\n{capturedResultsSummary}"
                    : capturedSelectedMode == SafeDestructiveMode.ImageRoundTrip
-                       ? $"Ĺ etrnĂ˝ image round-trip: RAW zĂˇloha â†’ ovÄ›Ĺ™enĂ­ â†’ obnova â†’ ovÄ›Ĺ™enĂ­ bez opakovanĂ© sanitizace.\n{capturedResultsSummary}"
-                       : $"BezpeÄŤnĂ˝ destruktivnĂ­ test: zĂˇloha â†’ test â†’ obnova.\n{capturedResultsSummary}",
+                       ? $"Šetrný image round-trip: RAW záloha → ověření → obnova → ověření bez opakované sanitizace.\n{capturedResultsSummary}"
+                       : $"Bezpečný destruktivní test: záloha → test → obnova.\n{capturedResultsSummary}",
             SmartPassed = capturedSmartAfter?.ReallocatedSectorCount == 0 && capturedSmartAfter?.PendingSectorCount == 0,
             PowerOnHours = capturedSmartAfter?.PowerOnHours ?? capturedSmartBefore?.PowerOnHours ?? 0,
             ReallocatedSectors = capturedSmartAfter?.ReallocatedSectorCount ?? capturedSmartBefore?.ReallocatedSectorCount ?? 0,
             PendingSectors = capturedSmartAfter?.PendingSectorCount ?? capturedSmartBefore?.PendingSectorCount ?? 0,
             SanitizationPerformed = true,
-            SanitizationMethod = "Zero-fill + verify (2Ă—) - safe mode",
-            DataVerified = true,
+            SanitizationMethod = "Zero-fill + verify (2×) - safe mode",
+            DataVerified = _backupVerified && _restoreCompleted,
             ErrorCount = 0,
-            TemperatureRange = $"{capturedSmartBefore?.Temperature ?? 0}-{capturedSmartAfter?.Temperature ?? 0}Â°C",
+            TemperatureRange = $"{capturedSmartBefore?.Temperature ?? 0}-{capturedSmartAfter?.Temperature ?? 0}°C",
             SmartDeltaSummary = capturedSmartDeltaSummary
          };
 
@@ -1767,6 +1769,17 @@ public partial class SafeDestructiveTestViewModel : ViewModelBase, INavigableVie
          Certificate.TestSessionId = session.Id;
          Certificate.DiskCardId = card.Id;
          await _diskCardRepository.CreateCertificateAsync(Certificate);
+
+         // Share the existing A4 certificate generator with all other tests.
+         // A PDF filesystem failure must not invalidate a verified restored disk.
+         try
+         {
+            await _certificateGenerator.GeneratePdfAsync(Certificate);
+         }
+         catch(Exception ex) when(ex is IOException or UnauthorizedAccessException or InvalidOperationException)
+         {
+            Log($"⚠ Certifikát uložen, ale export PDF selhal: {ex.Message}");
+         }
 
          Log($"Certifikát uložen: {Certificate.CertificateNumber}");
          return true;
