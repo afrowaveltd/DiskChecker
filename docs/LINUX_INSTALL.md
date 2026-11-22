@@ -1,85 +1,182 @@
 # DiskChecker – Linux test installation (x86_64)
 
-DiskChecker's raw-disk operations require root. The Linux application checks its
-effective UID at startup; the packaged desktop shortcut uses `pkexec`. Depending
-on the display server and polkit configuration, graphical root access may not
-be available. The CLI fallback is `sudo diskchecker` in a suitable X11 session.
-Do not run destructive tests on a disk with valuable data.
+The installed Avalonia GUI requires administrative rights for raw-disk
+operations. Use the graphical application entry **DiskChecker**, or run
+`diskchecker` as the **signed-in user** from a terminal in the active
+desktop session. The launcher prompts for administrator authentication
+through polkit. Do not run destructive tests on disks containing valuable data.
 
-## Test packages (before public release)
+## Test installers (not a release)
 
 The GitHub Actions workflow
 [`Build test installers (no release)`](../.github/workflows/test-installers.yml)
-produces downloadable test artifacts on pull requests or manual runs:
-- `diskchecker-1.0.0-linux-x64.deb`
-- `diskchecker-1.0.0-1.x86_64.rpm` (name may include distro suffix)
-- `diskchecker-1.0.0-linux-x64-installer.tar.gz`
-
-All contain the same self-contained .NET 10 `linux-x64` application, so the
-.NET runtime does not need to be installed separately. Install dependencies
-such as `smartmontools` and the OS graphical/font libraries using your package
-manager. Linux ARM64 and other architectures need separately built packages.
+produces DEB, RPM and portable Linux archives. All use the same
+self-contained .NET 10 `linux-x64` build and the **same launcher,
+polkit helper, policy and icon**.
 
 ### Debian / Ubuntu
 
 ```bash
 sudo apt install ./diskchecker-1.0.0-linux-x64.deb
-sudo diskchecker
+diskchecker
 ```
+
+The package depends on `smartmontools`, `polkitd` and `pkexec`;
+`hicolor-icon-theme` is recommended for desktop icon theming.
+The old package contained a desktop entry with direct
+`Exec=pkexec /opt/diskchecker/DiskChecker.UI.Avalonia`. That
+command can authenticate successfully, but `pkexec` removes
+graphical display variables, leaving Avalonia unable to
+open a window. The old DEB also **did not install** the
+system-wide icon named by `Icon=diskchecker`.
 
 ### Fedora / RHEL
 
 ```bash
 sudo dnf install ./diskchecker-1.0.0-1.x86_64.rpm
-sudo diskchecker
+diskchecker
 ```
 
-### Portable installer archive
+The RPM requires `polkit` and `smartmontools` and installs
+the same desktop, root helper, targeted policy and SVG icon.
+
+### Portable archive
 
 ```bash
-tar -xzf diskchecker-1.0.0-linux-x64-installer.tar.gz -C ./diskchecker-package
-cd ./diskchecker-package
+mkdir -p diskchecker-package
+tar -xzf diskchecker-1.0.0-linux-x64-installer.tar.gz -C diskchecker-package
+cd diskchecker-package
 sudo bash ./install-linux.sh
-sudo diskchecker
+diskchecker
 ```
 
-Create the extraction folder first (`mkdir -p diskchecker-package`) if needed.
-The installer copies the application to `/opt/diskchecker`, the privileged
-CLI launcher to `/usr/local/bin/diskchecker`, and the desktop entry to
-`/usr/share/applications/diskchecker.desktop`.
+The portable installer now puts the command in
+`/usr/bin/diskchecker` (the same location as DEB/RPM).
+If an older portable installation left
+`/usr/local/bin/diskchecker`, check
+`type -a diskchecker` to detect a stale wrapper that
+might take precedence in your terminal's PATH.
 
-### Building packages yourself
+## How graphical startup works
+
+The desktop entry now contains:
+
+```ini
+Exec=/usr/bin/diskchecker
+TryExec=/usr/bin/diskchecker
+Icon=diskchecker
+Path=/opt/diskchecker
+```
+
+The non-root `/usr/bin/diskchecker` launcher gathers only
+the session's `DISPLAY`, `XAUTHORITY`,
+`WAYLAND_DISPLAY`, `XDG_RUNTIME_DIR`,
+`DBUS_SESSION_BUS_ADDRESS` and `XDG_SESSION_TYPE`.
+It invokes polkit for the **specific root-owned helper**
+`/usr/lib/diskchecker/diskchecker-elevated`.
+The helper verifies the original user against
+`PKEXEC_UID`, validates the Wayland runtime directory,
+sets its own root HOME/PATH and forwards just those
+explicit graphical session coordinates to the existing
+`/opt/diskchecker/DiskChecker.UI.Avalonia` executable.
+
+The policy `/usr/share/polkit-1/actions/org.afrowave.diskchecker.policy`
+requests administrator authentication for this specific
+helper. It does not grant passwordless disk access,
+use `allow_gui`, or preserve arbitrary caller environment.
+The icon is installed at
+`/usr/share/icons/hicolor/scalable/apps/diskchecker.svg`.
+
+On systems that provide `systemd-cat`, application
+standard output/errors are captured in the system
+journal with the identifier `diskchecker`. This makes
+a startup failure diagnosable even when the GUI closes
+immediately after authentication.
+
+**Security note:** this preserves the project's current
+privileged-GUI architecture. The longer-term recommended
+design is an unprivileged Avalonia UI with a narrowly
+privileged disk backend; connecting a root GUI to a
+user-controlled Wayland/X11 session is a compatibility
+measure, not a substitute for privilege separation.
+
+## Troubleshooting: password accepted, no window
+
+First check that you installed a package built with
+the **updated launcher** rather than the earlier
+artifact:
 
 ```bash
-git clone https://github.com/afrowaveltd/DiskChecker.git
-cd DiskChecker
+grep '^Exec=' /usr/share/applications/diskchecker.desktop
+ls -l /usr/lib/diskchecker/diskchecker-elevated
+ls -l /usr/share/icons/hicolor/scalable/apps/diskchecker.svg
+type -a diskchecker
+```
+
+Next, from a terminal in the same graphical session,
+start without `sudo`:
+
+```bash
+diskchecker
+```
+
+If authentication succeeds but the window does not
+appear, inspect the captured errors:
+
+```bash
+sudo journalctl -b -t diskchecker --no-pager -n 150
+```
+
+You can also check the display environment (no secrets
+or auth cookies are printed here):
+
+```bash
+printf 'Session: %s\nX11: %s\nWayland: %s\n' \
+  "${XDG_SESSION_TYPE:-unknown}" "${DISPLAY:-unset}" \
+  "${WAYLAND_DISPLAY:-unset}"
+```
+
+Important limitations: some hardened Wayland compositors
+do not permit graphical processes running as root to
+connect to a normal user's session. In that case the
+startup log should be used to diagnose the compositor
+restriction; the correct long-term fix is separating
+UI privileges, **not** disabling the compositor's access
+controls or granting all users raw-disk access.
+
+Do not add ordinary users to the `disk` group or grant
+broad raw-disk capabilities as a workaround.
+Do not blindly copy X11 authentication cookies or set
+unsafe blanket `xhost` access.
+
+## PDF certificate folder under alternate administrators
+
+In **Settings**, choose and save the PDF certificate
+folder. Certificates are written below its
+`Certificates` subdirectory. Choose a destination
+accessible to the test operator, not accidentally
+the elevated account's private home. The setting
+takes effect for subsequent PDF exports; existing
+PDFs remain at their original locations.
+
+## Building and verifying packages
+
+```bash
 dotnet publish DiskChecker.UI.Avalonia/DiskChecker.UI.Avalonia.csproj \
   -c Release -r linux-x64 --self-contained true -o publish/linux-x64
-# Requires dpkg-deb and rpmbuild:
+# Debian packaging requires dpkg-deb; RPM packaging requires rpmbuild.
 bash installer/package-linux.sh 1.0.0
+bash installer/tests/verify-linux-packages.sh
 ```
 
-## PDF certificate output and elevated users
+The verification script checks shell syntax, targeted
+polkit action metadata, desktop entry and source SVG,
+then inspects the **actual built DEB, RPM and portable
+archive** for the helper, policy and installed icon.
+GitHub Actions runs these checks before uploading
+test installers.
 
-In **Settings**, choose the `PDF certificate folder` and save it.
-PDF files are written into its `Certificates` subdirectory. Choose a
-writable folder accessible to the *test operator*, not an elevated service
-account's home. The choice is persisted by the settings service, changes
-take effect for subsequent PDFs without restarting the program, and
-existing PDFs remain in their original locations. If the chosen path
-is missing, export reports an error rather than silently redirecting
-to root's folder.
+No GitHub release is created by these test installers.
 
-## Known limits before release
-
-- Test in a real graphical X11/Wayland environment: `pkexec` can fail to
-  pass GUI display authorization on some distributions and compositors.
-- Verify PDF opening, directory ownership and SMTP attachment delivery
-  with both ordinary-user and sudo/polkit launches.
-- Keep Linux disk access restricted: adding ordinary users to the `disk`
-  group or granting `cap_sys_rawio` can expose all raw-disk contents and
-  is **not** a recommended installation shortcut.
-- The previous RPM spec removed `/var/lib/diskchecker` on uninstall.
-  This has been removed; user data must not be erased as a packaging side effect.
-
-For problems: https://github.com/afrowaveltd/DiskChecker/issues
+For issues:
+https://github.com/afrowaveltd/DiskChecker/issues
