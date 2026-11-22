@@ -123,3 +123,20 @@
 - **Verification pending**: package build/CI and a
   real isolated missing-smartctl runtime test are
   not available locally. No new release published.
+
+## 2026-11-22 — automatic installer workflow and CI checkpoint
+
+- The Linux package verification workflow now runs on relevant
+  `master` pushes, in addition to manual dispatch and PRs.
+- DEB and RPM dependency metadata are asserted alongside
+  portable `ensure-smartmontools.sh` presence and mocked
+  installation success/failure scenarios.
+- First workflow attempt was blocked by a .NET CA1512 analyzer
+  complaint in the new safe destructive PDF sample helper,
+  **before** package assembly; corrected on master in
+  `a89c60d733aacff99e931fb09a1eeee6d6cd4aa0`.
+- This installer-status update intentionally triggers the
+  packaging workflow against the corrected source. The
+  new workflow result is still pending; do not mark the
+  DEB/RPM/portable binaries verified until CI succeeds.
+
