@@ -48,6 +48,7 @@ Source: "..\publish\win-x64\*"; DestDir: "{app}"; Flags: ignoreversion recursesu
 Source: "vendor\{#SmartPackage}"; Flags: dontcopy
 ; GNU GPL v2 license for the redistributed, unmodified upstream smartmontools installer.
 Source: "vendor\smartmontools-COPYING.txt"; DestDir: "{app}\licenses\smartmontools"; DestName: "COPYING.txt"; Flags: ignoreversion
+Source: "vendor\smartmontools-{#SmartVersion}.tar.gz"; DestDir: "{app}\licenses\smartmontools"; DestName: "source.tar.gz"; Flags: ignoreversion
 
 [Icons]
 Name: "{group}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"
