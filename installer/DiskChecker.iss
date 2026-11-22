@@ -217,11 +217,11 @@ var
   Normalized: String;
 begin
   Result := -2;
-  // Official upstream NSIS intentionally registers "pre-8.0-623", whereas
-  // its release asset tag has the exact Git commit suffix. Both refer to the
-  // pinned 2026-11-21 snapshot (the original binary is SHA256-verified).
+  // The upstream installer can report the pinned build as its canonical CLI
+  // version in DisplayVersion, rather than its prerelease identity.
   if (CompareText(Trim(Version), '{#SmartVersion}') = 0) or
-     (CompareText(Trim(Version), '{#SmartRegisteredVersion}') = 0) then
+     (CompareText(Trim(Version), '{#SmartRegisteredVersion}') = 0) or
+     (CompareText(Trim(Version), '{#SmartCliVersion}') = 0) then
   begin
     Result := 0;
     Exit;

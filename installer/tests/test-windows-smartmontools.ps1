@@ -2,7 +2,7 @@
 # Exercises real offline setup for (1) missing smartctl and (2) installed
 # identical smartmontools. Never run this on a production workstation.
 $ErrorActionPreference = 'Stop'
-$Expected = 'pre-8.0-623' # Upstream NSIS DisplayVersion, not the asset tag.
+$Expected = '8.0.0.623' # Canonical smartctl version written to DisplayVersion.
 $ExpectedCliVersion = '^smartctl 8\.0\.0\.623(?:\s|$)'
 $Installers = @(Get-ChildItem -Path 'packages' -Filter 'DiskChecker-*-win-x64-Setup.exe')
 if ($Installers.Count -ne 1) { throw "Expected exactly one DiskChecker setup EXE" }
