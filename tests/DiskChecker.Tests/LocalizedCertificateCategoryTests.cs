@@ -42,8 +42,8 @@ public sealed class LocalizedCertificateCategoryTests
             .Select(i => new ObservablePoint(i, 100 - i)).ToList();
         var samples = SafeDestructiveTestViewModel.DownsampleCertificateSeries(measured);
         Assert.Equal(32, samples.Count);
-        Assert.Equal(100, samples[0]);
-        Assert.Equal(4, samples[^1]);
+        Assert.Equal(100d, samples[0]);
+        Assert.Equal(4d, samples[^1]);
         Assert.Equal(100, measured.Count);
     }
 
