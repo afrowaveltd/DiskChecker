@@ -13,3 +13,15 @@ Tests operate exclusively on temporary directories,
 fake device descriptors and fabricated outcomes.
 No real physical device is opened, wiped or resumed.
 CI validation pending.
+
+## 2026-11-23 — reconciliation persistence tests
+
+Added isolated, fake-disk EF InMemory
+integration tests for complete terminal
+failure import, exact RunId idempotence,
+refusal of unfinished/corrupt records,
+and persistent proof-based cleanup.
+These tests do not open or overwrite raw
+devices and do not access the maintainer's
+real SQLite or telemetry files.
+CI pending.
