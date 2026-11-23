@@ -44,6 +44,88 @@ internal static class CertificatePdfPageRenderer
         return stream.ToArray();
     }
 
+    /// <summary>
+    /// One document for 2-3 distinct tests of the same disk. The first page is
+    /// an overview, followed by a complete original A4 certificate for EACH
+    /// selected test. No scores or grades are merged or silently dropped.
+    /// </summary>
+    internal static byte[] CreateBundlePdf(IReadOnlyList<DiskCertificate> certificates)
+    {
+        CombinedCertificatePolicy.Validate(certificates);
+        using var stream = new MemoryStream();
+        using (var pdf = SKDocument.CreatePdf(stream)
+            ?? throw new InvalidOperationException("SkiaSharp PDF engine is unavailable."))
+        {
+            var cover = pdf.BeginPage(595f, 842f);
+            cover.Save();
+            cover.Scale(595f / W);
+            DrawBundleCover(cover, certificates);
+            cover.Restore();
+            pdf.EndPage();
+
+            foreach (var certificate in certificates)
+            {
+                var page = pdf.BeginPage(595f, 842f);
+                page.Save();
+                page.Scale(595f / W);
+                Draw(page, certificate);
+                page.Restore();
+                pdf.EndPage();
+            }
+            pdf.Close();
+        }
+        return stream.ToArray();
+    }
+
+    private static void DrawBundleCover(SKCanvas canvas, IReadOnlyList<DiskCertificate> items)
+    {
+        canvas.Clear(SKColors.White);
+        using var large = Font(37, true);
+        using var title = Font(24, true);
+        using var body = Font(19);
+        using var small = Font(16);
+        using var tiny = Font(14);
+
+        var disk = items[0];
+        Text(canvas, "DISKCHECKER", 50, 76, large, Blue);
+        Text(canvas, "SOUHRNNÝ CERTIFIKÁT DISKU", 50, 112, title, Ink);
+        // The top of the summary uses the SAME disk search barcode.
+        DrawBarcodeHeader(canvas, disk, tiny, small);
+
+        Box(canvas, 48, 165, 1144, 170, Panel);
+        Text(canvas, "IDENTIFIKACE ZAŘÍZENÍ", 67, 203, title, Blue);
+        Text(canvas, ClipHeaderText(disk.DiskModel, body, 870), 67, 252, body, Ink);
+        Text(canvas, $"S/N: {disk.SerialNumber}", 67, 299, small, Ink);
+
+        Text(canvas, "SOUHRN VYBRANÝCH TESTŮ", 67, 379, title, Blue);
+        Text(canvas, "Každý test je hodnocen samostatně. Úplné výsledky následují na dalších stranách.",
+            67, 414, small, Muted);
+
+        for (int index = 0; index < items.Count; index++)
+        {
+            var cert = items[index];
+            float y = 452 + index * 310f;
+            Box(canvas, 48, y, 1144, 288, Panel);
+            Text(canvas, $"{index + 1}. {cert.TestType}", 68, y + 47, title, Blue);
+            Text(canvas, $"Známka: {cert.Grade}    Skóre: {cert.Score:F0}/100",
+                68, y + 102, body, GradeColor(cert.Grade));
+            Text(canvas, $"Číslo certifikátu: {ClipHeaderText(cert.CertificateNumber, small, 760)}",
+                68, y + 146, small, Ink);
+            Text(canvas, $"Test: {cert.GeneratedAt:dd.MM.yyyy HH:mm}    Trvání: {cert.TestDuration.ToString(@"hh\:mm\:ss")}",
+                68, y + 185, small, Ink);
+            Text(canvas, $"Chyby: {cert.ErrorCount}    Čtení: {ReadAverageText(cert).Split(':').Last().Trim()}",
+                68, y + 225, small, Ink);
+            Text(canvas, $"Další podrobnosti: strana {index + 2}", 68, y + 263, small, Muted);
+        }
+
+        Text(canvas, $"Součásti: {items.Count}    Celkem stran: {items.Count + 1}", 68, 1498, small, Ink);
+        Box(canvas, 48, 1530, 1144, 172, SKColors.White);
+        Text(canvas, "ROZSAH A OMEZENÍ", 68, 1570, title, Blue);
+        Wrapped(canvas, "Tento dokument sdružuje různé testy jediného disku. Nevytváří novou známku " +
+            "ani nepřepisuje jednotlivé certifikáty. Každý test zachovává vlastní datum, skóre, " +
+            "výsledky a případné poznámky technika.", 68, 1615, 1090, small, Ink, 3);
+    }
+
     internal static byte[] CreatePreview(DiskCertificate main)
     {
         using var surface = SKSurface.Create(new SKImageInfo((int)W, (int)H))
