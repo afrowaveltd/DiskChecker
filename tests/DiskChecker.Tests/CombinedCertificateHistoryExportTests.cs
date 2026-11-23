@@ -116,6 +116,28 @@ public sealed class CombinedCertificateHistoryExportTests
     }
 
     [Fact]
+    public async Task PersistedLegacyStallCountIsNotClearedIfSamplesWerePruned()
+    {
+        var repository = Substitute.For<IDiskCardRepository>();
+        var generator = Substitute.For<ICertificateGenerator>();
+        var seek = Session(101, TestType.Seek);
+        var sanitize = Session(102, TestType.Sanitization);
+        sanitize.StalledSampleCount = 5;
+        repository.GetCertificatesAsync(Card.Id).Returns(new List<DiskCertificate>());
+        repository.GetTestSessionWithoutSamplesAsync(101).Returns(seek);
+        repository.GetTestSessionWithoutSamplesAsync(102).Returns(sanitize);
+        ArrangeEmptySamples(repository);
+        ArrangeGenerator(generator);
+        generator.GenerateCombinedPdfAsync(Arg.Any<IReadOnlyList<DiskCertificate>>())
+            .Returns(Task.FromResult("combined.pdf"));
+
+        await new CombinedCertificateExportService(repository, generator)
+            .ExportAsync(Card, new[] { 101, 102 });
+
+        Assert.Equal(5, sanitize.StalledSampleCount);
+    }
+
+    [Fact]
     public void CoverUsesSourceTestTimeNotDocumentIssueTime()
     {
         var issued = new DateTime(2026, 11, 23, 10, 0, 0, DateTimeKind.Utc);
