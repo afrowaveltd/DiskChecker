@@ -254,7 +254,10 @@ public sealed class LongTestRecoveryReconcilerTests
                 dir, TestContext.Current.CancellationToken);
 
             Assert.Equal(1, report.Imported);
-            Assert.Equal(1, report.Cleaned);
+            Assert.True(report.Cleaned == 1,
+                $"Recovery was not fully finalized: unresolved={report.Unresolved}; issue={report.LastIssue}; " +
+                $"certificates={await database.DiskCertificates.CountAsync(TestContext.Current.CancellationToken)}; " +
+                $"pdfExists={File.Exists(pdf)}");
             Assert.Equal(0, report.Unresolved);
             var sessionSaved = Assert.Single(await database.TestSessions.ToListAsync(
                 TestContext.Current.CancellationToken));
