@@ -1253,15 +1253,23 @@ public partial class SurfaceTestViewModel : ViewModelBase, INavigableViewModel, 
             var result = sanitizationOutcome.result;
             var successMessage = sanitizationOutcome.successMessage;
             var errorContext = sanitizationOutcome.errorContext;
+            // The saved session and certificate are separate durability stages.
+            var sessionPersisted = sanitizationOutcome.sessionPersisted;
             // Capture final temperature after sanitization
             await RefreshTemperatureAsync();
 
             // A finished disk operation is NOT proof that its test card was saved.
             if(result?.Success == true && !string.IsNullOrWhiteSpace(errorContext))
             {
-               await _dialogService.ShowErrorAsync(
-                  L.Get("SurfaceTest.Status.SanitizeCompleted"),
-                  L.Get("SurfaceTest.Status.SanitizeSaveFailed", errorContext));
+               var issue = L.Get(
+                  SanitizationSaveDiagnostics.FailureStatusKey(sessionPersisted),
+                  errorContext);
+               // A completed SQLite session must never be misrepresented
+               // as lost merely because its certificate or PDF failed.
+               if(sessionPersisted)
+                  await _dialogService.ShowWarningAsync(L.Get("SurfaceTest.Status.SanitizeCompleted"), issue);
+               else
+                  await _dialogService.ShowErrorAsync(L.Get("SurfaceTest.Status.SanitizeCompleted"), issue);
             }
             else if(result?.Success == true && !string.IsNullOrWhiteSpace(successMessage))
             {
@@ -1317,9 +1325,9 @@ public partial class SurfaceTestViewModel : ViewModelBase, INavigableViewModel, 
       }
    }
 
-   private async Task<(SanitizationResult? result, string? successMessage, string? errorContext)> RunSanitizationAsync(SmartaData? smartSnapshot, CancellationToken cancellationToken)
+   private async Task<(SanitizationResult? result, string? successMessage, string? errorContext, bool sessionPersisted)> RunSanitizationAsync(SmartaData? smartSnapshot, CancellationToken cancellationToken)
    {
-      if(SelectedDrive == null) return (null, null, null);
+      if(SelectedDrive == null) return (null, null, null, false);
 
       // Record every sample on local storage independently of the UI sampling
       // budget. The 20-record blocks keep RAM constant and support later zoom.
@@ -1465,6 +1473,7 @@ public partial class SurfaceTestViewModel : ViewModelBase, INavigableViewModel, 
             // Save to disk card
             string? errorContext = null;
             string? emailWarning = null;
+            var sessionPersisted = false;
             try
             {
                var card = await _cardTestService.GetOrCreateCardAsync(SelectedDrive!, _borrowedSmartProvenance == null ? smartSnapshot : null, cancellationToken);
@@ -1475,6 +1484,9 @@ public partial class SurfaceTestViewModel : ViewModelBase, INavigableViewModel, 
                var readSamples = await CaptureSanitizationSamplesAsync(_readRetainedSamples);
 
                var savedSession = await _cardTestService.SaveSanitizationAsync(card, result, writeSamples, readSamples, smartSnapshot, smartAfterSnapshot, _borrowedSmartProvenance, cancellationToken);
+               // SaveSanitizationAsync commits the session *before* optional
+               // certificate/PDF creation. Retain this truth if a later step fails.
+               sessionPersisted = true;
                CommitTelemetryArchive(savedSession.SessionId);
 
                // Persist a real certificate and its PDF using the same renderer
@@ -1503,24 +1515,19 @@ public partial class SurfaceTestViewModel : ViewModelBase, INavigableViewModel, 
                StatusMessage = L.Get("SurfaceTest.Status.SanitizeSaved", card.ModelName, (writeSamples.Count + readSamples.Count).ToString());
                SetStatusMessage(L.Get("SurfaceTest.Status.SanitizeSavedSimple", card.ModelName));
              }
-             catch (InvalidOperationException ex)
-             {
-                 errorContext = ex.Message;
-               StatusMessage = L.Get("SurfaceTest.Status.SanitizeSaveFailed", ex.Message);
-               SetStickyErrorStatus(L.Get("SurfaceTest.Status.SanitizeSaveFailed", ex.Message));
-             }
-             catch (DbUpdateException ex)
-             {
-                 var message = ex.InnerException?.Message ?? ex.Message;
-                 errorContext = message;
-               StatusMessage = L.Get("SurfaceTest.Status.SanitizeSaveFailed", message);
-               SetStickyErrorStatus(L.Get("SurfaceTest.Status.SanitizeSaveFailed", message));
-             }
              catch (Exception ex)
              {
-                 errorContext = ex.Message;
-               StatusMessage = L.Get("SurfaceTest.Status.SanitizeSaveFailed", ex.Message);
-               SetStickyErrorStatus(L.Get("SurfaceTest.Status.SanitizeSaveFailed", ex.Message));
+               // Error 13 can affect the configured SQLite DB volume, a
+               // journal/temp volume, or a SQLite quota; the sanitized HDD
+               // need not be involved. Never expose connection credentials.
+               var storage = (_settingsService as SettingsService)?
+                  .StartupDatabaseStorageSettings;
+               errorContext = SanitizationSaveDiagnostics.Describe(ex, storage);
+               var errorStatus = L.Get(
+                  SanitizationSaveDiagnostics.FailureStatusKey(sessionPersisted),
+                  errorContext);
+               StatusMessage = errorStatus;
+               SetStickyErrorStatus(errorStatus);
              }
 
          // Build success message but don't show dialog yet
@@ -1547,7 +1554,7 @@ public partial class SurfaceTestViewModel : ViewModelBase, INavigableViewModel, 
 
 
 
-         return (result, successMessage, errorContext);
+         return (result, successMessage, errorContext, sessionPersisted);
       }
       else
       {
@@ -1579,11 +1586,11 @@ public partial class SurfaceTestViewModel : ViewModelBase, INavigableViewModel, 
          {
             errorContext = ex is DbUpdateException db ? db.InnerException?.Message ?? db.Message : ex.Message;
             SetStickyErrorStatus($"{message} | Výsledek selhání se nepodařilo uložit: {errorContext}");
-            return (result, null, errorContext);
+            return (result, null, errorContext, false);
          }
 
          SetStickyErrorStatus(message);
-         return (result, null, errorContext);
+         return (result, null, errorContext, false);
       }
    }
 

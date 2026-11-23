@@ -2475,6 +2475,7 @@
   "SurfaceTest.Status.SanitizeProcessed": "💾 Processed: {0:F2} GB\n\n",
   "SurfaceTest.Status.SanitizeResults": "📊 Sanitization Results:\n",
   "SurfaceTest.Status.SanitizeSaveFailed": "Sanitization completed, but card save failed: {0}",
+  "SurfaceTest.Status.SanitizeArtifactsFailed": "Sanitization session is saved, but certificate or PDF creation failed: {0}",
   "SurfaceTest.Status.SanitizeSaved": "Sanitization saved - {0} ({1} samples)",
   "SurfaceTest.Status.SanitizeSavedFailed": "Sanitization completed, but saving card failed: {0}",
   "SurfaceTest.Status.SanitizeSavedFailedShort": "Error: Sanitization completed, but saving card failed: {0}",

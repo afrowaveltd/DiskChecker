@@ -2475,6 +2475,7 @@
   "SurfaceTest.Status.SanitizeProcessed": "💾 Zpracováno: {0:F2} GB\n\n",
   "SurfaceTest.Status.SanitizeResults": "📊 Výsledky sanitizace:\n",
   "SurfaceTest.Status.SanitizeSaveFailed": "Sanitizace dokončena, ale uložení karty selhalo: {0}",
+  "SurfaceTest.Status.SanitizeArtifactsFailed": "Výsledek sanitizace je uložen, ale selhalo vytvoření certifikátu nebo PDF: {0}",
   "SurfaceTest.Status.SanitizeSaved": "Sanitizace uložena - {0} ({1} vzorků)",
   "SurfaceTest.Status.SanitizeSavedFailed": "Sanitizace dokončena, ale uložení karty selhalo: {0}",
   "SurfaceTest.Status.SanitizeSavedFailedShort": "Chyba: Sanitizace dokončena, ale uložení karty selhalo: {0}",

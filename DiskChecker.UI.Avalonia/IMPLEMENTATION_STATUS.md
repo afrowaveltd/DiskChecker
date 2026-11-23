@@ -64,3 +64,41 @@
 - English rationale:
   `docs/Pull-Request-Reconciliation/en.md`.
   **.NET build/full test results pending**.
+
+## 2026-11-23 — sanitization SQLite error 13, partial persistence visibility
+
+A real 465.76 GB Windows disk sanitization finished its full
+write+read verify but displayed
+`SQLite Error 13: database or disk is full`
+while saving the resulting disk card. The tested drive's
+remaining space is **not evidence of a full SQLite volume**:
+`SettingsService` can select a DB in the working folder,
+beside the executable or under AppData, and transaction
+journals/TEMP or SQLite limits can fail separately.
+The **actual cause is still undetermined** without
+inspectable running database path and free-space/quota data.
+
+Code audit found that `SurfaceTestViewModel.RunSanitizationAsync`
+had one broad `try/catch` for *both* the authoritative
+`SaveSanitizationAsync` SQLite commit *and*
+later certificate DB/PDF operations. This made a
+post-commit certificate failure falsely appear as a
+missing disk card. The UI now tracks whether the session
+has been committed and uses a distinct warning when
+only certificate/PDF creation fails. For a real
+SQLITE_FULL (13), the error dialog also includes
+the active startup DB path, available space on its
+volume, SQLite extended error code and TEMP location;
+it never prints connection passwords.
+
+The physically finished test must **not** be repeated
+merely to recover the card. Its old-process telemetry
+may still exist as
+`%LOCALAPPDATA%\\DiskChecker\\Telemetry\\pending_*.dat`;
+the user was advised to copy (not delete) these
+files while the process remains open. No SQLite
+VACUUM, WAL cleanup, drive reformatting, or
+destructive fallback is attempted by the fix.
+This commit does not automatically reconstruct
+a previously failed save, and it cannot alter
+the already-running application instance.
