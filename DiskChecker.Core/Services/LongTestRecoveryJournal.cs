@@ -53,6 +53,12 @@ public sealed class LongTestRecoverySnapshot
     public List<SpeedSample>? WriteSamples { get; set; }
     public List<SpeedSample>? ReadSamples { get; set; }
     public Guid? DatabaseSessionGuid { get; set; }
+    /// <summary>The exact binary telemetry file produced by this test, if any.</summary>
+    public string? PendingTelemetryPath { get; set; }
+    /// <summary>Exact persisted certificate id after the PDF has been written.</summary>
+    public int? CertificateId { get; set; }
+    /// <summary>Actual verified PDF path; never guessed from filenames.</summary>
+    public string? PdfPath { get; set; }
 }
 
 /// <summary>Non-destructive recovery inventory item, including damaged files.</summary>
@@ -92,6 +98,63 @@ public sealed class LongTestRecoveryJournal
 
     /// <summary>Full durable snapshot path; never delete it manually during a failed save.</summary>
     public string FilePath => _filePath;
+
+    /// <summary>Whether a binary telemetry file still needs to be linked to the session.</summary>
+    public bool RequiresTelemetryConfirmation =>
+        !string.IsNullOrWhiteSpace(_snapshot.PendingTelemetryPath);
+
+    /// <summary>The recorded raw binary telemetry path, never an arbitrary user-selected path.</summary>
+    public string? PendingTelemetryPath => _snapshot.PendingTelemetryPath;
+
+    private LongTestRecoveryJournal(string path, LongTestRecoverySnapshot snapshot)
+    {
+        _filePath = path;
+        _snapshot = snapshot;
+        _lastWrittenUtc = snapshot.UpdatedAtUtc;
+        _lastWrittenPercent = snapshot.PhasePercent;
+        _lastWrittenPhase = snapshot.Phase;
+    }
+
+    /// <summary>
+    /// Re-open only a previously validated, terminal checkpoint for conservative
+    /// DB reconciliation. Never resume a running physical write/verify operation.
+    /// </summary>
+    public static LongTestRecoveryJournal ReopenCompleted(LongTestRecoveryEntry entry)
+    {
+        ArgumentNullException.ThrowIfNull(entry);
+        if(entry.ValidationError != null || entry.Snapshot == null ||
+            entry.Snapshot.State == LongTestRecoveryState.Running)
+            throw new InvalidOperationException("Only validated terminal recovery records can be reopened.");
+        // Re-inspect from disk instead of trusting a possibly stale DTO.
+        var validated = Inspect(Path.GetDirectoryName(entry.FilePath))
+            .FirstOrDefault(e => string.Equals(e.FilePath, entry.FilePath, StringComparison.Ordinal));
+        if(validated?.Snapshot == null || validated.ValidationError != null ||
+           validated.Snapshot.RunId != entry.Snapshot.RunId ||
+           validated.Snapshot.State == LongTestRecoveryState.Running)
+            throw new InvalidOperationException("The on-disk checkpoint has changed or is invalid.");
+        return new LongTestRecoveryJournal(validated.FilePath, validated.Snapshot);
+    }
+
+    /// <summary>Attach a previously opened local binary archive to this run.</summary>
+    public void AttachTelemetryPath(string pendingPath)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(pendingPath);
+        lock (_gate)
+        {
+            if (_snapshot.State != LongTestRecoveryState.Running)
+                throw new InvalidOperationException("Telemetry must be attached before test completion.");
+            var full = Path.GetFullPath(pendingPath);
+            var expectedDir = Path.GetFullPath(DiskTelemetryArchive.ArchiveDirectory);
+            if (!string.Equals(Path.GetDirectoryName(full), expectedDir,
+                OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal) ||
+                !Path.GetFileName(full).StartsWith("pending_", StringComparison.Ordinal) ||
+                !full.EndsWith(".dat", StringComparison.Ordinal))
+                throw new ArgumentException("Only DiskChecker owned pending telemetry files may be linked.", nameof(pendingPath));
+            _snapshot.PendingTelemetryPath = full;
+            _snapshot.UpdatedAtUtc = DateTime.UtcNow;
+            SaveLocked();
+        }
+    }
 
     /// <summary>
     /// Begin a physical test. Failure to create the first durable checkpoint
@@ -219,6 +282,9 @@ public sealed class LongTestRecoveryJournal
             throw new ArgumentException("The persisted session must match this recovery run.", nameof(sessionGuid));
         lock (_gate)
         {
+            if(_snapshot.State is LongTestRecoveryState.DatabaseSaved or LongTestRecoveryState.ArtifactsSaved &&
+               _snapshot.DatabaseSessionGuid == sessionGuid)
+                return;
             if (_snapshot.State is not (LongTestRecoveryState.Completed or LongTestRecoveryState.Failed or LongTestRecoveryState.Cancelled))
                 throw new InvalidOperationException("Final outcome must be written before marking the session durable.");
             _snapshot.DatabaseSessionGuid = sessionGuid;
@@ -229,12 +295,15 @@ public sealed class LongTestRecoveryJournal
     }
 
     /// <summary>Certificate/PDF persist step was confirmed by the caller.</summary>
-    public void MarkArtifactsSaved()
+    public void MarkArtifactsSaved(int? certificateId = null, string? pdfPath = null)
     {
         lock (_gate)
         {
+            if (_snapshot.State == LongTestRecoveryState.ArtifactsSaved) return;
             if (_snapshot.State != LongTestRecoveryState.DatabaseSaved)
                 throw new InvalidOperationException("Database must be saved first.");
+            _snapshot.CertificateId = certificateId;
+            _snapshot.PdfPath = pdfPath;
             _snapshot.State = LongTestRecoveryState.ArtifactsSaved;
             _snapshot.UpdatedAtUtc = DateTime.UtcNow;
             SaveLocked();

@@ -43,6 +43,9 @@ public sealed class DiskTelemetryArchive : IDisposable
         Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
             "DiskChecker", "Telemetry");
 
+    /// <summary>Current pending binary telemetry path, required for post-crash reconciliation.</summary>
+    public string PendingFilePath => _temporaryPath;
+
     public static string GetSessionPath(Guid sessionGuid) =>
         Path.Combine(ArchiveDirectory, sessionGuid.ToString("N") + ".dat");
 
@@ -133,6 +136,42 @@ public sealed class DiskTelemetryArchive : IDisposable
             catch (IOException) { }
             catch (UnauthorizedAccessException) { }
         }
+    }
+
+    /// <summary>
+    /// Reattach a closed pending binary archive after a verified database commit.
+    /// Refuses arbitrary paths, damaged headers, active writers and overwrite.
+    /// It NEVER deletes an existing destination or retries physical disk I/O.
+    /// </summary>
+    public static bool TryRecoverPending(string pendingPath, Guid sessionGuid)
+    {
+        if(sessionGuid == Guid.Empty || string.IsNullOrWhiteSpace(pendingPath))
+            return false;
+        var full = Path.GetFullPath(pendingPath);
+        var telemetryDir = Path.GetFullPath(ArchiveDirectory);
+        if(!string.Equals(Path.GetDirectoryName(full), telemetryDir,
+            OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal) ||
+           !Path.GetFileName(full).StartsWith("pending_", StringComparison.Ordinal) ||
+           !full.EndsWith(".dat", StringComparison.Ordinal))
+            return false;
+        var target = GetSessionPath(sessionGuid);
+        if(File.Exists(target)) return !File.Exists(full);
+        if(!File.Exists(full)) return false;
+
+        // FileShare.None is intentionally required: never move a still-live
+        // writer's pending telemetry, even during another application instance.
+        using(var stream = new FileStream(full, FileMode.Open, FileAccess.Read, FileShare.None))
+        using(var reader = new BinaryReader(stream))
+        {
+            if(stream.Length < 16 ||
+               reader.ReadInt32() != Magic ||
+               reader.ReadInt32() != Version ||
+               reader.ReadInt32() != BlockCapacity ||
+               reader.ReadInt32() != RecordBytes)
+                return false;
+        }
+        File.Move(full, target, overwrite: false);
+        return File.Exists(target);
     }
 
     public DiskTelemetryArchive()

@@ -1372,7 +1372,11 @@ public partial class SurfaceTestViewModel : ViewModelBase, INavigableViewModel, 
 
       // Record every sample on local storage independently of the UI sampling
       // budget. The 20-record blocks keep RAM constant and support later zoom.
-      try { _telemetryArchive = new DiskTelemetryArchive(); }
+      try
+      {
+         _telemetryArchive = new DiskTelemetryArchive();
+         _recoveryJournal.AttachTelemetryPath(_telemetryArchive.PendingFilePath);
+      }
       catch(IOException ex) { _telemetryArchiveWarning = ex.Message; }
       catch(UnauthorizedAccessException ex) { _telemetryArchiveWarning = ex.Message; }
 
@@ -1594,7 +1598,8 @@ public partial class SurfaceTestViewModel : ViewModelBase, INavigableViewModel, 
                if (!string.IsNullOrWhiteSpace(pdfPath) && System.IO.File.Exists(pdfPath) &&
                    await _cardTestService.IsRecoveryRunDurableAsync(
                        savedSession.SessionId, certificate.Id, cancellationToken))
-                  CompleteAndCleanupRecovery(savedSession.SessionId);
+                  CompleteAndCleanupRecovery(savedSession.SessionId,
+                      certificate.Id, pdfPath);
 
                // Send the saved PDF exactly once, independently of disk persistence.
                // A failed SMTP transaction must not mark sanitization as unsaved.
@@ -1712,12 +1717,21 @@ public partial class SurfaceTestViewModel : ViewModelBase, INavigableViewModel, 
       }
    }
 
-   private void CompleteAndCleanupRecovery(Guid sessionGuid)
+   private void CompleteAndCleanupRecovery(Guid sessionGuid,
+       int? certificateId = null, string? pdfPath = null)
    {
       if (_recoveryJournal == null) return;
       try
       {
-         _recoveryJournal.MarkArtifactsSaved();
+         // Keep the recovery record if high-resolution binary telemetry is
+         // still pending; DB samples alone cannot replace its zoom data.
+         if (_recoveryJournal.RequiresTelemetryConfirmation &&
+             !DiskTelemetryArchive.Exists(sessionGuid))
+         {
+            _telemetryArchiveWarning = "Pending telemetry needs reconciliation.";
+            return;
+         }
+         _recoveryJournal.MarkArtifactsSaved(certificateId, pdfPath);
          // Caller already independently queried the authoritative DB.
          _recoveryJournal.DeleteAfterVerification(id => id == sessionGuid);
          _recoveryJournal = null;
