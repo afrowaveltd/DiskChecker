@@ -480,10 +480,28 @@ public partial class DiskCardDetailViewModel : ViewModelBase, INavigableViewMode
                 var session = sessions[i];
                 if (session.TestType == TestType.Seek)
                 {
+                    // Seek percentiles/count and summaries are runtime-derived
+                    // [NotMapped] values. Rebuild them from the originating
+                    // session before printing (without modifying the saved cert).
+                    var reconstructed = await _certificateGenerator.GenerateCertificateAsync(session, card);
+                    certificate.SeekAvgLatencyMs ??= reconstructed.SeekAvgLatencyMs;
+                    certificate.SeekMinLatencyMs ??= reconstructed.SeekMinLatencyMs;
+                    certificate.SeekMaxLatencyMs ??= reconstructed.SeekMaxLatencyMs;
+                    certificate.SeekStdDevLatencyMs ??= reconstructed.SeekStdDevLatencyMs;
+                    certificate.SeekMedianLatencyMs ??= reconstructed.SeekMedianLatencyMs;
+                    certificate.SeekP95LatencyMs ??= reconstructed.SeekP95LatencyMs;
+                    certificate.SeekP99LatencyMs ??= reconstructed.SeekP99LatencyMs;
+                    certificate.SeekTotalCount ??= reconstructed.SeekTotalCount;
+                    certificate.SeekErrorCount ??= reconstructed.SeekErrorCount;
+                    certificate.SeekTestSummary ??= reconstructed.SeekTestSummary;
+                    certificate.SeekTypeSummaries = reconstructed.SeekTypeSummaries;
+
                     var points = await _diskCardRepository.GetSeekSamplesDownsampledAsync(session.Id, 512);
                     certificate.SeekLatencyPoints = points
                         .Where(p => !p.HasError && p.LatencyMs >= 0)
                         .OrderBy(p => p.Index).Select(p => p.LatencyMs).ToList();
+                    if (certificate.SeekLatencyPoints.Count == 0)
+                        certificate.SeekLatencyPoints = reconstructed.SeekLatencyPoints;
                 }
                 else
                 {
