@@ -78,6 +78,8 @@ DiskChecker je dnes více než jednoduchá SMART utilita. Obsahuje kompletní ap
   - Generování certifikátů o stavu disku s grafy, metrikami a analýzou anomálií.
   - **Cross-platform** – PDF i JPEG náhled přes SkiaSharp (Windows, Linux, macOS).
   - Generování štítků (PNG).
+  - **Čárový kód Code 128** na certifikátu pro vyhledání celé karty disku čtečkou; vyhledávací pole je trvale dostupné v hlavním okně.
+  - **Sdružený PDF certifikát**: ruční výběr 2–3 různých testů stejného disku, úvodní souhrn a úplné jednotlivé stránky. [Postup a omezení](docs/CERTIFICATE_BARCODE_AND_BUNDLES_EN.md).
   - PDF/exportní workflow a prohlížeč certifikátů.
   - Kompletní reporty, náhled a tisk/export podle implementovaných možností UI.
 - **Historie a databáze**
