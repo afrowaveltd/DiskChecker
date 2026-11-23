@@ -86,10 +86,18 @@ public partial class App : global::Avalonia.Application
                         await recoveryScope.ServiceProvider
                             .GetRequiredService<IDialogService>().ShowWarningAsync(
                                 "DiskChecker – recovery",
-                                $"Recovered {recovered.Imported} completed database tests; " +
-                                $"{recovered.Unresolved} recovery records still require inspection. " +
-                                "Raw disk tests are never resumed automatically. " +
+                                $"Reconstructed {recovered.Imported} test sessions; " +
+                                $"{recovered.Unresolved} recovery records still need review " +
+                                $"(including {recovered.PendingBinaryArchives} legacy pending telemetry files). " +
+                                "Raw disk operations are never resumed automatically. " +
                                 "Do not delete pending telemetry or SQLite WAL files.");
+                    }
+                    else if (recovered.Imported > 0)
+                    {
+                        await recoveryScope.ServiceProvider
+                            .GetRequiredService<IDialogService>().ShowInfoAsync(
+                                "DiskChecker – recovery",
+                                $"Successfully restored {recovered.Imported} completed test sessions.");
                     }
                 }
                 catch (Exception ex)

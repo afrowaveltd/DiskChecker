@@ -231,4 +231,21 @@ public sealed class LongTestRecoveryJournalTests
             .IsAutomaticImportCandidate(record));
     }
 
+    [Fact]
+    public void InterruptedAtomicReplacementIsInventoriedWithoutDeletion()
+    {
+        var folder = NewDirectory();
+        try
+        {
+            var temp = Path.Combine(folder,
+                "run_" + Guid.NewGuid().ToString("N") + ".json.incomplete.tmp");
+            File.WriteAllText(temp, "partial bytes from an interrupted replacement");
+            var entry = Assert.Single(LongTestRecoveryJournal.Inspect(folder));
+            Assert.Null(entry.Snapshot);
+            Assert.NotNull(entry.ValidationError);
+            Assert.True(File.Exists(temp));
+        }
+        finally { Directory.Delete(folder, recursive: true); }
+    }
+
 }

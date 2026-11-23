@@ -366,6 +366,14 @@ public sealed class LongTestRecoveryJournal
                 items.Add(new LongTestRecoveryEntry(path, null, ex.Message));
             }
         }
+        // A crash during atomic replacement can leave a temporary sibling.
+        // It is not authoritative and must never be silently deleted.
+        foreach(var temp in Directory.EnumerateFiles(directory, "run_*.tmp")
+            .Take(maxFiles))
+        {
+            items.Add(new LongTestRecoveryEntry(temp, null,
+                "Interrupted checkpoint replacement; preserve for review."));
+        }
         return items;
     }
 

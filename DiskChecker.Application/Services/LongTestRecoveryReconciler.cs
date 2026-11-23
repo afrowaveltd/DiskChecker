@@ -195,6 +195,27 @@ public sealed class LongTestRecoveryReconciler
                 summary.LastIssue = ex.Message;
             }
         }
+        // Legacy or unassociated high-resolution archives do not contain
+        // enough identity data to insert a completed test automatically.
+        // Inventory only: warn, never delete or guess a destination session.
+        if(recoveryDirectoryOverride == null)
+        {
+            try
+            {
+                var folder = DiskTelemetryArchive.ArchiveDirectory;
+                if(Directory.Exists(folder))
+                {
+                    summary.PendingBinaryArchives = Directory
+                        .EnumerateFiles(folder, "pending_*.dat").Take(1_000).Count();
+                    summary.Unresolved += summary.PendingBinaryArchives;
+                }
+            }
+            catch(Exception ex) when(ex is IOException or UnauthorizedAccessException)
+            {
+                summary.Unresolved++;
+                summary.LastIssue = ex.Message;
+            }
+        }
         return summary;
     }
 
@@ -217,7 +238,8 @@ public sealed class LongTestRecoveryReconciler
         var serial = snapshot.SerialNumber?.Trim();
         return !string.IsNullOrWhiteSpace(serial) &&
                serial.Length >= 4 &&
-               !new[] { "unknown", "n/a", "none", "null", "nosn", "00000000" }
+               serial.Any(c => c != '0') &&
+               !new[] { "unknown", "n/a", "none", "null", "nosn", "00000000", "to be filled by o.e.m." }
                   .Contains(serial.ToLowerInvariant(), StringComparer.Ordinal);
     }
 }
@@ -230,5 +252,6 @@ public sealed class LongTestRecoverySummary
     public int AlreadyInDatabase { get; set; }
     public int Cleaned { get; set; }
     public int Unresolved { get; set; }
+    public int PendingBinaryArchives { get; set; }
     public string? LastIssue { get; set; }
 }
