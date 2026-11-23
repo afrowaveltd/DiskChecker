@@ -1574,7 +1574,7 @@ public partial class SurfaceTestViewModel : ViewModelBase, INavigableViewModel, 
                var writeSamples = await CaptureSanitizationSamplesAsync(_writeRetainedSamples);
                var readSamples = await CaptureSanitizationSamplesAsync(_readRetainedSamples);
 
-               var savedSession = await _cardTestService.SaveSanitizationAsync(card, result, writeSamples, readSamples, smartSnapshot, smartAfterSnapshot, _borrowedSmartProvenance, cancellationToken, _recoveryJournal?.RunId);
+               var savedSession = await _cardTestService.SaveSanitizationAsync(card, result, writeSamples, readSamples, smartSnapshot, smartAfterSnapshot, _borrowedSmartProvenance, _recoveryJournal?.RunId, cancellationToken);
                // SaveSanitizationAsync commits the session *before* optional
                // certificate/PDF creation. Retain this truth if a later step fails.
                sessionPersisted = true;
@@ -1676,7 +1676,7 @@ public partial class SurfaceTestViewModel : ViewModelBase, INavigableViewModel, 
             var card = await _cardTestService.GetOrCreateCardAsync(SelectedDrive!, _borrowedSmartProvenance == null ? smartSnapshot : null, cancellationToken);
             var writeSamples = await CaptureSanitizationSamplesAsync(_writeRetainedSamples);
             var readSamples = await CaptureSanitizationSamplesAsync(_readRetainedSamples);
-            var session = await _cardTestService.SaveSanitizationAsync(card, result, writeSamples, readSamples, smartSnapshot, null, _borrowedSmartProvenance, cancellationToken, _recoveryJournal?.RunId);
+            var session = await _cardTestService.SaveSanitizationAsync(card, result, writeSamples, readSamples, smartSnapshot, null, _borrowedSmartProvenance, _recoveryJournal?.RunId, cancellationToken);
             RecordRecoveryDatabaseSaved(session.SessionId);
             CommitTelemetryArchive(session.SessionId);
             // Failed/cancelled sanitizations do not need success certificates;

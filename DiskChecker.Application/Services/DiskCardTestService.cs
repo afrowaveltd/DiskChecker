@@ -665,6 +665,20 @@ public class DiskCardTestService
        CancellationToken cancellationToken = default)
        => SaveSanitizationAsync(card, result, writeSamples, readSamples, smartaData, smartAfter, null, cancellationToken);
 
+   /// <summary>Compatibility overload for callers not using durable recovery ids.</summary>
+   public Task<TestSession> SaveSanitizationAsync(
+       DiskCard card,
+       SanitizationResult result,
+       IEnumerable<SpeedSample>? writeSamples,
+       IEnumerable<SpeedSample>? readSamples,
+       SmartaData? smartaData,
+       SmartaData? smartAfter,
+       string? borrowedSmartProvenance,
+       CancellationToken cancellationToken = default)
+       => SaveSanitizationAsync(card, result, writeSamples, readSamples,
+           smartaData, smartAfter, borrowedSmartProvenance, null, cancellationToken);
+
+   /// <summary>Idempotent save with an optional stable recovery-run identifier.</summary>
    public async Task<TestSession> SaveSanitizationAsync(
        DiskCard card,
        SanitizationResult result,
@@ -673,8 +687,8 @@ public class DiskCardTestService
        SmartaData? smartaData,
        SmartaData? smartAfter,
        string? borrowedSmartProvenance,
-       CancellationToken cancellationToken = default,
-       Guid? recoveryRunId = null)
+       Guid? recoveryRunId,
+       CancellationToken cancellationToken = default)
    {
       ArgumentNullException.ThrowIfNull(card);
       ArgumentNullException.ThrowIfNull(result);
