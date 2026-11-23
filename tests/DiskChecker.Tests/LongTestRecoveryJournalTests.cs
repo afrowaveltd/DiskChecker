@@ -248,4 +248,52 @@ public sealed class LongTestRecoveryJournalTests
         finally { Directory.Delete(folder, recursive: true); }
     }
 
+    [Theory]
+    [InlineData("Cancelled by user")]
+    [InlineData("Operace zrušena uživatelem")]
+    public void RecoveryJournalRecordsRealUserCancellationInsteadOfMediaFault(string reason)
+    {
+        var folder = NewDirectory();
+        try
+        {
+            var journal = new LongTestRecoveryJournal(FakeDrive(), directoryOverride: folder);
+            journal.FinishSanitization(new SanitizationResult
+            {
+                Success = false,
+                ErrorMessage = reason,
+                BytesWritten = 500
+            }, null, null, null, null);
+            var record = Assert.Single(LongTestRecoveryJournal.Inspect(folder));
+            Assert.Equal(LongTestRecoveryState.Cancelled, record.Snapshot!.State);
+        }
+        finally { Directory.Delete(folder, recursive: true); }
+    }
+
+    [Fact]
+    public void RecoveryJournalDoesNotClassifyPhysicalFaultAsCancellation()
+    {
+        var folder = NewDirectory();
+        try
+        {
+            var journal = new LongTestRecoveryJournal(FakeDrive(), directoryOverride: folder);
+            journal.FinishSanitization(new SanitizationResult
+            {
+                Success = false,
+                ErrorMessage = "Cancelled by user",
+                ErrorDetails =
+                {
+                    new SanitizationErrorDetail
+                    {
+                        ErrorCode = "READ_FAULT",
+                        Phase = "Read",
+                        Message = "Device I/O failed"
+                    }
+                }
+            }, null, null, null, null);
+            Assert.Equal(LongTestRecoveryState.Failed,
+                Assert.Single(LongTestRecoveryJournal.Inspect(folder)).Snapshot!.State);
+        }
+        finally { Directory.Delete(folder, recursive: true); }
+    }
+
 }

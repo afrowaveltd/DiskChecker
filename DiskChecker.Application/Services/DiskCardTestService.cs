@@ -739,7 +739,7 @@ public class DiskCardTestService
           : 0d;
       var writeDuration = result.WriteDuration > TimeSpan.Zero ? result.WriteDuration : result.Duration;
       var readDuration = result.ReadDuration > TimeSpan.Zero ? result.ReadDuration : result.Duration;
-      var wasUserCancelled = IsUserCancelledSanitization(result);
+      var wasUserCancelled = SanitizationOutcomeClassification.IsUserCancelled(result);
       var sessionStatus = wasUserCancelled
           ? TestStatus.Cancelled
           : result.Success ? TestStatus.Completed : TestStatus.Failed;
@@ -974,22 +974,6 @@ public class DiskCardTestService
       card.OverallGrade = calculatedGrade;
    }
 
-   private static bool IsUserCancelledSanitization(SanitizationResult result)
-   {
-      if (result.Success || result.ErrorDetails.Count > 0)
-      {
-         return false;
-      }
-
-      var message = result.ErrorMessage ?? string.Empty;
-      return message.Contains("cancel", StringComparison.OrdinalIgnoreCase)
-             || message.Contains("canceled", StringComparison.OrdinalIgnoreCase)
-             || message.Contains("cancelled", StringComparison.OrdinalIgnoreCase)
-             || message.Contains("zrušen", StringComparison.OrdinalIgnoreCase)
-             || message.Contains("zrusen", StringComparison.OrdinalIgnoreCase)
-             || message.Contains("uživatelem", StringComparison.OrdinalIgnoreCase)
-             || message.Contains("uzivatelem", StringComparison.OrdinalIgnoreCase);
-   }
 
    private static TestResult DetermineSmartResult(SmartaData smartaData)
    {

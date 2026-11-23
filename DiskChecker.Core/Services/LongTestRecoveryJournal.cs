@@ -249,7 +249,8 @@ public sealed class LongTestRecoveryJournal
             _snapshot.SmartAfter = smartAfter;
             _snapshot.BorrowedSmartProvenance = borrowedSmartProvenance;
             _snapshot.EndedAtUtc = DateTime.UtcNow;
-            _snapshot.State = userCancelled
+            _snapshot.State = (userCancelled ||
+                    SanitizationOutcomeClassification.IsUserCancelled(result))
                 ? LongTestRecoveryState.Cancelled
                 : result.Success ? LongTestRecoveryState.Completed : LongTestRecoveryState.Failed;
             _snapshot.Failure = result.Success ? null : result.ErrorMessage;

@@ -98,3 +98,15 @@ pre-update DiskChecker cannot acquire these new recovery
 features retroactively. Automatic physical test resume,
 absolute-destructive multi-phase replay and safe-destructive
 backup/restore recovery remain **explicitly not implemented**.
+
+## 2026-11-23 — consistent cancellation classification
+
+Sanitization checkpoint final state now uses the
+same Core `SanitizationOutcomeClassification`
+as the authoritative DB session service.
+An explicit user cancellation with no physical
+error details produces `Cancelled`, not
+`Failed`; physical faults with actual
+error details remain `Failed` even when the
+message contains a cancellation word.
+Added both cases as synthetic regression tests.
