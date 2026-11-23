@@ -241,6 +241,12 @@ public interface ICertificateGenerator
     Task<string> GeneratePdfAsync(DiskCertificate certificate);
 
     /// <summary>
+    /// Export two or three distinct certificates for one disk as one PDF:
+    /// cover page followed by full original reports, without merging grades.
+    /// </summary>
+    Task<string> GenerateCombinedPdfAsync(IReadOnlyList<DiskCertificate> certificates);
+
+    /// <summary>
     /// Generate a printable disk label image from certificate.
     /// </summary>
     Task<string> GenerateLabelAsync(DiskCertificate certificate);
