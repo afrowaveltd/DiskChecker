@@ -524,5 +524,4 @@ details for the actual SQLite startup path added.
 
 For safe recovery precautions, pending-telemetry backup
 instructions and exact limits of what the test proves,
-read [SQLite sanitization save failure and recovery]
-(docs/Sqlite-Sanitization-Recovery/en.md).
+read [SQLite sanitization save failure and recovery](docs/Sqlite-Sanitization-Recovery/en.md).
