@@ -7,6 +7,7 @@ using DiskChecker.Core.Interfaces;
 using DiskChecker.Core.Models;
 using DiskChecker.Core.Services;
 using DiskChecker.Infrastructure.Persistence;
+using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using NSubstitute;
@@ -214,9 +215,15 @@ public sealed class LongTestRecoveryReconcilerTests
             record.UpdatedAtUtc = DateTime.UtcNow.AddMinutes(-3);
             File.WriteAllText(journal.FilePath, JsonSerializer.Serialize(record));
 
+            // Certificate storage uses a targeted ExecuteSqlRaw UPDATE.
+            // This must be tested against real SQLite (in-memory, isolated),
+            // because EF's InMemory provider cannot execute SQL.
+            await using var sqlite = new SqliteConnection("Data Source=:memory:");
+            await sqlite.OpenAsync(TestContext.Current.CancellationToken);
             var options = new DbContextOptionsBuilder<DiskCheckerDbContext>()
-                .UseInMemoryDatabase(Guid.NewGuid().ToString("N")).Options;
+                .UseSqlite(sqlite).Options;
             await using var database = new DiskCheckerDbContext(options);
+            await database.Database.EnsureCreatedAsync(TestContext.Current.CancellationToken);
             var generator = Substitute.For<ICertificateGenerator>();
             generator.GenerateAndStoreChartImageAsync(
                 Arg.Any<TestSession>(), Arg.Any<System.Threading.CancellationToken>())
