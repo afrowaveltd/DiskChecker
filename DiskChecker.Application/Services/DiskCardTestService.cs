@@ -109,6 +109,14 @@ public class DiskCardTestService
    }
 
    /// <summary>
+   /// Readiness check of the actual configured persistence backend before
+   /// destructive sanitization. SQLite checks perform a rollback-only write.
+   /// </summary>
+   public Task<DatabaseWritePreflightResult> CheckDatabaseWriteReadyAsync(
+       CancellationToken cancellationToken = default)
+       => DatabaseWritePreflight.CheckAsync(_dbContext, cancellationToken);
+
+   /// <summary>
    /// Get or create a disk card for a drive.
    /// </summary>
    public async Task<DiskCard> GetOrCreateCardAsync(CoreDriveInfo drive, SmartaData? smartaData = null, CancellationToken cancellationToken = default)

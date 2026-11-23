@@ -1187,6 +1187,38 @@ public partial class SurfaceTestViewModel : ViewModelBase, INavigableViewModel, 
             await _dialogService.ShowErrorAsync(L.Get("Common.Error"), L.Get("SurfaceTest.Pacing.Invalid"));
             return;
          }
+
+         // Persistence must be proven before writing hundreds of gigabytes.
+         // The SQL probe only writes inside a rolled-back transaction.
+         var databaseReady = await _cardTestService.CheckDatabaseWriteReadyAsync();
+         if(!databaseReady.IsReady)
+         {
+            var message = L.Get("SurfaceTest.Preflight.DatabaseFailed", databaseReady.Detail);
+            SetStickyErrorStatus(message);
+            await _dialogService.ShowErrorAsync(L.Get("SurfaceTest.Preflight.Title"), message);
+            return;
+         }
+
+         // Inspect the same directory that DiskTelemetryArchive will use.
+         // Pending data may be from another active instance: never auto-delete.
+         var telemetryReady = DiskTelemetryArchive.InspectStorage();
+         if(!telemetryReady.IsWritable)
+         {
+            var message = L.Get("SurfaceTest.Preflight.TelemetryFailed",
+                telemetryReady.DirectoryPath, telemetryReady.Failure ?? "unknown error");
+            SetStickyErrorStatus(message);
+            await _dialogService.ShowErrorAsync(L.Get("SurfaceTest.Preflight.Title"), message);
+            return;
+         }
+         if(telemetryReady.PendingCount > 0)
+         {
+            await _dialogService.ShowWarningAsync(
+                L.Get("SurfaceTest.Preflight.Title"),
+                L.Get("SurfaceTest.Preflight.Pending",
+                    telemetryReady.PendingCount,
+                    telemetryReady.OlderThanOneDayCount,
+                    telemetryReady.DirectoryPath));
+         }
       }
 
       _testCancellation?.Dispose();

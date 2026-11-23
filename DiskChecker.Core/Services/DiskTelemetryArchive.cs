@@ -8,6 +8,20 @@ namespace DiskChecker.Core.Services;
 /// a reader skips blocks outside the requested progress range without loading
 /// the full test into RAM. Files are named after the persisted session GUID.
 /// </summary>
+/// <summary>
+/// Point-in-time condition of the disk-backed sanitization telemetry store.
+/// Pending files might belong to another live instance; none are deleted.
+/// </summary>
+public sealed record TelemetryStorageInspection(
+    string DirectoryPath,
+    bool IsWritable,
+    int PendingCount,
+    int OlderThanOneDayCount,
+    long PendingBytes,
+    long? AvailableFreeBytes,
+    bool ScanLimitReached,
+    string? Failure);
+
 public sealed class DiskTelemetryArchive : IDisposable
 {
     private const int Magic = 0x31544344;       // DCT1
@@ -33,6 +47,93 @@ public sealed class DiskTelemetryArchive : IDisposable
         Path.Combine(ArchiveDirectory, sessionGuid.ToString("N") + ".dat");
 
     public static bool Exists(Guid sessionGuid) => File.Exists(GetSessionPath(sessionGuid));
+
+    /// <summary>
+    /// Verify that the actual telemetry folder accepts a durable small write,
+    /// and inventory old pending_*.dat files without altering them. Designed to
+    /// run before any long destructive test.
+    /// </summary>
+    public static TelemetryStorageInspection InspectStorage(
+        string? directoryOverride = null, DateTime? utcNow = null)
+    {
+        var directory = directoryOverride ?? ArchiveDirectory;
+        var pending = 0;
+        var old = 0;
+        long totalBytes = 0;
+        long? freeBytes = null;
+        const int maxInventory = 10_000;
+        var reachedLimit = false;
+        var probePath = Path.Combine(directory, ".write_probe_" + Guid.NewGuid().ToString("N") + ".tmp");
+
+        try
+        {
+            Directory.CreateDirectory(directory);
+            foreach (var name in Directory.EnumerateFiles(directory, "pending_*.dat"))
+            {
+                if (pending >= maxInventory)
+                {
+                    reachedLimit = true;
+                    break;
+                }
+
+                try
+                {
+                    var info = new FileInfo(name);
+                    totalBytes = checked(totalBytes + info.Length);
+                    if (info.LastWriteTimeUtc < (utcNow ?? DateTime.UtcNow).AddDays(-1))
+                        old++;
+                    pending++;
+                }
+                catch (FileNotFoundException)
+                {
+                    // Another process may have just committed this archive.
+                }
+            }
+
+            var root = Path.GetPathRoot(Path.GetFullPath(directory));
+            if (!string.IsNullOrWhiteSpace(root))
+            {
+                var volume = new DriveInfo(root);
+                if (volume.IsReady)
+                    freeBytes = volume.AvailableFreeSpace;
+            }
+
+            // Write and flush to the telemetry volume, not to a system TEMP
+            // folder. DeleteOnClose avoids leaving a fake pending archive.
+            using (var stream = new FileStream(
+                probePath, FileMode.CreateNew, FileAccess.Write, FileShare.None,
+                4096, FileOptions.DeleteOnClose))
+            {
+                stream.Write(new byte[4096]);
+                stream.Flush(flushToDisk: true);
+            }
+
+            if (freeBytes is < 128L * 1024 * 1024)
+                return new(directory, false, pending, old, totalBytes, freeBytes,
+                    reachedLimit, "Telemetry volume has less than 128 MiB free.");
+
+            return new(directory, true, pending, old, totalBytes, freeBytes,
+                reachedLimit, null);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or
+            ArgumentException or NotSupportedException)
+        {
+            return new(directory, false, pending, old, totalBytes, freeBytes,
+                reachedLimit, ex.Message);
+        }
+        finally
+        {
+            // Only our own temporary probe can be removed; pending test data
+            // and committed session archives are NEVER modified here.
+            try
+            {
+                if (File.Exists(probePath))
+                    File.Delete(probePath);
+            }
+            catch (IOException) { }
+            catch (UnauthorizedAccessException) { }
+        }
+    }
 
     public DiskTelemetryArchive()
     {

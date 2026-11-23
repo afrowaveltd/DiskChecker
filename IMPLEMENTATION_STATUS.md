@@ -221,3 +221,42 @@ WAL state, filesystem details or SQLite pragmas
 have been obtained from the affected machine.
 No physical drive access, filesystem creation,
 automatic SQLite cleanup or auto-retry was performed.
+
+## 2026-11-23 — preventive storage preflight for destructive sanitization
+
+The maintainer reports **230,741,725,184 B free on C:**
+and **331,763,261,440 B free on D:**. The prior manual
+PowerShell inventory found no `pending_*.dat` files in the
+current user's LocalAppData telemetry folder; their absence
+is not evidence that telemetry caused the SQLite error.
+A 1-TB sanitization succeeded on this machine earlier
+the same day. Root cause of the later `SQLITE_FULL` remains
+**unconfirmed**; no disk-wide capacity hypothesis is assumed.
+
+The long-running destructive sanitization flow now
+performs **two blocking preflight checks before raw I/O**:
+
+1. Real configured SQLite persistence: verify
+   volume headroom (128 MiB minimum), `max_page_count`
+   capacity (32 MiB minimum) and an **actual MAIN
+   database CREATE TABLE + INSERT inside an explicit
+   rollback-only transaction**. SQLite failures
+   (permissions, no growth quota, no space, locked DB)
+   block the destructive test early rather than
+   allowing hundreds of GiB to be processed first.
+   For PostgreSQL/SQL Server the current check
+   is connectivity-only; this limitation is explicit.
+2. The actual `DiskTelemetryArchive.ArchiveDirectory`:
+   inventory `pending_*.dat` files, distinguish
+   those older than one day, probe a 4-KiB physical
+   write+flush, check 128-MiB volume headroom.
+   No cleanup or modification of pending/committed
+   archives; the probe is removed. Failure blocks
+   the new destructive run. Existing pending files
+   result in a localized warning, not deletion.
+
+These are **point-in-time checks** and cannot
+guarantee against later disk or database failures.
+No destructive disk operations were performed for
+the tests. The old in-progress application version
+is unchanged until rebuilt/relaunched.
