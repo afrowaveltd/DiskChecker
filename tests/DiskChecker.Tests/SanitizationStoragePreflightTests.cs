@@ -72,15 +72,16 @@ public sealed class SanitizationStoragePreflightTests
             var opts = new DbContextOptionsBuilder<DiskCheckerDbContext>()
                 .UseSqlite("Data Source=" + dbPath).Options;
             await using var context = new DiskCheckerDbContext(opts);
-            await context.Database.EnsureCreatedAsync();
+            var token = TestContext.Current.CancellationToken;
+            await context.Database.EnsureCreatedAsync(token);
 
-            var probe = await DatabaseWritePreflight.CheckAsync(context);
+            var probe = await DatabaseWritePreflight.CheckAsync(context, token);
 
             Assert.True(probe.IsReady, probe.Detail);
             var count = await context.Database.SqlQueryRaw<long>(
                 "SELECT COUNT(*) AS Value FROM sqlite_master " +
                 "WHERE type = 'table' AND name = '__diskchecker_write_probe'")
-                .SingleAsync();
+                .SingleAsync(token);
             Assert.Equal(0L, count);
         }
         finally
