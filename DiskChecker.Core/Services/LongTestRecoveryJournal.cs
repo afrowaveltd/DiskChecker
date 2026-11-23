@@ -266,7 +266,7 @@ public sealed class LongTestRecoveryJournal
     public static IReadOnlyList<LongTestRecoveryEntry> Inspect(
         string? directoryOverride = null, int maxFiles = 1_000)
     {
-        if (maxFiles <= 0) throw new ArgumentOutOfRangeException(nameof(maxFiles));
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(maxFiles);
         var directory = directoryOverride ?? RecoveryDirectory;
         if (!Directory.Exists(directory)) return Array.Empty<LongTestRecoveryEntry>();
         var items = new List<LongTestRecoveryEntry>();
