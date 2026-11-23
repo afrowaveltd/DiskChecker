@@ -77,6 +77,15 @@ internal static class CertificatePdfPageRenderer
         return stream.ToArray();
     }
 
+    /// <summary>
+    /// The report cover must display the time the TEST took place, not the
+    /// later time at which a legacy certificate was reconstructed for export.
+    /// </summary>
+    internal static DateTime BundleTestDate(DiskCertificate certificate) =>
+        certificate.TestSession?.StartedAt is DateTime started && started != default
+            ? started
+            : certificate.GeneratedAt;
+
     private static void DrawBundleCover(SKCanvas canvas, IReadOnlyList<DiskCertificate> items)
     {
         canvas.Clear(SKColors.White);
@@ -111,7 +120,7 @@ internal static class CertificatePdfPageRenderer
                 68, y + 102, body, GradeColor(cert.Grade));
             Text(canvas, $"Číslo certifikátu: {ClipHeaderText(cert.CertificateNumber, small, 760)}",
                 68, y + 146, small, Ink);
-            Text(canvas, $"Test: {cert.GeneratedAt:dd.MM.yyyy HH:mm}    Trvání: {cert.TestDuration.ToString(@"hh\:mm\:ss")}",
+            Text(canvas, $"Test: {BundleTestDate(cert):dd.MM.yyyy HH:mm}    Trvání: {cert.TestDuration.ToString(@"hh\:mm\:ss")}",
                 68, y + 185, small, Ink);
             Text(canvas, $"Chyby: {cert.ErrorCount}    Čtení: {ReadAverageText(cert).Split(':').Last().Trim()}",
                 68, y + 225, small, Ink);
