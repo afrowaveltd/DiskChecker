@@ -81,7 +81,7 @@ public sealed class LongTestRecoveryJournalTests
             Assert.True(entry.Snapshot.FinalSanitizationResult!.Success);
             Assert.Single(entry.Snapshot.WriteSamples!);
             Assert.Single(entry.Snapshot.ReadSamples!);
-            Assert.Equal(109.5, entry.Snapshot.WriteSamples[0].SpeedMBps);
+            Assert.Equal(109.5, entry.Snapshot.WriteSamples![0].SpeedMBps);
 
             journal.MarkDatabaseSaved(journal.RunId);
             entry = Assert.Single(LongTestRecoveryJournal.Inspect(folder));
