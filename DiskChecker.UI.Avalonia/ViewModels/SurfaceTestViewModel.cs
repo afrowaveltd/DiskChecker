@@ -38,6 +38,7 @@ public partial class SurfaceTestViewModel : ViewModelBase, INavigableViewModel, 
    private readonly ProgressSpeedSampleBuffer _writeRetainedSamples = new(MaxGraphPoints / 4);
    private readonly ProgressSpeedSampleBuffer _readRetainedSamples = new(MaxGraphPoints / 4);
    private DiskTelemetryArchive? _telemetryArchive;
+   private LongTestRecoveryJournal? _recoveryJournal;
    private string? _telemetryArchiveWarning;
 
    private readonly INavigationService _navigationService;
@@ -1069,6 +1070,9 @@ public partial class SurfaceTestViewModel : ViewModelBase, INavigableViewModel, 
    {
       _telemetryArchive?.Dispose();
       _telemetryArchive = null;
+      // Never delete an unconfirmed recovery snapshot. A new physical
+      // attempt always receives a fresh RunId and separate journal file.
+      _recoveryJournal = null;
       _telemetryArchiveWarning = null;
       ClearStickyErrorStatus();
       SpeedHistory.Clear();
@@ -1361,6 +1365,11 @@ public partial class SurfaceTestViewModel : ViewModelBase, INavigableViewModel, 
    {
       if(SelectedDrive == null) return (null, null, null, false);
 
+      // A durable recovery header MUST exist before destructive raw I/O.
+      // Failure here prevents the drive being overwritten without a
+      // companion recovery record.
+      _recoveryJournal = new LongTestRecoveryJournal(SelectedDrive);
+
       // Record every sample on local storage independently of the UI sampling
       // budget. The 20-record blocks keep RAM constant and support later zoom.
       try { _telemetryArchive = new DiskTelemetryArchive(); }
@@ -1372,6 +1381,22 @@ public partial class SurfaceTestViewModel : ViewModelBase, INavigableViewModel, 
          if(cancellationToken.IsCancellationRequested)
          {
             return;
+         }
+
+         if (_recoveryJournal != null && (p.IsWritePhase || p.IsReadVerifyPhase))
+         {
+            try
+            {
+               _recoveryJournal.Checkpoint(
+                   p.IsWritePhase ? "Write" : "ReadVerify",
+                   p.BytesProcessed, p.TotalBytes, p.ProgressPercent, p.Errors);
+            }
+            catch(Exception ex) when(ex is IOException or UnauthorizedAccessException or InvalidDataException)
+            {
+               // The last successfully replaced checkpoint remains on disk.
+               // Never let telemetry filesystem errors change raw I/O behavior.
+               _telemetryArchiveWarning = "Recovery checkpoint: " + ex.Message;
+            }
          }
 
          if(_telemetryArchive != null && (p.IsWritePhase || p.IsReadVerifyPhase))
@@ -1462,12 +1487,28 @@ public partial class SurfaceTestViewModel : ViewModelBase, INavigableViewModel, 
       var drivePath = SelectedDrive.Path;
       var driveSize = SelectedDrive.TotalSize;
       var pacing = SanitizationWritePacing.FromSeconds(_sanitizationWritePauseSeconds);
-      var result = await Task.Run(() => pacing is null
-          ? _sanitizationService.SanitizeDiskAsync(
-              drivePath, driveSize, false, false, "SCCM", progress, cancellationToken)
-          : _sanitizationService.SanitizeDiskPacedAsync(
-              drivePath, driveSize, false, false, "SCCM", pacing, progress, cancellationToken),
-          cancellationToken);
+      SanitizationResult result;
+      try
+      {
+         result = await Task.Run(() => pacing is null
+             ? _sanitizationService.SanitizeDiskAsync(
+                 drivePath, driveSize, false, false, "SCCM", progress, cancellationToken)
+             : _sanitizationService.SanitizeDiskPacedAsync(
+                 drivePath, driveSize, false, false, "SCCM", pacing, progress, cancellationToken),
+             cancellationToken);
+      }
+      catch(Exception ex)
+      {
+         try
+         {
+            _recoveryJournal?.RecordFailure(ex.Message, ex is OperationCanceledException);
+         }
+         catch(Exception recoveryError) when(recoveryError is IOException or UnauthorizedAccessException)
+         {
+            _telemetryArchiveWarning = recoveryError.Message;
+         }
+         throw;
+      }
       _telemetryArchive?.Dispose(); // Flush the last partial block.
 
       SmartaData? smartAfterSnapshot = null;
@@ -1487,8 +1528,26 @@ public partial class SurfaceTestViewModel : ViewModelBase, INavigableViewModel, 
       // Check if user cancelled during operation
       if(cancellationToken.IsCancellationRequested)
       {
+         try { _recoveryJournal?.RecordFailure("Cancelled after raw disk operation", cancelled: true); }
+         catch(Exception ex) when(ex is IOException or UnauthorizedAccessException)
+         { _telemetryArchiveWarning = ex.Message; }
          SetStatusMessage(L.Get("SurfaceTest.Status.SanitizeCancelledPartial"));
          cancellationToken.ThrowIfCancellationRequested();
+      }
+
+      // Save an ACTUAL terminal result, SMART and bounded graph data before
+      // trying the database. This makes completed-but-unsaved tests distinct
+      // from interrupted ones. The existing binary archive remains intact.
+      try
+      {
+         var writeRecovery = await CaptureSanitizationSamplesAsync(_writeRetainedSamples);
+         var readRecovery = await CaptureSanitizationSamplesAsync(_readRetainedSamples);
+         _recoveryJournal?.FinishSanitization(result, writeRecovery, readRecovery,
+             smartSnapshot, smartAfterSnapshot, _borrowedSmartProvenance);
+      }
+      catch(Exception ex) when(ex is IOException or UnauthorizedAccessException or InvalidDataException)
+      {
+         _telemetryArchiveWarning = "Recovery finalization: " + ex.Message;
       }
 
       if(result.Success)
@@ -1515,10 +1574,11 @@ public partial class SurfaceTestViewModel : ViewModelBase, INavigableViewModel, 
                var writeSamples = await CaptureSanitizationSamplesAsync(_writeRetainedSamples);
                var readSamples = await CaptureSanitizationSamplesAsync(_readRetainedSamples);
 
-               var savedSession = await _cardTestService.SaveSanitizationAsync(card, result, writeSamples, readSamples, smartSnapshot, smartAfterSnapshot, _borrowedSmartProvenance, cancellationToken);
+               var savedSession = await _cardTestService.SaveSanitizationAsync(card, result, writeSamples, readSamples, smartSnapshot, smartAfterSnapshot, _borrowedSmartProvenance, cancellationToken, _recoveryJournal?.RunId);
                // SaveSanitizationAsync commits the session *before* optional
                // certificate/PDF creation. Retain this truth if a later step fails.
                sessionPersisted = true;
+               RecordRecoveryDatabaseSaved(savedSession.SessionId);
                CommitTelemetryArchive(savedSession.SessionId);
 
                // Persist a real certificate and its PDF using the same renderer
@@ -1527,6 +1587,14 @@ public partial class SurfaceTestViewModel : ViewModelBase, INavigableViewModel, 
                certificate.TestSessionId = savedSession.Id;
                certificate = await _diskCardRepository.CreateCertificateAsync(certificate);
                var pdfPath = await _certificateGenerator.GeneratePdfAsync(certificate);
+
+               // A recovery checkpoint is removed only after an independent
+               // query proves BOTH the session and certificate are in the DB,
+               // and after its PDF exists on disk.
+               if (!string.IsNullOrWhiteSpace(pdfPath) && System.IO.File.Exists(pdfPath) &&
+                   await _cardTestService.IsRecoveryRunDurableAsync(
+                       savedSession.SessionId, certificate.Id, cancellationToken))
+                  CompleteAndCleanupRecovery(savedSession.SessionId);
 
                // Send the saved PDF exactly once, independently of disk persistence.
                // A failed SMTP transaction must not mark sanitization as unsaved.
@@ -1608,8 +1676,13 @@ public partial class SurfaceTestViewModel : ViewModelBase, INavigableViewModel, 
             var card = await _cardTestService.GetOrCreateCardAsync(SelectedDrive!, _borrowedSmartProvenance == null ? smartSnapshot : null, cancellationToken);
             var writeSamples = await CaptureSanitizationSamplesAsync(_writeRetainedSamples);
             var readSamples = await CaptureSanitizationSamplesAsync(_readRetainedSamples);
-            var session = await _cardTestService.SaveSanitizationAsync(card, result, writeSamples, readSamples, smartSnapshot, null, _borrowedSmartProvenance, cancellationToken);
+            var session = await _cardTestService.SaveSanitizationAsync(card, result, writeSamples, readSamples, smartSnapshot, null, _borrowedSmartProvenance, cancellationToken, _recoveryJournal?.RunId);
+            RecordRecoveryDatabaseSaved(session.SessionId);
             CommitTelemetryArchive(session.SessionId);
+            // Failed/cancelled sanitizations do not need success certificates;
+            // retain the recovery file unless the exact failure record is DB durable.
+            if(await _cardTestService.IsRecoveryRunDurableAsync(session.SessionId, null, cancellationToken))
+               CompleteAndCleanupRecovery(session.SessionId);
             _selectedDiskService.SelectedDisk = SelectedDrive;
             _selectedDiskService.SelectedDiskDisplayName = SelectedDrive.Name;
             _selectedDiskService.SelectedTestSessionId = session.Id;
@@ -1623,6 +1696,35 @@ public partial class SurfaceTestViewModel : ViewModelBase, INavigableViewModel, 
 
          SetStickyErrorStatus(message);
          return (result, null, errorContext, false);
+      }
+   }
+
+   private void RecordRecoveryDatabaseSaved(Guid sessionGuid)
+   {
+      if (_recoveryJournal == null) return;
+      try
+      {
+         _recoveryJournal.MarkDatabaseSaved(sessionGuid);
+      }
+      catch(Exception ex) when(ex is IOException or UnauthorizedAccessException or InvalidOperationException)
+      {
+         _telemetryArchiveWarning = "Recovery database receipt: " + ex.Message;
+      }
+   }
+
+   private void CompleteAndCleanupRecovery(Guid sessionGuid)
+   {
+      if (_recoveryJournal == null) return;
+      try
+      {
+         _recoveryJournal.MarkArtifactsSaved();
+         // Caller already independently queried the authoritative DB.
+         _recoveryJournal.DeleteAfterVerification(id => id == sessionGuid);
+         _recoveryJournal = null;
+      }
+      catch(Exception ex) when(ex is IOException or UnauthorizedAccessException or InvalidOperationException)
+      {
+         _telemetryArchiveWarning = "Recovery retention: " + ex.Message;
       }
    }
 

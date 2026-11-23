@@ -162,3 +162,31 @@ guarantee against later disk or database failures.
 No destructive disk operations were performed for
 the tests. The old in-progress application version
 is unchanged until rebuilt/relaunched.
+
+## 2026-11-23 — durable recovery metadata wired into sanitization
+
+The Avalonia sanitation workflow now creates a unique
+`LongTestRecoveryJournal` before opening the raw device,
+periodically checkpoints phase/progress, and records the
+actual terminal result + SMART + bounded write/read
+graphs **before** attempting SQLite persistence.
+
+`SaveSanitizationAsync` accepts a backward-compatible
+optional `recoveryRunId` so the DB `TestSession.SessionId`
+is deterministic and a retry can recognize an already
+committed run. The original data and public overload
+continue to work. The UI records successful database
+commit separately from certificate/PDF, and deletes the
+JSON checkpoint only after independent SQLite session
+and certificate verification plus an existing PDF.
+The high-resolution binary telemetry file is not
+deleted (it remains required for detailed graph zoom).
+Failed/cancelled tests are recorded with explicit
+terminal states; incomplete or failed saves preserve
+the checkpoint on disk.
+
+**This is checkpoint creation + safe retention, not
+yet automatic database replay or a raw-disk resume.**
+Such automation will require conservative identity,
+transaction and cross-process ownership checks.
+Physical disk tests were not repeated. CI pending.

@@ -673,10 +673,23 @@ public class DiskCardTestService
        SmartaData? smartaData,
        SmartaData? smartAfter,
        string? borrowedSmartProvenance,
-       CancellationToken cancellationToken = default)
+       CancellationToken cancellationToken = default,
+       Guid? recoveryRunId = null)
    {
       ArgumentNullException.ThrowIfNull(card);
       ArgumentNullException.ThrowIfNull(result);
+
+      if(recoveryRunId == Guid.Empty)
+         throw new ArgumentException("Recovery run identity cannot be empty.", nameof(recoveryRunId));
+
+      // A crash after DB COMMIT but before the UI receives the response
+      // must not create a second test session during recovery replay.
+      if(recoveryRunId is Guid knownRunId)
+      {
+         var alreadySaved = await _dbContext.TestSessions
+            .FirstOrDefaultAsync(s => s.SessionId == knownRunId, cancellationToken);
+         if(alreadySaved != null) return alreadySaved;
+      }
 
       var persistedWriteSamples = PrepareSpeedSamplesForPersistence(writeSamples);
       var persistedReadSamples = PrepareSpeedSamplesForPersistence(readSamples);
@@ -748,7 +761,7 @@ public class DiskCardTestService
       var session = new TestSession
       {
          DiskCardId = card.Id,
-         SessionId = Guid.NewGuid(),
+         SessionId = recoveryRunId ?? Guid.NewGuid(),
          TestType = TestType.Sanitization,
          StartedAt = DateTime.UtcNow - result.Duration,
          CompletedAt = DateTime.UtcNow,
@@ -845,6 +858,27 @@ public class DiskCardTestService
       }
 
       return session;
+   }
+
+   /// <summary>
+   /// Confirm that the exact recovery run exists in the authoritative database
+   /// and, when required, that a specific certificate row was persisted.
+   /// Does not create a card, issue raw I/O, or perform automatic cleanup.
+   /// </summary>
+   public async Task<bool> IsRecoveryRunDurableAsync(
+       Guid runId, int? certificateId = null, CancellationToken cancellationToken = default)
+   {
+      if(runId == Guid.Empty) return false;
+      var session = await _dbContext.TestSessions
+          .AsNoTracking()
+          .Where(s => s.SessionId == runId && s.TestType == TestType.Sanitization)
+          .Select(s => new { s.Id })
+          .FirstOrDefaultAsync(cancellationToken);
+      if(session == null) return false;
+      if(certificateId is null) return true;
+      return await _dbContext.DiskCertificates.AsNoTracking()
+          .AnyAsync(c => c.Id == certificateId && c.TestSessionId == session.Id,
+                    cancellationToken);
    }
 
    /// <summary>
