@@ -200,3 +200,24 @@ destructive fallback is attempted by the fix.
 This commit does not automatically reconstruct
 a previously failed save, and it cannot alter
 the already-running application instance.
+
+## 2026-11-23 — SQLite sanitization save error classification verified
+
+Change `c35eca9a95fac6a835cd7a517246879049ebf785`
+compiles and passes the normal project/desktop
+test suite:
+- [Surface/SMART handoff](https://github.com/afrowaveltd/DiskChecker/actions/runs/45192209701)
+  — success.
+- [Windows/Linux safety tests](https://github.com/afrowaveltd/DiskChecker/actions/runs/45192209686)
+  — both platforms success.
+
+Documented read-only investigation, user-safe preservation
+of closed `pending_*.dat` telemetry logs, and why
+`SQLITE_FULL` is not evidence about the sanitized HDD:
+`docs/Sqlite-Sanitization-Recovery/en.md`.
+A DB/SQLite error 13 root cause remains unverified:
+no original live database connection path, quota,
+WAL state, filesystem details or SQLite pragmas
+have been obtained from the affected machine.
+No physical drive access, filesystem creation,
+automatic SQLite cleanup or auto-retry was performed.

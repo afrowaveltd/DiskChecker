@@ -510,3 +510,19 @@ manifest verification. [Technical details](docs/Installer-Dependencies/en.md).
 
 The new Windows setup is still awaiting its latest
 Inno Setup CI compilation and on-device smoke test.
+
+## SQLite Error 13 after a completed sanitization (2026-11-23)
+
+An observed Windows 465.76-GB sanitization completed both
+write and read verification, but a subsequent SQLite
+operation failed with `SQLite Error 13: database or disk is full`.
+This does **not** prove the sanitized drive is full.
+The existing UI also did not distinguish a failed
+TestSession save from a failed later certificate/PDF save;
+that distinction has now been corrected, and diagnostic
+details for the actual SQLite startup path added.
+
+For safe recovery precautions, pending-telemetry backup
+instructions and exact limits of what the test proves,
+read [SQLite sanitization save failure and recovery]
+(docs/Sqlite-Sanitization-Recovery/en.md).
