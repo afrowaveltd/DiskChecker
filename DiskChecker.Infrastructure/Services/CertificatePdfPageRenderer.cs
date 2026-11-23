@@ -212,10 +212,42 @@ internal static class CertificatePdfPageRenderer
             ? "Výsledky obou testů jsou samostatné; neslučujeme známky ani z nich neodvozujeme novou."
             : "Známka platí pouze pro uvedený typ testu a zaznamenané podmínky.";
         Wrapped(c, footer, 68, 1614, 1100, small, Ink, 2);
-        Wrapped(c, "Rychlost zápisu se nehodnotí při testu čtení. Údaje označené N/A nebyly měřeny. " +
-            "Detailní protokol, historická telemetrie a úplné komentáře zůstávají v DiskCheckeru.",
+        Wrapped(c, ScopeMethodologyNote(primary, paired),
             68, 1670, 1100, tiny, Muted, 2);
     }
+
+    /// <summary>
+    /// Explain why the sanitization I/O curve may be faster than the whole-phase
+    /// averages. Reading verifies zero-filled buffers in memory between I/O calls;
+    /// deliberately scheduled write pauses are excluded from write throughput.
+    /// </summary>
+    internal static string ScopeMethodologyNote(DiskCertificate primary, DiskCertificate? paired = null) =>
+        primary.SanitizationPerformed || paired?.SanitizationPerformed == true
+            ? "Graf sanitizace ukazuje rychlost I/O operací; průměr čtení zahrnuje také ověřování nul v paměti. " +
+              "Průměr zápisu nezahrnuje plánované pauzy. Podrobnosti jsou v historii DiskCheckeru."
+            : "Rychlost zápisu se nehodnotí při testu čtení. Údaje označené N/A nebyly měřeny. " +
+              "Detailní protokol, historická telemetrie a úplné komentáře zůstávají v DiskCheckeru.";
+
+    private static string SpeedValue(double value, bool sanitization) =>
+        value > 0 ? $"{value:F1} {(sanitization ? "MiB/s" : "MB/s")}" : "N/A";
+
+    internal static string ReadAverageText(DiskCertificate cert) =>
+        cert.SanitizationPerformed
+            ? $"Čtení průměr vč. ověření: {SpeedValue(cert.AvgReadSpeed, true)}"
+            : $"Čtení průměr: {SpeedValue(cert.AvgReadSpeed, false)}";
+
+    internal static string WriteAverageText(DiskCertificate cert)
+    {
+        var value = cert.IsReadOnlyTest ? "N/A (bez zápisu)" : SpeedValue(cert.AvgWriteSpeed, cert.SanitizationPerformed);
+        return cert.SanitizationPerformed
+            ? $"Zápis průměr bez pauz: {value}"
+            : $"Zápis průměr: {value}";
+    }
+
+    internal static string SpeedChartTitle(DiskCertificate cert) =>
+        cert.SanitizationPerformed
+            ? "PRŮBĚH RYCHLOSTI I/O (MiB/s)"
+            : "PRŮBĚH RYCHLOSTI (MB/s)";
 
     private static string NullableNumber(int n) => n > 0 ? n.ToString("N0", CultureInfo.InvariantCulture) : "N/A";
 
@@ -277,11 +309,8 @@ internal static class CertificatePdfPageRenderer
         }
         else
         {
-            string read = cert.AvgReadSpeed > 0 ? $"{cert.AvgReadSpeed:F1} MB/s" : "N/A";
-            string write = cert.IsReadOnlyTest ? "N/A (bez zápisu)"
-                : cert.AvgWriteSpeed > 0 ? $"{cert.AvgWriteSpeed:F1} MB/s" : "N/A";
-            Text(c, $"Čtení průměr: {read}", left, y + 200, small, Ink);
-            Text(c, $"Zápis průměr: {write}", left, y + 233, small, Ink);
+            Text(c, ReadAverageText(cert), left, y + 200, small, Ink);
+            Text(c, WriteAverageText(cert), left, y + 233, small, Ink);
         }
 
         float chartY = y + 255;
@@ -349,7 +378,7 @@ internal static class CertificatePdfPageRenderer
         float width, float height, SKFont small)
     {
         Box(c, x, y, width, height, SKColors.White, 6);
-        Text(c, "PRŮBĚH RYCHLOSTI (MB/s)", x + 15, y + 30, small, Blue);
+        Text(c, SpeedChartTitle(cert), x + 15, y + 30, small, Blue);
         var series = new List<(IReadOnlyList<double> Points, SKColor Color, string Label)>();
         if (cert.Sanitize1WritePoints.Count > 0 || cert.Sanitize2WritePoints.Count > 0)
         {
