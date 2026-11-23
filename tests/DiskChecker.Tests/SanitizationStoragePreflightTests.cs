@@ -79,7 +79,7 @@ public sealed class SanitizationStoragePreflightTests
             Assert.True(probe.IsReady, probe.Detail);
             var count = await context.Database.SqlQueryRaw<long>(
                 "SELECT COUNT(*) AS Value FROM sqlite_master " +
-                "WHERE type = 'table' AND name LIKE '__diskchecker_preflight_%'")
+                "WHERE type = 'table' AND name = '__diskchecker_write_probe'")
                 .SingleAsync();
             Assert.Equal(0L, count);
         }

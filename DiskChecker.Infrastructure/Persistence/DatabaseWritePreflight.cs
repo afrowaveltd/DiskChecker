@@ -87,14 +87,15 @@ public static class DatabaseWritePreflight
 
                 // A transient ordinary table exercises the MAIN database rather
                 // than only the TEMP database. The transaction is NEVER committed.
-                var name = "__diskchecker_preflight_" + Guid.NewGuid().ToString("N");
                 await using var transaction =
                     await context.Database.BeginTransactionAsync(cancellationToken);
+                // A fixed, application-owned identifier avoids dynamic SQL and
+                // EF1002 entirely. The table is created and rolled back.
                 await context.Database.ExecuteSqlRawAsync(
-                    $"CREATE TABLE \"{name}\" (value INTEGER NOT NULL)",
+                    "CREATE TABLE IF NOT EXISTS \"__diskchecker_write_probe\" (value INTEGER NOT NULL)",
                     cancellationToken);
                 await context.Database.ExecuteSqlRawAsync(
-                    $"INSERT INTO \"{name}\" (value) VALUES (1)",
+                    "INSERT INTO \"__diskchecker_write_probe\" (value) VALUES (1)",
                     cancellationToken);
                 await transaction.RollbackAsync(cancellationToken);
                 return new(true, "SQLite transactional write/rollback successful.");
