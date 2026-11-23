@@ -244,7 +244,8 @@ public interface ICertificateGenerator
     /// Export two or three distinct certificates for one disk as one PDF:
     /// cover page followed by full original reports, without merging grades.
     /// </summary>
-    Task<string> GenerateCombinedPdfAsync(IReadOnlyList<DiskCertificate> certificates);
+    Task<string> GenerateCombinedPdfAsync(IReadOnlyList<DiskCertificate> certificates) =>
+        throw new NotSupportedException("This certificate generator does not support combined reports.");
 
     /// <summary>
     /// Generate a printable disk label image from certificate.
