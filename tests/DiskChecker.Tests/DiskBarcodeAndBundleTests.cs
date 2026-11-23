@@ -29,6 +29,8 @@ public sealed class DiskBarcodeAndBundleTests
     {
         var disk = new DiskCard { Id = 42, SerialNumber = "NOSN-ABCDEF" };
         Assert.Equal("DL0000000000000042", DiskBarcode.ForCard(disk));
+        Assert.Equal("DL0000000000000042", DiskBarcode.ForCard(new DiskCard { Id = 42, SerialNumber = "N/A" }));
+        Assert.Equal("DL0000000000000042", DiskBarcode.ForCard(new DiskCard { Id = 42, SerialNumber = "Unknown" }));
         Assert.Equal("DL0000000000000042",
             DiskBarcode.ForCertificate(new DiskCertificate { SerialNumber = "", DiskCardId = 42 }));
         Assert.Null(DiskBarcode.ForCertificate(new DiskCertificate { SerialNumber = "" }));
