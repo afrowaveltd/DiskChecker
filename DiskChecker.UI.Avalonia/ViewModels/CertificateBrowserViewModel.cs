@@ -9,6 +9,7 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using DiskChecker.Core.Interfaces;
 using DiskChecker.Core.Models;
+using DiskChecker.Core.Services;
 using DiskChecker.UI.Avalonia.Services.Interfaces;
 using LiveChartsCore.Defaults;
 
@@ -1112,6 +1113,7 @@ public partial class CertificateBrowserViewModel : ViewModelBase, INavigableView
                 !new[]
                 {
                     cert.DiskModel, cert.SerialNumber, cert.CertificateNumber,
+                    DiskBarcode.Build(cert.SerialNumber, cert.DiskCardId),
                     cert.TestType, cert.Grade,
                     cert.GeneratedAt.ToString("dd.MM.yyyy"),
                     cert.GeneratedAt.ToString("yyyy-MM-dd")

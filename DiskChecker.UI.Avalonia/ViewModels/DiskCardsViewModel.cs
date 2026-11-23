@@ -7,6 +7,7 @@ using CommunityToolkit.Mvvm.Input;
 using DiskChecker.Application.Services;
 using DiskChecker.Core.Interfaces;
 using DiskChecker.Core.Models;
+using DiskChecker.Core.Services;
 using DiskChecker.UI.Avalonia.Services.Interfaces;
 
 namespace DiskChecker.UI.Avalonia.ViewModels;
@@ -548,6 +549,7 @@ public partial class DiskCardsViewModel : ViewModelBase, INavigableViewModel
                 var searchLower = SearchText.ToLowerInvariant();
                 if (!card.ModelName.ToLowerInvariant().Contains(searchLower) &&
                     !card.SerialNumber.ToLowerInvariant().Contains(searchLower) &&
+                    (DiskBarcode.ForCard(card)?.Contains(searchLower, StringComparison.OrdinalIgnoreCase) != true) &&
                     (card.Notes == null || !card.Notes.ToLowerInvariant().Contains(searchLower)))
                 {
                     continue;

@@ -43,6 +43,12 @@
                             Background="{DynamicResource ThemeInfoBrush}" Foreground="White"
                             FontWeight="Bold" Padding="12,6" Margin="0,0,8,0"
                             Cursor="Hand"/>
+                    <Button Content="{Binding L[DiskCardDetailView.CombinedCert]}"
+                            Command="{Binding ExportCombinedCertificatesCommand}"
+                            IsEnabled="{Binding HasTestSessions}"
+                            Background="{DynamicResource ThemeSuccessBrush}" Foreground="White"
+                            FontWeight="Bold" Padding="12,6" Margin="0,0,8,0"
+                            Cursor="Hand"/>
                     <Button Content="{Binding L[DiskCardDetailView.AllCerts]}"
                             Command="{Binding BrowseAllCertificatesCommand}"
                             Background="{DynamicResource ThemePrimaryBrush}" Foreground="White"
@@ -307,9 +313,16 @@
                                 Command="{Binding BrowseAllCertificatesCommand}"
                                 Background="{DynamicResource ThemePrimaryBrush}" Foreground="White"
                                 FontWeight="Bold" Padding="10,5" Margin="16,0,0,0" Cursor="Hand"/>
+                        <Button Content="{Binding L[DiskCardDetailView.CombinedCert]}"
+                                Command="{Binding ExportCombinedCertificatesCommand}"
+                                Background="{DynamicResource ThemeSuccessBrush}" Foreground="White"
+                                Padding="10,5" Margin="8,0,0,0" Cursor="Hand"/>
+                        <TextBlock Text="{Binding L[DiskCardDetailView.CombinedHint]}"
+                                   VerticalAlignment="Center" FontSize="11" Margin="12,0,0,0"
+                                   Foreground="{DynamicResource ThemeTextSecondaryBrush}"/>
                     </StackPanel>
 
-                    <DataGrid Grid.Row="1" ItemsSource="{Binding Certificates}"
+                    <DataGrid Grid.Row="1" ItemsSource="{Binding CertificateSelections}"
                               AutoGenerateColumns="False"
                               IsReadOnly="True"
                               HeadersVisibility="Column"
@@ -323,13 +336,21 @@
                               CanUserResizeColumns="True"
                               CanUserSortColumns="True">
                         <DataGrid.Columns>
-                            <DataGridTextColumn Header="{Binding L[DiskCardDetailView.CertNumber]}" Binding="{Binding CertificateNumber}" Width="140" FontFamily="Consolas"/>
-                            <DataGridTextColumn Header="{Binding L[DiskCardDetailView.Grade]}" Binding="{Binding Grade}" Width="60"/>
-                            <DataGridTextColumn Header="{Binding L[DiskCardDetailView.Score]}" Binding="{Binding Score, StringFormat={}{0:F0}}" Width="60"/>
-                            <DataGridTextColumn Header="{Binding L[DiskCardDetailView.TestType]}" Binding="{Binding TestType}" Width="100"/>
-                            <DataGridTextColumn Header="{Binding L[DiskCardDetailView.Generated]}" Binding="{Binding GeneratedAt, StringFormat={}{0:dd.MM.yyyy HH:mm}}" Width="130"/>
-                            <DataGridTextColumn Header="{Binding L[DiskCardDetailView.Recommended]}" Binding="{Binding Recommended, StringFormat={}{0}}" Width="80"/>
-                            <DataGridTextColumn Header="{Binding L[DiskCardDetailView.Notes]}" Binding="{Binding Notes}" Width="*"/>
+                            <dg:DataGridTemplateColumn Header="{Binding L[DiskCardDetailView.CombinedSelect]}" Width="65" CanUserSort="False">
+                                <dg:DataGridTemplateColumn.CellTemplate>
+                                    <DataTemplate>
+                                        <CheckBox IsChecked="{Binding IsSelected, Mode=TwoWay}"
+                                                  HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                    </DataTemplate>
+                                </dg:DataGridTemplateColumn.CellTemplate>
+                            </dg:DataGridTemplateColumn>
+                            <DataGridTextColumn Header="{Binding L[DiskCardDetailView.CertNumber]}" Binding="{Binding Certificate.CertificateNumber}" Width="140" FontFamily="Consolas"/>
+                            <DataGridTextColumn Header="{Binding L[DiskCardDetailView.Grade]}" Binding="{Binding Certificate.Grade}" Width="60"/>
+                            <DataGridTextColumn Header="{Binding L[DiskCardDetailView.Score]}" Binding="{Binding Certificate.Score, StringFormat={}{0:F0}}" Width="60"/>
+                            <DataGridTextColumn Header="{Binding L[DiskCardDetailView.TestType]}" Binding="{Binding Certificate.TestType}" Width="100"/>
+                            <DataGridTextColumn Header="{Binding L[DiskCardDetailView.Generated]}" Binding="{Binding Certificate.GeneratedAt, StringFormat={}{0:dd.MM.yyyy HH:mm}}" Width="130"/>
+                            <DataGridTextColumn Header="{Binding L[DiskCardDetailView.Recommended]}" Binding="{Binding Certificate.Recommended, StringFormat={}{0}}" Width="80"/>
+                            <DataGridTextColumn Header="{Binding L[DiskCardDetailView.Notes]}" Binding="{Binding Certificate.Notes}" Width="*"/>
                         </DataGrid.Columns>
                     </DataGrid>
                 </Grid>

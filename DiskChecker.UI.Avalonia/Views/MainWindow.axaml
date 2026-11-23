@@ -261,7 +261,22 @@
                               Foreground="{DynamicResource ThemeTextSecondaryBrush}" VerticalAlignment="Center"/>
                 </StackPanel>
                 
-                <Border Grid.Column="3" Width="1" Height="16" Background="{DynamicResource ThemeBorderBrush}" Margin="12,0"/>
+                <!-- Global disk-card lookup. Most USB barcode scanners act as a keyboard
+                     and send Enter after the Code 128 text. Available from every view. -->
+                <StackPanel Grid.Column="3" Orientation="Horizontal" Spacing="6" Margin="12,0"
+                            HorizontalAlignment="Center" VerticalAlignment="Center"
+                            IsEnabled="{Binding CanNavigateFromCurrentView}">
+                    <TextBox Width="245" Height="28" FontSize="11" VerticalContentAlignment="Center"
+                             Text="{Binding DiskBarcodeQuery, Mode=TwoWay}"
+                             Watermark="{Binding L[DiskBarcode.Watermark]}">
+                        <TextBox.KeyBindings>
+                            <KeyBinding Gesture="Enter" Command="{Binding SearchDiskBarcodeCommand}"/>
+                        </TextBox.KeyBindings>
+                    </TextBox>
+                    <Button Content="{Binding L[DiskBarcode.Search]}"
+                            Command="{Binding SearchDiskBarcodeCommand}"
+                            FontSize="11" Padding="8,3" Height="28"/>
+                </StackPanel>
                 
                 <StackPanel Grid.Column="4" Orientation="Horizontal" Spacing="6">
                     <TextBlock Text="💻" FontSize="10" VerticalAlignment="Center"/>

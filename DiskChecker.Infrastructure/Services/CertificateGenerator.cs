@@ -403,6 +403,41 @@ public class CertificateGenerator : ICertificateGenerator
     }
 
     /// <summary>
+    /// Export selected, independent test certificates into one multi-page PDF.
+    /// Never create a fictitious aggregate score or modify stored records.
+    /// </summary>
+    public async Task<string> GenerateCombinedPdfAsync(IReadOnlyList<DiskCertificate> certificates)
+    {
+        CombinedCertificatePolicy.Validate(certificates);
+        var root = GetCertificateBasePath();
+        if (!Directory.Exists(root))
+            throw new DirectoryNotFoundException($"Certificate destination is unavailable: {root}");
+
+        var folder = Path.Combine(root, "Certificates");
+        Directory.CreateDirectory(folder);
+        TryAssignOwnershipToSudoUser(folder);
+
+        var serial = SanitizeFileName(certificates[0].SerialNumber ?? "NOSN");
+        string name = $"{serial}_{DateTime.UtcNow:yyyyMMdd}_COMBINED";
+        int index = 1;
+        string filePath;
+        do
+        {
+            filePath = Path.Combine(folder, $"{name}_{index++}.pdf");
+        } while (File.Exists(filePath));
+
+        // The renderer checks 2-3 parts, disk-card ID, distinct session ID
+        // and test category before writing the document.
+        byte[] pdf = await Task.Run(() => CertificatePdfPageRenderer.CreateBundlePdf(certificates));
+        await File.WriteAllBytesAsync(filePath, pdf);
+        TryAssignOwnershipToSudoUser(filePath);
+        if (_logger?.IsEnabled(LogLevel.Information) == true)
+            _logger.LogInformation("Combined {Count}-test certificate saved: {Path}",
+                certificates.Count, filePath);
+        return filePath;
+    }
+
+    /// <summary>
     /// Renders the certificate as a JPEG using SkiaSharp (cross-platform).
     /// </summary>
     private Task<byte[]> RenderCertificateJpegAsync(DiskCertificate cert, CancellationToken cancellationToken = default)

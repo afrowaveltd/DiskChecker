@@ -77,6 +77,7 @@ public partial class DiskCardDetailViewModel : ViewModelBase, INavigableViewMode
         
         TestSessions = new ObservableCollection<TestSession>();
         Certificates = new ObservableCollection<DiskCertificate>();
+        CertificateSelections = new ObservableCollection<CertificateSelectionItem>();
         SmartHistory = new ObservableCollection<SmartHistoryItem>();
     }
 
@@ -152,6 +153,9 @@ public partial class DiskCardDetailViewModel : ViewModelBase, INavigableViewMode
     public ObservableCollection<TestSession> TestSessions { get; }
 
     public ObservableCollection<DiskCertificate> Certificates { get; }
+
+    /// <summary>Transient checked rows for the 2-3 test PDF export.</summary>
+    public ObservableCollection<CertificateSelectionItem> CertificateSelections { get; }
 
     public ObservableCollection<SmartHistoryItem> SmartHistory { get; }
 
@@ -424,6 +428,110 @@ public partial class DiskCardDetailViewModel : ViewModelBase, INavigableViewMode
         }
     }
 
+    /// <summary>
+    /// Export 2-3 explicitly checked, different test types of the CURRENT card.
+    /// No stored source certificate is modified or replaced.
+    /// </summary>
+    [RelayCommand]
+    private async Task ExportCombinedCertificatesAsync()
+    {
+        if (CurrentCard is not { } card || IsLoading)
+            return;
+
+        var chosen = CertificateSelections.Where(item => item.IsSelected)
+            .Select(item => item.Certificate.Id).ToArray();
+        if (chosen.Length is < 2 or > 3)
+        {
+            await _dialogService.ShowWarningAsync(L.Get("Common.Warning"),
+                L.Get("DiskCardDetail.Combined.SelectTwoOrThree"));
+            return;
+        }
+
+        try
+        {
+            IsLoading = true;
+            var certificates = new List<DiskCertificate>(chosen.Length);
+            var sessions = new List<TestSession>(chosen.Length);
+            foreach (int certificateId in chosen)
+            {
+                // Reload by ID: never trust selected UI rows or the currently
+                // attached drive path as authority for the disk identity.
+                var certificate = await _diskCardRepository.GetCertificateAsync(certificateId)
+                    ?? throw new InvalidOperationException(L.Get("DiskCardDetail.Combined.Missing"));
+                if (certificate.DiskCardId != card.Id)
+                    throw new InvalidOperationException(L.Get("DiskCardDetail.Combined.WrongDisk"));
+
+                var session = await _diskCardRepository.GetTestSessionWithoutSamplesAsync(certificate.TestSessionId)
+                    ?? throw new InvalidOperationException(L.Get("DiskCardDetail.Combined.Missing"));
+                if (session.DiskCardId != card.Id)
+                    throw new InvalidOperationException(L.Get("DiskCardDetail.Combined.WrongDisk"));
+
+                certificates.Add(certificate);
+                sessions.Add(session);
+            }
+
+            CombinedCertificatePolicy.Validate(certificates);
+
+            // Runtime profiles are not persisted on certificate rows. Restore
+            // bounded plots from the actual selected sessions for PDF export.
+            for (int i = 0; i < certificates.Count; i++)
+            {
+                var certificate = certificates[i];
+                var session = sessions[i];
+                if (session.TestType == TestType.Seek)
+                {
+                    // Seek percentiles/count and summaries are runtime-derived
+                    // [NotMapped] values. Rebuild them from the originating
+                    // session before printing (without modifying the saved cert).
+                    var reconstructed = await _certificateGenerator.GenerateCertificateAsync(session, card);
+                    certificate.SeekAvgLatencyMs ??= reconstructed.SeekAvgLatencyMs;
+                    certificate.SeekMinLatencyMs ??= reconstructed.SeekMinLatencyMs;
+                    certificate.SeekMaxLatencyMs ??= reconstructed.SeekMaxLatencyMs;
+                    certificate.SeekStdDevLatencyMs ??= reconstructed.SeekStdDevLatencyMs;
+                    certificate.SeekMedianLatencyMs ??= reconstructed.SeekMedianLatencyMs;
+                    certificate.SeekP95LatencyMs ??= reconstructed.SeekP95LatencyMs;
+                    certificate.SeekP99LatencyMs ??= reconstructed.SeekP99LatencyMs;
+                    certificate.SeekTotalCount ??= reconstructed.SeekTotalCount;
+                    certificate.SeekErrorCount ??= reconstructed.SeekErrorCount;
+                    certificate.SeekTestSummary ??= reconstructed.SeekTestSummary;
+                    certificate.SeekTypeSummaries = reconstructed.SeekTypeSummaries;
+
+                    var points = await _diskCardRepository.GetSeekSamplesDownsampledAsync(session.Id, 512);
+                    certificate.SeekLatencyPoints = points
+                        .Where(p => !p.HasError && p.LatencyMs >= 0)
+                        .OrderBy(p => p.Index).Select(p => p.LatencyMs).ToList();
+                    if (certificate.SeekLatencyPoints.Count == 0)
+                        certificate.SeekLatencyPoints = reconstructed.SeekLatencyPoints;
+                }
+                else
+                {
+                    var (write, read) = await _diskCardRepository.GetSpeedSampleSeriesDownsampledAsync(session.Id, 512);
+                    certificate.WriteProfilePoints = write.Select(p => p.SpeedMBps).ToList();
+                    certificate.ReadProfilePoints = read.Select(p => p.SpeedMBps).ToList();
+                }
+            }
+
+            string pdfPath = await _certificateGenerator.GenerateCombinedPdfAsync(certificates);
+            StatusMessage = L.Get("DiskCardDetail.Combined.Saved") + ": " + pdfPath;
+            if (await _dialogService.ShowConfirmationAsync(
+                    L.Get("DiskCardDetail.Combined.Title"),
+                    L.Get("DiskCardDetail.Combined.Saved") + ": " + pdfPath))
+            {
+                DocumentLauncher.OpenFile(pdfPath);
+            }
+        }
+        catch (Exception ex) when (ex is ArgumentException or InvalidOperationException
+            or System.IO.IOException or UnauthorizedAccessException)
+        {
+            StatusMessage = ex.Message;
+            await _dialogService.ShowErrorAsync(L.Get("Common.Error"), ex.Message);
+        }
+        finally
+        {
+            IsLoading = false;
+        }
+    }
+
     [RelayCommand]
     private void OpenCertificateViewer()
     {
@@ -612,9 +720,11 @@ public partial class DiskCardDetailViewModel : ViewModelBase, INavigableViewMode
                 // Load all certificates for this disk
                 var allCerts = await _diskCardRepository.GetCertificatesAsync(cardId);
                 Certificates.Clear();
+                CertificateSelections.Clear();
                 foreach (var cert in allCerts.OrderByDescending(c => c.GeneratedAt))
                 {
                     Certificates.Add(cert);
+                    CertificateSelections.Add(new CertificateSelectionItem(cert));
                 }
 
                 OnPropertyChanged(nameof(Card));
