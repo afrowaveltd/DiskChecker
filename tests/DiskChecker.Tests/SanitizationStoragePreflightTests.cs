@@ -70,7 +70,7 @@ public sealed class SanitizationStoragePreflightTests
         try
         {
             var opts = new DbContextOptionsBuilder<DiskCheckerDbContext>()
-                .UseSqlite("Data Source=" + dbPath).Options;
+                .UseSqlite("Data Source=" + dbPath + ";Pooling=False").Options;
             await using var context = new DiskCheckerDbContext(opts);
             var token = TestContext.Current.CancellationToken;
             await context.Database.EnsureCreatedAsync(token);
