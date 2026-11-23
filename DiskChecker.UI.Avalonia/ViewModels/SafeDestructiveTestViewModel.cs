@@ -2,6 +2,7 @@ using Avalonia.Threading;
 using DiskChecker.Application.Services;
 using DiskChecker.Core.Interfaces;
 using DiskChecker.Core.Models;
+using DiskChecker.Core.Services;
 using DiskChecker.UI.Avalonia.Services;
 using DiskChecker.UI.Avalonia.Services.Interfaces;
 using LiveChartsCore;
@@ -71,6 +72,7 @@ public partial class SafeDestructiveTestViewModel : ViewModelBase, INavigableVie
    // ──────────────────────────────────────────────
 
    private CancellationTokenSource? _cts;
+   private LongTestRecoveryJournal? _recoveryJournal;
    private IPowerManagementSession? _powerSession;
    private bool _disposed;
 
@@ -647,6 +649,12 @@ public partial class SafeDestructiveTestViewModel : ViewModelBase, INavigableVie
 
       try
       {
+         // Always establish the durable phase journal before opening the raw
+         // source or creating an image. If this fails, no destructive I/O starts.
+         _recoveryJournal = new LongTestRecoveryJournal(SelectedDrive, "SafeDestructive");
+         _recoveryJournal.SetPhaseMetadata("Mode", SelectedMode.ToString());
+         TryRecoveryUpdate(j => j.Checkpoint("BackupStarting", 0, DiskTotalBytes, 0));
+
          // Protect the complete operation, including backup and emergency restore.
          // Suspending in any of these phases can leave the source or image incomplete.
          _powerSession = await _powerManagementService.BeginTestSessionAsync(ct);
@@ -665,6 +673,18 @@ public partial class SafeDestructiveTestViewModel : ViewModelBase, INavigableVie
          if(!_backupVerified)
             throw new InvalidOperationException(L.Get("SafeDestructive.Error.BackupNotVerified"));
 
+         // An image path, immutable SHA-256 and explicit full-image verification
+         // are recorded as evidence for possible future MANUAL recovery.
+         // None of these fields authorize unattended raw-device restoration.
+         if(!string.IsNullOrWhiteSpace(_backupImagePath))
+            TryRecoveryUpdate(j => j.SetPhaseMetadata("BackupImage", _backupImagePath));
+         if(!string.IsNullOrWhiteSpace(_backupManifestPath))
+            TryRecoveryUpdate(j => j.SetPhaseMetadata("BackupManifest", _backupManifestPath));
+         if(!string.IsNullOrWhiteSpace(_backupSha256))
+            TryRecoveryUpdate(j => j.SetPhaseMetadata("BackupSha256", _backupSha256));
+         TryRecoveryUpdate(j => j.SetPhaseMetadata("BackupVerified", "true"));
+         TryRecoveryUpdate(j => j.Checkpoint("BackupVerified", DiskTotalBytes, DiskTotalBytes, 100));
+
          // A rescue/round-trip image mode must NEVER execute the destructive
          // sanitization workflow or write back onto an at-risk source disk.
          // Image verification has already compared the full SHA-256 hash.
@@ -677,6 +697,10 @@ public partial class SafeDestructiveTestViewModel : ViewModelBase, INavigableVie
             OverallProgressText = "Celkem 100%";
             StatusMessage = "Záloha vytvořena a ověřena. Zdrojový disk nebyl přepsán.";
             Log("Ověřen obraz disku; destruktivní test ani obnova na zdroj nebyly spuštěny.");
+            TryRecoveryUpdate(j => j.FinishWorkflow(
+               "Image backup and full SHA-256 verification completed; original disk was not overwritten."));
+            // Intentionally retained: there is no DB test session in this mode
+            // to independently confirm; user can inspect the backup manifest.
             return;
          }
 
@@ -697,6 +721,15 @@ public partial class SafeDestructiveTestViewModel : ViewModelBase, INavigableVie
          OverallProgressText = "Celkem 100%";
          StatusMessage = L.Get("SafeDestructive.Status.Done");
          HasResults = true;
+
+         // A terminal outcome is recorded only after Restore completed and
+         // readback verification confirmed original data. 100% alone is not proof.
+         if(!_restoreCompleted || !_backupVerified)
+            throw new InvalidOperationException(
+               "Recovery journal cannot mark safe destructive test complete without verified backup and restoration.");
+         TryRecoveryUpdate(j => j.SetPhaseMetadata("RestorationVerified", "true"));
+         TryRecoveryUpdate(j => j.FinishWorkflow(
+            "Backup SHA-256 verified, destructive phases returned, and original source restored and verified."));
 
          await BuildResultsAsync();
          await BuildCertificateAsync();
@@ -732,6 +765,11 @@ public partial class SafeDestructiveTestViewModel : ViewModelBase, INavigableVie
          if(_destructivePhaseStarted && !_restoreCompleted)
             await TryEmergencyRestoreAsync(L.Get("SafeDestructive.Emergency.CancelledAfterDestructive"));
 
+         TryRecoveryUpdate(j =>
+         {
+            j.SetPhaseMetadata("EmergencyRestoreVerified", _restoreCompleted.ToString());
+            j.RecordFailure("Safe destructive test cancelled; inspect backup/restore before any re-run.", cancelled: true);
+         });
          Phase = SafeDestructivePhase.Failed;
          StatusMessage = L.Get("SafeDestructive.Status.Cancelled");
          Log(L.Get("SafeDestructive.Log.OperationCancelled"));
@@ -741,6 +779,11 @@ public partial class SafeDestructiveTestViewModel : ViewModelBase, INavigableVie
          if(_destructivePhaseStarted && !_restoreCompleted)
             await TryEmergencyRestoreAsync(string.Format(L.Get("SafeDestructive.Emergency.ErrorAfterDestructive"), ex.Message));
 
+         TryRecoveryUpdate(j =>
+         {
+            j.SetPhaseMetadata("EmergencyRestoreVerified", _restoreCompleted.ToString());
+            j.RecordFailure(ex.Message);
+         });
          Phase = SafeDestructivePhase.Failed;
          StatusMessage = L.Get("SafeDestructive.Status.Error", ex.Message);
          Log($"❌ FATAL: {ex.Message}");
@@ -768,6 +811,7 @@ public partial class SafeDestructiveTestViewModel : ViewModelBase, INavigableVie
 
    private async Task RunBackupPhaseAsync(CancellationToken ct)
    {
+      TryRecoveryUpdate(j => j.Checkpoint("BackupRaw", 0, DiskTotalBytes, 0));
       Phase = SafeDestructivePhase.Backup;
       CurrentPhaseName = L.Get("SafeDestructive.Phase.BackupRaw");
       CurrentPhaseIcon = "💾";
@@ -926,6 +970,7 @@ public partial class SafeDestructiveTestViewModel : ViewModelBase, INavigableVie
 
    private async Task RunTestPhaseAsync(CancellationToken ct)
    {
+      TryRecoveryUpdate(j => j.Checkpoint("DestructiveTest", 0, DiskTotalBytes, 0));
       Phase = SafeDestructivePhase.Test;
       CurrentPhaseName = L.Get("SafeDestructive.Phase.DestructiveTest");
       CurrentPhaseIcon = "🧪";
@@ -1015,6 +1060,8 @@ public partial class SafeDestructiveTestViewModel : ViewModelBase, INavigableVie
        ObservableCollection<ObservablePoint> points, double phaseWeight, double baseProgress,
        CancellationToken ct)
    {
+      var recoveryPhase = "Sanitize_" + phaseIndex + "_" + mode;
+      TryRecoveryUpdate(j => j.Checkpoint(recoveryPhase, 0, DiskTotalBytes, 0));
       var phase = TestPhases[phaseIndex];
       phase.Status = TestPhaseStatus.Running;
       TestPhaseProgress = 0;
@@ -1061,6 +1108,15 @@ public partial class SafeDestructiveTestViewModel : ViewModelBase, INavigableVie
 
             bytesProcessed += blockSize;
             _phaseBytesProcessed += blockSize;
+            // No per-sector fsync. A bounded ~16 MiB heartbeat plus the
+            // journal's 5%-or-10-second cadence keeps even 10TB tests small.
+            if(block % 64 == 0 || block == totalBlocks - 1)
+            {
+               var recoveryPct = DiskTotalBytes > 0
+                  ? bytesProcessed * 100d / DiskTotalBytes : 0d;
+               TryRecoveryUpdate(j => j.Checkpoint(
+                  recoveryPhase, bytesProcessed, DiskTotalBytes, recoveryPct));
+            }
 
             if(mode == "write")
                SanitizeBytesWritten = bytesProcessed;
@@ -1156,6 +1212,7 @@ public partial class SafeDestructiveTestViewModel : ViewModelBase, INavigableVie
 
    private async Task RunVhdxBackupPhaseAsync(CancellationToken ct)
    {
+      TryRecoveryUpdate(j => j.Checkpoint("BackupVhdx", 0, DiskTotalBytes, 0));
       Phase = SafeDestructivePhase.Backup;
       CurrentPhaseName = L.Get("SafeDestructive.Phase.VhdxBackup");
       CurrentPhaseIcon = "💾";
@@ -1340,6 +1397,7 @@ public partial class SafeDestructiveTestViewModel : ViewModelBase, INavigableVie
 
    private async Task RunRestorePhaseAsync(CancellationToken ct)
    {
+      TryRecoveryUpdate(j => j.Checkpoint("RestoreSource", 0, _backupTotalBytes, 0));
       Phase = SafeDestructivePhase.Restore;
       CurrentPhaseName = L.Get("SafeDestructive.Phase.RestoreRaw");
       CurrentPhaseIcon = "🔄";
@@ -1403,6 +1461,14 @@ public partial class SafeDestructiveTestViewModel : ViewModelBase, INavigableVie
             bytesWritten += bytesReadNow;
             _phaseBytesProcessed += bytesReadNow;
 
+            if(bytesWritten % (64L * 1024 * 1024) < bytesReadNow ||
+               bytesWritten == totalSize)
+            {
+               var recoveredPct = totalSize > 0 ? bytesWritten * 100d / totalSize : 0d;
+               TryRecoveryUpdate(j => j.Checkpoint(
+                  "RestoreSource", bytesWritten, totalSize, recoveredPct));
+            }
+
             RestoreBytesWritten = bytesWritten;
             RestoreBytesWrittenText = FormatBytesLong(bytesWritten);
             RestoreCurrentSectorText = $"Blok {bytesWritten / blockSize:N0} / {totalSize / blockSize:N0}";
@@ -1437,6 +1503,8 @@ public partial class SafeDestructiveTestViewModel : ViewModelBase, INavigableVie
 
       await VerifyRestoredDiskAsync(ct);
       _restoreCompleted = true;
+      TryRecoveryUpdate(j => j.SetPhaseMetadata("RestorationVerified", "true"));
+      TryRecoveryUpdate(j => j.Checkpoint("RestoreVerified", totalSize, totalSize, 100));
 
       Log($"Obnova dokončena a ověřena: {FormatBytesLong(bytesWritten)}");
       StatusMessage = L.Get("SafeDestructive.Status.RestoreDone");
@@ -1713,6 +1781,26 @@ public partial class SafeDestructiveTestViewModel : ViewModelBase, INavigableVie
 
    private DiskCertificate? Certificate { get; set; }
 
+   /// <summary>
+   /// Recovery checkpoint I/O is best effort once a dangerous physical
+   /// operation has started. A sidecar failure must never interrupt emergency
+   /// restoration or be mistaken for a raw-device failure.
+   /// </summary>
+   private void TryRecoveryUpdate(Action<LongTestRecoveryJournal> update)
+   {
+      if(_recoveryJournal == null) return;
+      try
+      {
+         update(_recoveryJournal);
+      }
+      catch(Exception ex) when(ex is IOException or UnauthorizedAccessException or
+         InvalidDataException or InvalidOperationException)
+      {
+         System.Diagnostics.Trace.TraceWarning(
+             "Safe destructive recovery checkpoint retained: " + ex.Message);
+      }
+   }
+
    private async Task<bool> SaveTestSessionAsync()
    {
       try
@@ -1740,7 +1828,7 @@ public partial class SafeDestructiveTestViewModel : ViewModelBase, INavigableVie
          var session = new TestSession
          {
             DiskCardId = card.Id,
-            SessionId = Guid.NewGuid(),
+            SessionId = _recoveryJournal?.RunId ?? Guid.NewGuid(),
             TestType = TestType.AbsoluteDestructive,
             StartedAt = DateTime.UtcNow - Certificate.TestDuration,
             CompletedAt = DateTime.UtcNow,
@@ -1765,6 +1853,7 @@ public partial class SafeDestructiveTestViewModel : ViewModelBase, INavigableVie
          };
 
          await _diskCardRepository.CreateTestSessionAsync(session);
+         TryRecoveryUpdate(j => j.MarkDatabaseSaved(session.SessionId));
 
          Certificate.TestSessionId = session.Id;
          Certificate.DiskCardId = card.Id;
@@ -1774,7 +1863,22 @@ public partial class SafeDestructiveTestViewModel : ViewModelBase, INavigableVie
          // A PDF filesystem failure must not invalidate a verified restored disk.
          try
          {
-            await _certificateGenerator.GeneratePdfAsync(Certificate);
+            var pdfPath = await _certificateGenerator.GeneratePdfAsync(Certificate);
+            if(!string.IsNullOrWhiteSpace(pdfPath) && File.Exists(pdfPath))
+            {
+               var dbSession = await _diskCardRepository.GetTestSessionWithoutSamplesAsync(session.Id);
+               var dbCertificate = await _diskCardRepository.GetCertificateAsync(Certificate.Id);
+               if(dbSession?.SessionId == session.SessionId &&
+                  dbCertificate?.TestSessionId == session.Id)
+               {
+                  TryRecoveryUpdate(j =>
+                  {
+                     j.MarkArtifactsSaved(Certificate.Id, pdfPath);
+                     if(j.DeleteAfterVerification(id => id == dbSession.SessionId))
+                        _recoveryJournal = null;
+                  });
+               }
+            }
          }
          catch(Exception ex) when(ex is IOException or UnauthorizedAccessException or InvalidOperationException)
          {

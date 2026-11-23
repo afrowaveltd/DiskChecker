@@ -317,3 +317,39 @@ leaves this test kind unresolved; no
 physical raw-device resume is attempted.
 Cross-platform CI and physical-drive
 acceptance still required.
+
+## 2026-11-23 — safe destructive backup/restore safety checkpoints
+
+Safe destructive test now creates a typed
+`SafeDestructive` journal before starting
+backup or raw-device I/O. It stores backup
+mode, image/manifest path, SHA-256 and
+verified-backup state. Destructive write/read
+and restore loops checkpoint phase and bytes
+periodically (roughly every 16–64 MiB, with
+the shared bounded 5%/10s fsync cadence).
+Restore completion is only recorded after
+`VerifyRestoredDiskAsync` succeeds.
+The `ImageRoundTrip` mode records an
+explicit backup-only outcome without
+claiming any destructive test was run.
+
+Normal completed safe destructive sessions
+use the journal GUID for `TestSession.SessionId`.
+The extra JSON checkpoint is removed only
+after the same session and certificate
+are independently verified in the DB
+and its actual PDF exists. On SQL/PDF
+failure, cancelled tests or incomplete
+restore, recovery records are preserved;
+no automatic raw-disk write/restore is
+attempted by the startup reconciler.
+
+**NOT yet supported:** automatic phase
+resume, backup-image replay, importing
+multi-phase safe/absolute certificates
+from partial JSON, and cleaning unlinked
+legacy `pending_*.dat`. Metadata is for
+audit and a future explicitly confirmed
+recovery path, not proof that a partial
+image/restore is safe. CI pending.
