@@ -104,10 +104,29 @@ public sealed class CombinedCertificateExportService
             if (certificate == null)
             {
                 // Older releases may have test history but no persisted
-                // certificate. This is an export-only representation.
+                // certificate. Reconstruct it using the same bounded data and
+                // EXACT stall count as the normal single-certificate exporter.
+                // A wrong missing-stall count could falsely recommend a
+                // failing disk; never infer health from an empty sample list.
+                var (_, stalledSamples) =
+                    await _repository.GetSpeedSampleStallInfoAsync(session.Id);
+                session.StalledSampleCount = stalledSamples;
+
+                var (writeSamples, readSamples) =
+                    await _repository.GetSpeedSampleSeriesDownsampledAsync(session.Id, 512);
+                session.WriteSamples = writeSamples;
+                session.ReadSamples = readSamples;
+                session.TemperatureSamples =
+                    await _repository.GetTemperatureSampleSeriesDownsampledAsync(session.Id, 512);
+
                 certificate = await _generator.GenerateCertificateAsync(session, card);
                 certificate.CertificateNumber = $"HIST-{card.Id}-{session.Id}";
             }
+
+            // The issue date on the certificate remains GeneratedAt. Its
+            // source session supplies the distinct, original TEST date for
+            // the cover page, without modifying the persisted test record.
+            certificate.TestSession = session;
 
             if (session.TestType == TestType.Seek)
             {
