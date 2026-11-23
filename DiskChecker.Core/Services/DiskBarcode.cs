@@ -33,8 +33,7 @@ public static class DiskBarcode
 
     public static string? Build(string? serialNumber, int cardId)
     {
-        if (!string.IsNullOrWhiteSpace(serialNumber) &&
-            !serialNumber.Trim().StartsWith("NOSN-", StringComparison.OrdinalIgnoreCase))
+        if (HasHardwareSerial(serialNumber))
         {
             var normalized = serialNumber.Trim().ToUpperInvariant();
             byte[] hash = SHA256.HashData(Encoding.UTF8.GetBytes(normalized));
@@ -56,10 +55,15 @@ public static class DiskBarcode
         if (string.Equals(ForCard(card), value, StringComparison.OrdinalIgnoreCase))
             return true;
         // Also allow typing/pasting a physical serial in the global search.
-        return !string.IsNullOrWhiteSpace(card.SerialNumber) &&
-               !card.SerialNumber.StartsWith("NOSN-", StringComparison.OrdinalIgnoreCase) &&
+        return HasHardwareSerial(card.SerialNumber) &&
                string.Equals(card.SerialNumber.Trim(), value, StringComparison.OrdinalIgnoreCase);
     }
+
+    private static bool HasHardwareSerial(string? serial) =>
+        !string.IsNullOrWhiteSpace(serial) &&
+        !serial.Trim().StartsWith("NOSN-", StringComparison.OrdinalIgnoreCase) &&
+        !new[] { "N/A", "UNKNOWN", "NEZNÁMÉ", "NONE", "-", "0" }
+            .Contains(serial.Trim(), StringComparer.OrdinalIgnoreCase);
 
     public static IReadOnlyList<DiskCard> FindMatches(
         IEnumerable<DiskCard> cards, string? scannedValue)
