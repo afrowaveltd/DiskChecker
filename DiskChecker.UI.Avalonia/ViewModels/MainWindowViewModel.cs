@@ -590,8 +590,10 @@ public partial class MainWindowViewModel : ViewModelBase
             }
 
             var card = matches[0];
-            selection.SelectedDiskCardId = card.Id;
+            // SelectedDisk setter clears contextual IDs even when set to null.
+            // Clear physical selection FIRST, then assign the authoritative card.
             selection.SelectedDisk = null;
+            selection.SelectedDiskCardId = card.Id;
             selection.SelectedDiskDisplayName = card.ModelName;
             selection.SelectedTestSessionId = null;
             selection.SelectedCertificateId = null;
