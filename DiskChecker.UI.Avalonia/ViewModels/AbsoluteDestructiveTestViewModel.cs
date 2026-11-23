@@ -1117,8 +1117,12 @@ public partial class AbsoluteDestructiveTestViewModel : ViewModelBase, INavigabl
                 (_sanitize1Result?.Success == true).ToString()));
             TryRecoveryUpdate(j => j.SetPhaseMetadata("SanitizePass2Verified",
                 (_sanitize2Result?.Success == true).ToString()));
-            TryRecoveryUpdate(j => j.FinishWorkflow(
-                "Absolute destructive phases returned; test result/certificate pending database commit."));
+            if (_sanitize1Result?.Success == true && _sanitize2Result?.Success == true)
+                TryRecoveryUpdate(j => j.FinishWorkflow(
+                    "Both destructive write/read-verification passes and seek phases completed; database commit pending."));
+            else
+                TryRecoveryUpdate(j => j.RecordFailure(
+                    "At least one destructive verification pass did not report Success; preserve actual test outcome."));
 
             // Persist before any notification.
             certificatePersisted = await SaveTestSessionAsync();
@@ -1959,12 +1963,14 @@ public partial class AbsoluteDestructiveTestViewModel : ViewModelBase, INavigabl
                     if (dbSession?.SessionId == session.SessionId &&
                         dbCertificate?.TestSessionId == session.Id)
                     {
+                        var recoveryDeleted = false;
                         TryRecoveryUpdate(j =>
                         {
                             j.MarkArtifactsSaved(Certificate.Id, pdfPath);
-                            j.DeleteAfterVerification(id => id == dbSession.SessionId);
+                            recoveryDeleted = j.DeleteAfterVerification(id => id == dbSession.SessionId);
                         });
-                        _recoveryJournal = null;
+                        if (recoveryDeleted)
+                            _recoveryJournal = null;
                     }
                 }
                 StatusMessage = L.Get("DestructiveTest.Status.TestDoneCertSaved", Certificate.CertificateNumber);
