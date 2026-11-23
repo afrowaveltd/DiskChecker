@@ -35,7 +35,8 @@ public static class DiskBarcode
     {
         if (HasHardwareSerial(serialNumber))
         {
-            var normalized = serialNumber.Trim().ToUpperInvariant();
+            // HasHardwareSerial explicitly excludes null/empty placeholders.
+            var normalized = serialNumber!.Trim().ToUpperInvariant();
             byte[] hash = SHA256.HashData(Encoding.UTF8.GetBytes(normalized));
             ulong value = BinaryPrimitives.ReadUInt64BigEndian(hash) % Modulus;
             return "DS" + value.ToString("D16", CultureInfo.InvariantCulture);
