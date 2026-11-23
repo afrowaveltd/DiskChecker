@@ -1040,6 +1040,8 @@
   "DiskBarcode.Watermark": "Čárový kód nebo S/N (čtečka + Enter)",
   "DiskBarcode.NotFound": "Pro načtený kód nebyla nalezena žádná karta disku.",
   "DiskBarcode.Ambiguous": "Identifikátor odpovídá více kartám disků. Zkontrolujte duplicitní sériová čísla.",
+  "DiskCardDetailView.CombinedHistoryHint": "Pro společný PDF vyberte 2–3 řádky pomocí Ctrl nebo Shift a stiskněte „Sdružený PDF“. Funguje i pro starší testy bez uloženého certifikátu.",
+  "DiskCardDetail.Combined.SelectHistoryOrCertificates": "Vyberte 2–3 různé testy v Historii testů (Ctrl/Shift), nebo zaškrtněte 2–3 certifikáty na záložce Certifikáty.",
   "DiskCardDetailView.CombinedCert": "Sdružený PDF (2–3)",
   "DiskCardDetailView.CombinedSelect": "Vybrat",
   "DiskCardDetailView.CombinedHint": "Zaškrtněte 2–3 různé druhy testu",

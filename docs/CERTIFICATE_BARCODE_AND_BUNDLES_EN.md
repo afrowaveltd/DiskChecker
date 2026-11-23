@@ -28,12 +28,23 @@ operation locks navigation. A scan does not authorize disk writes.
 
 ## Create a combined report
 1. Open **Disk Cards**, then the desired saved disk card.
-2. Open its **Certificates** tab.
-3. Tick **two or three** saved certificates from **different test types**,
-   for example SEEK, sanitization and SMART.
-4. Choose **Combined PDF (2–3)** at the top of the card or above the list.
-5. The new PDF is saved in the configured Certificates directory. You may
+2. In **Test History**, select **two or three rows** from different test types
+   (e.g. SEEK + Sanitization or SEEK + Sanitization + SMART). Hold **Ctrl**
+   while clicking individual rows, or **Shift** to select a continuous range.
+   Then click **Combined PDF (2–3)** at the top of the card.
+3. Alternatively open the **Certificates** tab and tick two or three
+   different existing certificates, then use **Combined PDF (2–3)**.
+   Explicitly checked certificates take precedence over highlighted history
+   rows, so uncheck them to export the history selection instead.
+4. The new PDF is saved in the configured Certificates directory. You may
    open it after export.
+
+Older versions of DiskChecker may have test sessions but no saved certificate
+rows. History-based export will reconstruct any missing certificate **only in
+memory**, using the stored test session. No new certificate records or test
+results are saved to the database. For sessions with a stored certificate,
+that original certificate is preferred (including its original grade and
+technician assessment).
 
 The report has a front summary page and **one full A4 page for each
 certificate** (3 or 4 pages total). Each original test grade, score, date,
