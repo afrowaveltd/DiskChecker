@@ -79,8 +79,8 @@ public sealed class LongTestRecoveryJournalTests
             var entry = Assert.Single(LongTestRecoveryJournal.Inspect(folder));
             Assert.Equal(LongTestRecoveryState.Completed, entry.Snapshot!.State);
             Assert.True(entry.Snapshot.FinalSanitizationResult!.Success);
-            Assert.Equal(1, entry.Snapshot.WriteSamples!.Count);
-            Assert.Equal(1, entry.Snapshot.ReadSamples!.Count);
+            Assert.Single(entry.Snapshot.WriteSamples!);
+            Assert.Single(entry.Snapshot.ReadSamples!);
             Assert.Equal(109.5, entry.Snapshot.WriteSamples[0].SpeedMBps);
 
             journal.MarkDatabaseSaved(journal.RunId);
