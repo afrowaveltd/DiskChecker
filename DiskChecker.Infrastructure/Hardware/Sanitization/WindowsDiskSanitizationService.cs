@@ -742,20 +742,11 @@ offline disk";
                  }
  
                  // Verify all zeros
-                var nonZeroCount = 0;
-                var firstNonZeroOffset = -1;
-                var verifySpan = buffer.AsSpan(0, bytesReadThisChunk);
-                for (var i = 0; i < verifySpan.Length; i++)
-                 {
-                    if (verifySpan[i] != 0)
-                     {
-                         nonZeroCount++;
-                         if (firstNonZeroOffset < 0)
-                         {
-                             firstNonZeroOffset = i;
-                         }
-                     }
-                 }
+                // Almost every successfully sanitized block is all zero.
+                // Use the optimized span search instead of a scalar scan of
+                // every byte, while preserving exact counts for bad blocks.
+                var (nonZeroCount, firstNonZeroOffset) =
+                    ZeroBufferVerifier.Inspect(buffer.AsSpan(0, bytesReadThisChunk));
  
                 if (nonZeroCount > 0)
                 {
