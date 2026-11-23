@@ -41,6 +41,9 @@ public partial class DiskCardDetailViewModel : ViewModelBase, INavigableViewMode
     
     private DiskCard? _currentCard;
     private TestSession? _selectedSession;
+    // Historical test rows selected in the History grid (not the checkbox
+    // selection in the separate Certificates tab).
+    private readonly HashSet<int> _selectedHistorySessionIds = new();
     private DiskCertificate? _latestCertificate;
     private bool _isLoading;
     private string _statusMessage = "Detail karty disku";
@@ -429,8 +432,27 @@ public partial class DiskCardDetailViewModel : ViewModelBase, INavigableViewMode
     }
 
     /// <summary>
-    /// Export 2-3 explicitly checked, different test types of the CURRENT card.
-    /// No stored source certificate is modified or replaced.
+    /// The history grid is multi-select. Store IDs, never stale physical
+    /// drive paths or selected row instances, so it can export old sessions.
+    /// </summary>
+    public void SetSelectedHistorySessions(IEnumerable<TestSession> selected)
+    {
+        _selectedHistorySessionIds.Clear();
+        if (CurrentCard is not { } card)
+            return;
+
+        var validIds = TestSessions.Select(s => s.Id).ToHashSet();
+        foreach (var session in selected)
+        {
+            if (session.DiskCardId == card.Id && validIds.Contains(session.Id))
+                _selectedHistorySessionIds.Add(session.Id);
+        }
+    }
+
+    /// <summary>
+    /// Export from two UI entry points: multi-selected history rows OR
+    /// checked certificates. History is intentionally permitted to contain
+    /// tests from older versions with no saved certificate yet.
     /// </summary>
     [RelayCommand]
     private async Task ExportCombinedCertificatesAsync()
@@ -438,80 +460,37 @@ public partial class DiskCardDetailViewModel : ViewModelBase, INavigableViewMode
         if (CurrentCard is not { } card || IsLoading)
             return;
 
-        var chosen = CertificateSelections.Where(item => item.IsSelected)
-            .Select(item => item.Certificate.Id).ToArray();
-        if (chosen.Length is < 2 or > 3)
+        var checkedCertificates = CertificateSelections
+            .Where(item => item.IsSelected)
+            .Select(item => item.Certificate)
+            .ToArray();
+        var selectedHistoryIds = TestSessions
+            .Where(session => _selectedHistorySessionIds.Contains(session.Id))
+            .Select(session => session.Id)
+            .ToArray();
+
+        // Explicit certificate checkboxes win if any are checked. Otherwise
+        // the blue multi-selected rows in Test History determine the report.
+        var sessionIds = CombinedCertificateExportService.SelectSessions(
+            selectedHistoryIds, checkedCertificates);
+        if (sessionIds.Count is < 2 or > 3)
         {
             await _dialogService.ShowWarningAsync(L.Get("Common.Warning"),
-                L.Get("DiskCardDetail.Combined.SelectTwoOrThree"));
+                L.Get("DiskCardDetail.Combined.SelectHistoryOrCertificates"));
             return;
         }
 
         try
         {
             IsLoading = true;
-            var certificates = new List<DiskCertificate>(chosen.Length);
-            var sessions = new List<TestSession>(chosen.Length);
-            foreach (int certificateId in chosen)
-            {
-                // Reload by ID: never trust selected UI rows or the currently
-                // attached drive path as authority for the disk identity.
-                var certificate = await _diskCardRepository.GetCertificateAsync(certificateId)
-                    ?? throw new InvalidOperationException(L.Get("DiskCardDetail.Combined.Missing"));
-                if (certificate.DiskCardId != card.Id)
-                    throw new InvalidOperationException(L.Get("DiskCardDetail.Combined.WrongDisk"));
+            int[]? certificateIds = checkedCertificates.Length == 0
+                ? null
+                : checkedCertificates.Select(c => c.Id).ToArray();
 
-                var session = await _diskCardRepository.GetTestSessionWithoutSamplesAsync(certificate.TestSessionId)
-                    ?? throw new InvalidOperationException(L.Get("DiskCardDetail.Combined.Missing"));
-                if (session.DiskCardId != card.Id)
-                    throw new InvalidOperationException(L.Get("DiskCardDetail.Combined.WrongDisk"));
+            var exporter = new CombinedCertificateExportService(
+                _diskCardRepository, _certificateGenerator);
+            string pdfPath = await exporter.ExportAsync(card, sessionIds, certificateIds);
 
-                certificates.Add(certificate);
-                sessions.Add(session);
-            }
-
-            CombinedCertificatePolicy.Validate(certificates);
-
-            // Runtime profiles are not persisted on certificate rows. Restore
-            // bounded plots from the actual selected sessions for PDF export.
-            for (int i = 0; i < certificates.Count; i++)
-            {
-                var certificate = certificates[i];
-                var session = sessions[i];
-                if (session.TestType == TestType.Seek)
-                {
-                    // Seek percentiles/count and summaries are runtime-derived
-                    // [NotMapped] values. Rebuild them from the originating
-                    // session before printing (without modifying the saved cert).
-                    var reconstructed = await _certificateGenerator.GenerateCertificateAsync(session, card);
-                    certificate.SeekAvgLatencyMs ??= reconstructed.SeekAvgLatencyMs;
-                    certificate.SeekMinLatencyMs ??= reconstructed.SeekMinLatencyMs;
-                    certificate.SeekMaxLatencyMs ??= reconstructed.SeekMaxLatencyMs;
-                    certificate.SeekStdDevLatencyMs ??= reconstructed.SeekStdDevLatencyMs;
-                    certificate.SeekMedianLatencyMs ??= reconstructed.SeekMedianLatencyMs;
-                    certificate.SeekP95LatencyMs ??= reconstructed.SeekP95LatencyMs;
-                    certificate.SeekP99LatencyMs ??= reconstructed.SeekP99LatencyMs;
-                    certificate.SeekTotalCount ??= reconstructed.SeekTotalCount;
-                    certificate.SeekErrorCount ??= reconstructed.SeekErrorCount;
-                    certificate.SeekTestSummary ??= reconstructed.SeekTestSummary;
-                    certificate.SeekTypeSummaries = reconstructed.SeekTypeSummaries;
-
-                    var points = await _diskCardRepository.GetSeekSamplesDownsampledAsync(session.Id, 512);
-                    certificate.SeekLatencyPoints = points
-                        .Where(p => !p.HasError && p.LatencyMs >= 0)
-                        .OrderBy(p => p.Index).Select(p => p.LatencyMs).ToList();
-                    if (certificate.SeekLatencyPoints.Count == 0)
-                        certificate.SeekLatencyPoints = reconstructed.SeekLatencyPoints;
-                }
-                else
-                {
-                    var (write, read) = await _diskCardRepository.GetSpeedSampleSeriesDownsampledAsync(session.Id, 512);
-                    certificate.WriteProfilePoints = write.Select(p => p.SpeedMBps).ToList();
-                    certificate.ReadProfilePoints = read.Select(p => p.SpeedMBps).ToList();
-                }
-            }
-
-            string pdfPath = await _certificateGenerator.GenerateCombinedPdfAsync(certificates);
             StatusMessage = L.Get("DiskCardDetail.Combined.Saved") + ": " + pdfPath;
             if (await _dialogService.ShowConfirmationAsync(
                     L.Get("DiskCardDetail.Combined.Title"),
@@ -684,8 +663,9 @@ public partial class DiskCardDetailViewModel : ViewModelBase, INavigableViewMode
 
             if (CurrentCard != null)
             {
-                // Load test sessions
+                // Discard any selection from a previously opened disk card.
                 var sessions = await _diskCardRepository.GetTestSessionsAsync(cardId);
+                _selectedHistorySessionIds.Clear();
                 TestSessions.Clear();
                 SmartHistory.Clear();
 
