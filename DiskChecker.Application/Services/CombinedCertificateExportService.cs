@@ -110,7 +110,9 @@ public sealed class CombinedCertificateExportService
                 // failing disk; never infer health from an empty sample list.
                 var (_, stalledSamples) =
                     await _repository.GetSpeedSampleStallInfoAsync(session.Id);
-                session.StalledSampleCount = stalledSamples;
+                // Some older sessions already persist a higher exact count
+                // even if their raw speed samples were later pruned.
+                session.StalledSampleCount = Math.Max(session.StalledSampleCount, stalledSamples);
 
                 var (writeSamples, readSamples) =
                     await _repository.GetSpeedSampleSeriesDownsampledAsync(session.Id, 512);
