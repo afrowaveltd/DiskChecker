@@ -36,10 +36,11 @@ public sealed class LongTestRecoveryReconciler
     /// a completed test from a progress percent. No physical device is opened.
     /// </summary>
     public async Task<LongTestRecoverySummary> ReconcileAsync(
+        string? recoveryDirectoryOverride = null,
         CancellationToken cancellationToken = default)
     {
         var summary = new LongTestRecoverySummary();
-        foreach(var entry in LongTestRecoveryJournal.Inspect(maxFiles: 100))
+        foreach(var entry in LongTestRecoveryJournal.Inspect(recoveryDirectoryOverride, maxFiles: 100))
         {
             cancellationToken.ThrowIfCancellationRequested();
             summary.Found++;
