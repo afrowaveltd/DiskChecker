@@ -431,8 +431,9 @@ public class CertificateGenerator : ICertificateGenerator
         byte[] pdf = await Task.Run(() => CertificatePdfPageRenderer.CreateBundlePdf(certificates));
         await File.WriteAllBytesAsync(filePath, pdf);
         TryAssignOwnershipToSudoUser(filePath);
-        _logger?.LogInformation("Combined {Count}-test certificate saved: {Path}",
-            certificates.Count, filePath);
+        if (_logger?.IsEnabled(LogLevel.Information) == true)
+            _logger.LogInformation("Combined {Count}-test certificate saved: {Path}",
+                certificates.Count, filePath);
         return filePath;
     }
 
