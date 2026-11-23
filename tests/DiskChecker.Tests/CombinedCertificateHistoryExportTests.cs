@@ -6,6 +6,7 @@ using System.Threading.Tasks;
 using DiskChecker.Application.Services;
 using DiskChecker.Core.Interfaces;
 using DiskChecker.Core.Models;
+using DiskChecker.Infrastructure.Services;
 using NSubstitute;
 using Xunit;
 
@@ -78,11 +79,54 @@ public sealed class CombinedCertificateHistoryExportTests
         Assert.All(captured, c => Assert.Equal(Card.Id, c.DiskCardId));
         Assert.Equal("HIST-42-101", captured[0].CertificateNumber);
         Assert.Equal("HIST-42-102", captured[1].CertificateNumber);
+        Assert.Equal(seek.StartedAt, CertificatePdfPageRenderer.BundleTestDate(captured[0]));
+        Assert.NotEqual(seek.StartedAt, captured[0].GeneratedAt);
 
         // Generating a bundle from old history MUST NOT write certificates
         // back into the application's database or replace original results.
         await repository.DidNotReceive().CreateCertificateAsync(Arg.Any<DiskCertificate>());
         await repository.DidNotReceive().UpdateCertificateAsync(Arg.Any<DiskCertificate>());
+    }
+
+    [Fact]
+    public async Task LegacyCertificateReconstructionReceivesExactStallCountBeforeGrading()
+    {
+        var repository = Substitute.For<IDiskCardRepository>();
+        var generator = Substitute.For<ICertificateGenerator>();
+        var seek = Session(101, TestType.Seek);
+        var sanitize = Session(102, TestType.Sanitization);
+
+        repository.GetCertificatesAsync(Card.Id).Returns(new List<DiskCertificate>());
+        repository.GetTestSessionWithoutSamplesAsync(101).Returns(seek);
+        repository.GetTestSessionWithoutSamplesAsync(102).Returns(sanitize);
+        ArrangeEmptySamples(repository);
+
+        repository.GetSpeedSampleStallInfoAsync(102, Arg.Any<CancellationToken>())
+            .Returns(Task.FromResult((100, 3)));
+        ArrangeGenerator(generator);
+        generator.GenerateCombinedPdfAsync(Arg.Any<IReadOnlyList<DiskCertificate>>())
+            .Returns(Task.FromResult("combined.pdf"));
+
+        await new CombinedCertificateExportService(repository, generator)
+            .ExportAsync(Card, new[] { 101, 102 });
+
+        Assert.Equal(3, sanitize.StalledSampleCount);
+        await repository.Received(1).GetSpeedSampleStallInfoAsync(
+            102, Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public void CoverUsesSourceTestTimeNotDocumentIssueTime()
+    {
+        var issued = new DateTime(2026, 11, 23, 10, 0, 0, DateTimeKind.Utc);
+        var started = new DateTime(2026, 10, 1, 8, 30, 0, DateTimeKind.Utc);
+        var cert = new DiskCertificate
+        {
+            GeneratedAt = issued,
+            TestSession = new TestSession { StartedAt = started }
+        };
+        Assert.Equal(started, CertificatePdfPageRenderer.BundleTestDate(cert));
+        Assert.Equal(issued, cert.GeneratedAt);
     }
 
     [Fact]
@@ -197,6 +241,12 @@ public sealed class CombinedCertificateHistoryExportTests
             .Returns(Task.FromResult((
                 new List<SpeedSample>(),
                 new List<SpeedSample>())));
+        repository.GetTemperatureSampleSeriesDownsampledAsync(
+                Arg.Any<int>(), 512, Arg.Any<CancellationToken>())
+            .Returns(Task.FromResult(new List<TemperatureSample>()));
+        repository.GetSpeedSampleStallInfoAsync(
+                Arg.Any<int>(), Arg.Any<CancellationToken>())
+            .Returns(Task.FromResult((0, 0)));
     }
 
     private static void ArrangeGenerator(ICertificateGenerator generator)
@@ -214,7 +264,8 @@ public sealed class CombinedCertificateHistoryExportTests
                     Grade = session.Grade,
                     Score = session.Score,
                     SerialNumber = card.SerialNumber,
-                    DiskModel = card.ModelName
+                    DiskModel = card.ModelName,
+                    GeneratedAt = DateTime.UtcNow
                 });
             });
     }
