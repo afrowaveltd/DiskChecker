@@ -4,6 +4,8 @@ using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.Diagnostics;
 using System.Linq;
+using System.Threading.Tasks;
+using DiskChecker.Core.Services;
 using System.Runtime.InteropServices;
 using Avalonia;
 using Avalonia.Media;
@@ -24,6 +26,7 @@ public partial class MainWindowViewModel : ViewModelBase
     private ViewModelBase? _currentContent;
     private INotifyPropertyChanged? _currentContentNotifier;
     private string _statusMessage = string.Empty;
+    private string _diskBarcodeQuery = string.Empty;
     private Type? _currentViewModelType;
     
     // System info properties
@@ -546,6 +549,60 @@ public partial class MainWindowViewModel : ViewModelBase
     {
         get => _statusMessage;
         set => SetProperty(ref _statusMessage, value);
+    }
+
+    /// <summary>Always-visible entry for keyboard-wedge barcode scanners or typed serials.</summary>
+    public string DiskBarcodeQuery
+    {
+        get => _diskBarcodeQuery;
+        set => SetProperty(ref _diskBarcodeQuery, value);
+    }
+
+    [RelayCommand]
+    private async Task SearchDiskBarcodeAsync()
+    {
+        if (!GuardNavigation())
+            return;
+        string code = DiskBarcodeQuery.Trim();
+        if (code.Length == 0)
+            return;
+
+        try
+        {
+            var repository = App.GetService<IDiskCardRepository>();
+            var selection = App.GetService<ISelectedDiskService>();
+            if (repository == null || selection == null)
+            {
+                StatusMessage = _localeService.Get("DiskBarcode.NotFound");
+                return;
+            }
+
+            var matches = DiskBarcode.FindMatches(await repository.GetAllAsync(), code);
+            if (matches.Count == 0)
+            {
+                StatusMessage = _localeService.Get("DiskBarcode.NotFound");
+                return;
+            }
+            if (matches.Count != 1)
+            {
+                StatusMessage = _localeService.Get("DiskBarcode.Ambiguous");
+                return;
+            }
+
+            var card = matches[0];
+            selection.SelectedDiskCardId = card.Id;
+            selection.SelectedDisk = null;
+            selection.SelectedDiskDisplayName = card.ModelName;
+            selection.SelectedTestSessionId = null;
+            selection.SelectedCertificateId = null;
+            _navigationService.NavigateTo<DiskCardDetailViewModel>();
+            DiskBarcodeQuery = string.Empty;
+            StatusMessage = $"{card.ModelName} — {card.SerialNumber}";
+        }
+        catch (Exception ex)
+        {
+            StatusMessage = $"{_localeService.Get("Common.Error")}: {ex.Message}";
+        }
     }
     
     /// <summary>
