@@ -338,4 +338,49 @@ public sealed class LongTestRecoveryJournalTests
         finally { Directory.Delete(folder, recursive: true); }
     }
 
+    [Fact]
+    public void AbsoluteDestructiveCompletionIsNotImportedAsSanitization()
+    {
+        var directory = NewDirectory();
+        try
+        {
+            var journal = new LongTestRecoveryJournal(
+                FakeDrive(), testKind: "AbsoluteDestructive", directoryOverride: directory);
+            journal.Checkpoint("Sanitize1_Write", 250_000, 500_000, 50);
+            journal.SetPhaseMetadata("SanitizePass1Verified", "true");
+            journal.Checkpoint("Sanitize2_ReadVerify", 500_000, 500_000, 100);
+            journal.SetPhaseMetadata("SanitizePass2Verified", "true");
+            journal.FinishWorkflow("Both real verification phases completed; certificate pending");
+            var inspected = Assert.Single(LongTestRecoveryJournal.Inspect(directory));
+            Assert.Equal(LongTestRecoveryState.Completed, inspected.Snapshot!.State);
+            Assert.Equal("AbsoluteDestructive", inspected.Snapshot.TestKind);
+            Assert.False(DiskChecker.Application.Services.LongTestRecoveryReconciler
+                .IsAutomaticImportCandidate(inspected.Snapshot));
+            Assert.True(File.Exists(journal.FilePath));
+        }
+        finally { Directory.Delete(directory, recursive: true); }
+    }
+
+    [Fact]
+    public void UnfinishedSafeRestoreIsNotACompletedTest()
+    {
+        var directory = NewDirectory();
+        try
+        {
+            var journal = new LongTestRecoveryJournal(
+                FakeDrive(), testKind: "SafeDestructive", directoryOverride: directory);
+            journal.SetPhaseMetadata("BackupVerified", "true");
+            journal.SetPhaseMetadata("BackupSha256", new string('b', 64));
+            journal.Checkpoint("RestoreSource", 120_000, 500_000, 24);
+            // No complete/verified restoration; crash, cancel or I/O fault.
+            var scanned = Assert.Single(LongTestRecoveryJournal.Inspect(directory));
+            Assert.Equal(LongTestRecoveryState.Running, scanned.Snapshot!.State);
+            Assert.NotEqual("true",
+                scanned.Snapshot.PhaseMetadata.GetValueOrDefault("RestorationVerified"));
+            Assert.False(DiskChecker.Application.Services.LongTestRecoveryReconciler
+                .IsAutomaticImportCandidate(scanned.Snapshot));
+        }
+        finally { Directory.Delete(directory, recursive: true); }
+    }
+
 }

@@ -94,3 +94,14 @@ pre-update DiskChecker cannot acquire these new recovery
 features retroactively. Automatic physical test resume,
 absolute-destructive multi-phase replay and safe-destructive
 backup/restore recovery remain **explicitly not implemented**.
+
+## 2026-11-23 — absolute and safe destructive phase journal tests
+
+Added synthetic no-device tests covering
+completed two-pass absolute destructive
+journal (never auto-imported as a
+regular sanitization) and incomplete
+safe-destructive restore with valid
+backup SHA-256 (never interpreted as
+verified restoration). Both use only
+isolated temporary recovery files.
