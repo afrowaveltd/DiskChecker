@@ -69,6 +69,37 @@ public partial class App : global::Avalonia.Application
             mainWindow.DataContext = _serviceProvider.GetRequiredService<MainWindowViewModel>();
             
             desktop.MainWindow = mainWindow;
+
+            // Reconcile only explicitly terminal disk-test checkpoints.
+            // This never resumes raw writes, reopens a selected drive,
+            // formats a volume or deletes unverified evidence.
+            mainWindow.Opened += async (_, _) =>
+            {
+                try
+                {
+                    using var recoveryScope = _serviceProvider.CreateScope();
+                    var reconciler = recoveryScope.ServiceProvider
+                        .GetRequiredService<LongTestRecoveryReconciler>();
+                    var recovered = await reconciler.ReconcileAsync();
+                    if (recovered.Unresolved > 0)
+                    {
+                        await recoveryScope.ServiceProvider
+                            .GetRequiredService<IDialogService>().ShowWarningAsync(
+                                "DiskChecker – recovery",
+                                $"Recovered {recovered.Imported} completed database tests; " +
+                                $"{recovered.Unresolved} recovery records still require inspection. " +
+                                "Raw disk tests are never resumed automatically. " +
+                                "Do not delete pending telemetry or SQLite WAL files.");
+                    }
+                }
+                catch (Exception ex)
+                {
+                    // Recovery must never prevent the desktop from starting.
+                    // It must also never quietly erase the only checkpoint.
+                    System.Diagnostics.Trace.TraceWarning(
+                        "Recovery inspection failed without removing files: " + ex.Message);
+                }
+            };
         }
 
         base.OnFrameworkInitializationCompleted();
@@ -144,6 +175,7 @@ public partial class App : global::Avalonia.Application
         // Registered above as the single startup settings instance.
         services.AddScoped<SmartCheckService>();
         services.AddScoped<DiskCardTestService>();
+        services.AddScoped<LongTestRecoveryReconciler>();
         services.AddScoped<EmailSettingsService>();
         services.AddScoped<IEmailSettingsService, EmailSettingsService>();
         services.AddScoped<IEmailSender, SmtpEmailSender>();

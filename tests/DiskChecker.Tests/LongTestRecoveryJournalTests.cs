@@ -173,4 +173,62 @@ public sealed class LongTestRecoveryJournalTests
         }
         finally { Directory.Delete(folder, recursive: true); }
     }
+    [Fact]
+    public void ReopenedCompletedSnapshotKeepsStableRunId()
+    {
+        var folder = NewDirectory();
+        try
+        {
+            var journal = new LongTestRecoveryJournal(FakeDrive(), directoryOverride: folder);
+            journal.FinishSanitization(new SanitizationResult
+            {
+                Success = true,
+                BytesWritten = 100,
+                BytesRead = 100
+            }, null, null, null, null);
+            var entry = Assert.Single(LongTestRecoveryJournal.Inspect(folder));
+            var reopened = LongTestRecoveryJournal.ReopenCompleted(entry);
+            Assert.Equal(journal.RunId, reopened.RunId);
+            reopened.MarkDatabaseSaved(reopened.RunId);
+            Assert.Equal(LongTestRecoveryState.DatabaseSaved,
+                Assert.Single(LongTestRecoveryJournal.Inspect(folder)).Snapshot!.State);
+        }
+        finally { Directory.Delete(folder, recursive: true); }
+    }
+
+    [Fact]
+    public void AutomaticImportRequiresTerminalResultAndReliableIdentity()
+    {
+        var record = new LongTestRecoverySnapshot
+        {
+            RunId = Guid.NewGuid(),
+            TestKind = "Sanitization",
+            DevicePath = "/dev/fictional",
+            SerialNumber = "RECOVERY-ID-1",
+            DeviceCapacityBytes = 1000,
+            State = LongTestRecoveryState.Completed,
+            EndedAtUtc = DateTime.UtcNow.AddMinutes(-4),
+            UpdatedAtUtc = DateTime.UtcNow.AddMinutes(-3),
+            FinalSanitizationResult = new SanitizationResult
+            {
+                Success = true,
+                BytesWritten = 1000,
+                BytesRead = 1000
+            }
+        };
+        Assert.True(DiskChecker.Application.Services.LongTestRecoveryReconciler
+            .IsAutomaticImportCandidate(record));
+        record.State = LongTestRecoveryState.Running;
+        Assert.False(DiskChecker.Application.Services.LongTestRecoveryReconciler
+            .IsAutomaticImportCandidate(record));
+        record.State = LongTestRecoveryState.Completed;
+        record.SerialNumber = "unknown";
+        Assert.False(DiskChecker.Application.Services.LongTestRecoveryReconciler
+            .IsAutomaticImportCandidate(record));
+        record.SerialNumber = "RECOVERY-ID-1";
+        record.FinalSanitizationResult = null;
+        Assert.False(DiskChecker.Application.Services.LongTestRecoveryReconciler
+            .IsAutomaticImportCandidate(record));
+    }
+
 }

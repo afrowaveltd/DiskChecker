@@ -190,3 +190,31 @@ yet automatic database replay or a raw-disk resume.**
 Such automation will require conservative identity,
 transaction and cross-process ownership checks.
 Physical disk tests were not repeated. CI pending.
+
+## 2026-11-23 — startup reconciliation connected to Avalonia
+
+After the main window opens, a scoped
+`LongTestRecoveryReconciler` examines at
+most 100 on-disk recovery records from
+the configured account's local telemetry
+location. Valid old terminal sanitization
+outcomes may be backfilled idempotently
+into the existing database, including
+stable run GUID, SMART and bounded samples,
+while exact binary telemetry is
+reattached and the PDF/certificate
+is rebuilt only when none exists.
+
+Unfinished, ambiguous, invalid, too-recent,
+or serial-less records are **never**
+automatically marked successful or
+replayed onto a physical device.
+A warning describes unresolved records,
+without deleting any. Startup errors
+are caught so the desktop still opens;
+the underlying recovery remains on disk.
+
+This is conservative automatic **data
+reconciliation**, not physical I/O resume.
+CI and database integration verification
+still required before broad rollout.
