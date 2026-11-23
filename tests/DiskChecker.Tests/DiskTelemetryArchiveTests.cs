@@ -108,4 +108,41 @@ public class DiskTelemetryArchiveTests
         Assert.Equal(0, buffer.Samples[0].ProgressPercent);
         Assert.Equal(10, buffer.Samples[^1].ProgressPercent);
     }
+    [Fact]
+    public void ClosedPendingArchiveCanBeReattachedToExactSessionOnly()
+    {
+        var sessionId = Guid.NewGuid();
+        var finalPath = DiskTelemetryArchive.GetSessionPath(sessionId);
+        string pendingPath;
+        using (var archive = new DiskTelemetryArchive())
+        {
+            pendingPath = archive.PendingFilePath;
+            archive.Append(new SpeedSample
+            {
+                Timestamp = DateTime.UtcNow,
+                Phase = "Write",
+                ProgressPercent = 55,
+                SpeedMBps = 100
+            });
+        }
+        try
+        {
+            Assert.True(File.Exists(pendingPath));
+            Assert.True(DiskTelemetryArchive.TryRecoverPending(pendingPath, sessionId));
+            Assert.False(File.Exists(pendingPath));
+            Assert.True(File.Exists(finalPath));
+            Assert.Contains(DiskTelemetryArchive.Read(sessionId),
+                sample => sample.Phase == TelemetrySamplePhase.Write &&
+                          sample.ProgressPercent == 55);
+            Assert.False(DiskTelemetryArchive.TryRecoverPending(
+                Path.Combine(Path.GetTempPath(), "pending_fake.dat"),
+                Guid.NewGuid()));
+        }
+        finally
+        {
+            if (File.Exists(pendingPath)) File.Delete(pendingPath);
+            if (File.Exists(finalPath)) File.Delete(finalPath);
+        }
+    }
+
 }

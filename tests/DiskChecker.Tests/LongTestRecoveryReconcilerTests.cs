@@ -181,4 +181,91 @@ public sealed class LongTestRecoveryReconcilerTests
         }
         finally { Directory.Delete(dir, recursive: true); }
     }
+    [Fact]
+    public async Task SuccessfulCompletedSanitizationRecoversCertificateAndPdfWithoutRawIO()
+    {
+        var dir = NewDirectory();
+        var pdf = Path.Combine(dir, "recovered.pdf");
+        try
+        {
+            var journal = new LongTestRecoveryJournal(new CoreDriveInfo
+            {
+                Path = "/dev/nonexistent-completed-test",
+                Name = "Completed Fictional Drive",
+                Model = "Completed Fictional Drive",
+                SerialNumber = "COMPLETED-RECOVERY-0001",
+                TotalSize = 50_000,
+                IsPhysical = true
+            }, directoryOverride: dir);
+            journal.FinishSanitization(new SanitizationResult
+            {
+                Success = true,
+                BytesWritten = 50_000,
+                BytesRead = 50_000,
+                WriteSpeedMBps = 103,
+                ReadSpeedMBps = 105,
+                Duration = TimeSpan.FromMinutes(2)
+            }, new[] { new SpeedSample { Phase = "Write", ProgressPercent = 100, SpeedMBps = 103 } },
+               new[] { new SpeedSample { Phase = "Read", ProgressPercent = 100, SpeedMBps = 105 } },
+               null, null);
+            var record = JsonSerializer.Deserialize<LongTestRecoverySnapshot>(
+                File.ReadAllText(journal.FilePath))!;
+            record.EndedAtUtc = DateTime.UtcNow.AddMinutes(-4);
+            record.UpdatedAtUtc = DateTime.UtcNow.AddMinutes(-3);
+            File.WriteAllText(journal.FilePath, JsonSerializer.Serialize(record));
+
+            var options = new DbContextOptionsBuilder<DiskCheckerDbContext>()
+                .UseInMemoryDatabase(Guid.NewGuid().ToString("N")).Options;
+            await using var database = new DiskCheckerDbContext(options);
+            var generator = Substitute.For<ICertificateGenerator>();
+            generator.GenerateAndStoreChartImageAsync(
+                Arg.Any<TestSession>(), Arg.Any<System.Threading.CancellationToken>())
+                .Returns((string?)null);
+            generator.GenerateCertificateAsync(
+                Arg.Any<TestSession>(), Arg.Any<DiskCard>())
+                .Returns(call =>
+                {
+                    var session = call.ArgAt<TestSession>(0);
+                    var card = call.ArgAt<DiskCard>(1);
+                    return Task.FromResult(new DiskCertificate
+                    {
+                        DiskCardId = card.Id,
+                        TestSessionId = session.Id,
+                        CertificateNumber = "RECOVERY-CERT-" + journal.RunId.ToString("N"),
+                        DiskModel = card.ModelName,
+                        SerialNumber = card.SerialNumber,
+                        TestType = "Sanitization"
+                    });
+                });
+            generator.GeneratePdfAsync(Arg.Any<DiskCertificate>())
+                .Returns(_ =>
+                {
+                    File.WriteAllText(pdf, "%PDF-1.7 recovered test PDF fixture");
+                    return Task.FromResult(pdf);
+                });
+
+            var quality = Substitute.For<IQualityCalculator>();
+            var logger = Substitute.For<ILogger<DiskCardTestService>>();
+            var cards = new DiskCardTestService(database, quality, logger, generator);
+            var repository = new DiskCardRepository(database);
+            var reconciler = new LongTestRecoveryReconciler(database, cards, generator, repository);
+
+            var report = await reconciler.ReconcileAsync(
+                dir, TestContext.Current.CancellationToken);
+
+            Assert.Equal(1, report.Imported);
+            Assert.Equal(1, report.Cleaned);
+            Assert.Equal(0, report.Unresolved);
+            var sessionSaved = Assert.Single(await database.TestSessions.ToListAsync(
+                TestContext.Current.CancellationToken));
+            Assert.Equal(journal.RunId, sessionSaved.SessionId);
+            Assert.Equal(TestStatus.Completed, sessionSaved.Status);
+            Assert.Single(await database.DiskCertificates.ToListAsync(
+                TestContext.Current.CancellationToken));
+            Assert.True(File.Exists(pdf));
+            Assert.False(File.Exists(journal.FilePath));
+        }
+        finally { Directory.Delete(dir, recursive: true); }
+    }
+
 }
