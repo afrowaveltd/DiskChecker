@@ -89,6 +89,7 @@ public partial class AbsoluteDestructiveTestViewModel : ViewModelBase, INavigabl
     // ──────────────────────────────────────────────
 
     private CancellationTokenSource? _testCancellation;
+    private LongTestRecoveryJournal? _recoveryJournal;
     private bool _disposed;
     private DateTime _testStartTime;
     private DateTime _phaseStartTime;
@@ -561,6 +562,19 @@ public partial class AbsoluteDestructiveTestViewModel : ViewModelBase, INavigabl
 
         if (!confirmed) return;
 
+        // The checkpoint header must exist before any physical destructive I/O.
+        try
+        {
+            _recoveryJournal = new LongTestRecoveryJournal(SelectedDrive, "AbsoluteDestructive");
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or InvalidDataException)
+        {
+            await _dialogService.ShowErrorAsync("Recovery storage",
+                "Unable to create a durable test checkpoint; no raw disk operation was started. " +
+                ex.Message);
+            return;
+        }
+
         _testCancellation = new CancellationTokenSource();
         _testStartTime = DateTime.UtcNow;
         IsTesting = true;
@@ -594,11 +608,13 @@ public partial class AbsoluteDestructiveTestViewModel : ViewModelBase, INavigabl
         }
         catch (OperationCanceledException)
         {
+            TryRecoveryUpdate(j => j.RecordFailure("User cancelled the absolute destructive test.", cancelled: true));
             WasAborted = true;
             StatusMessage = L.Get("DestructiveTest.Cancelled");
         }
         catch (Exception ex)
         {
+            TryRecoveryUpdate(j => j.RecordFailure(ex.Message));
             WasAborted = true;
             StatusMessage = L.Get("DestructiveTest.Error", ex.Message);
             await _dialogService.ShowErrorAsync(L.Get("Common.Error"), string.Format(L.Get("Common.TestFailedWith"), ex.Message));
@@ -919,6 +935,9 @@ public partial class AbsoluteDestructiveTestViewModel : ViewModelBase, INavigabl
                 volumeLabel: "",
                 new CallbackProgress<SanitizationProgress>(p =>
                 {
+                    TryRecoveryUpdate(j => j.Checkpoint(
+                        p.IsReadVerifyPhase ? "Sanitize1_ReadVerify" : "Sanitize1_Write",
+                        p.BytesProcessed, p.TotalBytes, p.ProgressPercent, p.Errors));
                     // Feed adaptive sampler
                     _samplerPass1?.AddSample(p.CurrentSpeedMBps, (long)(SelectedDrive!.TotalSize * p.ProgressPercent / 100.0), DateTime.UtcNow);
 
@@ -1018,6 +1037,9 @@ public partial class AbsoluteDestructiveTestViewModel : ViewModelBase, INavigabl
                 volumeLabel: "",
                 new CallbackProgress<SanitizationProgress>(p =>
                 {
+                    TryRecoveryUpdate(j => j.Checkpoint(
+                        p.IsReadVerifyPhase ? "Sanitize2_ReadVerify" : "Sanitize2_Write",
+                        p.BytesProcessed, p.TotalBytes, p.ProgressPercent, p.Errors));
                     // Feed adaptive sampler
                     _samplerPass2?.AddSample(p.CurrentSpeedMBps, (long)(SelectedDrive!.TotalSize * p.ProgressPercent / 100.0), DateTime.UtcNow);
 
@@ -1088,6 +1110,15 @@ public partial class AbsoluteDestructiveTestViewModel : ViewModelBase, INavigabl
 
             // Generate certificate
             await BuildCertificateAsync();
+
+            // The two real physical sanitization passes and all seek phases
+            // returned. This is more authoritative than 100% on a progress bar.
+            TryRecoveryUpdate(j => j.SetPhaseMetadata("SanitizePass1Verified",
+                (_sanitize1Result?.Success == true).ToString()));
+            TryRecoveryUpdate(j => j.SetPhaseMetadata("SanitizePass2Verified",
+                (_sanitize2Result?.Success == true).ToString()));
+            TryRecoveryUpdate(j => j.FinishWorkflow(
+                "Absolute destructive phases returned; test result/certificate pending database commit."));
 
             // Persist before any notification.
             certificatePersisted = await SaveTestSessionAsync();
@@ -1175,6 +1206,7 @@ public partial class AbsoluteDestructiveTestViewModel : ViewModelBase, INavigabl
         _phaseStartTime = DateTime.UtcNow;
         _currentPhasePoints.Clear();
         _readPhasePoints.Clear();
+        TryRecoveryUpdate(j => j.Checkpoint("Phase_" + index + "_" + name, 0, 0, 0));
 
         try
         {
@@ -1191,6 +1223,7 @@ public partial class AbsoluteDestructiveTestViewModel : ViewModelBase, INavigabl
             throw;
         }
 
+        TryRecoveryUpdate(j => j.Checkpoint("Phase_" + index + "_Finished", 1, 1, 100));
         UpdateOverallProgress();
     }
 
@@ -1824,6 +1857,25 @@ public partial class AbsoluteDestructiveTestViewModel : ViewModelBase, INavigabl
         CertificateProgressText = string.Empty;
     }
 
+    /// <summary>
+    /// Never allow a sidecar checkpoint I/O failure to disguise the physical
+    /// disk operation's actual outcome. Last safely flushed version remains.
+    /// </summary>
+    private void TryRecoveryUpdate(Action<LongTestRecoveryJournal> update)
+    {
+        if (_recoveryJournal == null) return;
+        try
+        {
+            update(_recoveryJournal);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or
+            InvalidDataException or InvalidOperationException)
+        {
+            System.Diagnostics.Trace.TraceWarning(
+                "Absolute destructive recovery checkpoint retained: " + ex.Message);
+        }
+    }
+
     private async Task<bool> SaveTestSessionAsync()
     {
         try
@@ -1849,7 +1901,7 @@ public partial class AbsoluteDestructiveTestViewModel : ViewModelBase, INavigabl
             var session = new TestSession
             {
                 DiskCardId = card.Id,
-                SessionId = Guid.NewGuid(),
+                SessionId = _recoveryJournal?.RunId ?? Guid.NewGuid(),
                 TestType = TestType.AbsoluteDestructive,
                 StartedAt = _testStartTime,
                 CompletedAt = DateTime.UtcNow,
@@ -1889,6 +1941,7 @@ public partial class AbsoluteDestructiveTestViewModel : ViewModelBase, INavigabl
             }
 
             await _diskCardRepository.CreateTestSessionAsync(session);
+            TryRecoveryUpdate(j => j.MarkDatabaseSaved(session.SessionId));
 
             if (Certificate != null)
             {
@@ -1897,7 +1950,23 @@ public partial class AbsoluteDestructiveTestViewModel : ViewModelBase, INavigabl
                 await _diskCardRepository.CreateCertificateAsync(Certificate);
                 // Export the same A4 PDF as the other test types before
                 // offering a separate destructive partition-preparation step.
-                await _certificateGenerator.GeneratePdfAsync(Certificate);
+                var pdfPath = await _certificateGenerator.GeneratePdfAsync(Certificate);
+                if (!string.IsNullOrWhiteSpace(pdfPath) && File.Exists(pdfPath))
+                {
+                    // Independent DB retrieval, not merely trusting SaveAsync's return.
+                    var dbSession = await _diskCardRepository.GetTestSessionWithoutSamplesAsync(session.Id);
+                    var dbCertificate = await _diskCardRepository.GetCertificateAsync(Certificate.Id);
+                    if (dbSession?.SessionId == session.SessionId &&
+                        dbCertificate?.TestSessionId == session.Id)
+                    {
+                        TryRecoveryUpdate(j =>
+                        {
+                            j.MarkArtifactsSaved(Certificate.Id, pdfPath);
+                            j.DeleteAfterVerification(id => id == dbSession.SessionId);
+                        });
+                        _recoveryJournal = null;
+                    }
+                }
                 StatusMessage = L.Get("DestructiveTest.Status.TestDoneCertSaved", Certificate.CertificateNumber);
                 return true;
             }

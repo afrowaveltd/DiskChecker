@@ -287,3 +287,33 @@ pre-update DiskChecker cannot acquire these new recovery
 features retroactively. Automatic physical test resume,
 absolute-destructive multi-phase replay and safe-destructive
 backup/restore recovery remain **explicitly not implemented**.
+
+## 2026-11-23 — absolute destructive phase checkpoint integration
+
+The absolute destructive GUI now creates a
+typed `AbsoluteDestructive` JSON recovery header
+before raw-device access, then records each
+phase boundary and actual write/read verification
+progress for both sanitization passes.
+Cancellation and errors are preserved as
+distinct terminal outcomes. An explicitly
+returned sequence of destructive/seek phases
+is recorded before SQL persistence.
+
+The saved `TestSession.SessionId` uses the
+same recovery GUID. The extra JSON checkpoint
+is removed **only after** independent
+repository lookups confirm the exact session
+and certificate and the PDF is present.
+An unsuccessful SQL/certificate write
+retains the recovery file.
+
+**Not yet automatic:** reconstructing a
+missing absolute-destructive certificate
+from all stage results, or resuming a
+specific failed write/verify phase.
+The startup reconciler conservatively
+leaves this test kind unresolved; no
+physical raw-device resume is attempted.
+Cross-platform CI and physical-drive
+acceptance still required.
