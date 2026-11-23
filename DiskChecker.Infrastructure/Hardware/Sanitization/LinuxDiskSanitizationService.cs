@@ -905,19 +905,11 @@ public class LinuxDiskSanitizationService : IDiskSanitizationService
                         }
                     }
 
-                    var nonZeroCount = 0;
-                    var firstNonZeroOffset = -1;
-                    for (var i = 0; i < bytesReadThisChunk; i++)
-                    {
-                        if (buffer[i] != 0)
-                        {
-                            nonZeroCount++;
-                            if (firstNonZeroOffset < 0)
-                            {
-                                firstNonZeroOffset = i;
-                            }
-                        }
-                    }
+                    // The O_DIRECT path already has a vectorized zero
+                    // check. Give the FileStream fallback the same fast path,
+                    // preserving precise corruption counts when necessary.
+                    var (nonZeroCount, firstNonZeroOffset) =
+                        ZeroBufferVerifier.Inspect(buffer.AsSpan(0, bytesReadThisChunk));
 
                     if (nonZeroCount > 0)
                     {
