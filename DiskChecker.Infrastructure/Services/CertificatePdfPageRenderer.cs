@@ -4,6 +4,7 @@ using System.Globalization;
 using System.IO;
 using System.Linq;
 using DiskChecker.Core.Models;
+using DiskChecker.Core.Services;
 using SkiaSharp;
 
 namespace DiskChecker.Infrastructure.Services;
@@ -175,8 +176,7 @@ internal static class CertificatePdfPageRenderer
         Text(c, "DISKCHECKER", 50, 76, large, Blue);
         Text(c, combined ? "SPOLEČNÝ DIAGNOSTICKÝ CERTIFIKÁT" : "DIAGNOSTICKÝ CERTIFIKÁT DISKU",
             50, 112, title, Ink);
-        Text(c, $"ID: {primary.CertificateNumber}   |   Vystaveno: {primary.GeneratedAt:dd.MM.yyyy HH:mm}",
-            790, 77, small, Muted);
+        DrawBarcodeHeader(c, primary, tiny, small);
 
         Box(c, 48, 140, 1144, 186, Panel);
         Text(c, "IDENTIFIKACE ZAŘÍZENÍ", 67, 173, title, Blue);
@@ -248,6 +248,38 @@ internal static class CertificatePdfPageRenderer
         cert.SanitizationPerformed
             ? "PRŮBĚH RYCHLOSTI I/O (MiB/s)"
             : "PRŮBĚH RYCHLOSTI (MB/s)";
+
+    /// <summary>
+    /// Keep the header inside the physical printable area even for long IDs.
+    /// The barcode always identifies a disk, never a particular certificate.
+    /// </summary>
+    private static void DrawBarcodeHeader(SKCanvas c, DiskCertificate cert, SKFont tiny, SKFont small)
+    {
+        const float x = 850f;
+        const float right = 1185f;
+        string? barcode = DiskBarcode.ForCertificate(cert);
+        if (barcode != null)
+        {
+            Code128Barcode.Draw(c, barcode, x, 35f, right - x, 45f);
+            Text(c, barcode, x + 93f, 96f, tiny, Ink);
+        }
+
+        Text(c, ClipHeaderText($"ID: {cert.CertificateNumber}", small, right - x),
+            x, barcode == null ? 76f : 116f, small, Muted);
+        Text(c, $"Vystaveno: {cert.GeneratedAt:dd.MM.yyyy HH:mm}",
+            x, barcode == null ? 102f : 136f, tiny, Muted);
+    }
+
+    private static string ClipHeaderText(string value, SKFont font, float availableWidth)
+    {
+        if (font.MeasureText(value) <= availableWidth)
+            return value;
+
+        const string suffix = "…";
+        while (value.Length > 0 && font.MeasureText(value + suffix) > availableWidth)
+            value = value[..^1];
+        return value + suffix;
+    }
 
     private static string NullableNumber(int n) => n > 0 ? n.ToString("N0", CultureInfo.InvariantCulture) : "N/A";
 
