@@ -66,5 +66,35 @@ or retrospective import of old
 This code cannot patch an already-running
 old DiskChecker process. See
 `docs/Long-Test-Recovery/en.md`.
-Automated test results to be recorded
-after the pending GitHub CI run finishes.
+Actual cross-platform CI evidence follows.
+
+
+## 2026-11-23 — long-test recovery CI verified on both platforms
+
+Production code and replay tests at
+`dbbaeba7e104160edbdeb9804b0db66d395b03f9`
+have the following **verified successful** CI:
+
+- [Surface/SMART tests](https://github.com/afrowaveltd/DiskChecker/actions/runs/45203442198):
+  583 PASS, 4 SKIP, 0 FAIL in main desktop/core xUnit suite
+  (587 total), and 288 PASS, 0 FAIL in TUI suite.
+- [Windows/Linux safety tests](https://github.com/afrowaveltd/DiskChecker/actions/runs/45203442135):
+  both Ubuntu and Windows jobs **success**.
+
+The tests include disk-free, isolated recovery checkpoint
+round trips, corrupted/truncated file preservation,
+GUID-based deduplication, recovery from an explicit
+completed/failing sanitizer result, PDF generation
+with a real transient in-memory SQLite database
+(rather than EF InMemory's unsupported raw SQL),
+and closed binary telemetry reattachment.
+The recorded failure of the early synthetic PDF test
+was caused by EF InMemory not supporting the repository's
+actual SQL UPDATE; the final test verifies real SQLite.
+
+No physical 500-GB or 10-TB disk was written, scanned,
+formatted, or resumed in CI. The original running
+pre-update DiskChecker cannot acquire these new recovery
+features retroactively. Automatic physical test resume,
+absolute-destructive multi-phase replay and safe-destructive
+backup/restore recovery remain **explicitly not implemented**.
