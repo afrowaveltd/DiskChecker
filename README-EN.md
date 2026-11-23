@@ -460,3 +460,21 @@ manifest verification. [Technical details](docs/Installer-Dependencies/en.md).
 
 The new Windows setup is still awaiting its latest
 Inno Setup CI compilation and on-device smoke test.
+
+## Long sanitization recovery checkpoints (2026-11-23)
+
+Full sanitization now writes a versioned, durable
+`run_<GUID>.json` before opening the raw disk,
+periodically updates phase/byte progress, and records
+the actual terminal result, SMART and bounded graphs
+before SQL persistence. A conservative startup
+reconciler can restore qualifying **completed** tests
+to the configured database without rerunning raw I/O.
+It never assumes that 100% progress means success.
+
+Detailed binary telemetry remains available for zoom;
+ambiguous and incomplete files are never silently deleted.
+Physical write/verify resume, absolute destructive test
+replay and safe-destructive backup/restore recovery are
+**not yet implemented**.
+[Technical design and limits](docs/Long-Test-Recovery/en.md).

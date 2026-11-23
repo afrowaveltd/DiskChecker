@@ -525,3 +525,19 @@ details for the actual SQLite startup path added.
 For safe recovery precautions, pending-telemetry backup
 instructions and exact limits of what the test proves,
 read [SQLite sanitization save failure and recovery](docs/Sqlite-Sanitization-Recovery/en.md).
+
+## Obnova po přerušení dlouhé sanitizace (2026-11-23)
+
+Nová sanitizace vytváří před destruktivním zápisem
+samostatný záchranný záznam `run_<GUID>.json`.
+Průběžně zaznamenává fázi a postup a před zápisem
+do SQL ukládá skutečný výsledek, SMART a omezené
+grafové vzorky. Po spuštění aplikace je možné
+bez opakování fyzického testu doplnit **prokazatelně
+dokončené** záznamy do databáze.
+
+Nejednoznačné a nedokončené soubory zůstávají
+zachovány. Obnova přerušeného destruktivního
+zápisu, komplexních testů a bezpečné obnovy
+zálohy zatím **není** dokončena.
+[Technická dokumentace](docs/Long-Test-Recovery/en.md).

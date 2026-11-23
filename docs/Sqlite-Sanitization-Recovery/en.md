@@ -149,3 +149,12 @@ The related workflows are:
 These are application tests, **not a reproduction**
 of the exact workstation's SQLite error or a
 physical 465-GB disk sanitization.
+
+## New-format long-test journal
+
+Newly started tests in an updated build now use
+[long-test recovery checkpoints](../Long-Test-Recovery/en.md).
+This cannot retroactively turn an old,
+unidentified `pending_*.dat` into a
+verified completed test, and does not
+attempt automatic raw disk resume.
