@@ -78,6 +78,8 @@ DiskChecker is more than a simple SMART utility. It includes a complete applicat
   - Certificate generation with charts, metrics, and anomaly analysis.
   - **Cross-platform** – PDF and JPEG preview via SkiaSharp (Windows, Linux, macOS).
   - Label generation (PNG).
+  - **Code 128 barcode** on certificates for scanner lookup of the disk card, with a global lookup field.
+  - **Combined PDF certificate** from 2–3 explicitly selected distinct tests of one disk, with overview and original full report pages. [Instructions and limits](docs/CERTIFICATE_BARCODE_AND_BUNDLES_EN.md).
   - PDF/export workflow and certificate browser.
   - Complete reports, preview, and print/export as implemented in the UI.
 - **History and Database**
