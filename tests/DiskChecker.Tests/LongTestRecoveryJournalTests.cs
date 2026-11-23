@@ -296,4 +296,46 @@ public sealed class LongTestRecoveryJournalTests
         finally { Directory.Delete(folder, recursive: true); }
     }
 
+    [Fact]
+    public void MultiStageWorkflowKeepsBackupHashAndActualVerifiedCompletion()
+    {
+        var folder = NewDirectory();
+        try
+        {
+            var journal = new LongTestRecoveryJournal(
+                FakeDrive(), testKind: "SafeDestructive", directoryOverride: folder);
+            journal.SetPhaseMetadata("Mode", "BackupAndRestore");
+            journal.SetPhaseMetadata("BackupImage", "/fake/backup.raw");
+            journal.SetPhaseMetadata("BackupSha256", new string('a', 64));
+            journal.Checkpoint("RestoreVerify", 980_000, 1_000_000, 98);
+            journal.SetPhaseMetadata("RestorationVerified", "true");
+            journal.FinishWorkflow("Restored source data verified after destructive test");
+            var record = Assert.Single(LongTestRecoveryJournal.Inspect(folder)).Snapshot!;
+            Assert.Equal(LongTestRecoveryState.Completed, record.State);
+            Assert.Equal("SafeDestructive", record.TestKind);
+            Assert.Null(record.FinalSanitizationResult);
+            Assert.Equal(new string('a', 64), record.PhaseMetadata["BackupSha256"]);
+            Assert.Equal("true", record.PhaseMetadata["RestorationVerified"]);
+            Assert.NotNull(record.EndedAtUtc);
+            Assert.False(DiskChecker.Application.Services.LongTestRecoveryReconciler
+                .IsAutomaticImportCandidate(record));
+        }
+        finally { Directory.Delete(folder, recursive: true); }
+    }
+
+    [Fact]
+    public void MultiStageWorkflowCannotFakeSanitizationCompletion()
+    {
+        var folder = NewDirectory();
+        try
+        {
+            var journal = new LongTestRecoveryJournal(FakeDrive(), directoryOverride: folder);
+            Assert.Throws<InvalidOperationException>(
+                () => journal.FinishWorkflow("100% progress, not proof of verified readback"));
+            Assert.Equal(LongTestRecoveryState.Running,
+                Assert.Single(LongTestRecoveryJournal.Inspect(folder)).Snapshot!.State);
+        }
+        finally { Directory.Delete(folder, recursive: true); }
+    }
+
 }

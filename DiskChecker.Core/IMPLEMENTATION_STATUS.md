@@ -110,3 +110,23 @@ error details produces `Cancelled`, not
 error details remain `Failed` even when the
 message contains a cancellation word.
 Added both cases as synthetic regression tests.
+
+## 2026-11-23 — bounded complex workflow metadata foundation
+
+`LongTestRecoveryJournal` now supports
+explicitly typed `PhaseMetadata` fields (maximum
+64 keys of up to 4096 chars each) and
+`FinishWorkflow` for **actual completed
+multi-phase operations** such as verified
+backup → destructive test → verified restore.
+This differs from sanitization's full
+`SanitizationResult` contract, which cannot
+be bypassed by the generic completion method.
+
+The startup reconciler explicitly excludes
+non-sanitization test kinds from automatic
+DB replay, even if their progress reaches
+100%. The new metadata is not a permission
+to restart raw-device writes or trust backup
+image integrity without independent checking.
+Added fake-disk regression tests.

@@ -53,6 +53,10 @@ public sealed class LongTestRecoverySnapshot
     public List<SpeedSample>? WriteSamples { get; set; }
     public List<SpeedSample>? ReadSamples { get; set; }
     public Guid? DatabaseSessionGuid { get; set; }
+    /// <summary>Additional bounded phase metadata for multi-stage workflows.</summary>
+    public Dictionary<string, string> PhaseMetadata { get; set; } = new();
+    /// <summary>Real workflow completion detail, not an inferred percentage.</summary>
+    public string? WorkflowOutcome { get; set; }
     /// <summary>The exact binary telemetry file produced by this test, if any.</summary>
     public string? PendingTelemetryPath { get; set; }
     /// <summary>Exact persisted certificate id after the PDF has been written.</summary>
@@ -254,6 +258,55 @@ public sealed class LongTestRecoveryJournal
                 ? LongTestRecoveryState.Cancelled
                 : result.Success ? LongTestRecoveryState.Completed : LongTestRecoveryState.Failed;
             _snapshot.Failure = result.Success ? null : result.ErrorMessage;
+            _snapshot.UpdatedAtUtc = DateTime.UtcNow;
+            SaveLocked();
+        }
+    }
+
+    /// <summary>
+    /// Record a bounded multi-stage workflow attribute such as backup-image
+    /// path/hash or verified restoration state. It is informational only,
+    /// NEVER a capability token authorizing writes onto a physical drive.
+    /// </summary>
+    public void SetPhaseMetadata(string key, string value)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(key);
+        ArgumentNullException.ThrowIfNull(value);
+        if (key.Length > 64 || !key.All(ch => char.IsAsciiLetterOrDigit(ch) || ch is '_' or '-') ||
+            value.Length > 4_096)
+            throw new ArgumentException("Invalid recovery metadata field.");
+        lock (_gate)
+        {
+            if(_snapshot.State != LongTestRecoveryState.Running)
+                return;
+            if(!_snapshot.PhaseMetadata.ContainsKey(key) && _snapshot.PhaseMetadata.Count >= 64)
+                throw new InvalidDataException("Recovery metadata field limit reached.");
+            _snapshot.PhaseMetadata[key] = value;
+            _snapshot.UpdatedAtUtc = DateTime.UtcNow;
+            SaveLocked();
+        }
+    }
+
+    /// <summary>
+    /// Record an actual successful end of a complex multi-stage workflow.
+    /// This does not authorize automatic reconstruction of that workflow's
+    /// certificate; the startup reconciler deliberately handles only
+    /// full-disk sanitization until type-specific recovery is validated.
+    /// </summary>
+    public void FinishWorkflow(string outcome)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(outcome);
+        if(outcome.Length > 4_096)
+            throw new ArgumentException("Workflow outcome is too long.", nameof(outcome));
+        lock (_gate)
+        {
+            if (string.Equals(_snapshot.TestKind, "Sanitization", StringComparison.Ordinal))
+                throw new InvalidOperationException("Sanitization requires the full SanitizationResult.");
+            if (_snapshot.State != LongTestRecoveryState.Running)
+                throw new InvalidOperationException("Workflow is already finalized.");
+            _snapshot.State = LongTestRecoveryState.Completed;
+            _snapshot.WorkflowOutcome = outcome;
+            _snapshot.EndedAtUtc = DateTime.UtcNow;
             _snapshot.UpdatedAtUtc = DateTime.UtcNow;
             SaveLocked();
         }
