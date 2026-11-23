@@ -87,6 +87,53 @@ public sealed class LocalizedCertificateCategoryTests
     }
 
     [Fact]
+    public void SanitizationCertificateSeparatesIoCurveFromReadVerifyThroughput()
+    {
+        var certificate = new DiskCertificate
+        {
+            TestType = "Sanitization",
+            SanitizationPerformed = true,
+            AvgReadSpeed = 328.7,
+            AvgWriteSpeed = 311.5,
+            ReadProfilePoints = new() { 428, 429, 428 },
+            WriteProfilePoints = new() { 310, 360, 330 }
+        };
+
+        // The graph is instantaneous I/O throughput; its values must not be
+        // silently replaced with whole-phase rates or mixed between phases.
+        Assert.Equal(429, certificate.ReadProfilePoints[1]);
+        Assert.Equal(328.7, certificate.AvgReadSpeed);
+        Assert.Contains("vč. ověření", CertificatePdfPageRenderer.ReadAverageText(certificate));
+        Assert.Contains("328", CertificatePdfPageRenderer.ReadAverageText(certificate));
+        Assert.Contains("bez pauz", CertificatePdfPageRenderer.WriteAverageText(certificate));
+        Assert.Contains("311", CertificatePdfPageRenderer.WriteAverageText(certificate));
+        Assert.Contains("MiB/s", CertificatePdfPageRenderer.ReadAverageText(certificate));
+        Assert.Contains("I/O (MiB/s)", CertificatePdfPageRenderer.SpeedChartTitle(certificate));
+        Assert.Contains("ověřování nul",
+            CertificatePdfPageRenderer.ScopeMethodologyNote(certificate));
+        Assert.Contains("plánované pauzy",
+            CertificatePdfPageRenderer.ScopeMethodologyNote(certificate));
+    }
+
+    [Fact]
+    public void NonSanitizationCertificateRetainsExistingSpeedLabelsAndLimitations()
+    {
+        var certificate = new DiskCertificate
+        {
+            TestType = "QuickRead",
+            AvgReadSpeed = 120
+        };
+        Assert.Contains("Čtení průměr:", CertificatePdfPageRenderer.ReadAverageText(certificate));
+        Assert.DoesNotContain("vč. ověření", CertificatePdfPageRenderer.ReadAverageText(certificate));
+        Assert.Contains("MB/s", CertificatePdfPageRenderer.ReadAverageText(certificate));
+        Assert.Contains("N/A (bez zápisu)", CertificatePdfPageRenderer.WriteAverageText(certificate));
+        Assert.Equal("PRŮBĚH RYCHLOSTI (MB/s)",
+            CertificatePdfPageRenderer.SpeedChartTitle(certificate));
+        Assert.Contains("Rychlost zápisu se nehodnotí při testu čtení",
+            CertificatePdfPageRenderer.ScopeMethodologyNote(certificate));
+    }
+
+    [Fact]
     public void ReadOnlyTestWithSeekDataRemainsReadOnly()
     {
         var certificate = new DiskCertificate
