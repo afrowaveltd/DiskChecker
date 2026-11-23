@@ -143,9 +143,15 @@
         <TabControl Grid.Row="2" Margin="20,15,20,15">
             <!-- Test History Tab -->
             <TabItem Header="{Binding L[DiskCardDetailView.TestHistory]}">
-                <Grid Margin="10">
-                    <DataGrid ItemsSource="{Binding TestSessions}"
+                <Grid Margin="10" RowDefinitions="Auto,*">
+                    <TextBlock Grid.Row="0" Text="{Binding L[DiskCardDetailView.CombinedHistoryHint]}"
+                               Foreground="{DynamicResource ThemeTextSecondaryBrush}"
+                               FontSize="11" Margin="0,0,0,8"/>
+                    <DataGrid Grid.Row="1" ItemsSource="{Binding TestSessions}"
+                              x:Name="TestHistoryGrid"
                               SelectedItem="{Binding SelectedSession}"
+                              SelectionMode="Extended"
+                              SelectionChanged="HistoryGrid_SelectionChanged"
                               AutoGenerateColumns="False"
                               IsReadOnly="True"
                               HeadersVisibility="Column"
