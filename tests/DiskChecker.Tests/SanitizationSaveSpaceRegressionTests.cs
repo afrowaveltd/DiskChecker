@@ -76,8 +76,12 @@ public sealed class SanitizationSaveSpaceRegressionTests
         Assert.Empty(db.ChangeTracker.Entries()); // no owned entities materialized/tracked
 
         // Read/write samples remain exactly where they were, untouched.
-        Assert.Equal(150, await db.Set<SpeedSample>("TestSessions_WriteSamples")
-            .CountAsync(TestContext.Current.CancellationToken));
+        Assert.Equal(150L, await db.Database
+            .SqlQueryRaw<long>("SELECT COUNT(*) AS Value FROM TestSessions_WriteSamples")
+            .SingleAsync(TestContext.Current.CancellationToken));
+        Assert.Equal(150L, await db.Database
+            .SqlQueryRaw<long>("SELECT COUNT(*) AS Value FROM TestSessions_ReadSamples")
+            .SingleAsync(TestContext.Current.CancellationToken));
     }
 
     [Fact]
