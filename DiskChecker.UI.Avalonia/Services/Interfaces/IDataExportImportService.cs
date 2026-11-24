@@ -11,7 +11,7 @@ namespace DiskChecker.UI.Avalonia.Services.Interfaces;
 /// </summary>
 public enum ExportScope
 {
-    /// <summary>Exportovat celou databázi (všechny disky, testy, certifikáty).</summary>
+    /// <summary>Exportovat karty, souhrny testů a certifikáty; nikoli úplnou zálohu databáze.</summary>
     All,
     /// <summary>Exportovat všechna měření a disky (bez certifikátů).</summary>
     MeasurementsAndDisks,
@@ -24,7 +24,7 @@ public enum ExportScope
 /// </summary>
 public enum ImportMode
 {
-    /// <summary>Nahradit existující záznamy (podle sériového čísla).</summary>
+    /// <summary>Aktualizovat metadata disků a doplnit chybějící testy/certifikáty.</summary>
     Replace,
     /// <summary>Přidat nová data, existující záznamy ponechat (pouze doplnit chybějící testy).</summary>
     Add

@@ -143,6 +143,10 @@ public interface IDiskCardRepository
         int sessionId, int maxPoints, SeekTestType? testType = null);
     
     Task<TestSession> CreateTestSessionAsync(TestSession session);
+
+    /// <summary>Persists an imported historical session without changing its GUID or date.</summary>
+    Task<TestSession> ImportTestSessionAsync(TestSession session) =>
+        throw new NotSupportedException("Historical session import is not implemented by this repository.");
     Task<TestSession> UpdateTestSessionAsync(TestSession session);
     Task DeleteTestSessionAsync(int sessionId);
     
