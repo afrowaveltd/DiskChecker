@@ -44,6 +44,21 @@ public static class DatabaseWritePreflight
                     : new(false, "The configured database provider could not be reached.");
             }
 
+            // SQLite may create temporary sort/journal files on the OS TEMP
+            // volume, even when the configured database lives elsewhere.
+            // Check BOTH locations. This is a safety guard, not a reason to
+            // redirect SQLite TEMP to an unverified (possibly tested) disk.
+            var tempRoot = Path.GetPathRoot(Path.GetFullPath(Path.GetTempPath()));
+            if (!string.IsNullOrWhiteSpace(tempRoot))
+            {
+                var tempVolume = new DriveInfo(tempRoot);
+                if (tempVolume.IsReady && tempVolume.AvailableFreeSpace < MinimumFreeBytes)
+                    return new(false,
+                        $"SQLite temporary storage volume {tempRoot} has only " +
+                        $"{tempVolume.AvailableFreeSpace / (1024d * 1024):F0} MiB free; " +
+                        "at least 128 MiB is required before result persistence.");
+            }
+
             var connection = context.Database.GetDbConnection();
             var source = (connection as SqliteConnection)?.DataSource;
             if (!string.IsNullOrWhiteSpace(source) &&
