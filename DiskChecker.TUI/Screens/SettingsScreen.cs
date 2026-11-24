@@ -19,6 +19,7 @@ namespace DiskChecker.TUI.Screens;
 public sealed class SettingsScreen : ITuiScreen
 {
     internal const string ActionLanguage = "language";
+    internal const string ActionReportLanguage = "report-language";
     internal const string ActionEmail = "email";
     internal const string ActionDatabase = "database";
     internal const string ActionSmart = "smart";
@@ -64,6 +65,7 @@ public sealed class SettingsScreen : ITuiScreen
             var choices = new List<TuiChoice>
             {
                 new(ActionLanguage, context.L("Tui.Settings.Action.Language")),
+                new(ActionReportLanguage, context.L("Settings.ReportLanguageLabel")),
                 new(ActionEmail, context.L("Tui.Settings.Action.Email")),
                 new(ActionDatabase, context.L("Tui.Settings.Action.Database")),
                 new(ActionSmart, context.L("Tui.Settings.Action.Smart")),
@@ -84,6 +86,10 @@ public sealed class SettingsScreen : ITuiScreen
             {
                 case ActionLanguage:
                     ChooseLanguage(context, draft);
+                    break;
+
+                case ActionReportLanguage:
+                    ChooseReportLanguage(context, draft);
                     break;
 
                 case ActionEmail:
@@ -147,6 +153,8 @@ public sealed class SettingsScreen : ITuiScreen
         try
         {
             draft.Language = await settings.GetLanguageAsync().ConfigureAwait(false);
+            var reportLanguage = await settings.GetReportLanguageAsync().ConfigureAwait(false);
+            draft.ReportLanguage = reportLanguage is "cs" or "en" ? reportLanguage : "follow";
             draft.ReportRecipientEmail = await settings.GetReportRecipientEmailAsync().ConfigureAwait(false);
             var database = await settings.GetDatabaseStorageSettingsAsync().ConfigureAwait(false);
             draft.Provider = database.Provider;
@@ -171,6 +179,7 @@ public sealed class SettingsScreen : ITuiScreen
         try
         {
             await settings.SetLanguageAsync(draft.Language).ConfigureAwait(false);
+            await settings.SetReportLanguageAsync(draft.ReportLanguage).ConfigureAwait(false);
             await settings.SetReportRecipientEmailAsync(draft.ReportRecipientEmail).ConfigureAwait(false);
             await settings.SetDatabaseStorageSettingsAsync(new DatabaseStorageSettings
             {
@@ -214,6 +223,20 @@ public sealed class SettingsScreen : ITuiScreen
             context.StatusMessage = context.L("Tui.Settings.ResetFailed", ex.Message);
             context.Dialogs.Error(context.L("Common.Error"), context.StatusMessage);
         }
+    }
+
+    private static void ChooseReportLanguage(TuiContext context, SettingsDraft draft)
+    {
+        var choices = new List<TuiChoice>
+        {
+            new("follow", context.L("Settings.ReportLanguageFollow")),
+            new("cs", context.Locale.GetString("Nav.Language.cs", "Čeština")),
+            new("en", context.Locale.GetString("Nav.Language.en", "English")),
+            new(TuiKeys.Back, context.L("Common.Back"))
+        };
+        string? choice = context.Io.Choose(context.L("Settings.ReportLanguageLabel"), choices, pageSize: choices.Count);
+        if (choice is "follow" or "cs" or "en")
+            draft.ReportLanguage = choice;
     }
 
     private static void ChooseLanguage(TuiContext context, SettingsDraft draft)
@@ -586,6 +609,7 @@ public sealed class SettingsScreen : ITuiScreen
             table.AddRow("[grey]" + Markup.Escape(label) + ":[/] " + Markup.Escape(TuiFormats.Ellipsis(value, Math.Max(16, context.Io.Width - 30))));
 
         Row(context.L("Settings.Language"), draft.Language);
+        Row(context.L("Settings.ReportLanguageLabel"), draft.ReportLanguage == "follow" ? context.L("Settings.ReportLanguageFollow") : draft.ReportLanguage);
         Row(context.L("Settings.EmailRecipient"), string.IsNullOrWhiteSpace(draft.ReportRecipientEmail) ? "—" : draft.ReportRecipientEmail);
         Row(context.L("SettingsView.DbBackend"), draft.Provider.ToString());
         Row(context.L("SettingsView.ConnectionString"), MaskConnectionString(draft));
@@ -636,6 +660,7 @@ public sealed class SettingsScreen : ITuiScreen
     private sealed class SettingsDraft
     {
         public string Language { get; set; } = "cs";
+        public string ReportLanguage { get; set; } = "follow";
 
         public string ReportRecipientEmail { get; set; } = string.Empty;
 

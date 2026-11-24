@@ -18,6 +18,7 @@ public class SettingsService : ISettingsService
     private int _autoSaveInterval = 5;
     private string _defaultExportPath = GetDefaultDocumentsFolder();
     private string _language = "cs";
+    private string _reportLanguage = "follow";
     private bool _enableLogging = true;
     private string _logLevel = "Information";
     private List<string> _lockedDisks = new();
@@ -228,6 +229,18 @@ public class SettingsService : ISettingsService
     
     public Task<string> GetLanguageAsync() => Task.FromResult(_language);
     public Task SetLanguageAsync(string language) { _language = language; SaveSettingsToFile(); return Task.CompletedTask; }
+
+    public Task<string> GetReportLanguageAsync() => Task.FromResult(_reportLanguage);
+
+    public Task SetReportLanguageAsync(string language)
+    {
+        _reportLanguage = NormalizeReportLanguage(language);
+        SaveSettingsToFile();
+        return Task.CompletedTask;
+    }
+
+    private static string NormalizeReportLanguage(string? language) =>
+        language?.Trim().ToLowerInvariant() switch { "cs" => "cs", "en" => "en", _ => "follow" };
     
     public Task<bool> GetEnableLoggingAsync() => Task.FromResult(_enableLogging);
     public Task SetEnableLoggingAsync(bool value) { _enableLogging = value; SaveSettingsToFile(); return Task.CompletedTask; }
@@ -319,6 +332,7 @@ public class SettingsService : ISettingsService
         _autoSaveInterval = 5;
         _defaultExportPath = GetDefaultDocumentsFolder();
         _language = "cs";
+        _reportLanguage = "follow";
         _enableLogging = true;
         _logLevel = "Information";
         // Safety locks must NOT be cleared by resetting cosmetic/general
@@ -488,6 +502,8 @@ public class SettingsService : ISettingsService
                         _defaultExportPath = exportPath?.ToString() ?? string.Empty;
                     if (doc.TryGetValue("Language", out var language) && !string.IsNullOrWhiteSpace(language?.ToString()))
                         _language = language!.ToString()!;
+                    if (doc.TryGetValue("ReportLanguage", out var reportLanguage))
+                        _reportLanguage = NormalizeReportLanguage(reportLanguage?.ToString());
                     if (doc.TryGetValue("EnableLogging", out var logging) && bool.TryParse(logging?.ToString(), out var logs))
                         _enableLogging = logs;
                     if (doc.TryGetValue("LogLevel", out var logLevel) && !string.IsNullOrWhiteSpace(logLevel?.ToString()))
@@ -542,6 +558,7 @@ public class SettingsService : ISettingsService
                 ["AutoSaveInterval"] = _autoSaveInterval,
                 ["DefaultExportPath"] = _defaultExportPath,
                 ["Language"] = _language,
+                ["ReportLanguage"] = _reportLanguage,
                 ["EnableLogging"] = _enableLogging,
                 ["LogLevel"] = _logLevel,
                 ["SmartCacheTtlMinutes"] = _smartCacheTtlMinutes,

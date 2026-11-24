@@ -19,6 +19,10 @@ public interface ISettingsService
     Task SetDefaultExportPathAsync(string path);
     Task<string> GetLanguageAsync();
     Task SetLanguageAsync(string language);
+    /// <summary>Certificate language preference: follow, cs, or en.</summary>
+    Task<string> GetReportLanguageAsync() => Task.FromResult("follow");
+    /// <summary>Persist a certificate language independently of the UI language.</summary>
+    Task SetReportLanguageAsync(string language) => Task.CompletedTask;
     Task<bool> GetEnableLoggingAsync();
     Task SetEnableLoggingAsync(bool value);
     Task<string> GetLogLevelAsync();

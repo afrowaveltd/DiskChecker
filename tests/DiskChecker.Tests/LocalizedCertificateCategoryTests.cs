@@ -57,6 +57,24 @@ public sealed class LocalizedCertificateCategoryTests
                 new List<ObservablePoint>(), 0));
     }
 
+    [Theory]
+    [InlineData("follow", "en", "en")]
+    [InlineData("en", "cs", "en")]
+    [InlineData("cs", "en", "cs")]
+    public void ReportLanguageIsIndependentOfApplicationLanguage(string preference, string app, string expected)
+    {
+        var report = CertificateReportText.Resolve(preference, app);
+        Assert.Equal(expected, report.Language);
+        var certificate = new DiskCertificate { TestType = "Sanitization", SanitizationPerformed = true, AvgWriteSpeed = 40.9 };
+        Assert.Equal(expected == "en" ? "SANITIZATION / VERIFICATION" : "SANITIZACE / OVĚŘENÍ",
+            CertificatePdfPageRenderer.Name(certificate, report));
+        Assert.Contains(expected == "en" ? "40.9 MiB/s" : "40,9 MiB/s",
+            CertificatePdfPageRenderer.WriteAverageText(certificate, report));
+        Assert.Equal(expected == "en" ? "Chart points: 445; total measurements: N/A" : "Body grafu: 445; měření celkem: N/A",
+            CertificatePdfPageRenderer.SeekChartCoverageText(certificate, 445, report));
+        Assert.StartsWith("%PDF", System.Text.Encoding.ASCII.GetString(CertificatePdfPageRenderer.CreatePdf(certificate, report), 0, 4));
+    }
+
     [Fact]
     public void PureSeekKeepsSeekOnlyCategory()
     {
