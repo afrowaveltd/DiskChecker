@@ -49,6 +49,29 @@ public class DiskCardTestService
       public List<string> Findings { get; init; } = new();
    }
 
+   /// <summary>
+   /// Minimal fields required to compute the disk's overall grade.
+   /// Unlike TestSession entities, this cannot trigger EF Core owned
+   /// collection auto-includes or cartesian joins over stored telemetry.
+   /// </summary>
+   internal sealed record CardGradeSnapshot(TestType TestType, double Score, string Grade);
+
+   /// <summary>
+   /// Safe query for the last ten grades. Kept separate so SQLite SQL shape
+   /// can be regression-tested without allocating any historical sample data.
+   /// </summary>
+   internal static IQueryable<CardGradeSnapshot> RecentCardGrades(
+       DiskCheckerDbContext context, int diskCardId)
+   {
+      ArgumentNullException.ThrowIfNull(context);
+      return context.TestSessions
+          .AsNoTracking()
+          .Where(t => t.DiskCardId == diskCardId)
+          .OrderByDescending(t => t.StartedAt)
+          .Take(10)
+          .Select(t => new CardGradeSnapshot(t.TestType, t.Score, t.Grade));
+   }
+
    private sealed record PerformanceHistorySnapshot(
        double AverageWriteSpeedMBps,
        double AverageReadSpeedMBps,
@@ -941,12 +964,7 @@ public class DiskCardTestService
       // here makes EF auto-include those owned collections, triggering huge
       // joins/temp SQLite files merely to calculate a few grade values.
       // Project ONLY the three scalar fields used in the calculation.
-      var sessions = await _dbContext.TestSessions
-          .AsNoTracking()
-          .Where(t => t.DiskCardId == card.Id)
-          .OrderByDescending(t => t.StartedAt)
-          .Take(10)
-          .Select(t => new { t.TestType, t.Score, t.Grade })
+      var sessions = await RecentCardGrades(_dbContext, card.Id)
           .ToListAsync(cancellationToken);
 
       if(sessions.Count == 0) return;
