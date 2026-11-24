@@ -560,9 +560,13 @@ internal static class CertificatePdfPageRenderer
         }
         Text(c, $"{max:F1}", x + 4, top + 8, small, Muted);
         Text(c, "0", x + 24, top + plotH + 4, small, Muted);
-        Text(c, "1", left, y + height - 14, small, Muted);
-        Text(c, $"{values.Length}", x + width - 75, y + height - 14, small, Muted);
+        Text(c, SeekChartCoverageText(cert, values.Length), left, y + height - 14, small, Muted);
     }
+
+    // Stored chart points may already be reduced and exclude failed operations.
+    // Their ordinal positions are not the original operation indices.
+    internal static string SeekChartCoverageText(DiskCertificate cert, int plottedCount) =>
+        $"Body grafu: {plottedCount}; měření celkem: {cert.SeekTotalCount?.ToString() ?? "N/A"}";
 
     private static void DrawAxes(SKCanvas c, float left, float top, float w, float h)
     {
