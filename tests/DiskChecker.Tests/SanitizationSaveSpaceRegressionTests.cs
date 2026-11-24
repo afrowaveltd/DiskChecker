@@ -56,6 +56,17 @@ public sealed class SanitizationSaveSpaceRegressionTests
         await db.SaveChangesAsync(TestContext.Current.CancellationToken);
         db.ChangeTracker.Clear();
 
+        // PROVE the prior query shape is dangerous WITHOUT executing it:
+        // selecting TestSession entities auto-includes owned collections.
+        var formerEntityQuerySql = db.TestSessions
+            .AsNoTracking()
+            .Where(t => t.DiskCardId == 42)
+            .OrderByDescending(t => t.StartedAt)
+            .Take(10)
+            .ToQueryString();
+        Assert.Contains("TestSessions_WriteSamples", formerEntityQuerySql, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("TestSessions_ReadSamples", formerEntityQuerySql, StringComparison.OrdinalIgnoreCase);
+
         var query = DiskCardTestService.RecentCardGrades(db, 42);
         var sql = query.ToQueryString();
 
