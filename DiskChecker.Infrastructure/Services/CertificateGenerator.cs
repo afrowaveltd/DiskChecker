@@ -1702,6 +1702,15 @@ public class CertificateGenerator : ICertificateGenerator
                 "Pro úplnější posouzení použijte SMART a podle potřeby seek test.";
         }
 
+        if (!recommended && IsCompletedSanitizationWithoutErrors(session) &&
+            !HasWarningSmartSignals(session))
+        {
+            return _locale?.GetString(
+                "CertificatePdf.Recommendation.PerformanceLimited",
+                "Disk nesplnil výkonnostní kritéria. Nedoporučuje se pro náročný zápis; nízký výkon sám o sobě neprokazuje fyzickou poruchu. Zohledněte SMART a výsledky ověření.")
+                ?? "Disk nesplnil výkonnostní kritéria. Nedoporučuje se pro náročný zápis; nízký výkon sám o sobě neprokazuje fyzickou poruchu. Zohledněte SMART a výsledky ověření.";
+        }
+
         if (!recommended)
         {
             return _locale?.GetString(
@@ -1739,7 +1748,11 @@ public class CertificateGenerator : ICertificateGenerator
                && !completion.IsDeviceFailure
                && !completion.IsUserCancelled
                && !HasCriticalRetirementSignals(session, effectiveGrade, effectiveScore)
-               && !string.Equals(effectiveGrade, "D", StringComparison.OrdinalIgnoreCase);
+               && !string.Equals(effectiveGrade, "D", StringComparison.OrdinalIgnoreCase)
+               && !(IsCompletedSanitizationWithoutErrors(session) &&
+                   (effectiveGrade.Equals("E", StringComparison.OrdinalIgnoreCase) ||
+                    effectiveGrade.Equals("F", StringComparison.OrdinalIgnoreCase) || effectiveScore < 40 ||
+                    session.HealthAssessment == HealthAssessment.Critical));
     }
 
     private static bool IsSmartOnlyDiagnostic(TestSession session)
@@ -1890,10 +1903,19 @@ public class CertificateGenerator : ICertificateGenerator
         };
     }
 
+    // A completed zero-fill/verification without recorded errors may receive a
+    // low score solely for throughput. Keep independent SMART and stall checks.
+    private static bool IsCompletedSanitizationWithoutErrors(TestSession session) =>
+        session.TestType == TestType.Sanitization &&
+        session.Status == TestStatus.Completed &&
+        session.Result == TestResult.Pass &&
+        session.ReadErrors == 0 && session.WriteErrors == 0 &&
+        session.VerificationErrors == 0 && session.Errors.Count == 0;
+
     private static bool HasCriticalRetirementSignals(TestSession session, string effectiveGrade, double effectiveScore)
     {
         bool performanceOnly = session.TestType is TestType.Seek or TestType.QuickRead
-            or TestType.FullRead or TestType.SurfaceScan;
+            or TestType.FullRead or TestType.SurfaceScan || IsCompletedSanitizationWithoutErrors(session);
         if (session.Result == TestResult.Fail ||
             session.Status == TestStatus.Failed ||
             session.ReadErrors > 0 || session.WriteErrors > 0 ||

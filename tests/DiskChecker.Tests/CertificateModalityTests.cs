@@ -117,6 +117,44 @@ public sealed class CertificateModalityTests
     }
 
     [Fact]
+    public async Task CompletedSlowSanitization_IsNotMisrepresentedAsPhysicalFailure()
+    {
+        var test = new TestSession
+        {
+            Id = 304, DiskCardId = 202, TestType = TestType.Sanitization,
+            Status = TestStatus.Completed, Result = TestResult.Pass,
+            Grade = "E", Score = 47,
+            HealthAssessment = HealthAssessment.Poor,
+            AverageWriteSpeedMBps = 40.9, AverageReadSpeedMBps = 383.3,
+            SmartBefore = new SmartaData { IsHealthy = true },
+            SmartAfter = new SmartaData { IsHealthy = true }
+        };
+        var certificate = await NewGenerator().GenerateCertificateAsync(test, Card());
+
+        Assert.Equal("E", certificate.Grade);
+        Assert.False(certificate.Recommended);
+        Assert.True(certificate.DataVerified);
+        Assert.Contains("nízký výkon sám o sobě neprokazuje fyzickou poruchu", certificate.RecommendationNotes);
+        Assert.DoesNotContain("okamžitě vyřadit", certificate.RecommendationNotes, StringComparison.OrdinalIgnoreCase);
+
+        test.SmartAfter.IsFailing = true;
+        var failing = await NewGenerator().GenerateCertificateAsync(test, Card());
+        Assert.False(failing.Recommended);
+        Assert.Contains("okamžitě vyřadit", failing.RecommendationNotes, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void SeekChartCoverage_SeparatesPlottedPointsFromAllMeasurements()
+    {
+        var certificate = new DiskCertificate { SeekTotalCount = 3100 };
+        Assert.Equal("Body grafu: 445; měření celkem: 3100",
+            CertificatePdfPageRenderer.SeekChartCoverageText(certificate, 445));
+        certificate.SeekTotalCount = null;
+        Assert.Equal("Body grafu: 445; měření celkem: N/A",
+            CertificatePdfPageRenderer.SeekChartCoverageText(certificate, 445));
+    }
+
+    [Fact]
     public async Task CombinedPdf_HasSinglePageAndDoesNotRewriteIndependentTestGrades()
     {
         string root = Path.Combine(Path.GetTempPath(), "DiskChecker-Modality-" + Guid.NewGuid().ToString("N"));

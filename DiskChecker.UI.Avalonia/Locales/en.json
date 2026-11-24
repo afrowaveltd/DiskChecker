@@ -416,6 +416,7 @@
   "CertificatePdf.Recommendation.Errors": "Errors were detected during testing. Consider replacing the disk, especially if errors recur.",
   "CertificatePdf.Recommendation.Good": "The disk is in good condition and can be used safely.",
   "CertificatePdf.Recommendation.NotRecommended": "Disk is not recommended for regular use. We recommend not deploying it for important data, backing up, and considering replacement.",
+  "CertificatePdf.Recommendation.PerformanceLimited": "The disk did not meet performance criteria. Not recommended for write-intensive workloads; low performance alone does not prove physical failure. Consider SMART and verification results.",
   "CertificatePdf.Recommendation.Retire": "Disk is NOT suitable for continued use. Recommendation: immediately retire from service.",
   "CertificatePdf.Recommendation.Worn": "The disk shows signs of wear. Regular SMART monitoring and data backup is recommended.",
   "CertificatePdf.Recommendations": "Recommendations",

@@ -802,9 +802,9 @@ public class DiskCardTestService
          var effectiveWallTime = result.WriteDuration + result.WritePausedDuration;
          var effectiveSpeed = effectiveWallTime.TotalSeconds > 0
              ? result.BytesWritten / (1024d * 1024d) / effectiveWallTime.TotalSeconds : 0;
-         var pacingNote = $"Poor SSD Drive Sanity: pause every 10 GiB, {result.WritePauseCount} pauses, " +
-             $"paused {result.WritePausedDuration.TotalSeconds:F1}s; " +
-             $"write speed active {result.WriteSpeedMBps:F1} MiB/s, incl. pauses {effectiveSpeed:F1} MiB/s.";
+         var pacingNote = $"Regenerační pauzy SSD: každých 10 GiB, počet {result.WritePauseCount}, " +
+             $"celkem {result.WritePausedDuration.TotalSeconds:F1} s; " +
+             $"zápis bez pauz {result.WriteSpeedMBps:F1} MiB/s, včetně pauz {effectiveSpeed:F1} MiB/s.";
          sessionNotes = string.IsNullOrWhiteSpace(sessionNotes) ? pacingNote : sessionNotes + "; " + pacingNote;
       }
 
@@ -1440,7 +1440,7 @@ public class DiskCardTestService
          if(result.WriteSpeedMBps < expectedWriteFloor)
          {
             var deficitRatio = 1d - (result.WriteSpeedMBps / expectedWriteFloor);
-            findings.Add($"Průměrná rychlost zápisu je pod očekáváním: {result.WriteSpeedMBps:F1} MB/s (cílově alespoň {expectedWriteFloor:F0} MB/s).");
+            findings.Add($"Průměrná rychlost zápisu je pod očekáváním: {result.WriteSpeedMBps:F1} MiB/s (cílově alespoň {expectedWriteFloor:F0} MiB/s).");
             score -= Math.Clamp(deficitRatio * 28d, 0d, 28d);
          }
       }
@@ -1456,7 +1456,7 @@ public class DiskCardTestService
          if(result.ReadSpeedMBps < expectedReadFloor)
          {
             var deficitRatio = 1d - (result.ReadSpeedMBps / expectedReadFloor);
-            findings.Add($"Průměrná rychlost čtení je pod očekáváním: {result.ReadSpeedMBps:F1} MB/s (cílově alespoň {expectedReadFloor:F0} MB/s).");
+            findings.Add($"Průměrná rychlost čtení je pod očekáváním: {result.ReadSpeedMBps:F1} MiB/s (cílově alespoň {expectedReadFloor:F0} MiB/s).");
             score -= Math.Clamp(deficitRatio * 24d, 0d, 24d);
          }
       }
@@ -1620,7 +1620,7 @@ public class DiskCardTestService
          var dropRatio = 1d - (result.WriteSpeedMBps / historicalWrite);
          if(dropRatio > 0.30d)
          {
-            findings.Add($"Aktuální zápis je výrazně pomalejší než historie disku: {result.WriteSpeedMBps:F1} MB/s vs. historicky {historicalWrite:F1} MB/s.");
+            findings.Add($"Aktuální zápis je výrazně pomalejší než historie disku: {result.WriteSpeedMBps:F1} MiB/s vs. historicky {historicalWrite:F1} MiB/s.");
             penalty += Math.Clamp((dropRatio - 0.30d) * 40d, 0d, 14d);
          }
       }
@@ -1630,7 +1630,7 @@ public class DiskCardTestService
          var dropRatio = 1d - (result.ReadSpeedMBps / historicalRead);
          if(dropRatio > 0.30d)
          {
-            findings.Add($"Aktuální čtení je výrazně pomalejší než historie disku: {result.ReadSpeedMBps:F1} MB/s vs. historicky {historicalRead:F1} MB/s.");
+            findings.Add($"Aktuální čtení je výrazně pomalejší než historie disku: {result.ReadSpeedMBps:F1} MiB/s vs. historicky {historicalRead:F1} MiB/s.");
             penalty += Math.Clamp((dropRatio - 0.30d) * 34d, 0d, 12d);
          }
       }
@@ -1995,7 +1995,7 @@ public class DiskCardTestService
             return 0d;
         }
 
-        findings.Add($"Pravděpodobný SSD cache collapse: dlouhodobý pokles zápisu z {headAvg:F1} na {tailAvg:F1} MB/s ({dropRatio:P0}).");
+        findings.Add($"Pravděpodobné vyčerpání cache SSD: dlouhodobý pokles zápisu z {headAvg:F1} na {tailAvg:F1} MiB/s ({dropRatio:P0}).");
         return Math.Clamp((dropRatio - 0.45d) * 28d, 0d, 14d);
     }
 }

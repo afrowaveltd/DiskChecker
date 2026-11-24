@@ -416,6 +416,7 @@
   "CertificatePdf.Recommendation.Errors": "Během testu byly detekovány chyby. Zvažte výměnu disku, zejména pokud se chyby opakují.",
   "CertificatePdf.Recommendation.Good": "Disk je v dobrém stavu a lze jej bezpečně používat.",
   "CertificatePdf.Recommendation.NotRecommended": "Disk není doporučen k běžnému používání. Doporučujeme jej nenasazovat pro důležitá data, provést zálohu a zvážit výměnu.",
+  "CertificatePdf.Recommendation.PerformanceLimited": "Disk nesplnil výkonnostní kritéria. Nedoporučuje se pro náročný zápis; nízký výkon sám o sobě neprokazuje fyzickou poruchu. Zohledněte SMART a výsledky ověření.",
   "CertificatePdf.Recommendation.Retire": "Disk NENÍ vhodný k dalšímu používání. Doporučení: okamžitě vyřadit z provozu.",
   "CertificatePdf.Recommendation.Worn": "Disk vykazuje známky opotřebení. Doporučujeme pravidelnou kontrolu SMART a zálohování důležitých dat.",
   "CertificatePdf.Recommendations": "Doporučení",
