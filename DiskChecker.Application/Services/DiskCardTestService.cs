@@ -49,6 +49,29 @@ public class DiskCardTestService
       public List<string> Findings { get; init; } = new();
    }
 
+   /// <summary>
+   /// Minimal fields required to compute the disk's overall grade.
+   /// Unlike TestSession entities, this cannot trigger EF Core owned
+   /// collection auto-includes or cartesian joins over stored telemetry.
+   /// </summary>
+   internal sealed record CardGradeSnapshot(TestType TestType, double Score, string Grade);
+
+   /// <summary>
+   /// Safe query for the last ten grades. Kept separate so SQLite SQL shape
+   /// can be regression-tested without allocating any historical sample data.
+   /// </summary>
+   internal static IQueryable<CardGradeSnapshot> RecentCardGrades(
+       DiskCheckerDbContext context, int diskCardId)
+   {
+      ArgumentNullException.ThrowIfNull(context);
+      return context.TestSessions
+          .AsNoTracking()
+          .Where(t => t.DiskCardId == diskCardId)
+          .OrderByDescending(t => t.StartedAt)
+          .Take(10)
+          .Select(t => new CardGradeSnapshot(t.TestType, t.Score, t.Grade));
+   }
+
    private sealed record PerformanceHistorySnapshot(
        double AverageWriteSpeedMBps,
        double AverageReadSpeedMBps,
@@ -700,10 +723,26 @@ public class DiskCardTestService
       // must not create a second test session during recovery replay.
       if(recoveryRunId is Guid knownRunId)
       {
+         // An idempotent replay may revisit a large saved test; split the
+         // automatically loaded owned collections into separate SQL queries.
+         // Never produce a cartesian join of write/read/temperature histories.
          var alreadySaved = await _dbContext.TestSessions
+            .AsSplitQuery()
             .FirstOrDefaultAsync(s => s.SessionId == knownRunId, cancellationToken);
          if(alreadySaved != null) return alreadySaved;
       }
+
+      // Re-check actual database storage AFTER the physical test. The
+      // preflight made before a multi-hour disk run is no guarantee that the
+      // volume still has space at completion. A failed check leaves the
+      // finalized recovery journal untouched; never relocate a LIVE SQLite
+      // database or silently select the disk being tested as temporary space.
+      var writeReady = await DatabaseWritePreflight.CheckAsync(_dbContext, cancellationToken);
+      if (!writeReady.IsReady)
+         throw new IOException(
+            "Final sanitization result cannot be saved to the configured database: " +
+            writeReady.Detail +
+            " The completed recovery checkpoint is retained for later import.");
 
       var persistedWriteSamples = PrepareSpeedSamplesForPersistence(writeSamples);
       var persistedReadSamples = PrepareSpeedSamplesForPersistence(readSamples);
@@ -901,6 +940,8 @@ public class DiskCardTestService
    public async Task<List<TestSession>> GetTestSessionsAsync(int diskCardId, CancellationToken cancellationToken = default)
    {
       return await _dbContext.TestSessions
+          .AsNoTracking()
+          .AsSplitQuery()
           .Where(t => t.DiskCardId == diskCardId)
           .OrderByDescending(t => t.StartedAt)
           .Include(t => t.TemperatureSamples)
@@ -936,10 +977,12 @@ public class DiskCardTestService
    /// </summary>
    private async Task UpdateCardGradeAsync(DiskCard card, CancellationToken cancellationToken)
    {
-      var sessions = await _dbContext.TestSessions
-          .Where(t => t.DiskCardId == card.Id)
-          .OrderByDescending(t => t.StartedAt)
-          .Take(10)
+      // TestSession owns potentially millions of historical read/write
+      // samples, errors and temperature records. Materializing the entities
+      // here makes EF auto-include those owned collections, triggering huge
+      // joins/temp SQLite files merely to calculate a few grade values.
+      // Project ONLY the three scalar fields used in the calculation.
+      var sessions = await RecentCardGrades(_dbContext, card.Id)
           .ToListAsync(cancellationToken);
 
       if(sessions.Count == 0) return;

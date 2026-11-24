@@ -25,6 +25,51 @@ The database path is pinned at application startup; changing
 the setting during the session does **not** relocate the
 already-open database.
 
+## 2026-11-24: extreme C: space use during post-test grading
+
+A later workstation incident showed **over 200 GB** of space disappearing
+on the SYSTEM drive after the physical test finished. This is not a normal
+size for the results of a disk test. Code inspection located a high-risk
+query in `DiskCardTestService.UpdateCardGradeAsync`: reading up to ten
+**complete TestSession entities** causes EF Core to automatically join
+their owned write/read/temperature/error/SMART-change collections, although
+only the three grade scalars are needed. SQLite can multiply those sample
+collections into enormous temporary query results (and OS paging can also
+grow). The fix in PR #25 replaces this with a single no-tracking scalar
+projection (test type, score, grade), and adds tests that compare the old
+and new SQL shapes without executing the huge old query.
+
+This is a **confirmed dangerous code path**, not a definitive diagnosis of
+the exact Windows temporary file responsible for 200 GB. To distinguish
+SQLite TEMP from its WAL, pagefile and other processes, inspect actual
+file growth on the affected PC without deleting anything.
+
+Read-only PowerShell inspection (run in the SAME Windows account):
+
+~~~powershell
+Get-PSDrive -PSProvider FileSystem | Select-Object Name, Used, Free
+Get-ChildItem -LiteralPath $env:TEMP -Force -File -ErrorAction SilentlyContinue |
+    Sort-Object Length -Descending |
+    Select-Object -First 20 Name, @{Name='GiB';Expression={[math]::Round($_.Length/1GB,2)}}, LastWriteTime
+Get-ChildItem -LiteralPath (Join-Path $env:LOCALAPPDATA 'DiskChecker') -Force -File -ErrorAction SilentlyContinue |
+    Sort-Object Length -Descending |
+    Select-Object Name, @{Name='GiB';Expression={[math]::Round($_.Length/1GB,2)}}, LastWriteTime
+~~~
+
+The live SQLite database may be elsewhere; see the configured path steps
+below. A visible SQLite TEMP file may disappear automatically when its
+owning process exits; that does **not** justify deleting live database
+WAL/SHM or recovery records. Never select the tested raw drive as fallback
+database/TEMP storage.
+
+The patched sanitizer repeats the database-space and rollback-write probe
+**after** the physical test before saving its result, because free space at
+test start does not guarantee space several hours later. A rejected save
+retains the explicit terminal recovery checkpoint when it has already been
+written. Automatic recovery requires the valid, finalized RunId JSON and
+other conditions described in [Long-Test-Recovery](../Long-Test-Recovery/en.md).
+No unverified result is marked as successful.
+
 ## Preserve the currently running test first
 
 1. **Do not restart the completed physical test.**
