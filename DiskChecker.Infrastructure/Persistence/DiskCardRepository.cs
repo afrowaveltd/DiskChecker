@@ -269,7 +269,11 @@ public class DiskCardRepository : IDiskCardRepository
 
    public async Task<TestSession?> GetTestSessionAsync(int sessionId)
    {
+      // Legacy callers occasionally request complete historical test data.
+      // Split owned sample collections into independent queries to avoid
+      // multiplying read/write/temperature/SMART/error rows in SQLite TEMP.
       return await _context.TestSessions
+          .AsSplitQuery()
           .Include(t => t.DiskCard)
           .Include(t => t.WriteSamples)
           .Include(t => t.ReadSamples)
