@@ -728,6 +728,18 @@ public class DiskCardTestService
          if(alreadySaved != null) return alreadySaved;
       }
 
+      // Re-check actual database storage AFTER the physical test. The
+      // preflight made before a multi-hour disk run is no guarantee that the
+      // volume still has space at completion. A failed check leaves the
+      // finalized recovery journal untouched; never relocate a LIVE SQLite
+      // database or silently select the disk being tested as temporary space.
+      var writeReady = await DatabaseWritePreflight.CheckAsync(_dbContext, cancellationToken);
+      if (!writeReady.IsReady)
+         throw new IOException(
+            "Final sanitization result cannot be saved to the configured database: " +
+            writeReady.Detail +
+            " The completed recovery checkpoint is retained for later import.");
+
       var persistedWriteSamples = PrepareSpeedSamplesForPersistence(writeSamples);
       var persistedReadSamples = PrepareSpeedSamplesForPersistence(readSamples);
       var historicalSessions = await LoadRecentPerformanceHistoryAsync(card.Id, cancellationToken);
