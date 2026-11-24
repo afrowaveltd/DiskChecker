@@ -30,6 +30,8 @@
   </ItemGroup>
 
   <ItemGroup>
+    <EmbeddedResource Include="..\DiskChecker.UI.Avalonia\Locales\cs.json" LogicalName="DiskChecker.ReportLocales.cs.json" />
+    <EmbeddedResource Include="..\DiskChecker.UI.Avalonia\Locales\en.json" LogicalName="DiskChecker.ReportLocales.en.json" />
     <EmbeddedResource Include="Resources\DejaVuSans.ttf" />
     <EmbeddedResource Include="Resources\DejaVuSans-Bold.ttf" />
   </ItemGroup>

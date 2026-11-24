@@ -393,7 +393,8 @@ public class CertificateGenerator : ICertificateGenerator
                 "Combined certificate requires two distinct sessions belonging to the same disk.");
         }
 
-        byte[] pdfBytes = await Task.Run(() => CertificatePdfPageRenderer.CreatePdf(certificate));
+        var report = await ResolveReportTextAsync();
+        byte[] pdfBytes = await Task.Run(() => CertificatePdfPageRenderer.CreatePdf(certificate, report));
         await File.WriteAllBytesAsync(filePath, pdfBytes);
         TryAssignOwnershipToSudoUser(filePath);
 
@@ -428,7 +429,8 @@ public class CertificateGenerator : ICertificateGenerator
 
         // The renderer checks 2-3 parts, disk-card ID, distinct session ID
         // and test category before writing the document.
-        byte[] pdf = await Task.Run(() => CertificatePdfPageRenderer.CreateBundlePdf(certificates));
+        var report = await ResolveReportTextAsync();
+        byte[] pdf = await Task.Run(() => CertificatePdfPageRenderer.CreateBundlePdf(certificates, report));
         await File.WriteAllBytesAsync(filePath, pdf);
         TryAssignOwnershipToSudoUser(filePath);
         if (_logger?.IsEnabled(LogLevel.Information) == true)
@@ -1521,10 +1523,18 @@ public class CertificateGenerator : ICertificateGenerator
     //  Preview, label, and chart image generation
     // ──────────────────────────────────────────────
 
-    public Task<byte[]> GeneratePreviewAsync(DiskCertificate certificate)
+    public async Task<byte[]> GeneratePreviewAsync(DiskCertificate certificate)
     {
         ArgumentNullException.ThrowIfNull(certificate);
-        return Task.Run(() => CertificatePdfPageRenderer.CreatePreview(certificate));
+        var report = await ResolveReportTextAsync();
+        return await Task.Run(() => CertificatePdfPageRenderer.CreatePreview(certificate, report));
+    }
+
+    private async Task<CertificateReportText> ResolveReportTextAsync()
+    {
+        string? preference = _settingsService == null ? null : await _settingsService.GetReportLanguageAsync();
+        string? appLanguage = _settingsService == null ? null : await _settingsService.GetLanguageAsync();
+        return CertificateReportText.Resolve(preference, appLanguage);
     }
 
     public (string grade, double score) CalculateGrade(TestSession session)
