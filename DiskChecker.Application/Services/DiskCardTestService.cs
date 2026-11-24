@@ -723,7 +723,11 @@ public class DiskCardTestService
       // must not create a second test session during recovery replay.
       if(recoveryRunId is Guid knownRunId)
       {
+         // An idempotent replay may revisit a large saved test; split the
+         // automatically loaded owned collections into separate SQL queries.
+         // Never produce a cartesian join of write/read/temperature histories.
          var alreadySaved = await _dbContext.TestSessions
+            .AsSplitQuery()
             .FirstOrDefaultAsync(s => s.SessionId == knownRunId, cancellationToken);
          if(alreadySaved != null) return alreadySaved;
       }
@@ -936,6 +940,8 @@ public class DiskCardTestService
    public async Task<List<TestSession>> GetTestSessionsAsync(int diskCardId, CancellationToken cancellationToken = default)
    {
       return await _dbContext.TestSessions
+          .AsNoTracking()
+          .AsSplitQuery()
           .Where(t => t.DiskCardId == diskCardId)
           .OrderByDescending(t => t.StartedAt)
           .Include(t => t.TemperatureSamples)
