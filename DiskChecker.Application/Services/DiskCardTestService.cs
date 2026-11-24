@@ -936,10 +936,17 @@ public class DiskCardTestService
    /// </summary>
    private async Task UpdateCardGradeAsync(DiskCard card, CancellationToken cancellationToken)
    {
+      // TestSession owns potentially millions of historical read/write
+      // samples, errors and temperature records. Materializing the entities
+      // here makes EF auto-include those owned collections, triggering huge
+      // joins/temp SQLite files merely to calculate a few grade values.
+      // Project ONLY the three scalar fields used in the calculation.
       var sessions = await _dbContext.TestSessions
+          .AsNoTracking()
           .Where(t => t.DiskCardId == card.Id)
           .OrderByDescending(t => t.StartedAt)
           .Take(10)
+          .Select(t => new { t.TestType, t.Score, t.Grade })
           .ToListAsync(cancellationToken);
 
       if(sessions.Count == 0) return;
