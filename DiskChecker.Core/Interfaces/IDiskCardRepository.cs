@@ -21,6 +21,9 @@ public interface IDiskCardRepository
     Task<List<DiskCard>> GetArchivedAsync();
     
     Task<DiskCard> CreateAsync(DiskCard card);
+    /// <summary>Imports a disk card without regenerating its historical identity or timestamps.</summary>
+    Task<DiskCard> ImportDiskCardAsync(DiskCard card) =>
+        throw new NotSupportedException("Historical card import is not implemented by this repository.");
     Task<DiskCard> UpdateAsync(DiskCard card);
     Task DeleteAsync(int id);
     Task ArchiveAsync(int id, ArchiveReason reason, string? notes = null);

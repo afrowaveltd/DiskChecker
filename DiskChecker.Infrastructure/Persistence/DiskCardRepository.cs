@@ -98,6 +98,17 @@ public class DiskCardRepository : IDiskCardRepository
       return card;
    }
 
+   public async Task<DiskCard> ImportDiskCardAsync(DiskCard card)
+   {
+      ArgumentNullException.ThrowIfNull(card);
+      if(card.Id != 0 || string.IsNullOrWhiteSpace(card.SerialNumber))
+         throw new ArgumentException("Imported cards require a new local ID and an original identity.", nameof(card));
+      _context.ChangeTracker.Clear();
+      _context.DiskCards.Add(card);
+      await _context.SaveChangesAsync();
+      return card;
+   }
+
    public async Task<DiskCard> UpdateAsync(DiskCard card)
    {
       _context.DiskCards.Update(card);

@@ -44,9 +44,12 @@ public partial class ExportImportViewModel : ViewModelBase, INavigableViewModel,
 
     [ObservableProperty] private ExportImportPhase _phase = ExportImportPhase.Idle;
 
-    public bool IsNavigationBlocked => Phase is ExportImportPhase.Exporting or ExportImportPhase.Importing;
+    public bool IsNavigationBlocked => _operationCts != null ||
+        Phase is ExportImportPhase.Exporting or ExportImportPhase.Importing;
 
-    partial void OnPhaseChanged(ExportImportPhase value)
+    partial void OnPhaseChanged(ExportImportPhase value) => NotifyOperationState();
+
+    private void NotifyOperationState()
     {
         OnPropertyChanged(nameof(IsNavigationBlocked));
         ExportCommand.NotifyCanExecuteChanged();
@@ -363,6 +366,7 @@ public partial class ExportImportViewModel : ViewModelBase, INavigableViewModel,
         {
             _operationCts?.Dispose();
             _operationCts = null;
+            NotifyOperationState();
             ExportLogText = string.Join("\n", _log);
         }
     }
@@ -459,6 +463,7 @@ public partial class ExportImportViewModel : ViewModelBase, INavigableViewModel,
         {
             _operationCts?.Dispose();
             _operationCts = null;
+            NotifyOperationState();
             ImportLogText = string.Join("\n", _log);
         }
     }
@@ -471,7 +476,7 @@ public partial class ExportImportViewModel : ViewModelBase, INavigableViewModel,
 
     private void GoBack()
     {
-        if (Phase == ExportImportPhase.Exporting || Phase == ExportImportPhase.Importing)
+        if (IsNavigationBlocked)
         {
             _ = _dialogService.ShowErrorAsync("Operace běží", "Nelze opustit stránku během probíhající operace.");
             return;
@@ -497,13 +502,8 @@ public partial class ExportImportViewModel : ViewModelBase, INavigableViewModel,
 
             if (dir.Count > 0)
             {
-                var path = dir[0].Path.AbsolutePath;
-                if (path.StartsWith("file:///", StringComparison.OrdinalIgnoreCase))
-                    path = Uri.UnescapeDataString(path[8..]);
-                else if (path.StartsWith("file:\\", StringComparison.OrdinalIgnoreCase))
-                    path = Uri.UnescapeDataString(path[7..]);
-
-                BackupPath = path;
+                BackupPath = dir[0].Path.IsFile ? dir[0].Path.LocalPath
+                    : throw new InvalidOperationException("Only local folders are supported.");
             }
         }
         catch (Exception ex)
@@ -567,6 +567,7 @@ public partial class ExportImportViewModel : ViewModelBase, INavigableViewModel,
         {
             _operationCts?.Dispose();
             _operationCts = null;
+            NotifyOperationState();
             BackupLogText = string.Join("\n", _log);
         }
     }
@@ -621,6 +622,7 @@ public partial class ExportImportViewModel : ViewModelBase, INavigableViewModel,
         {
             _operationCts?.Dispose();
             _operationCts = null;
+            NotifyOperationState();
             BackupLogText = string.Join("\n", _log);
         }
     }

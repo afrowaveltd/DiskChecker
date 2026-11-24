@@ -64,6 +64,7 @@ public class DataExportImportService : IDataExportImportService
 
     public async Task<string> ExportAsync(string filePath, ExportScope scope, List<int>? selectedDiskIds = null, CancellationToken ct = default)
     {
+        _repository.ClearChangeTracker();
         var allCards = await _repository.GetAllAsync();
         var filteredCards = scope switch
         {
@@ -112,7 +113,7 @@ public class DataExportImportService : IDataExportImportService
                 DiskCount = filteredCards.Count,
                 TestSessionCount = allSessions.Count,
                 CertificateCount = allCertificates.Count,
-                TotalSizeBytes = 0 // dopočítáme po serializaci
+                TotalSizeBytes = 0 // Actual size is supplied by PeekMetadataAsync.
             },
             DiskCards = filteredCards,
             TestSessions = allSessions,
@@ -187,6 +188,9 @@ public class DataExportImportService : IDataExportImportService
             var package = await JsonSerializer.DeserializeAsync<DataExportPackage>(stream, _jsonOptions, ct)
                 ?? throw new InvalidDataException("Empty export package.");
             ValidatePackage(package);
+            if (mode is not ImportMode.Add and not ImportMode.Replace)
+                throw new ArgumentOutOfRangeException(nameof(mode));
+            _repository.ClearChangeTracker();
 
             // Original database IDs are foreign keys inside the transport file only.
             // They must never be interpreted as identifiers in the destination DB.
@@ -208,7 +212,7 @@ public class DataExportImportService : IDataExportImportService
                     importedCard.Certificates.Clear();
                     importedCard.Volumes.Clear();
                     importedCard.TestCount = 0;
-                    destination = await _repository.CreateAsync(importedCard);
+                    destination = await _repository.ImportDiskCardAsync(importedCard);
                 }
                 else
                 {
@@ -230,6 +234,7 @@ public class DataExportImportService : IDataExportImportService
                         destination.Notes = importedCard.Notes;
                         destination.PowerOnHours = importedCard.PowerOnHours;
                         destination.PowerCycleCount = importedCard.PowerCycleCount;
+                        _repository.ClearChangeTracker();
                         await _repository.UpdateAsync(destination);
                         changed = true;
                     }
