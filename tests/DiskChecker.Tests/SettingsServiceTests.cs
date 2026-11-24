@@ -432,6 +432,8 @@ public class SettingsServiceTests
             await settings.SetAutoSaveIntervalAsync(12);
             await settings.SetDefaultExportPathAsync(Path.Combine(path, "exports"));
             await settings.SetLanguageAsync("en");
+            Assert.Equal("follow", await settings.GetReportLanguageAsync());
+            await settings.SetReportLanguageAsync("cs");
             await settings.SetEnableLoggingAsync(false);
             await settings.SetLogLevelAsync("Debug");
             await settings.SetEmailSendOnlyForLongRunningTestsAsync(false);
@@ -440,10 +442,13 @@ public class SettingsServiceTests
             Assert.Equal(12, await second.GetAutoSaveIntervalAsync());
             Assert.Equal(Path.Combine(path, "exports"), await second.GetDefaultExportPathAsync());
             Assert.Equal("en", await second.GetLanguageAsync());
+            Assert.Equal("cs", await second.GetReportLanguageAsync());
             Assert.False(await second.GetEnableLoggingAsync());
             Assert.Equal("Debug", await second.GetLogLevelAsync());
             Assert.False(await second.GetEmailSendOnlyForLongRunningTestsAsync());
             Assert.Equal(7, await second.GetUsbRecoveryRetryCountAsync());
+            await second.ResetToDefaultsAsync();
+            Assert.Equal("follow", await second.GetReportLanguageAsync());
         }
         finally
         {

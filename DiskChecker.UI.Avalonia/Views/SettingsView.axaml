@@ -66,6 +66,14 @@
                             </ComboBox>
                         </Grid>
                         
+                        <Grid ColumnDefinitions="200,*">
+                            <TextBlock Grid.Column="0" Text="{Binding L[Settings.ReportLanguageLabel]}"
+                                       TextWrapping="Wrap" FontSize="11" VerticalAlignment="Center"
+                                       Foreground="{DynamicResource ThemeTextSecondaryBrush}"/>
+                            <ComboBox Grid.Column="1" ItemsSource="{Binding AvailableReportLanguages}"
+                                      SelectedItem="{Binding ReportLanguage}" HorizontalAlignment="Stretch"/>
+                        </Grid>
+
                         <Grid ColumnDefinitions="200,*,Auto" ColumnSpacing="8">
                             <TextBlock Grid.Column="0" Text="{Binding L[Settings.ExportPath]}" VerticalAlignment="Center"
                                        Foreground="{DynamicResource ThemeTextSecondaryBrush}"/>

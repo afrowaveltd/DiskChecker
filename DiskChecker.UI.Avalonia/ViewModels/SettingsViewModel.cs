@@ -58,6 +58,7 @@ namespace DiskChecker.UI.Avalonia.ViewModels
         private string _defaultExportPath = string.Empty;
         private string _certificatePath = string.Empty;
         private string _language = string.Empty;
+        private string _reportLanguage = "follow";
         private bool _enableLogging;
         private string _logLevel = "Information";
         // Exposed SMART probe settings for UI
@@ -146,6 +147,15 @@ namespace DiskChecker.UI.Avalonia.ViewModels
             get => _language;
             set => SetProperty(ref _language, value);
         }
+
+        /// <summary>Language used by certificate exports and previews.</summary>
+        public string ReportLanguage
+        {
+            get => _reportLanguage;
+            set => SetProperty(ref _reportLanguage, value);
+        }
+
+        public string[] AvailableReportLanguages { get; } = new[] { "follow", "cs", "en" };
 
         public bool EnableLogging
         {
@@ -332,6 +342,8 @@ namespace DiskChecker.UI.Avalonia.ViewModels
                 DefaultExportPath = await _settingsService.GetDefaultExportPathAsync();
                 CertificatePath = await _settingsService.GetCertificatePathAsync() ?? string.Empty;
                 Language = await _settingsService.GetLanguageAsync();
+                var reportLanguage = await _settingsService.GetReportLanguageAsync();
+                ReportLanguage = reportLanguage is "cs" or "en" ? reportLanguage : "follow";
                 EnableLogging = await _settingsService.GetEnableLoggingAsync();
                 LogLevel = await _settingsService.GetLogLevelAsync();
                 ReportRecipientEmail = await _settingsService.GetReportRecipientEmailAsync();
@@ -458,6 +470,7 @@ namespace DiskChecker.UI.Avalonia.ViewModels
                 await _settingsService.SetDefaultExportPathAsync(DefaultExportPath);
                 await _settingsService.SetCertificatePathAsync(certificateRoot);
                 await _settingsService.SetLanguageAsync(Language);
+                await _settingsService.SetReportLanguageAsync(ReportLanguage);
                 await _settingsService.SetEnableLoggingAsync(EnableLogging);
                 await _settingsService.SetLogLevelAsync(LogLevel);
                 await _settingsService.SetReportRecipientEmailAsync(ReportRecipientEmail);
