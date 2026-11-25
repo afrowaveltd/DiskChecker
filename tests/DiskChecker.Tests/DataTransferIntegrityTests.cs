@@ -1,6 +1,5 @@
 using System;
 using System.IO;
-using System.Linq;
 using System.Text.Json;
 using System.Threading.Tasks;
 using DiskChecker.Core.Models;
@@ -26,10 +25,10 @@ public sealed class DataTransferIntegrityTests
     public async Task HistoricalImportRemapsIdsPreservesDatesAndIsRepeatable(ImportMode mode)
     {
         using var connection = new SqliteConnection("Data Source=:memory:");
-        await connection.OpenAsync();
+        await connection.OpenAsync(TestContext.Current.CancellationToken);
         var options = new DbContextOptionsBuilder<DiskCheckerDbContext>().UseSqlite(connection).Options;
         await using var context = new DiskCheckerDbContext(options);
-        await context.Database.EnsureCreatedAsync();
+        await context.Database.EnsureCreatedAsync(TestContext.Current.CancellationToken);
         SchemaCompatibilityPatcher.Apply(context);
         var repo = new DiskCardRepository(context);
         var unrelated = await repo.CreateAsync(new DiskCard
@@ -66,14 +65,14 @@ public sealed class DataTransferIntegrityTests
         try
         {
             string path = Path.Combine(folder, "history.json");
-            await File.WriteAllTextAsync(path, JsonSerializer.Serialize(package, JsonOptions));
+            await File.WriteAllTextAsync(path, JsonSerializer.Serialize(package, JsonOptions), TestContext.Current.CancellationToken);
             var service = new DataExportImportService(repo);
-            var first = await service.ImportAsync(path, mode);
+            var first = await service.ImportAsync(path, mode, TestContext.Current.CancellationToken);
             Assert.True(first.Success, first.ErrorMessage);
             Assert.Equal(1, first.TestSessionsImported);
             Assert.Equal(1, first.CertificatesImported);
 
-            var card = Assert.Single((await repo.GetAllAsync()).Where(c => c.SerialNumber == package.DiskCards[0].SerialNumber));
+            var card = Assert.Single(await repo.GetAllAsync(), c => c.SerialNumber == package.DiskCards[0].SerialNumber);
             Assert.NotEqual(900, card.Id);
             Assert.Equal(string.Empty, card.DevicePath);
             Assert.Equal(1, card.TestCount);
@@ -89,7 +88,7 @@ public sealed class DataTransferIntegrityTests
             Assert.Null(cert.PdfPath);
             Assert.Empty(await repo.GetCertificatesAsync(unrelated.Id));
 
-            var second = await service.ImportAsync(path, mode);
+            var second = await service.ImportAsync(path, mode, TestContext.Current.CancellationToken);
             Assert.True(second.Success, second.ErrorMessage);
             Assert.Equal(0, second.TestSessionsImported);
             Assert.Equal(0, second.CertificatesImported);
@@ -98,8 +97,8 @@ public sealed class DataTransferIntegrityTests
             Assert.Single(await repo.GetTestSessionsAsync(card.Id));
 
             var exportPath = Path.Combine(folder, "roundtrip.json");
-            await service.ExportAsync(exportPath, ExportScope.SelectedDisks, new() { card.Id });
-            var metadata = await service.PeekMetadataAsync(exportPath);
+            await service.ExportAsync(exportPath, ExportScope.SelectedDisks, new() { card.Id }, TestContext.Current.CancellationToken);
+            var metadata = await service.PeekMetadataAsync(exportPath, TestContext.Current.CancellationToken);
             Assert.NotNull(metadata);
             Assert.Equal(1, metadata.TestSessionCount);
             Assert.Equal(1, metadata.CertificateCount);
@@ -115,10 +114,10 @@ public sealed class DataTransferIntegrityTests
     public async Task InvalidCrossDiskCertificateIsRejectedBeforeAnyWrites()
     {
         using var connection = new SqliteConnection("Data Source=:memory:");
-        await connection.OpenAsync();
+        await connection.OpenAsync(TestContext.Current.CancellationToken);
         await using var context = new DiskCheckerDbContext(
             new DbContextOptionsBuilder<DiskCheckerDbContext>().UseSqlite(connection).Options);
-        await context.Database.EnsureCreatedAsync();
+        await context.Database.EnsureCreatedAsync(TestContext.Current.CancellationToken);
         SchemaCompatibilityPatcher.Apply(context);
         var repo = new DiskCardRepository(context);
         var package = new DataExportPackage();
@@ -130,8 +129,8 @@ public sealed class DataTransferIntegrityTests
         try
         {
             string path = Path.Combine(folder, "invalid.json");
-            await File.WriteAllTextAsync(path, JsonSerializer.Serialize(package, JsonOptions));
-            var result = await new DataExportImportService(repo).ImportAsync(path, ImportMode.Add);
+            await File.WriteAllTextAsync(path, JsonSerializer.Serialize(package, JsonOptions), TestContext.Current.CancellationToken);
+            var result = await new DataExportImportService(repo).ImportAsync(path, ImportMode.Add, TestContext.Current.CancellationToken);
             Assert.False(result.Success);
             Assert.Empty(await repo.GetAllAsync());
         }
