@@ -189,7 +189,7 @@ public class DiskCardTestService
             ModelFamily = smartaData?.ModelFamily,
             SerialNumber = serialKey,
             DevicePath = drive.Path,
-            DiskType = DetermineDiskType(drive),
+            DiskType = DetermineDiskType(drive, smartaData),
             InterfaceType = DetermineInterfaceType(drive),
             Capacity = drive.TotalSize,
             FirmwareVersion = preferredFirmwareVersion,
@@ -264,6 +264,19 @@ public class DiskCardTestService
       if(!string.Equals(card.FirmwareVersion, preferredFirmwareVersion, StringComparison.Ordinal))
       {
          card.FirmwareVersion = preferredFirmwareVersion;
+         cardChanged = true;
+      }
+
+      var detectedType = DetermineDiskType(drive, smartaData);
+      if(detectedType != "Unknown" && card.DiskType != detectedType)
+      {
+         card.DiskType = detectedType;
+         cardChanged = true;
+      }
+      var detectedInterface = DetermineInterfaceType(drive);
+      if(detectedInterface != "Unknown" && card.InterfaceType != detectedInterface)
+      {
+         card.InterfaceType = detectedInterface;
          cardChanged = true;
       }
 
@@ -747,7 +760,7 @@ public class DiskCardTestService
       var persistedWriteSamples = PrepareSpeedSamplesForPersistence(writeSamples);
       var persistedReadSamples = PrepareSpeedSamplesForPersistence(readSamples);
       var historicalSessions = await LoadRecentPerformanceHistoryAsync(card.Id, cancellationToken);
-      var breakdown = BuildSanitizationScoreBreakdown(result, persistedWriteSamples, persistedReadSamples, smartaData, result.SmartAfter, historicalSessions);
+      var breakdown = BuildSanitizationScoreBreakdown(result, persistedWriteSamples, persistedReadSamples, smartaData, result.SmartAfter, historicalSessions, card);
       // The saved graph intentionally over-represents extrema/stalls. Its
       // arithmetic mean is not the true whole-pass throughput. Prefer the
       // sanitization engine's bytes/time result for certificate averages.
@@ -1115,11 +1128,12 @@ public class DiskCardTestService
       if(result.PeakSpeedMbps > 0)
       {
          var dropRatio = 1d - (result.MinSpeedMbps / result.PeakSpeedMbps);
-         if(dropRatio > 0.35d)
+         var allowedDrop = GetPerformanceProfile(result).NormalMinPeakDrop;
+         if(dropRatio > allowedDrop)
          {
             findings.Add($"Výrazný propad rychlosti (min/max): {result.MinSpeedMbps:F1}/{result.PeakSpeedMbps:F1} MB/s");
          }
-         score -= Math.Clamp(dropRatio * 40d, 0d, 30d);
+         score -= Math.Clamp((dropRatio - allowedDrop) * 40d, 0d, 30d);
       }
 
       var speedFloor = GetExpectedMinimumAverageSpeed(result);
@@ -1275,14 +1289,17 @@ public class DiskCardTestService
       return (penalty, $"Pravděpodobný SSD thermal throttling: pokles rychlosti {dropRatio:P0} při nárůstu teploty o {tempRise:F0}°C.");
    }
 
+   private static DrivePerformanceProfile GetPerformanceProfile(SurfaceTestResult result)
+   {
+      var media = DrivePerformanceProfile.ResolveMedia(result.Technology.ToString(),
+          result.DriveModel, result.DriveInterface);
+      return DrivePerformanceProfile.For(media, result.DriveInterface, result.DriveTotalBytes);
+   }
+
    private static double GetExpectedMinimumAverageSpeed(SurfaceTestResult result)
    {
-      if(IsSolidStateDrive(result))
-      {
-         return 140d;
-      }
-
-      return 55d;
+      var profile = GetPerformanceProfile(result);
+      return result.Operation == SurfaceTestOperation.ReadOnly ? profile.ReadFloor : profile.WriteFloor;
    }
 
    private static double GetSpeedVariationCoefficient(IReadOnlyCollection<SurfaceTestSample> samples)
@@ -1406,7 +1423,8 @@ public class DiskCardTestService
        IReadOnlyList<SpeedSample> readSamples,
        SmartaData? smartaData,
        SmartaData? smartAfter,
-       IReadOnlyList<PerformanceHistorySnapshot> history)
+       IReadOnlyList<PerformanceHistorySnapshot> history,
+        DiskCard card)
    {
       ArgumentNullException.ThrowIfNull(result);
       ArgumentNullException.ThrowIfNull(writeSamples);
@@ -1416,7 +1434,9 @@ public class DiskCardTestService
       var findings = new List<string>();
       var score = 100d;
       var hasSmartContext = smartaData != null;
-      var driveLooksSolidState = LooksLikeSolidState(smartaData);
+      var media = DrivePerformanceProfile.ResolveMedia(card.DiskType, card.ModelName, card.InterfaceType, smartaData);
+       var profile = DrivePerformanceProfile.For(media, card.InterfaceType, card.Capacity);
+       var driveLooksSolidState = media == "SSD";
 
       if(!result.Success)
       {
@@ -1436,8 +1456,8 @@ public class DiskCardTestService
 
       if(writeSamples.Count > 0)
       {
-         var expectedWriteFloor = driveLooksSolidState ? 140d : 55d;
-         if(result.WriteSpeedMBps < expectedWriteFloor)
+         var expectedWriteFloor = profile.WriteFloor;
+         if(expectedWriteFloor > 0 && result.WriteSpeedMBps < expectedWriteFloor)
          {
             var deficitRatio = 1d - (result.WriteSpeedMBps / expectedWriteFloor);
             findings.Add($"Průměrná rychlost zápisu je pod očekáváním: {result.WriteSpeedMBps:F1} MiB/s (cílově alespoň {expectedWriteFloor:F0} MiB/s).");
@@ -1452,8 +1472,8 @@ public class DiskCardTestService
 
       if(readSamples.Count > 0)
       {
-         var expectedReadFloor = driveLooksSolidState ? 160d : 65d;
-         if(result.ReadSpeedMBps < expectedReadFloor)
+         var expectedReadFloor = profile.ReadFloor;
+         if(expectedReadFloor > 0 && result.ReadSpeedMBps < expectedReadFloor)
          {
             var deficitRatio = 1d - (result.ReadSpeedMBps / expectedReadFloor);
             findings.Add($"Průměrná rychlost čtení je pod očekáváním: {result.ReadSpeedMBps:F1} MiB/s (cílově alespoň {expectedReadFloor:F0} MiB/s).");
@@ -1890,24 +1910,24 @@ public class DiskCardTestService
       };
    }
 
-   private static string DetermineDiskType(CoreDriveInfo drive)
+   private static string DetermineDiskType(CoreDriveInfo drive, SmartaData? smartaData = null)
    {
-      var name = (drive.Name ?? string.Empty).ToLowerInvariant();
-      if(name.Contains("nvme") || name.Contains("ssd"))
-         return "SSD";
-      if(name.Contains("hdd") || name.Contains("hard"))
-         return "HDD";
-      return "Unknown";
+      var declared = drive.IsRotational == true || drive.IsSolidState == false ? "HDD" :
+          drive.IsSolidState == true ? "SSD" : "Unknown";
+      return DrivePerformanceProfile.ResolveMedia(declared,
+          string.Concat(drive.Model, " ", drive.Name), DetermineInterfaceType(drive), smartaData);
    }
 
    private static string DetermineInterfaceType(CoreDriveInfo drive)
    {
-      var path = drive.Path.ToLowerInvariant();
-      if(path.Contains("nvme"))
+      if(!string.IsNullOrWhiteSpace(drive.Interface) &&
+         !string.Equals(drive.Interface, "Unknown", StringComparison.OrdinalIgnoreCase))
+         return drive.Interface;
+      if(drive.Path.Contains("nvme", StringComparison.OrdinalIgnoreCase))
          return "NVMe";
-      if(drive.IsRemovable)
-         return "USB";
-      return "SATA";
+      if(!string.Equals(drive.BusType.ToString(), "Unknown", StringComparison.OrdinalIgnoreCase))
+         return drive.BusType.ToString();
+      return drive.IsRemovable ? "USB" : "Unknown";
    }
 
    private static double ApplySmartDeltaAfterSanitization(SmartaData smartBefore, SmartaData smartAfter, List<string> findings)

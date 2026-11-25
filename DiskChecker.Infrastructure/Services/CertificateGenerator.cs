@@ -243,7 +243,7 @@ public class CertificateGenerator : ICertificateGenerator
             if (errorCount == 0)
                 errorCount = Math.Max(0, session.WriteErrors) + Math.Max(0, session.ReadErrors) + Math.Max(0, session.VerificationErrors);
 
-            var calculated = CalculateGrade(session);
+            var calculated = CalculateGradeForDevice(session, diskCard);
             var grade = SelectWorseGrade(session.Grade, calculated.grade);
             var score = session.Score > 0 ? Math.Min(session.Score, calculated.score) : calculated.score;
 
@@ -278,7 +278,7 @@ public class CertificateGenerator : ICertificateGenerator
                 DiskModel = diskCard.ModelName,
                 SerialNumber = ResolveDisplaySerial(session.SmartBefore?.SerialNumber, diskCard.SerialNumber),
                 Capacity = FormatCapacity(diskCard.Capacity),
-                DiskType = diskCard.DiskType,
+                DiskType = DrivePerformanceProfile.ResolveMedia(diskCard.DiskType, diskCard.ModelName, diskCard.InterfaceType, session.SmartBefore),
                 Firmware = diskCard.FirmwareVersion,
                 Interface = diskCard.InterfaceType,
                 TestType = isSmartOnlyDiagnostic ? "SMART-only" : session.TestType.ToString(),
@@ -1537,7 +1537,9 @@ public class CertificateGenerator : ICertificateGenerator
         return CertificateReportText.Resolve(preference, appLanguage);
     }
 
-    public (string grade, double score) CalculateGrade(TestSession session)
+    public (string grade, double score) CalculateGrade(TestSession session) => CalculateGradeForDevice(session, session.DiskCard);
+
+    private (string grade, double score) CalculateGradeForDevice(TestSession session, DiskCard? card)
     {
         double score = 100;
 
@@ -1583,7 +1585,9 @@ public class CertificateGenerator : ICertificateGenerator
         }
 
         // Disk-type-aware speed expectations based on SMART and capacity
-        var expectedSpeed = EstimateExpectedSpeed(session);
+        var bus = card?.InterfaceType ?? session.SmartBefore?.DeviceType;
+        var media = DrivePerformanceProfile.ResolveMedia(card?.DiskType, card?.ModelName ?? session.SmartBefore?.DeviceModel, bus, session.SmartBefore);
+        var expectedSpeed = DrivePerformanceProfile.For(media, bus, card?.Capacity ?? session.SmartBefore?.TotalSize ?? 0).WriteFloor;
         if (hasWritePhase && expectedSpeed > 0 && session.AverageWriteSpeedMBps > 0)
         {
             var speedRatio = session.AverageWriteSpeedMBps / expectedSpeed;
@@ -1603,47 +1607,6 @@ public class CertificateGenerator : ICertificateGenerator
         };
 
         return (grade, score);
-    }
-
-    /// <summary>
-    /// Estimates expected write speed (MB/s) based on disk type, SMART data, and capacity.
-    /// Used to avoid penalizing old/small disks for their naturally low speeds.
-    /// </summary>
-    private static double EstimateExpectedSpeed(TestSession session)
-    {
-        // Determine disk type from SMART or capacity heuristics
-        var isSsd = false;
-        var isNvme = false;
-
-        if (session.SmartBefore != null)
-        {
-            var deviceType = session.SmartBefore.DeviceType ?? string.Empty;
-            if (deviceType.Contains("nvme", StringComparison.OrdinalIgnoreCase))
-                isNvme = true;
-            else if (session.SmartBefore.AvailableSpare.HasValue ||
-                     session.SmartBefore.PercentageUsed.HasValue ||
-                     session.SmartBefore.WearLevelingCount.HasValue)
-                isSsd = true;
-        }
-
-        // If no SMART, use capacity heuristics: SSDs are typically 120GB+, very old HDDs < 80GB
-        var capacityGB = session.SmartBefore != null ? 0 : 0; // We need diskCard capacity here, not available in session alone
-        // Use persisted session average write speed to detect SSD-like behavior.
-        // This avoids scanning the (now downsampled) sample collection and works
-        // even when only a small representative subset is in memory.
-        if (!isSsd && !isNvme && session.AverageWriteSpeedMBps > 150)
-        {
-            isSsd = true; // HDDs rarely sustain >150 MB/s
-        }
-
-        if (isNvme) return 1500;  // NVMe expected: ~1.5 GB/s
-        if (isSsd) return 350;    // SATA SSD expected: ~350 MB/s
-
-        // HDD: expected speed depends on age indicators
-        var powerOnHours = session.SmartBefore?.PowerOnHours ?? 0;
-        if (powerOnHours > 40000) return 60;   // Very old HDD
-        if (powerOnHours > 20000) return 80;   // Older HDD
-        return 100;                             // Modern HDD
     }
 
     // ──────────────────────────────────────────────
@@ -1999,7 +1962,7 @@ public class CertificateGenerator : ICertificateGenerator
                session.SmartBefore?.PendingSectorCount is > 0 ||
                session.SmartAfter?.ReallocatedSectorCount is > 0 ||
                session.SmartAfter?.PendingSectorCount is > 0 ||
-               session.SmartChanges.Any(c => IsCriticalSmartAttribute(c.AttributeId));
+               session.SmartChanges.Any(c => IsCriticalSmartAttribute(c.AttributeId) && c.Change > 0);
     }
 
     private static int SmartDelta(int? before, int? after) => Math.Max(0, (after ?? 0) - (before ?? 0));
