@@ -197,6 +197,8 @@ public class BackupService : IBackupService
                         throw new InvalidDataException("Obnovovaný soubor SQLite neprošel kontrolou integrity.");
                 }
 
+                ValidateDiagnosticSchema(source);
+
                 // Preserve the currently active data before any replacement.
                 using (var current = new Microsoft.Data.Sqlite.SqliteConnection(cs))
                 using (var backup = new Microsoft.Data.Sqlite.SqliteConnection(
@@ -257,6 +259,45 @@ public class BackupService : IBackupService
         }
     }
 
+    // quick_check validates SQLite's storage, not the application's schema.
+    // Verify the core historical tables and their identity columns before
+    // touching live data. Optional columns/tables remain migration-compatible.
+    private static void ValidateDiagnosticSchema(Microsoft.Data.Sqlite.SqliteConnection source)
+    {
+        string[] requiredQueries =
+        {
+            "SELECT Id, SerialNumber, ModelName FROM DiskCards LIMIT 0;",
+            "SELECT Id, DiskCardId, SessionId, StartedAt FROM TestSessions LIMIT 0;",
+            "SELECT Id, DiskCardId, TestSessionId, CertificateNumber FROM DiskCertificates LIMIT 0;"
+        };
+        try
+        {
+            foreach (var query in requiredQueries)
+            {
+                using var command = source.CreateCommand();
+                command.CommandText = query;
+                using var reader = command.ExecuteReader();
+            }
+
+            // A certificate must refer to a test of the same disk, not merely
+            // to a numerically valid foreign key in another disk's history.
+            using var relationships = source.CreateCommand();
+            relationships.CommandText = """
+                SELECT 1 FROM DiskCertificates AS c
+                LEFT JOIN TestSessions AS s ON s.Id = c.TestSessionId
+                LEFT JOIN DiskCards AS d ON d.Id = c.DiskCardId
+                WHERE s.Id IS NULL OR d.Id IS NULL OR s.DiskCardId <> c.DiskCardId
+                LIMIT 1;
+                """;
+            if (relationships.ExecuteScalar() != null)
+                throw new InvalidDataException("Backup contains a certificate linked to a missing or unrelated test.");
+        }
+        catch (Microsoft.Data.Sqlite.SqliteException ex)
+        {
+            throw new InvalidDataException("Backup does not contain a compatible DiskChecker diagnostic database.", ex);
+        }
+    }
+
     /// <summary>Publishes staged settings with a same-directory replacement.</summary>
     protected virtual void PublishRestoredSettings(string temporaryPath, string destinationPath)
     {
@@ -286,7 +327,11 @@ public class BackupService : IBackupService
                 try
                 {
                     using var zip = ZipFile.OpenRead(file);
+                    if (zip.GetEntry("DiskChecker.db") is not { Length: > 0 })
+                        continue;
                     var metadataEntry = zip.GetEntry("backup_metadata.json");
+                    if (metadataEntry is { Length: > 1048576 })
+                        continue;
                     
                     var info = new IBackupService.BackupInfo
                     {

@@ -229,8 +229,8 @@ public class DatabaseStorageConsistencyTests
         {
             var active = Path.Combine(folder, "active.db");
             var incoming = Path.Combine(folder, "incoming.db");
-            CreateMarkerDb(active, "ACTIVE");
-            CreateMarkerDb(incoming, "INCOMING");
+            CreateDiagnosticMarkerDb(active, "ACTIVE");
+            CreateDiagnosticMarkerDb(incoming, "INCOMING");
             var settings = new SettingsService(folder);
             var cs = new SqliteConnectionStringBuilder { DataSource = active, Pooling = false }.ToString();
             await settings.SetDatabaseStorageSettingsAsync(new DatabaseStorageSettings
@@ -279,6 +279,68 @@ public class DatabaseStorageConsistencyTests
         {
             Directory.Delete(folder, recursive: true);
         }
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Restore_RejectsUnrelatedOrInconsistentDatabaseBeforeReplacement(bool crossDisk)
+    {
+        var folder = Directory.CreateTempSubdirectory("dc-restore-schema-").FullName;
+        try
+        {
+            var active = Path.Combine(folder, "active.db");
+            var incoming = Path.Combine(folder, "incoming.db");
+            CreateDiagnosticMarkerDb(active, "ACTIVE");
+            if (crossDisk)
+            {
+                CreateDiagnosticMarkerDb(incoming, "INCOMING");
+                var incomingCs = new SqliteConnectionStringBuilder { DataSource = incoming, Pooling = false }.ToString();
+                await using var context = new DiskCheckerDbContext(
+                    new DbContextOptionsBuilder<DiskCheckerDbContext>().UseSqlite(incomingCs).Options);
+                var repo = new DiskCardRepository(context);
+                var a = await repo.CreateAsync(new DiskCard { SerialNumber = "DISK-A-123", ModelName = "A" });
+                var b = await repo.CreateAsync(new DiskCard { SerialNumber = "DISK-B-456", ModelName = "B" });
+                var session = await repo.CreateTestSessionAsync(new TestSession { DiskCardId = a.Id });
+                var certificate = await repo.CreateCertificateAsync(new DiskCertificate
+                {
+                    DiskCardId = a.Id, TestSessionId = session.Id, CertificateNumber = "RESTORE-TEST"
+                });
+                await context.Database.ExecuteSqlRawAsync(
+                    "UPDATE DiskCertificates SET DiskCardId = {0} WHERE Id = {1}", b.Id, certificate.Id);
+            }
+            else
+            {
+                CreateMarkerDb(incoming, "INCOMING");
+            }
+
+            var settings = new SettingsService(folder);
+            var cs = new SqliteConnectionStringBuilder { DataSource = active, Pooling = false }.ToString();
+            var services = new ServiceCollection();
+            services.AddDbContext<DiskCheckerDbContext>(o => o.UseSqlite(cs));
+            using var provider = services.BuildServiceProvider();
+            var backup = new BackupService(provider.GetRequiredService<IServiceScopeFactory>(), settings);
+            var zipPath = Path.Combine(folder, "invalid.zip");
+            using (var archive = ZipFile.Open(zipPath, ZipArchiveMode.Create))
+                archive.CreateEntryFromFile(incoming, "DiskChecker.db");
+
+            await Assert.ThrowsAsync<InvalidDataException>(() => backup.RestoreBackupAsync(zipPath));
+            Assert.Equal("ACTIVE", ReadMarker(active));
+            Assert.Empty(Directory.GetFiles(folder, "*.pre_restore_*"));
+        }
+        finally
+        {
+            Directory.Delete(folder, recursive: true);
+        }
+    }
+
+    private static void CreateDiagnosticMarkerDb(string path, string marker)
+    {
+        var cs = new SqliteConnectionStringBuilder { DataSource = path, Pooling = false }.ToString();
+        using (var context = new DiskCheckerDbContext(
+            new DbContextOptionsBuilder<DiskCheckerDbContext>().UseSqlite(cs).Options))
+            context.Database.EnsureCreated();
+        CreateMarkerDb(path, marker);
     }
 
     private sealed class FailingSettingsPublicationBackupService(
