@@ -289,8 +289,8 @@ internal sealed class CertificatePdfPageRenderer
         bool smartObserved = HasSmartData(smart);
         Text(c, $"SMART: {(smartObserved ? (smart.SmartPassed ? L(report, "CertificateReport.SmartOkay") : L(report, "CertificateReport.SmartWarning")) : L(report, "CertificateReport.SmartUnavailable"))}",
             67, 417, body, smartObserved && !smart.SmartPassed ? Red : Ink);
-        Text(c, F(report, "CertificateReport.Hours", smartObserved ? NullableNumber(smart.PowerOnHours) : "N/A"), 67, 455, small, Ink);
-        Text(c, F(report, "CertificateReport.Starts", smartObserved ? NullableNumber(smart.PowerCycles) : "N/A"), 332, 455, small, Ink);
+        Text(c, F(report, "CertificateReport.Hours", smartObserved ? NullableNumber(smart.PowerOnHours, report) : "N/A"), 67, 455, small, Ink);
+        Text(c, F(report, "CertificateReport.Starts", smartObserved ? NullableNumber(smart.PowerCycles, report) : "N/A"), 332, 455, small, Ink);
         Text(c, F(report, "CertificateReport.Reallocated", smartObserved ? smart.ReallocatedSectors.ToString() : "N/A"), 617, 417, body, Ink);
         Text(c, F(report, "CertificateReport.Pending", smartObserved ? smart.PendingSectors.ToString() : "N/A"), 909, 417, body, Ink);
         Text(c, L(report, "CertificateReport.SmartCaveat"), 617, 462, small, Muted);
@@ -375,7 +375,7 @@ internal sealed class CertificatePdfPageRenderer
         return value + suffix;
     }
 
-    private static string NullableNumber(int n) => n > 0 ? n.ToString("N0", CultureInfo.InvariantCulture) : "N/A";
+    private static string NullableNumber(int n, CertificateReportText report) => n > 0 ? report.Number(n, "N0") : "N/A";
 
     private static string Display(string? text) => string.IsNullOrWhiteSpace(text) ? "N/A" : text;
 

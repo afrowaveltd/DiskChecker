@@ -8,6 +8,7 @@ using System.Security.Principal;
 using System.Threading;
 using System.Threading.Tasks;
 using DiskChecker.Core.Interfaces;
+using DiskChecker.Core.Services;
 using Microsoft.Extensions.Logging;
 using Microsoft.Win32.SafeHandles;
 
@@ -143,6 +144,7 @@ public class WindowsDiskSanitizationService : IDiskSanitizationService
             
             result.BytesWritten = writeResult.BytesWritten;
             result.WriteSpeedMBps = writeResult.SpeedMBps;
+            result.SustainedWriteDropCount = writeResult.DropDetector.HasMeasurements ? writeResult.DropDetector.Count : null;
             result.WriteDuration = writeResult.Duration;
             result.WritePausedDuration = writeResult.PauseDuration;
             result.WritePauseCount = writeResult.PauseCount;
@@ -167,6 +169,7 @@ public class WindowsDiskSanitizationService : IDiskSanitizationService
 
             result.BytesRead = readResult.BytesRead;
             result.ReadSpeedMBps = readResult.SpeedMBps;
+            result.SustainedReadDropCount = readResult.DropDetector.HasMeasurements ? readResult.DropDetector.Count : null;
             result.ReadDuration = readResult.Duration;
             result.ErrorsDetected += readResult.Errors;
 
@@ -573,6 +576,7 @@ offline disk";
                 var rawSpeed = chunkSeconds > 0
                     ? bytesWrittenThisChunk / (1024.0 * 1024.0) / chunkSeconds
                     : 0;
+                result.DropDetector.Observe(rawSpeed, chunk.OperationElapsed);
                 smoothedSpeed = smoothedSpeed <= 0 ? rawSpeed : (smoothedSpeed * 0.7) + (rawSpeed * 0.3);
 
                 var elapsed = writePacing.ActiveElapsed(stopwatch.Elapsed).TotalSeconds;
@@ -774,6 +778,7 @@ offline disk";
                 var rawSpeed = chunkSeconds > 0
                     ? bytesReadThisChunk / (1024.0 * 1024.0) / chunkSeconds
                     : 0;
+                result.DropDetector.Observe(rawSpeed, chunk.OperationElapsed);
                 smoothedSpeed = smoothedSpeed <= 0 ? rawSpeed : (smoothedSpeed * 0.7) + (rawSpeed * 0.3);
 
                 var elapsed = stopwatch.Elapsed.TotalSeconds;
@@ -1602,6 +1607,7 @@ if ($disk -and $disk.PartitionStyle -eq 'GPT') {{
 
     private sealed class SanitizationPhaseResult
     {
+        public SustainedSpeedDropDetector DropDetector { get; } = new();
         public bool Success { get; set; }
         public string? ErrorMessage { get; set; }
         public long BytesWritten { get; set; }
