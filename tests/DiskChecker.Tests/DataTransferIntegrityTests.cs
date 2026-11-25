@@ -16,7 +16,8 @@ public sealed class DataTransferIntegrityTests
 {
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
-        PropertyNamingPolicy = JsonNamingPolicy.CamelCase
+        PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+        PropertyNameCaseInsensitive = true
     };
 
     [Theory]
@@ -53,7 +54,7 @@ public sealed class DataTransferIntegrityTests
         {
             Id = 901, DiskCardId = 900, SessionId = guid, StartedAt = historicalDate,
             CompletedAt = historicalDate.AddMinutes(1), TestType = TestType.Sanitization,
-            Status = TestStatus.Completed, AverageReadSpeedMBps = 120, CertificateId = 902
+            Status = TestStatus.Completed, AverageReadSpeedMBps = 120, CertificateId = 902, StalledSampleCount = 7
         });
         package.Certificates.Add(new DiskCertificate
         {
@@ -78,6 +79,7 @@ public sealed class DataTransferIntegrityTests
             Assert.Equal(1, card.TestCount);
             var test = Assert.Single(await repo.GetTestSessionsAsync(card.Id));
             Assert.Equal(guid, test.SessionId);
+            Assert.Equal(7, test.StalledSampleCount);
             Assert.Equal(historicalDate, test.StartedAt);
             Assert.NotEqual(unrelatedTest.Id, test.Id);
             Assert.NotEqual(901, test.Id);
@@ -103,6 +105,20 @@ public sealed class DataTransferIntegrityTests
             Assert.Equal(1, metadata.TestSessionCount);
             Assert.Equal(1, metadata.CertificateCount);
             Assert.Equal(new FileInfo(exportPath).Length, metadata.TotalSizeBytes);
+            var exported = JsonSerializer.Deserialize<DataExportPackage>(
+                await File.ReadAllTextAsync(exportPath, TestContext.Current.CancellationToken),
+                JsonOptions);
+            Assert.NotNull(exported);
+            Assert.Equal(7, Assert.Single(exported.TestSessions).StalledSampleCount);
+            Assert.Single(exported.Certificates);
+
+            var measurementsPath = Path.Combine(folder, "measurements.json");
+            await service.ExportAsync(measurementsPath, ExportScope.MeasurementsAndDisks, ct: TestContext.Current.CancellationToken);
+            var measurements = await service.PeekMetadataAsync(measurementsPath, TestContext.Current.CancellationToken);
+            Assert.NotNull(measurements);
+            Assert.Equal(2, measurements.DiskCount);
+            Assert.Equal(2, measurements.TestSessionCount);
+            Assert.Equal(0, measurements.CertificateCount);
         }
         finally
         {
@@ -207,6 +223,46 @@ public sealed class DataTransferIntegrityTests
         // A subsequent operation must not flush stale entities from the cancelled import.
         await repo.CreateAsync(new DiskCard { SerialNumber = "AFTER-CANCEL" });
         Assert.Equal("AFTERCANCEL", Assert.Single(await repo.GetAllAsync()).SerialNumber);
+    }
+
+    [Fact]
+    public async Task CertificateNumberCollisionAcrossDisksCannotSilentlyRenumberHistory()
+    {
+        using var connection = new SqliteConnection("Data Source=:memory:");
+        await connection.OpenAsync(TestContext.Current.CancellationToken);
+        await using var context = new DiskCheckerDbContext(
+            new DbContextOptionsBuilder<DiskCheckerDbContext>().UseSqlite(connection).Options);
+        await context.Database.EnsureCreatedAsync(TestContext.Current.CancellationToken);
+        SchemaCompatibilityPatcher.Apply(context);
+        var repo = new DiskCardRepository(context);
+        var original = await repo.CreateAsync(new DiskCard { SerialNumber = "ORIGINAL" });
+        var session = await repo.CreateTestSessionAsync(new TestSession { DiskCardId = original.Id });
+        var certificate = await repo.CreateCertificateAsync(new DiskCertificate
+        {
+            DiskCardId = original.Id, TestSessionId = session.Id, CertificateNumber = "EXISTING-CERT"
+        });
+        var package = new DataExportPackage();
+        package.DiskCards.Add(new DiskCard { Id = 100, SerialNumber = "NEW-DISK" });
+        package.TestSessions.Add(new TestSession { Id = 101, DiskCardId = 100, StartedAt = DateTime.UtcNow });
+        package.Certificates.Add(new DiskCertificate
+        {
+            Id = 102, DiskCardId = 100, TestSessionId = 101, CertificateNumber = certificate.CertificateNumber
+        });
+        string folder = Directory.CreateTempSubdirectory("dc-cert-collision-").FullName;
+        try
+        {
+            string path = Path.Combine(folder, "collision.json");
+            await File.WriteAllTextAsync(path, JsonSerializer.Serialize(package, JsonOptions), TestContext.Current.CancellationToken);
+            var result = await new DataExportImportService(repo).ImportAsync(path, ImportMode.Add, TestContext.Current.CancellationToken);
+            Assert.False(result.Success);
+            Assert.Equal(0, result.CertificatesImported);
+            Assert.Equal(original.Id, Assert.Single(await repo.GetAllAsync()).Id);
+            Assert.Equal(certificate.Id, Assert.Single(await repo.GetCertificatesAsync(original.Id)).Id);
+        }
+        finally
+        {
+            Directory.Delete(folder, recursive: true);
+        }
     }
 
 }

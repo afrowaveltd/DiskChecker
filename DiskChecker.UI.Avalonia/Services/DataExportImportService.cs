@@ -75,62 +75,80 @@ public class DataExportImportService : IDataExportImportService
             _ => throw new ArgumentOutOfRangeException(nameof(scope))
         };
 
-        // Načíst test session a certifikáty pro vybrané disky
-        var allSessions = new List<TestSession>();
-        var allCertificates = new List<DiskCertificate>();
-
-        foreach (var card in filteredCards)
-        {
-            ct.ThrowIfCancellationRequested();
-
-            var sessions = await _repository.GetTestSessionsAsync(card.Id);
-            // Export complete scalar/JSON diagnostic summaries, without raw owned sample tables.
-            foreach (var session in sessions)
-            {
-                ct.ThrowIfCancellationRequested();
-                allSessions.Add(await _repository.GetTestSessionWithoutSamplesAsync(session.Id)
-                    ?? throw new InvalidOperationException($"Test {session.Id} disappeared during export."));
-            }
-
-            var certs = await _repository.GetCertificatesAsync(card.Id);
-            allCertificates.AddRange(certs);
-        }
-
-        // Pro MeasurementsAndDisks vynecháme certifikáty
-        if (scope == ExportScope.MeasurementsAndDisks)
-        {
-            allCertificates.Clear();
-        }
-
-        var package = new DataExportPackage
-        {
-            Metadata = new ExportMetadata
-            {
-                Version = "1.0.0",
-                ExportedAt = DateTime.UtcNow,
-                ApplicationVersion = GetAppVersion(),
-                Scope = scope,
-                DiskCount = filteredCards.Count,
-                TestSessionCount = allSessions.Count,
-                CertificateCount = allCertificates.Count,
-                TotalSizeBytes = 0 // Actual size is supplied by PeekMetadataAsync.
-            },
-            DiskCards = filteredCards,
-            TestSessions = allSessions,
-            Certificates = allCertificates
-        };
-
-        // Stream the JSON to a sibling temporary file. Never leave a partially
-        // written export at the selected destination or overwrite it on cancellation.
+        // Keep only one disk's list and one complete summary in memory at a time.
+        // JSON object property ordering is not significant; metadata is emitted last
+        // so the counts describe the actual records written.
         var fullPath = Path.GetFullPath(filePath);
         Directory.CreateDirectory(Path.GetDirectoryName(fullPath)!);
         var temporaryPath = fullPath + "." + Guid.NewGuid().ToString("N") + ".tmp";
+        int sessionCount = 0;
+        int certificateCount = 0;
         try
         {
             await using (var stream = new FileStream(temporaryPath, FileMode.CreateNew,
                 FileAccess.Write, FileShare.None, 65536, FileOptions.Asynchronous))
             {
-                await JsonSerializer.SerializeAsync(stream, package, _jsonOptions, ct);
+                using var writer = new Utf8JsonWriter(stream, new JsonWriterOptions { Indented = true });
+                writer.WriteStartObject();
+                writer.WriteStartArray("diskCards");
+                foreach (var card in filteredCards)
+                {
+                    ct.ThrowIfCancellationRequested();
+                    JsonSerializer.Serialize(writer, card, _jsonOptions);
+                    await writer.FlushAsync(ct);
+                }
+                writer.WriteEndArray();
+
+                writer.WriteStartArray("testSessions");
+                foreach (var card in filteredCards)
+                {
+                    ct.ThrowIfCancellationRequested();
+                    var sessions = await _repository.GetTestSessionsAsync(card.Id);
+                    foreach (var session in sessions)
+                    {
+                        ct.ThrowIfCancellationRequested();
+                        var summary = await _repository.GetTestSessionWithoutSamplesAsync(session.Id)
+                            ?? throw new InvalidOperationException($"Test {session.Id} disappeared during export.");
+                        JsonSerializer.Serialize(writer, summary, _jsonOptions);
+                        sessionCount++;
+                        await writer.FlushAsync(ct);
+                    }
+                }
+                writer.WriteEndArray();
+
+                writer.WriteStartArray("certificates");
+                if (scope != ExportScope.MeasurementsAndDisks)
+                {
+                    foreach (var card in filteredCards)
+                    {
+                        ct.ThrowIfCancellationRequested();
+                        _repository.ClearChangeTracker();
+                        var certificates = await _repository.GetCertificatesAsync(card.Id);
+                        foreach (var certificate in certificates)
+                        {
+                            ct.ThrowIfCancellationRequested();
+                            JsonSerializer.Serialize(writer, certificate, _jsonOptions);
+                            certificateCount++;
+                            await writer.FlushAsync(ct);
+                        }
+                    }
+                }
+                writer.WriteEndArray();
+
+                writer.WritePropertyName("metadata");
+                JsonSerializer.Serialize(writer, new ExportMetadata
+                {
+                    Version = "1.0.0",
+                    ExportedAt = DateTime.UtcNow,
+                    ApplicationVersion = GetAppVersion(),
+                    Scope = scope,
+                    DiskCount = filteredCards.Count,
+                    TestSessionCount = sessionCount,
+                    CertificateCount = certificateCount,
+                    TotalSizeBytes = 0
+                }, _jsonOptions);
+                writer.WriteEndObject();
+                await writer.FlushAsync(ct);
                 await stream.FlushAsync(ct);
             }
             ct.ThrowIfCancellationRequested();
@@ -138,6 +156,7 @@ public class DataExportImportService : IDataExportImportService
         }
         finally
         {
+            _repository.ClearChangeTracker();
             if (File.Exists(temporaryPath))
                 File.Delete(temporaryPath);
         }
@@ -196,12 +215,14 @@ public class DataExportImportService : IDataExportImportService
             {
                 // Original database IDs are foreign keys inside the transport file only.
                 // They must never be interpreted as identifiers in the destination DB.
+                var sessionsByCard = package.TestSessions.ToLookup(s => s.DiskCardId);
+                var certificatesByCard = package.Certificates.ToLookup(c => c.DiskCardId);
                 foreach (var importedCard in package.DiskCards)
                 {
                     ct.ThrowIfCancellationRequested();
                     int sourceCardId = importedCard.Id;
-                    var cardSessions = package.TestSessions.Where(s => s.DiskCardId == sourceCardId).ToList();
-                    var cardCerts = package.Certificates.Where(c => c.DiskCardId == sourceCardId).ToList();
+                    var cardSessions = sessionsByCard[sourceCardId];
+                    var cardCerts = certificatesByCard[sourceCardId];
                     var existingCard = await _repository.GetBySerialNumberAsync(importedCard.SerialNumber);
                     bool changed = existingCard == null;
                     DiskCard destination;
@@ -294,7 +315,12 @@ public class DataExportImportService : IDataExportImportService
                         cert.ChartImagePath = null;
                         foreach (var attribute in cert.SmartAttributes)
                             attribute.Id = 0;
+                        string originalNumber = cert.CertificateNumber;
                         var saved = await _repository.CreateCertificateAsync(cert);
+                        // The ordinary certificate creation flow may allocate a new number
+                        // on a global collision. Historical identity must never be changed.
+                        if (!string.Equals(saved.CertificateNumber, originalNumber, StringComparison.Ordinal))
+                            throw new InvalidDataException("Certificate number belongs to a different local certificate.");
                         existingCerts.Add(saved.CertificateNumber, saved);
                         result.CertificatesImported++;
                         changed = true;
