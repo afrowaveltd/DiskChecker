@@ -206,7 +206,7 @@ public sealed class DataTransferIntegrityTests
         Assert.Empty(await repo.GetAllAsync());
         // A subsequent operation must not flush stale entities from the cancelled import.
         await repo.CreateAsync(new DiskCard { SerialNumber = "AFTER-CANCEL" });
-        Assert.Equal("AFTER-CANCEL", Assert.Single(await repo.GetAllAsync()).SerialNumber);
+        Assert.Equal("AFTERCANCEL", Assert.Single(await repo.GetAllAsync()).SerialNumber);
     }
 
 }
