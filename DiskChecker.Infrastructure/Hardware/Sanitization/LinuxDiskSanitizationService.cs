@@ -5,6 +5,7 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using DiskChecker.Core.Interfaces;
+using DiskChecker.Core.Services;
 using Microsoft.Extensions.Logging;
 using Microsoft.Win32.SafeHandles;
 using System.Runtime.InteropServices;
@@ -140,6 +141,7 @@ public class LinuxDiskSanitizationService : IDiskSanitizationService
 
             result.BytesWritten = writeResult.BytesWritten;
             result.WriteSpeedMBps = writeResult.SpeedMBps;
+            result.SustainedWriteDropCount = writeResult.DropDetector.HasMeasurements ? writeResult.DropDetector.Count : null;
             result.WriteDuration = writeResult.Duration;
             result.WritePausedDuration = writeResult.PauseDuration;
             result.WritePauseCount = writeResult.PauseCount;
@@ -164,6 +166,7 @@ public class LinuxDiskSanitizationService : IDiskSanitizationService
 
             result.BytesRead = readResult.BytesRead;
             result.ReadSpeedMBps = readResult.SpeedMBps;
+            result.SustainedReadDropCount = readResult.DropDetector.HasMeasurements ? readResult.DropDetector.Count : null;
             result.ReadDuration = readResult.Duration;
             result.ErrorsDetected += readResult.Errors;
 
@@ -486,6 +489,7 @@ public class LinuxDiskSanitizationService : IDiskSanitizationService
                 var rawSpeed = chunkSeconds > 0
                     ? bytesToWrite / (1024.0 * 1024.0) / chunkSeconds
                     : 0;
+                result.DropDetector.Observe(rawSpeed, chunk.OperationElapsed);
                 smoothedSpeed = smoothedSpeed <= 0 ? rawSpeed : (smoothedSpeed * 0.7) + (rawSpeed * 0.3);
 
                 var elapsed = writePacing.ActiveElapsed(stopwatch.Elapsed).TotalSeconds;
@@ -603,6 +607,7 @@ public class LinuxDiskSanitizationService : IDiskSanitizationService
                     var rawSpeed = chunkSeconds > 0
                         ? bytesToWrite / (1024.0 * 1024.0) / chunkSeconds
                         : 0;
+                    result.DropDetector.Observe(rawSpeed, chunk.OperationElapsed);
                     smoothedSpeed = smoothedSpeed <= 0 ? rawSpeed : (smoothedSpeed * 0.7) + (rawSpeed * 0.3);
 
                     var elapsed = writePacing.ActiveElapsed(stopwatch.Elapsed).TotalSeconds;
@@ -790,6 +795,7 @@ public class LinuxDiskSanitizationService : IDiskSanitizationService
                 var rawSpeed = chunkSeconds > 0
                     ? bytesReadThisChunk / (1024.0 * 1024.0) / chunkSeconds
                     : 0;
+                result.DropDetector.Observe(rawSpeed, chunk.OperationElapsed);
                 smoothedSpeed = smoothedSpeed <= 0 ? rawSpeed : (smoothedSpeed * 0.7) + (rawSpeed * 0.3);
 
                 var elapsed = stopwatch.Elapsed.TotalSeconds;
@@ -944,6 +950,7 @@ public class LinuxDiskSanitizationService : IDiskSanitizationService
                     var rawSpeed = chunkSeconds > 0
                         ? bytesReadThisChunk / (1024.0 * 1024.0) / chunkSeconds
                         : 0;
+                    result.DropDetector.Observe(rawSpeed, chunk.OperationElapsed);
                     smoothedSpeed = smoothedSpeed <= 0 ? rawSpeed : (smoothedSpeed * 0.7) + (rawSpeed * 0.3);
 
                     var elapsed = stopwatch.Elapsed.TotalSeconds;
@@ -1701,6 +1708,7 @@ public class LinuxDiskSanitizationService : IDiskSanitizationService
 
     private sealed class SanitizationPhaseResult
     {
+        public SustainedSpeedDropDetector DropDetector { get; } = new();
         public bool Success { get; set; }
         public string? ErrorMessage { get; set; }
         public long BytesWritten { get; set; }

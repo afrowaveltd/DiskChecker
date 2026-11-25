@@ -1565,24 +1565,8 @@ public class CertificateGenerator : ICertificateGenerator
             or TestType.SurfaceScan or TestType.FullReadWrite or TestType.Sanitization
             or TestType.AbsoluteDestructive || session.BytesRead > 0;
 
-        // Speed consistency penalty only for actual writes.
-        if (hasWritePhase && session.AverageWriteSpeedMBps > 0 && session.MaxWriteSpeedMBps > 0)
-        {
-            var consistency = session.AverageWriteSpeedMBps / session.MaxWriteSpeedMBps;
-            if (consistency < 0.7) score -= (0.7 - consistency) * 50;
-        }
-
-        // Catastrophic speed drop penalty: if min speed is < 20% of max, the disk has serious issues
-        if (hasWritePhase && session.MaxWriteSpeedMBps > 0 && session.MinWriteSpeedMBps > 0)
-        {
-            var minToMaxRatio = session.MinWriteSpeedMBps / session.MaxWriteSpeedMBps;
-            if (minToMaxRatio < 0.2) score -= (0.2 - minToMaxRatio) * 80;
-        }
-        if (hasReadPhase && session.MaxReadSpeedMBps > 0 && session.MinReadSpeedMBps > 0)
-        {
-            var minToMaxRatio = session.MinReadSpeedMBps / session.MaxReadSpeedMBps;
-            if (minToMaxRatio < 0.2) score -= (0.2 - minToMaxRatio) * 80;
-        }
+        // Do not re-score local stability from global extrema or downsampled chart data.
+        // The session score already accounts for measured sustained drops.
 
         // Disk-type-aware speed expectations based on SMART and capacity
         var bus = card?.InterfaceType ?? session.SmartBefore?.DeviceType;

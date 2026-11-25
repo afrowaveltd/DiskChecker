@@ -1125,44 +1125,28 @@ public class DiskCardTestService
       }
       score -= result.ErrorCount * errorWeight;
 
-      if(result.PeakSpeedMbps > 0)
-      {
-         var dropRatio = 1d - (result.MinSpeedMbps / result.PeakSpeedMbps);
-         var allowedDrop = GetPerformanceProfile(result).NormalMinPeakDrop;
-         if(dropRatio > allowedDrop)
-         {
-            findings.Add($"Výrazný propad rychlosti (min/max): {result.MinSpeedMbps:F1}/{result.PeakSpeedMbps:F1} MB/s");
-         }
-         score -= Math.Clamp((dropRatio - allowedDrop) * 40d, 0d, 30d);
-      }
+      // Only contiguous elapsed measurement windows can establish duration.
+       var detector = new SustainedSpeedDropDetector();
+       TimeSpan? previousElapsed = null;
+       string? previousPhase = null;
+       foreach(var sample in result.Samples)
+       {
+          if(sample.Elapsed is not TimeSpan elapsed || previousElapsed is not TimeSpan previous ||
+             sample.Phase != previousPhase || elapsed <= previous)
+             detector.ResetBaseline();
+          else
+             detector.Observe(sample.ThroughputMbps, elapsed - previous);
+          previousElapsed = sample.Elapsed;
+          previousPhase = sample.Phase;
+       }
+       score -= ApplySustainedDropPenalty(detector.Count, "povrchového testu", findings);
 
-      var speedFloor = GetExpectedMinimumAverageSpeed(result);
+       var speedFloor = GetExpectedMinimumAverageSpeed(result);
       if(speedFloor > 0 && result.AverageSpeedMbps < speedFloor)
       {
          var deficitRatio = 1d - (result.AverageSpeedMbps / speedFloor);
          findings.Add($"Průměrná rychlost pod očekáváním: {result.AverageSpeedMbps:F1} MB/s (cílově > {speedFloor:F0} MB/s)");
          score -= Math.Clamp(deficitRatio * 24d, 0d, 24d);
-      }
-
-      var variation = GetSpeedVariationCoefficient(result.Samples);
-      if(variation > 0)
-      {
-         if(IsSolidStateDrive(result))
-         {
-            if(variation > 0.20d)
-            {
-               findings.Add($"SSD/NVMe vykazuje nestabilní průběh rychlosti (CV {variation:P0})");
-            }
-            score -= Math.Clamp((variation - 0.20d) * 120d, 0d, 24d);
-         }
-         else
-         {
-            if(variation > 0.35d)
-            {
-               findings.Add($"Nestabilní průběh rychlosti u HDD (CV {variation:P0})");
-            }
-            score -= Math.Clamp((variation - 0.35d) * 70d, 0d, 12d);
-         }
       }
 
       var thermalPenalty = GetThermalThrottlingPenalty(result);
@@ -1453,6 +1437,8 @@ public class DiskCardTestService
       }
 
       score -= ApplySanitizationDiagnostics(result, findings, driveLooksSolidState);
+       score -= ApplySustainedDropPenalty(result.SustainedWriteDropCount, "zápisu", findings);
+       score -= ApplySustainedDropPenalty(result.SustainedReadDropCount, "čtení", findings);
 
       if(writeSamples.Count > 0)
       {
@@ -1467,7 +1453,8 @@ public class DiskCardTestService
 
       if(driveLooksSolidState)
       {
-         score -= ApplySsdCacheCollapseAnalysis(writeSamples, findings);
+         // Cache collapse remains descriptive; no duplicate speed-drop penalty.
+          _ = ApplySsdCacheCollapseAnalysis(writeSamples, findings);
       }
 
       if(readSamples.Count > 0)
@@ -1501,9 +1488,7 @@ public class DiskCardTestService
 
       var health = !result.Success
           ? HealthAssessment.Critical
-          : writeSamples.Any(s => s.SpeedMBps < 10)
-              ? HealthAssessment.Poor
-              : result.ErrorsDetected == 0 && score >= 88
+          : result.ErrorsDetected == 0 && score >= 88
                   ? HealthAssessment.Excellent
                   : score >= 72
                       ? HealthAssessment.Good
@@ -1525,6 +1510,13 @@ public class DiskCardTestService
       }
 
       return smartaData == null ? breakdown : ApplySmartQuality(breakdown, smartaData);
+   }
+
+   private static double ApplySustainedDropPenalty(int? count, string phase, List<string> findings)
+   {
+      if(count is not > 0) return 0d;
+      findings.Add($"Trvající lokální poklesy rychlosti během {phase}: {count}x (více než 30 % po dobu delší než 0,5 s aktivního I/O).");
+      return Math.Min(24d, count.Value * 4d);
    }
 
    private static SpeedStabilityAnalysis AnalyzeSpeedStability(

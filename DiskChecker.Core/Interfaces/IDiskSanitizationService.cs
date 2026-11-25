@@ -97,6 +97,11 @@ public class SanitizationResult
     public long BytesRead { get; set; }
     public double WriteSpeedMBps { get; set; }
     public double ReadSpeedMBps { get; set; }
+
+    /// <summary>Confirmed local write drops; null if raw measurement evidence is unavailable.</summary>
+    public int? SustainedWriteDropCount { get; set; }
+    /// <summary>Confirmed local read drops; null if raw measurement evidence is unavailable.</summary>
+    public int? SustainedReadDropCount { get; set; }
     public int ErrorsDetected { get; set; }
     public TimeSpan Duration { get; set; }
 
