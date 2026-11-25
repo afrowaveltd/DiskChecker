@@ -152,14 +152,9 @@ public class DataExportImportService : IDataExportImportService
 
         try
         {
-            await using var stream = File.OpenRead(filePath);
-            using var doc = await JsonDocument.ParseAsync(stream, cancellationToken: ct);
-            var root = doc.RootElement;
-
-            if (!root.TryGetProperty("metadata", out var metaEl))
-                return null;
-
-            var metadata = metaEl.Deserialize<ExportMetadata>(_jsonOptions);
+            await using var stream = new FileStream(filePath, FileMode.Open, FileAccess.Read,
+                FileShare.Read, 65536, FileOptions.Asynchronous | FileOptions.SequentialScan);
+            var metadata = await ReadMetadataAsync(stream, ct);
             if (metadata != null)
                 metadata.TotalSizeBytes = stream.Length;
             return metadata;
@@ -169,6 +164,109 @@ public class DataExportImportService : IDataExportImportService
         {
             return null;
         }
+    }
+
+    // Limit memory to the largest individual JSON token (or metadata object),
+    // not the size of the entire history. Very large individual tokens are
+    // deliberately rejected by preview; the ordinary import remains separate.
+    private const int MaxPreviewBufferBytes = 16 * 1024 * 1024;
+
+    private static async Task<ExportMetadata?> ReadMetadataAsync(Stream stream, CancellationToken ct)
+    {
+        byte[] buffer = new byte[65536];
+        int buffered = 0;
+        bool first = true;
+        bool rootStarted = false;
+        bool metadataPending = false;
+        ExportMetadata? metadata = null;
+        var state = new JsonReaderState();
+
+        while (true)
+        {
+            ct.ThrowIfCancellationRequested();
+            if (buffered == buffer.Length)
+            {
+                if (buffer.Length >= MaxPreviewBufferBytes)
+                    throw new JsonException("A JSON token or metadata object exceeds the preview limit.");
+                Array.Resize(ref buffer, Math.Min(buffer.Length * 2, MaxPreviewBufferBytes));
+            }
+
+            int read = await stream.ReadAsync(buffer.AsMemory(buffered), ct);
+            bool final = read == 0;
+            buffered += read;
+
+            if (first)
+            {
+                if (!final && buffered < 3)
+                    continue;
+                first = false;
+                if (buffered >= 3 && buffer[0] == 0xEF && buffer[1] == 0xBB && buffer[2] == 0xBF)
+                {
+                    buffered -= 3;
+                    Buffer.BlockCopy(buffer, 3, buffer, 0, buffered);
+                }
+            }
+
+            int consumed = ScanMetadataChunk(buffer.AsSpan(0, buffered), final,
+                ref state, ref rootStarted, ref metadataPending, ref metadata);
+            buffered -= consumed;
+            if (buffered > 0)
+                Buffer.BlockCopy(buffer, consumed, buffer, 0, buffered);
+
+            if (final)
+            {
+                if (!rootStarted || buffered != 0 || metadataPending)
+                    throw new JsonException("Incomplete export package.");
+                return metadata;
+            }
+        }
+    }
+
+    private static int ScanMetadataChunk(ReadOnlySpan<byte> bytes, bool final,
+        ref JsonReaderState state, ref bool rootStarted, ref bool metadataPending,
+        ref ExportMetadata? metadata)
+    {
+        var reader = new Utf8JsonReader(bytes, final, state);
+        while (true)
+        {
+            var previousState = reader.CurrentState;
+            int previousOffset = checked((int)reader.BytesConsumed);
+            if (!reader.Read())
+                break;
+
+            if (!rootStarted)
+            {
+                if (reader.TokenType != JsonTokenType.StartObject)
+                    throw new JsonException("An export package must be a JSON object.");
+                rootStarted = true;
+            }
+
+            if (metadataPending)
+            {
+                // TryParseValue preserves the reader on incomplete data. Rewind
+                // to before the value token so the next chunk retries correctly.
+                if (!JsonDocument.TryParseValue(ref reader, out var document))
+                {
+                    state = previousState;
+                    return previousOffset;
+                }
+                using (document)
+                {
+                    metadata = document!.RootElement.Deserialize<ExportMetadata>(_jsonOptions);
+                }
+                metadataPending = false;
+                continue;
+            }
+
+            if (reader.TokenType == JsonTokenType.PropertyName &&
+                reader.CurrentDepth == 1 && reader.ValueTextEquals("metadata"u8))
+            {
+                metadataPending = true;
+            }
+        }
+
+        state = reader.CurrentState;
+        return checked((int)reader.BytesConsumed);
     }
 
     public async Task<ImportResult> ImportAsync(string filePath, ImportMode mode, CancellationToken ct = default)
