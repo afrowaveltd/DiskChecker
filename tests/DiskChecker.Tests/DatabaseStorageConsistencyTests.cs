@@ -219,6 +219,81 @@ public class DatabaseStorageConsistencyTests
         }
     }
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Restore_SettingsPublicationDeterminesWhetherIncomingDatabaseIsKept(bool failPublication)
+    {
+        var folder = Directory.CreateTempSubdirectory("dc-restore-compensation-").FullName;
+        try
+        {
+            var active = Path.Combine(folder, "active.db");
+            var incoming = Path.Combine(folder, "incoming.db");
+            CreateMarkerDb(active, "ACTIVE");
+            CreateMarkerDb(incoming, "INCOMING");
+            var settings = new SettingsService(folder);
+            var cs = new SqliteConnectionStringBuilder { DataSource = active, Pooling = false }.ToString();
+            await settings.SetDatabaseStorageSettingsAsync(new DatabaseStorageSettings
+            {
+                Provider = DatabaseProviderKind.Sqlite, ConnectionString = cs
+            });
+            var originalSettings = await File.ReadAllTextAsync(settings.SettingsFilePath, TestContext.Current.CancellationToken);
+            var services = new ServiceCollection();
+            services.AddDbContext<DiskCheckerDbContext>(o => o.UseSqlite(cs));
+            using var provider = services.BuildServiceProvider();
+
+            var zipPath = Path.Combine(folder, "restore.zip");
+            using (var archive = ZipFile.Open(zipPath, ZipArchiveMode.Create))
+            {
+                archive.CreateEntryFromFile(incoming, "DiskChecker.db");
+                using var writer = new StreamWriter(archive.CreateEntry("settings.json").Open());
+                writer.Write("{\"RestoreMarker\":\"NEW\",\"DatabaseConnectionString\":\"Data Source=wrong.db\"}");
+            }
+
+            BackupService backup = failPublication
+                ? new FailingSettingsPublicationBackupService(provider.GetRequiredService<IServiceScopeFactory>(), settings, active)
+                : new BackupService(provider.GetRequiredService<IServiceScopeFactory>(), settings);
+
+            if (failPublication)
+            {
+                var error = await Assert.ThrowsAsync<IOException>(() => backup.RestoreBackupAsync(zipPath));
+                Assert.Contains("original database was recovered", error.Message);
+                Assert.Equal("Injected settings publication failure.", Assert.IsType<IOException>(error.InnerException).Message);
+                Assert.Equal("ACTIVE", ReadMarker(active));
+                Assert.Equal(originalSettings, await File.ReadAllTextAsync(settings.SettingsFilePath, TestContext.Current.CancellationToken));
+            }
+            else
+            {
+                await backup.RestoreBackupAsync(zipPath);
+                Assert.Equal("INCOMING", ReadMarker(active));
+                var restored = await File.ReadAllTextAsync(settings.SettingsFilePath, TestContext.Current.CancellationToken);
+                Assert.Contains("RestoreMarker", restored);
+                Assert.DoesNotContain("wrong.db", restored);
+            }
+
+            var snapshot = Assert.Single(Directory.GetFiles(folder, "active.db.pre_restore_*"));
+            Assert.Equal("ACTIVE", ReadMarker(snapshot));
+            Assert.Empty(Directory.GetFiles(folder, "*.tmp"));
+        }
+        finally
+        {
+            Directory.Delete(folder, recursive: true);
+        }
+    }
+
+    private sealed class FailingSettingsPublicationBackupService(
+        IServiceScopeFactory scopeFactory, SettingsService settings, string activePath)
+        : BackupService(scopeFactory, settings)
+    {
+        protected override void PublishRestoredSettings(string temporaryPath, string destinationPath)
+        {
+            // Verify failure is injected after SQLite has actually been replaced.
+            if (ReadMarker(activePath) != "INCOMING")
+                throw new InvalidOperationException("The test did not reach the publication boundary.");
+            throw new IOException("Injected settings publication failure.");
+        }
+    }
+
     private static void CreateMarkerDb(string path, string marker)
     {
         using var conn = new SqliteConnection(new SqliteConnectionStringBuilder { DataSource = path, Pooling = false }.ToString());

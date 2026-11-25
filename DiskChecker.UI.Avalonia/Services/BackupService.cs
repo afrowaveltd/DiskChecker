@@ -130,6 +130,9 @@ public class BackupService : IBackupService
         var cs = GetActiveSqliteConnectionString();
         var livePath = new Microsoft.Data.Sqlite.SqliteConnectionStringBuilder(cs).DataSource;
         var tempDir = Path.Combine(Path.GetTempPath(), $"DiskChecker_Restore_{Guid.NewGuid():N}");
+        var preRestore = livePath + ".pre_restore_" + DateTime.UtcNow.ToString("yyyyMMdd_HHmmss_fff") + "_" + Guid.NewGuid().ToString("N");
+        string? temporarySettings = null;
+        bool databaseReplacementStarted = false;
         Directory.CreateDirectory(tempDir);
         try
         {
@@ -173,6 +176,14 @@ public class BackupService : IBackupService
                 restoredSettings = restored.ToJsonString(_jsonOptions);
             }
 
+            // Stage the settings beside their destination before changing the database.
+            // A full or unwritable settings volume therefore fails before replacement.
+            if (restoredSettings != null)
+            {
+                temporarySettings = _settingsPath + "." + Guid.NewGuid().ToString("N") + ".tmp";
+                await File.WriteAllTextAsync(temporarySettings, restoredSettings);
+            }
+
             var importedPath = Path.Combine(tempDir, "DiskChecker.db");
             await Task.Run(() =>
             {
@@ -187,7 +198,6 @@ public class BackupService : IBackupService
                 }
 
                 // Preserve the currently active data before any replacement.
-                var preRestore = livePath + ".pre_restore_" + DateTime.UtcNow.ToString("yyyyMMdd_HHmmss_fff") + "_" + Guid.NewGuid().ToString("N");
                 using (var current = new Microsoft.Data.Sqlite.SqliteConnection(cs))
                 using (var backup = new Microsoft.Data.Sqlite.SqliteConnection(
                     new Microsoft.Data.Sqlite.SqliteConnectionStringBuilder { DataSource = preRestore, Pooling = false }.ToString()))
@@ -199,28 +209,58 @@ public class BackupService : IBackupService
 
                 using var destination = new Microsoft.Data.Sqlite.SqliteConnection(cs);
                 destination.Open();
+                databaseReplacementStarted = true;
                 source.BackupDatabase(destination);
             });
 
-            if (restoredSettings != null)
+            if (temporarySettings != null)
+                PublishRestoredSettings(temporarySettings, _settingsPath);
+        }
+        catch (Exception restoreError) when (databaseReplacementStarted)
+        {
+            // SQLite and the settings file are separate resources. If publishing
+            // settings or replacing the database fails, compensate from the
+            // pre-restore snapshot. Keep that snapshot for manual recovery.
+            try
             {
-                var temporarySettings = _settingsPath + "." + Guid.NewGuid().ToString("N") + ".tmp";
-                try
+                await Task.Run(() =>
                 {
-                    await File.WriteAllTextAsync(temporarySettings, restoredSettings);
-                    File.Move(temporarySettings, _settingsPath, overwrite: true);
-                }
-                finally
-                {
-                    if (File.Exists(temporarySettings))
-                        File.Delete(temporarySettings);
-                }
+                    using var original = new Microsoft.Data.Sqlite.SqliteConnection(
+                        new Microsoft.Data.Sqlite.SqliteConnectionStringBuilder
+                        {
+                            DataSource = preRestore,
+                            Mode = Microsoft.Data.Sqlite.SqliteOpenMode.ReadOnly,
+                            Pooling = false
+                        }.ToString());
+                    using var destination = new Microsoft.Data.Sqlite.SqliteConnection(cs);
+                    original.Open();
+                    destination.Open();
+                    original.BackupDatabase(destination);
+                });
             }
+            catch (Exception rollbackError)
+            {
+                throw new IOException(
+                    $"Restore and automatic database rollback failed. Recovery snapshot: {preRestore}",
+                    new AggregateException(restoreError, rollbackError));
+            }
+
+            throw new IOException(
+                $"Restore failed; the original database was recovered. Recovery snapshot: {preRestore}",
+                restoreError);
         }
         finally
         {
+            if (temporarySettings != null && File.Exists(temporarySettings))
+                File.Delete(temporarySettings);
             Directory.Delete(tempDir, recursive: true);
         }
+    }
+
+    /// <summary>Publishes staged settings with a same-directory replacement.</summary>
+    protected virtual void PublishRestoredSettings(string temporaryPath, string destinationPath)
+    {
+        File.Move(temporaryPath, destinationPath, overwrite: true);
     }
 
     public string GetDefaultBackupDirectory()
