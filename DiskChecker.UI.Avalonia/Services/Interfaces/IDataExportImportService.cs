@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Text.Json.Serialization;
 using System.Threading;
 using System.Threading.Tasks;
 using DiskChecker.Core.Models;
@@ -35,6 +36,7 @@ public enum ImportMode
 /// </summary>
 public class ExportMetadata
 {
+    [JsonRequired]
     public string Version { get; set; } = "1.0.0";
     public DateTime ExportedAt { get; set; }
     public string ApplicationVersion { get; set; } = "1.0.0";
@@ -50,9 +52,13 @@ public class ExportMetadata
 /// </summary>
 public class DataExportPackage
 {
+    [JsonRequired]
     public ExportMetadata Metadata { get; set; } = new();
+    [JsonRequired]
     public List<DiskCard> DiskCards { get; set; } = new();
+    [JsonRequired]
     public List<TestSession> TestSessions { get; set; } = new();
+    [JsonRequired]
     public List<DiskCertificate> Certificates { get; set; } = new();
 }
 
