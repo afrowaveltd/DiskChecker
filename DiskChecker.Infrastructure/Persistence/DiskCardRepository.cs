@@ -21,6 +21,28 @@ public class DiskCardRepository : IDiskCardRepository
       _context = context;
    }
 
+   /// <inheritdoc />
+   public async Task ExecuteHistoricalImportAsync(Func<Task> import, CancellationToken cancellationToken = default)
+   {
+      ArgumentNullException.ThrowIfNull(import);
+      cancellationToken.ThrowIfCancellationRequested();
+      _context.ChangeTracker.Clear();
+      await using var transaction = await _context.Database.BeginTransactionAsync(cancellationToken);
+      try
+      {
+         await import();
+         cancellationToken.ThrowIfCancellationRequested();
+         // Once the commit begins, cancellation must not report a committed import as cancelled.
+         await transaction.CommitAsync(CancellationToken.None);
+      }
+      finally
+      {
+         // An uncommitted transaction is rolled back on disposal. Discard tracked
+         // entities even on failure so subsequent commands cannot persist them.
+         _context.ChangeTracker.Clear();
+      }
+   }
+
    // ========== CRUD Operations ==========
 
    public async Task<DiskCard?> GetByIdAsync(int id)

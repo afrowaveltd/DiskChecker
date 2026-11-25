@@ -192,128 +192,129 @@ public class DataExportImportService : IDataExportImportService
                 throw new ArgumentOutOfRangeException(nameof(mode));
             _repository.ClearChangeTracker();
 
-            // Original database IDs are foreign keys inside the transport file only.
-            // They must never be interpreted as identifiers in the destination DB.
-            foreach (var importedCard in package.DiskCards)
+            await _repository.ExecuteHistoricalImportAsync(async () =>
             {
-                ct.ThrowIfCancellationRequested();
-                int sourceCardId = importedCard.Id;
-                var cardSessions = package.TestSessions.Where(s => s.DiskCardId == sourceCardId).ToList();
-                var cardCerts = package.Certificates.Where(c => c.DiskCardId == sourceCardId).ToList();
-                var existingCard = await _repository.GetBySerialNumberAsync(importedCard.SerialNumber);
-                bool changed = existingCard == null;
-                DiskCard destination;
-                if (existingCard == null)
+                // Original database IDs are foreign keys inside the transport file only.
+                // They must never be interpreted as identifiers in the destination DB.
+                foreach (var importedCard in package.DiskCards)
                 {
-                    importedCard.Id = 0;
-                    // Hardware paths and related objects belong to the source machine.
-                    importedCard.DevicePath = string.Empty;
-                    importedCard.TestSessions.Clear();
-                    importedCard.Certificates.Clear();
-                    importedCard.Volumes.Clear();
-                    importedCard.TestCount = 0;
-                    destination = await _repository.ImportDiskCardAsync(importedCard);
-                }
-                else
-                {
-                    destination = existingCard;
-                    if (mode == ImportMode.Replace)
+                    ct.ThrowIfCancellationRequested();
+                    int sourceCardId = importedCard.Id;
+                    var cardSessions = package.TestSessions.Where(s => s.DiskCardId == sourceCardId).ToList();
+                    var cardCerts = package.Certificates.Where(c => c.DiskCardId == sourceCardId).ToList();
+                    var existingCard = await _repository.GetBySerialNumberAsync(importedCard.SerialNumber);
+                    bool changed = existingCard == null;
+                    DiskCard destination;
+                    if (existingCard == null)
                     {
-                        // Replace descriptive metadata, never delete historical measurements
-                        // or overwrite local hardware paths and protection flags.
-                        destination.ModelName = importedCard.ModelName;
-                        destination.Manufacturer = importedCard.Manufacturer;
-                        destination.ModelFamily = importedCard.ModelFamily;
-                        destination.DiskType = importedCard.DiskType;
-                        destination.InterfaceType = importedCard.InterfaceType;
-                        destination.Capacity = importedCard.Capacity;
-                        destination.FirmwareVersion = importedCard.FirmwareVersion;
-                        destination.ConnectionType = importedCard.ConnectionType;
-                        destination.OverallGrade = importedCard.OverallGrade;
-                        destination.OverallScore = importedCard.OverallScore;
-                        destination.Notes = importedCard.Notes;
-                        destination.PowerOnHours = importedCard.PowerOnHours;
-                        destination.PowerCycleCount = importedCard.PowerCycleCount;
-                        _repository.ClearChangeTracker();
-                        await _repository.UpdateAsync(destination);
+                        importedCard.Id = 0;
+                        // Hardware paths and related objects belong to the source machine.
+                        importedCard.DevicePath = string.Empty;
+                        importedCard.TestSessions.Clear();
+                        importedCard.Certificates.Clear();
+                        importedCard.Volumes.Clear();
+                        importedCard.TestCount = 0;
+                        destination = await _repository.ImportDiskCardAsync(importedCard);
+                    }
+                    else
+                    {
+                        destination = existingCard;
+                        if (mode == ImportMode.Replace)
+                        {
+                            // Replace descriptive metadata, never delete historical measurements
+                            // or overwrite local hardware paths and protection flags.
+                            destination.ModelName = importedCard.ModelName;
+                            destination.Manufacturer = importedCard.Manufacturer;
+                            destination.ModelFamily = importedCard.ModelFamily;
+                            destination.DiskType = importedCard.DiskType;
+                            destination.InterfaceType = importedCard.InterfaceType;
+                            destination.Capacity = importedCard.Capacity;
+                            destination.FirmwareVersion = importedCard.FirmwareVersion;
+                            destination.ConnectionType = importedCard.ConnectionType;
+                            destination.OverallGrade = importedCard.OverallGrade;
+                            destination.OverallScore = importedCard.OverallScore;
+                            destination.Notes = importedCard.Notes;
+                            destination.PowerOnHours = importedCard.PowerOnHours;
+                            destination.PowerCycleCount = importedCard.PowerCycleCount;
+                            _repository.ClearChangeTracker();
+                            await _repository.UpdateAsync(destination);
+                            changed = true;
+                        }
+                    }
+
+                    var existingSessions = (await _repository.GetTestSessionsAsync(destination.Id))
+                        .ToDictionary(s => s.SessionId);
+                    var localSessionIds = new Dictionary<int, int>();
+                    foreach (var session in cardSessions)
+                    {
+                        ct.ThrowIfCancellationRequested();
+                        int sourceSessionId = session.Id;
+                        if (existingSessions.TryGetValue(session.SessionId, out var existing))
+                        {
+                            localSessionIds.Add(sourceSessionId, existing.Id);
+                            result.TestSessionsSkipped++;
+                            continue;
+                        }
+
+                        session.Id = 0;
+                        session.DiskCardId = destination.Id;
+                        session.DiskCard = null;
+                        session.CertificateId = null;
+                        session.ChartImagePath = null;
+                        var saved = await _repository.ImportTestSessionAsync(session);
+                        localSessionIds.Add(sourceSessionId, saved.Id);
+                        existingSessions.Add(saved.SessionId, saved);
+                        result.TestSessionsImported++;
                         changed = true;
                     }
-                }
 
-                var existingSessions = (await _repository.GetTestSessionsAsync(destination.Id))
-                    .ToDictionary(s => s.SessionId);
-                var localSessionIds = new Dictionary<int, int>();
-                foreach (var session in cardSessions)
-                {
-                    ct.ThrowIfCancellationRequested();
-                    int sourceSessionId = session.Id;
-                    if (existingSessions.TryGetValue(session.SessionId, out var existing))
+                    var existingCerts = (await _repository.GetCertificatesAsync(destination.Id))
+                        .ToDictionary(c => c.CertificateNumber, StringComparer.Ordinal);
+                    foreach (var cert in cardCerts)
                     {
-                        localSessionIds.Add(sourceSessionId, existing.Id);
-                        result.TestSessionsSkipped++;
-                        continue;
+                        ct.ThrowIfCancellationRequested();
+                        int sessionId = localSessionIds[cert.TestSessionId];
+                        if (existingCerts.TryGetValue(cert.CertificateNumber, out var existing))
+                        {
+                            if (existing.TestSessionId != sessionId)
+                                throw new InvalidDataException("Certificate number belongs to a different local test.");
+                            result.CertificatesSkipped++;
+                            continue;
+                        }
+
+                        cert.Id = 0;
+                        cert.DiskCardId = destination.Id;
+                        cert.TestSessionId = sessionId;
+                        cert.DiskCard = null;
+                        cert.TestSession = null;
+                        cert.PairedCertificate = null;
+                        // A JSON transfer does not carry the source machine's PDF files.
+                        cert.PdfGenerated = false;
+                        cert.PdfPath = null;
+                        cert.ChartImagePath = null;
+                        foreach (var attribute in cert.SmartAttributes)
+                            attribute.Id = 0;
+                        var saved = await _repository.CreateCertificateAsync(cert);
+                        existingCerts.Add(saved.CertificateNumber, saved);
+                        result.CertificatesImported++;
+                        changed = true;
                     }
 
-                    session.Id = 0;
-                    session.DiskCardId = destination.Id;
-                    session.DiskCard = null;
-                    session.CertificateId = null;
-                    session.ChartImagePath = null;
-                    var saved = await _repository.ImportTestSessionAsync(session);
-                    localSessionIds.Add(sourceSessionId, saved.Id);
-                    existingSessions.Add(saved.SessionId, saved);
-                    result.TestSessionsImported++;
-                    changed = true;
+                    if (changed) result.DisksImported++;
+                    else result.DisksSkipped++;
                 }
-
-                var existingCerts = (await _repository.GetCertificatesAsync(destination.Id))
-                    .ToDictionary(c => c.CertificateNumber, StringComparer.Ordinal);
-                foreach (var cert in cardCerts)
-                {
-                    ct.ThrowIfCancellationRequested();
-                    int sessionId = localSessionIds[cert.TestSessionId];
-                    if (existingCerts.TryGetValue(cert.CertificateNumber, out var existing))
-                    {
-                        if (existing.TestSessionId != sessionId)
-                            throw new InvalidDataException("Certificate number belongs to a different local test.");
-                        result.CertificatesSkipped++;
-                        continue;
-                    }
-
-                    cert.Id = 0;
-                    cert.DiskCardId = destination.Id;
-                    cert.TestSessionId = sessionId;
-                    cert.DiskCard = null;
-                    cert.TestSession = null;
-                    cert.PairedCertificate = null;
-                    // A JSON transfer does not carry the source machine's PDF files.
-                    cert.PdfGenerated = false;
-                    cert.PdfPath = null;
-                    cert.ChartImagePath = null;
-                    foreach (var attribute in cert.SmartAttributes)
-                        attribute.Id = 0;
-                    var saved = await _repository.CreateCertificateAsync(cert);
-                    existingCerts.Add(saved.CertificateNumber, saved);
-                    result.CertificatesImported++;
-                    changed = true;
-                }
-
-                if (changed) result.DisksImported++;
-                else result.DisksSkipped++;
-            }
+            }, ct);
 
             result.Success = true;
         }
         catch (OperationCanceledException)
         {
-            result.Success = false;
-            result.ErrorMessage = "Import byl zrušen. Již uložené záznamy mohou zůstat v databázi.";
+            result = new ImportResult { Success = false, ErrorMessage = "Import byl zrušen." };
         }
         catch (Exception ex)
         {
-            result.Success = false;
-            result.ErrorMessage = ex.Message;
-            result.Warnings.Add($"Chyba při importu: {ex.Message}. Již uložené záznamy mohou zůstat v databázi.");
+            result = new ImportResult { Success = false, ErrorMessage = ex.Message };
+            result.Warnings.Add($"Chyba při importu: {ex.Message}");
         }
 
         return result;
