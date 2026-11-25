@@ -21,6 +21,9 @@ public interface IDiskCardRepository
     Task<List<DiskCard>> GetArchivedAsync();
     
     Task<DiskCard> CreateAsync(DiskCard card);
+    /// <summary>Imports a disk card without regenerating its historical identity or timestamps.</summary>
+    Task<DiskCard> ImportDiskCardAsync(DiskCard card) =>
+        throw new NotSupportedException("Historical card import is not implemented by this repository.");
     Task<DiskCard> UpdateAsync(DiskCard card);
     Task DeleteAsync(int id);
     Task ArchiveAsync(int id, ArchiveReason reason, string? notes = null);
@@ -143,6 +146,10 @@ public interface IDiskCardRepository
         int sessionId, int maxPoints, SeekTestType? testType = null);
     
     Task<TestSession> CreateTestSessionAsync(TestSession session);
+
+    /// <summary>Persists an imported historical session without changing its GUID or date.</summary>
+    Task<TestSession> ImportTestSessionAsync(TestSession session) =>
+        throw new NotSupportedException("Historical session import is not implemented by this repository.");
     Task<TestSession> UpdateTestSessionAsync(TestSession session);
     Task DeleteTestSessionAsync(int sessionId);
     

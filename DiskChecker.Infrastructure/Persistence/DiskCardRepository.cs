@@ -98,6 +98,17 @@ public class DiskCardRepository : IDiskCardRepository
       return card;
    }
 
+   public async Task<DiskCard> ImportDiskCardAsync(DiskCard card)
+   {
+      ArgumentNullException.ThrowIfNull(card);
+      if(card.Id != 0 || string.IsNullOrWhiteSpace(card.SerialNumber))
+         throw new ArgumentException("Imported cards require a new local ID and an original identity.", nameof(card));
+      _context.ChangeTracker.Clear();
+      _context.DiskCards.Add(card);
+      await _context.SaveChangesAsync();
+      return card;
+   }
+
    public async Task<DiskCard> UpdateAsync(DiskCard card)
    {
       _context.DiskCards.Update(card);
@@ -1374,10 +1385,25 @@ public class DiskCardRepository : IDiskCardRepository
       }
    }
 
-   public async Task<TestSession> CreateTestSessionAsync(TestSession session)
+   public Task<TestSession> CreateTestSessionAsync(TestSession session) =>
+       CreateTestSessionCoreAsync(session, historical: false);
+
+   public Task<TestSession> ImportTestSessionAsync(TestSession session)
    {
-      session.SessionId = Guid.NewGuid();
-      session.StartedAt = DateTime.UtcNow;
+      ArgumentNullException.ThrowIfNull(session);
+      if(session.Id != 0 || session.SessionId == Guid.Empty || session.StartedAt == default)
+         throw new ArgumentException("Imported sessions require a new local ID and an original GUID/date.", nameof(session));
+      _context.ChangeTracker.Clear();
+      return CreateTestSessionCoreAsync(session, historical: true);
+   }
+
+   private async Task<TestSession> CreateTestSessionCoreAsync(TestSession session, bool historical)
+   {
+      if(!historical)
+      {
+         session.SessionId = Guid.NewGuid();
+         session.StartedAt = DateTime.UtcNow;
+      }
 
       _context.TestSessions.Add(session);
 
@@ -1385,7 +1411,10 @@ public class DiskCardRepository : IDiskCardRepository
       if(card != null)
       {
          card.TestCount++;
-         card.LastTestedAt = DateTime.UtcNow;
+         if(!historical)
+            card.LastTestedAt = DateTime.UtcNow;
+         else if((session.CompletedAt ?? session.StartedAt) > card.LastTestedAt)
+            card.LastTestedAt = session.CompletedAt ?? session.StartedAt;
       }
 
       await _context.SaveChangesAsync();
@@ -1486,9 +1515,9 @@ public class DiskCardRepository : IDiskCardRepository
          throw new InvalidOperationException($"Certificate cannot be saved because DiskCardId {certificate.DiskCardId} does not exist.");
       }
 
-      if(certificate.TestSessionId <= 0 || !await _context.TestSessions.AnyAsync(s => s.Id == certificate.TestSessionId))
+      if(certificate.TestSessionId <= 0 || !await _context.TestSessions.AnyAsync(s => s.Id == certificate.TestSessionId && s.DiskCardId == certificate.DiskCardId))
       {
-         throw new InvalidOperationException($"Certificate cannot be saved because TestSessionId {certificate.TestSessionId} does not exist.");
+         throw new InvalidOperationException($"Certificate cannot be saved because TestSessionId {certificate.TestSessionId} does not belong to DiskCardId {certificate.DiskCardId}.");
       }
 
       if(string.IsNullOrWhiteSpace(certificate.CertificateNumber))

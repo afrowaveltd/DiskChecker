@@ -30,7 +30,7 @@ public enum ExportImportPhase
 /// <summary>
 /// ViewModel pro modul exportu a importu databázových dat.
 /// </summary>
-public partial class ExportImportViewModel : ViewModelBase, INavigableViewModel, IDisposable
+public partial class ExportImportViewModel : ViewModelBase, INavigableViewModel, INavigationActivity, IDisposable
 {
     private readonly IDataExportImportService _exportImportService;
     private readonly IDiskCardRepository _repository;
@@ -43,6 +43,20 @@ public partial class ExportImportViewModel : ViewModelBase, INavigableViewModel,
     private bool _disposed;
 
     [ObservableProperty] private ExportImportPhase _phase = ExportImportPhase.Idle;
+
+    public bool IsNavigationBlocked => _operationCts != null ||
+        Phase is ExportImportPhase.Exporting or ExportImportPhase.Importing;
+
+    partial void OnPhaseChanged(ExportImportPhase value) => NotifyOperationState();
+
+    private void NotifyOperationState()
+    {
+        OnPropertyChanged(nameof(IsNavigationBlocked));
+        ExportCommand.NotifyCanExecuteChanged();
+        ImportCommand.NotifyCanExecuteChanged();
+        CreateLocalBackupCommand.NotifyCanExecuteChanged();
+        RestoreLocalBackupCommand.NotifyCanExecuteChanged();
+    }
     [ObservableProperty] private string _statusMessage = "Připraven k exportu/importu";
 
     // Export
@@ -107,16 +121,16 @@ public partial class ExportImportViewModel : ViewModelBase, INavigableViewModel,
         _backupService = backupService;
         _settingsService = settingsService;
 
-        ExportCommand = new AsyncRelayCommand(ExecuteExportAsync, () => Phase == ExportImportPhase.Idle);
-        ImportCommand = new AsyncRelayCommand(ExecuteImportAsync, () => Phase == ExportImportPhase.Idle);
+        ExportCommand = new AsyncRelayCommand(ExecuteExportAsync, () => !IsNavigationBlocked);
+        ImportCommand = new AsyncRelayCommand(ExecuteImportAsync, () => !IsNavigationBlocked);
         CancelCommand = new RelayCommand(CancelOperation);
         GoBackCommand = new RelayCommand(GoBack);
         BrowseExportPathCommand = new AsyncRelayCommand(BrowseExportPathAsync);
         BrowseImportPathCommand = new AsyncRelayCommand(BrowseImportPathAsync);
         PreviewImportCommand = new AsyncRelayCommand(PreviewImportAsync);
         LoadDisksCommand = new AsyncRelayCommand(LoadDisksAsync);
-        CreateLocalBackupCommand = new AsyncRelayCommand(CreateLocalBackupAsync, () => Phase == ExportImportPhase.Idle);
-        RestoreLocalBackupCommand = new AsyncRelayCommand(RestoreLocalBackupAsync, () => Phase == ExportImportPhase.Idle && SelectedLocalBackup != null);
+        CreateLocalBackupCommand = new AsyncRelayCommand(CreateLocalBackupAsync, () => !IsNavigationBlocked);
+        RestoreLocalBackupCommand = new AsyncRelayCommand(RestoreLocalBackupAsync, () => !IsNavigationBlocked && SelectedLocalBackup != null);
         RefreshLocalBackupsCommand = new AsyncRelayCommand(RefreshLocalBackupsAsync);
         BrowseBackupPathCommand = new AsyncRelayCommand(BrowseBackupPathAsync);
     }
@@ -210,12 +224,8 @@ public partial class ExportImportViewModel : ViewModelBase, INavigableViewModel,
 
             if (file != null)
             {
-                ExportFilePath = file.Path.AbsolutePath;
-                // Oprava formátu cesty z file:/// na normální cestu
-                if (ExportFilePath.StartsWith("file:///", StringComparison.OrdinalIgnoreCase))
-                    ExportFilePath = Uri.UnescapeDataString(ExportFilePath[8..]);
-                else if (ExportFilePath.StartsWith("file:\\", StringComparison.OrdinalIgnoreCase))
-                    ExportFilePath = Uri.UnescapeDataString(ExportFilePath[7..]);
+                ExportFilePath = file.Path.IsFile ? file.Path.LocalPath
+                    : throw new InvalidOperationException("Only local files are supported.");
             }
         }
         catch (Exception ex)
@@ -246,13 +256,8 @@ public partial class ExportImportViewModel : ViewModelBase, INavigableViewModel,
 
             if (files.Count > 0)
             {
-                var path = files[0].Path.AbsolutePath;
-                if (path.StartsWith("file:///", StringComparison.OrdinalIgnoreCase))
-                    path = Uri.UnescapeDataString(path[8..]);
-                else if (path.StartsWith("file:\\", StringComparison.OrdinalIgnoreCase))
-                    path = Uri.UnescapeDataString(path[7..]);
-
-                ImportFilePath = path;
+                ImportFilePath = files[0].Path.IsFile ? files[0].Path.LocalPath
+                    : throw new InvalidOperationException("Only local files are supported.");
                 await PreviewImportAsync();
             }
         }
@@ -296,7 +301,7 @@ public partial class ExportImportViewModel : ViewModelBase, INavigableViewModel,
 
     private async Task ExecuteExportAsync()
     {
-        if (Phase != ExportImportPhase.Idle) return;
+        if (IsNavigationBlocked) return;
 
         if (string.IsNullOrEmpty(ExportFilePath))
         {
@@ -313,7 +318,7 @@ public partial class ExportImportViewModel : ViewModelBase, INavigableViewModel,
         var confirmed = await _dialogService.ShowConfirmationAsync(
             "Potvrzení exportu",
             $"Exportovat data do:\n{ExportFilePath}\n\n" +
-            $"Rozsah: {ExportScope switch { ExportScope.All => "Celá databáze", ExportScope.MeasurementsAndDisks => "Pouze měření a disky", ExportScope.SelectedDisks => $"Vybrané disky ({SelectedDisks.Count})", _ => "?" }}\n\n" +
+            $"Rozsah: {ExportScope switch { ExportScope.All => "Souhrny měření, disky a certifikáty", ExportScope.MeasurementsAndDisks => "Pouze měření a disky", ExportScope.SelectedDisks => $"Vybrané disky ({SelectedDisks.Count})", _ => "?" }}\n\n" +
             "Pokračovat?");
 
         if (!confirmed) return;
@@ -361,13 +366,14 @@ public partial class ExportImportViewModel : ViewModelBase, INavigableViewModel,
         {
             _operationCts?.Dispose();
             _operationCts = null;
+            NotifyOperationState();
             ExportLogText = string.Join("\n", _log);
         }
     }
 
     private async Task ExecuteImportAsync()
     {
-        if (Phase != ExportImportPhase.Idle) return;
+        if (IsNavigationBlocked) return;
 
         if (string.IsNullOrEmpty(ImportFilePath) || !File.Exists(ImportFilePath))
         {
@@ -375,7 +381,7 @@ public partial class ExportImportViewModel : ViewModelBase, INavigableViewModel,
             return;
         }
 
-        var modeText = ImportMode == ImportMode.Replace ? "nahradit existující záznamy" : "přidat nová data (zachovat existující)";
+        var modeText = ImportMode == ImportMode.Replace ? "aktualizovat metadata disků a doplnit chybějící měření" : "přidat nová data (zachovat existující)";
         var confirmed = await _dialogService.ShowConfirmationAsync(
             "Potvrzení importu",
             $"Importovat data z:\n{ImportFilePath}\n\n" +
@@ -457,6 +463,7 @@ public partial class ExportImportViewModel : ViewModelBase, INavigableViewModel,
         {
             _operationCts?.Dispose();
             _operationCts = null;
+            NotifyOperationState();
             ImportLogText = string.Join("\n", _log);
         }
     }
@@ -469,7 +476,7 @@ public partial class ExportImportViewModel : ViewModelBase, INavigableViewModel,
 
     private void GoBack()
     {
-        if (Phase == ExportImportPhase.Exporting || Phase == ExportImportPhase.Importing)
+        if (IsNavigationBlocked)
         {
             _ = _dialogService.ShowErrorAsync("Operace běží", "Nelze opustit stránku během probíhající operace.");
             return;
@@ -495,13 +502,8 @@ public partial class ExportImportViewModel : ViewModelBase, INavigableViewModel,
 
             if (dir.Count > 0)
             {
-                var path = dir[0].Path.AbsolutePath;
-                if (path.StartsWith("file:///", StringComparison.OrdinalIgnoreCase))
-                    path = Uri.UnescapeDataString(path[8..]);
-                else if (path.StartsWith("file:\\", StringComparison.OrdinalIgnoreCase))
-                    path = Uri.UnescapeDataString(path[7..]);
-
-                BackupPath = path;
+                BackupPath = dir[0].Path.IsFile ? dir[0].Path.LocalPath
+                    : throw new InvalidOperationException("Only local folders are supported.");
             }
         }
         catch (Exception ex)
@@ -512,7 +514,7 @@ public partial class ExportImportViewModel : ViewModelBase, INavigableViewModel,
 
     private async Task CreateLocalBackupAsync()
     {
-        if (Phase != ExportImportPhase.Idle) return;
+        if (IsNavigationBlocked) return;
 
         var destPath = string.IsNullOrEmpty(BackupPath)
             ? string.Empty
@@ -565,13 +567,14 @@ public partial class ExportImportViewModel : ViewModelBase, INavigableViewModel,
         {
             _operationCts?.Dispose();
             _operationCts = null;
+            NotifyOperationState();
             BackupLogText = string.Join("\n", _log);
         }
     }
 
     private async Task RestoreLocalBackupAsync()
     {
-        if (Phase != ExportImportPhase.Idle || SelectedLocalBackup == null) return;
+        if (IsNavigationBlocked || SelectedLocalBackup == null) return;
 
         var confirmed = await _dialogService.ShowConfirmationAsync(
             "Potvrzení obnovy",
@@ -619,6 +622,7 @@ public partial class ExportImportViewModel : ViewModelBase, INavigableViewModel,
         {
             _operationCts?.Dispose();
             _operationCts = null;
+            NotifyOperationState();
             BackupLogText = string.Join("\n", _log);
         }
     }
