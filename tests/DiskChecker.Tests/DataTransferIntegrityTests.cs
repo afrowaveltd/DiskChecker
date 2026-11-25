@@ -16,7 +16,8 @@ public sealed class DataTransferIntegrityTests
 {
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
-        PropertyNamingPolicy = JsonNamingPolicy.CamelCase
+        PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+        PropertyNameCaseInsensitive = true
     };
 
     [Theory]
@@ -106,7 +107,7 @@ public sealed class DataTransferIntegrityTests
             Assert.Equal(new FileInfo(exportPath).Length, metadata.TotalSizeBytes);
             var exported = JsonSerializer.Deserialize<DataExportPackage>(
                 await File.ReadAllTextAsync(exportPath, TestContext.Current.CancellationToken),
-                new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+                JsonOptions);
             Assert.NotNull(exported);
             Assert.Equal(7, Assert.Single(exported.TestSessions).StalledSampleCount);
             Assert.Single(exported.Certificates);
