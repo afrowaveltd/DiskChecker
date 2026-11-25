@@ -11,6 +11,10 @@ namespace DiskChecker.Core.Interfaces;
 /// </summary>
 public interface IDiskCardRepository
 {
+    /// <summary>Runs a historical import as one database transaction. The callback must use this repository only.</summary>
+    Task ExecuteHistoricalImportAsync(Func<Task> import, CancellationToken cancellationToken = default) =>
+        throw new NotSupportedException("Atomic historical import is not implemented by this repository.");
+
     // ========== CRUD Operations ==========
     
     Task<DiskCard?> GetByIdAsync(int id);
