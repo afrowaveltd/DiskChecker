@@ -146,6 +146,79 @@ public class DatabaseStorageConsistencyTests
         }
     }
 
+    [Fact]
+    public async Task Backup_AcceptsExistingDestinationFolderAndPublishesCompleteArchives()
+    {
+        var folder = Directory.CreateTempSubdirectory("dc-backup-folder-").FullName;
+        try
+        {
+            var active = Path.Combine(folder, "active.db");
+            CreateMarkerDb(active, "ACTIVE");
+            var settings = new SettingsService(folder);
+            var cs = new SqliteConnectionStringBuilder { DataSource = active, Pooling = false }.ToString();
+            var services = new ServiceCollection();
+            services.AddSingleton(settings);
+            services.AddDbContext<DiskCheckerDbContext>(o => o.UseSqlite(cs));
+            services.AddScoped<BackupService>();
+            using var provider = services.BuildServiceProvider();
+            using var scope = provider.CreateScope();
+            var backup = scope.ServiceProvider.GetRequiredService<BackupService>();
+            var destination = Directory.CreateDirectory(Path.Combine(folder, "destination")).FullName;
+
+            var first = await backup.CreateBackupAsync(destination);
+            var second = await backup.CreateBackupAsync(destination);
+            Assert.NotEqual(first, second);
+            Assert.Equal(destination, Path.GetDirectoryName(first));
+            Assert.Equal(destination, Path.GetDirectoryName(second));
+            using var archive = ZipFile.OpenRead(first);
+            Assert.NotNull(archive.GetEntry("DiskChecker.db"));
+            Assert.NotNull(archive.GetEntry("backup_metadata.json"));
+            Assert.Empty(Directory.GetFiles(destination, "*.tmp"));
+            await Assert.ThrowsAsync<IOException>(() => backup.CreateBackupAsync(first));
+        }
+        finally
+        {
+            Directory.Delete(folder, recursive: true);
+        }
+    }
+
+    [Fact]
+    public async Task Restore_MalformedSettingsDoesNotReplaceLiveDatabase()
+    {
+        var folder = Directory.CreateTempSubdirectory("dc-restore-validation-").FullName;
+        try
+        {
+            var active = Path.Combine(folder, "active.db");
+            var incoming = Path.Combine(folder, "incoming.db");
+            CreateMarkerDb(active, "ACTIVE");
+            CreateMarkerDb(incoming, "INCOMING");
+            var settings = new SettingsService(folder);
+            var cs = new SqliteConnectionStringBuilder { DataSource = active, Pooling = false }.ToString();
+            var services = new ServiceCollection();
+            services.AddSingleton(settings);
+            services.AddDbContext<DiskCheckerDbContext>(o => o.UseSqlite(cs));
+            services.AddScoped<BackupService>();
+            var zipPath = Path.Combine(folder, "invalid.zip");
+            using (var archive = ZipFile.Open(zipPath, ZipArchiveMode.Create))
+            {
+                archive.CreateEntryFromFile(incoming, "DiskChecker.db");
+                using var writer = new StreamWriter(archive.CreateEntry("settings.json").Open());
+                writer.Write("[]");
+            }
+
+            using var provider = services.BuildServiceProvider();
+            using var scope = provider.CreateScope();
+            var backup = scope.ServiceProvider.GetRequiredService<BackupService>();
+            await Assert.ThrowsAsync<InvalidDataException>(() => backup.RestoreBackupAsync(zipPath));
+            Assert.Equal("ACTIVE", ReadMarker(active));
+            Assert.Empty(Directory.GetFiles(folder, "*.pre_restore_*"));
+        }
+        finally
+        {
+            Directory.Delete(folder, recursive: true);
+        }
+    }
+
     private static void CreateMarkerDb(string path, string marker)
     {
         using var conn = new SqliteConnection(new SqliteConnectionStringBuilder { DataSource = path, Pooling = false }.ToString());

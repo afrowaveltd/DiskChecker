@@ -60,13 +60,18 @@ public class BackupService : IBackupService
 
     public async Task<string> CreateBackupAsync(string destinationPath)
     {
-        var timestamp = DateTime.Now.ToString("yyyyMMdd_HHmmss");
-        var backupFileName = $"DiskChecker_Backup_{timestamp}.zip";
-        var fullPath = string.IsNullOrEmpty(destinationPath)
+        var timestamp = DateTime.Now.ToString("yyyyMMdd_HHmmss_fff");
+        var backupFileName = $"DiskChecker_Backup_{timestamp}_{Guid.NewGuid():N}.zip";
+        var fullPath = Path.GetFullPath(string.IsNullOrWhiteSpace(destinationPath)
             ? Path.Combine(_defaultBackupDir, backupFileName)
-            : destinationPath;
-        var outputDir = Path.GetDirectoryName(Path.GetFullPath(fullPath));
-        if (outputDir != null) Directory.CreateDirectory(outputDir);
+            : Directory.Exists(destinationPath)
+                ? Path.Combine(destinationPath, backupFileName)
+                : destinationPath);
+        Directory.CreateDirectory(Path.GetDirectoryName(fullPath)!);
+        if (File.Exists(fullPath))
+            throw new IOException("The backup destination already exists.");
+        // Publish only a completed ZIP; keep a failed write out of backup listings.
+        var temporaryArchive = fullPath + "." + Guid.NewGuid().ToString("N") + ".tmp";
 
         // BackupDatabase creates a consistent online SQLite snapshot including WAL
         // contents. Copying an arbitrary .db file from the executable directory did not.
@@ -96,7 +101,7 @@ public class BackupService : IBackupService
                     SettingsPath = _settingsPath
                 };
 
-                using var zip = ZipFile.Open(fullPath, ZipArchiveMode.Create);
+                using var zip = ZipFile.Open(temporaryArchive, ZipArchiveMode.Create);
                 zip.CreateEntryFromFile(snapshotPath, "DiskChecker.db");
                 if (File.Exists(_settingsPath))
                     zip.CreateEntryFromFile(_settingsPath, "settings.json");
@@ -104,10 +109,13 @@ public class BackupService : IBackupService
                 using var writer = new StreamWriter(entry.Open());
                 writer.Write(JsonSerializer.Serialize(metadata, _jsonOptions));
             });
+            File.Move(temporaryArchive, fullPath);
             return fullPath;
         }
         finally
         {
+            if (File.Exists(temporaryArchive))
+                File.Delete(temporaryArchive);
             Directory.Delete(tempDir, recursive: true);
         }
     }
@@ -129,7 +137,40 @@ public class BackupService : IBackupService
             {
                 var dbEntry = archive.GetEntry("DiskChecker.db")
                     ?? throw new InvalidDataException("Záloha neobsahuje DiskChecker.db.");
-                archive.ExtractToDirectory(tempDir, overwriteFiles: true);
+                // Do not extract arbitrary archive entries. Only these two files are supported.
+                dbEntry.ExtractToFile(Path.Combine(tempDir, "DiskChecker.db"));
+                archive.GetEntry("settings.json")?.ExtractToFile(Path.Combine(tempDir, "settings.json"));
+            }
+
+            // Validate settings before touching the live database. A malformed ZIP
+            // must not report failure only after replacing the current database.
+            var importedSettings = Path.Combine(tempDir, "settings.json");
+            string? restoredSettings = null;
+            if (File.Exists(importedSettings))
+            {
+                var restored = System.Text.Json.Nodes.JsonNode.Parse(
+                    await File.ReadAllTextAsync(importedSettings)) as System.Text.Json.Nodes.JsonObject
+                    ?? throw new InvalidDataException("Backup settings must be a JSON object.");
+                if (File.Exists(_settingsPath))
+                {
+                    var current = System.Text.Json.Nodes.JsonNode.Parse(
+                        await File.ReadAllTextAsync(_settingsPath)) as System.Text.Json.Nodes.JsonObject
+                        ?? throw new InvalidDataException("Current settings must be a JSON object.");
+                    foreach (var key in new[] { "DatabaseProvider", "DatabaseConnectionString" })
+                    {
+                        if (current.TryGetPropertyValue(key, out var value))
+                            restored[key] = value?.DeepClone();
+                        else
+                            restored.Remove(key);
+                    }
+                }
+                else
+                {
+                    // Never adopt a database location from another machine.
+                    restored.Remove("DatabaseProvider");
+                    restored.Remove("DatabaseConnectionString");
+                }
+                restoredSettings = restored.ToJsonString(_jsonOptions);
             }
 
             var importedPath = Path.Combine(tempDir, "DiskChecker.db");
@@ -146,10 +187,10 @@ public class BackupService : IBackupService
                 }
 
                 // Preserve the currently active data before any replacement.
-                var preRestore = livePath + ".pre_restore_" + DateTime.UtcNow.ToString("yyyyMMdd_HHmmss");
+                var preRestore = livePath + ".pre_restore_" + DateTime.UtcNow.ToString("yyyyMMdd_HHmmss_fff") + "_" + Guid.NewGuid().ToString("N");
                 using (var current = new Microsoft.Data.Sqlite.SqliteConnection(cs))
                 using (var backup = new Microsoft.Data.Sqlite.SqliteConnection(
-                    new Microsoft.Data.Sqlite.SqliteConnectionStringBuilder { DataSource = preRestore }.ToString()))
+                    new Microsoft.Data.Sqlite.SqliteConnectionStringBuilder { DataSource = preRestore, Pooling = false }.ToString()))
                 {
                     current.Open();
                     backup.Open();
@@ -161,31 +202,18 @@ public class BackupService : IBackupService
                 source.BackupDatabase(destination);
             });
 
-            // Old backup settings may point to a different DB: preserve the
-            // active provider/location, while restoring unrelated preferences.
-            var importedSettings = Path.Combine(tempDir, "settings.json");
-            if (File.Exists(importedSettings))
+            if (restoredSettings != null)
             {
-                var restored = System.Text.Json.Nodes.JsonNode.Parse(
-                    await File.ReadAllTextAsync(importedSettings))?.AsObject();
-                if (restored != null)
+                var temporarySettings = _settingsPath + "." + Guid.NewGuid().ToString("N") + ".tmp";
+                try
                 {
-                    if (File.Exists(_settingsPath))
-                    {
-                        var current = System.Text.Json.Nodes.JsonNode.Parse(
-                            await File.ReadAllTextAsync(_settingsPath))?.AsObject();
-                        if (current != null)
-                        {
-                            foreach (var key in new[] { "DatabaseProvider", "DatabaseConnectionString" })
-                            {
-                                if (current.TryGetPropertyValue(key, out var value))
-                                    restored[key] = value?.DeepClone();
-                                else
-                                    restored.Remove(key);
-                            }
-                        }
-                    }
-                    await File.WriteAllTextAsync(_settingsPath, restored.ToJsonString(_jsonOptions));
+                    await File.WriteAllTextAsync(temporarySettings, restoredSettings);
+                    File.Move(temporarySettings, _settingsPath, overwrite: true);
+                }
+                finally
+                {
+                    if (File.Exists(temporarySettings))
+                        File.Delete(temporarySettings);
                 }
             }
         }
