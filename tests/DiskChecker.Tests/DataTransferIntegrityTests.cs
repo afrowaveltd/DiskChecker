@@ -139,4 +139,74 @@ public sealed class DataTransferIntegrityTests
             Directory.Delete(folder, recursive: true);
         }
     }
+
+    [Fact]
+    public async Task LateDatabaseFailureRollsBackEarlierCardsAndMetadata()
+    {
+        using var connection = new SqliteConnection("Data Source=:memory:");
+        await connection.OpenAsync(TestContext.Current.CancellationToken);
+        await using var context = new DiskCheckerDbContext(
+            new DbContextOptionsBuilder<DiskCheckerDbContext>().UseSqlite(connection).Options);
+        await context.Database.EnsureCreatedAsync(TestContext.Current.CancellationToken);
+        SchemaCompatibilityPatcher.Apply(context);
+        var repo = new DiskCardRepository(context);
+        var original = await repo.CreateAsync(new DiskCard { SerialNumber = "ORIGINAL", ModelName = "Original metadata" });
+        var existing = await repo.CreateTestSessionAsync(new TestSession { DiskCardId = original.Id });
+
+        var package = new DataExportPackage();
+        package.DiskCards.Add(new DiskCard { Id = 100, SerialNumber = original.SerialNumber, ModelName = "Changed metadata" });
+        package.DiskCards.Add(new DiskCard { Id = 101, SerialNumber = "NEW-FIRST" });
+        package.DiskCards.Add(new DiskCard { Id = 102, SerialNumber = "NEW-SECOND" });
+        package.TestSessions.Add(new TestSession { Id = 200, DiskCardId = 101, StartedAt = DateTime.UtcNow });
+        package.TestSessions.Add(new TestSession { Id = 201, DiskCardId = 102, StartedAt = DateTime.UtcNow, SessionId = existing.SessionId });
+
+        string folder = Directory.CreateTempSubdirectory("dc-rollback-").FullName;
+        try
+        {
+            string path = Path.Combine(folder, "late-failure.json");
+            await File.WriteAllTextAsync(path, JsonSerializer.Serialize(package, JsonOptions), TestContext.Current.CancellationToken);
+            var result = await new DataExportImportService(repo).ImportAsync(path, ImportMode.Replace, TestContext.Current.CancellationToken);
+            Assert.False(result.Success);
+            Assert.Equal(0, result.DisksImported);
+            Assert.Equal(0, result.TestSessionsImported);
+            Assert.Equal(0, result.CertificatesImported);
+            var card = Assert.Single(await repo.GetAllAsync());
+            Assert.Equal(original.Id, card.Id);
+            Assert.Equal("Original metadata", card.ModelName);
+            var session = Assert.Single(await repo.GetTestSessionsAsync(card.Id));
+            Assert.Equal(existing.SessionId, session.SessionId);
+            Assert.Equal(1, card.TestCount);
+        }
+        finally
+        {
+            Directory.Delete(folder, recursive: true);
+        }
+    }
+
+    [Fact]
+    public async Task CancellationBeforeCommitRollsBackSavedRecords()
+    {
+        using var connection = new SqliteConnection("Data Source=:memory:");
+        await connection.OpenAsync(TestContext.Current.CancellationToken);
+        await using var context = new DiskCheckerDbContext(
+            new DbContextOptionsBuilder<DiskCheckerDbContext>().UseSqlite(connection).Options);
+        await context.Database.EnsureCreatedAsync(TestContext.Current.CancellationToken);
+        SchemaCompatibilityPatcher.Apply(context);
+        var repo = new DiskCardRepository(context);
+        using var cancellation = System.Threading.CancellationTokenSource.CreateLinkedTokenSource(TestContext.Current.CancellationToken);
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() =>
+            repo.ExecuteHistoricalImportAsync(async () =>
+            {
+                await repo.ImportDiskCardAsync(new DiskCard { SerialNumber = "CANCELLED" });
+                Assert.Single(await repo.GetAllAsync());
+                cancellation.Cancel();
+            }, cancellation.Token));
+
+        Assert.Empty(await repo.GetAllAsync());
+        // A subsequent operation must not flush stale entities from the cancelled import.
+        await repo.CreateAsync(new DiskCard { SerialNumber = "AFTER-CANCEL" });
+        Assert.Equal("AFTER-CANCEL", Assert.Single(await repo.GetAllAsync()).SerialNumber);
+    }
+
 }
