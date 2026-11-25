@@ -258,6 +258,7 @@ public class DatabaseStorageConsistencyTests
             {
                 var error = await Assert.ThrowsAsync<IOException>(() => backup.RestoreBackupAsync(zipPath));
                 Assert.Contains("original database was recovered", error.Message);
+                Assert.Equal("Injected settings publication failure.", Assert.IsType<IOException>(error.InnerException).Message);
                 Assert.Equal("ACTIVE", ReadMarker(active));
                 Assert.Equal(originalSettings, await File.ReadAllTextAsync(settings.SettingsFilePath, TestContext.Current.CancellationToken));
             }
