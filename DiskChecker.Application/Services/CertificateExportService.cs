@@ -103,7 +103,7 @@ namespace DiskChecker.Application.Services
                 progress?.Report(new CertificateExportProgress(_locale?.GetString("CertificateExport.LoadingStallInfo", "Načítám informace o zaseknutí...") ?? "Načítám informace o zaseknutí...", 60));
 
                 var (totalSamples, stalledSamples) = await _diskCardRepository.GetSpeedSampleStallInfoAsync(sessionId, cancellationToken);
-                session.StalledSampleCount = stalledSamples;
+                session.StalledSampleCount = Math.Max(session.StalledSampleCount, stalledSamples);
 
                 progress?.Report(new CertificateExportProgress(_locale?.GetString("CertificateExport.LoadingTemperatures", "Načítám teploty...") ?? "Načítám teploty...", 65));
 
