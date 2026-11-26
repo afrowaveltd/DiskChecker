@@ -91,6 +91,7 @@ public class BackupService : IBackupService
                     source.Open();
                     target.Open();
                     source.BackupDatabase(target);
+                    MakeStandaloneSnapshot(target);
                 }
 
                 var metadata = new BackupMetadata
@@ -207,6 +208,7 @@ public class BackupService : IBackupService
                     current.Open();
                     backup.Open();
                     current.BackupDatabase(backup);
+                    MakeStandaloneSnapshot(backup);
                 }
 
                 using var destination = new Microsoft.Data.Sqlite.SqliteConnection(cs);
@@ -262,6 +264,17 @@ public class BackupService : IBackupService
     // quick_check validates SQLite's storage, not the application's schema.
     // Verify the core historical tables and their identity columns before
     // touching live data. Optional columns/tables remain migration-compatible.
+    // A recovery snapshot is a standalone file, not a live WAL database.
+    // BackupDatabase can copy the source's journal mode. Normalize it before
+    // closing, archiving or reopening the snapshot in read-only mode.
+    private static void MakeStandaloneSnapshot(Microsoft.Data.Sqlite.SqliteConnection snapshot)
+    {
+        using var command = snapshot.CreateCommand();
+        command.CommandText = "PRAGMA journal_mode=DELETE;";
+        if (!string.Equals(command.ExecuteScalar()?.ToString(), "delete", StringComparison.OrdinalIgnoreCase))
+            throw new IOException("Could not finalize a standalone SQLite recovery snapshot.");
+    }
+
     private static void ValidateDiagnosticSchema(Microsoft.Data.Sqlite.SqliteConnection source)
     {
         string[] requiredQueries =

@@ -273,6 +273,18 @@ public class DatabaseStorageConsistencyTests
 
             var snapshot = Assert.Single(Directory.GetFiles(folder, "active.db.pre_restore_*"));
             Assert.Equal("ACTIVE", ReadMarker(snapshot));
+            Assert.False(File.Exists(snapshot + "-wal"));
+            Assert.False(File.Exists(snapshot + "-shm"));
+            using (var recovered = new SqliteConnection(new SqliteConnectionStringBuilder
+            {
+                DataSource = snapshot, Mode = SqliteOpenMode.ReadOnly, Pooling = false
+            }.ToString()))
+            {
+                recovered.Open();
+                using var journal = recovered.CreateCommand();
+                journal.CommandText = "PRAGMA journal_mode;";
+                Assert.Equal("delete", journal.ExecuteScalar()?.ToString());
+            }
             Assert.Empty(Directory.GetFiles(folder, "*.tmp"));
         }
         finally
