@@ -47,6 +47,8 @@ public partial class SurfaceTestViewModel : ViewModelBase, INavigableViewModel, 
    private readonly ISettingsService _settingsService;
    private readonly IDiskCacheService _diskCacheService;
    private readonly IDiskSanitizationService _sanitizationService;
+   private readonly DestructiveTargetGuard? _targetGuard;
+   private DestructiveTargetIdentity? _confirmedTarget;
    private readonly SmartCheckService _smartCheckService;
    private readonly DiskCardTestService _cardTestService;
    private readonly TestCompletionNotificationService _notificationService;
@@ -146,7 +148,8 @@ public partial class SurfaceTestViewModel : ViewModelBase, INavigableViewModel, 
        DiskCardTestService cardTestService,
        TestCompletionNotificationService notificationService,
        ICertificateGenerator certificateGenerator,
-       IDiskCardRepository diskCardRepository)
+       IDiskCardRepository diskCardRepository,
+        DestructiveTargetGuard? targetGuard = null)
    {
       _navigationService = navigationService;
       _selectedDiskService = selectedDiskService;
@@ -154,6 +157,7 @@ public partial class SurfaceTestViewModel : ViewModelBase, INavigableViewModel, 
       _settingsService = settingsService;
       _diskCacheService = diskCacheService;
       _sanitizationService = sanitizationService;
+      _targetGuard = targetGuard;
       _smartCheckService = smartCheckService;
       _cardTestService = cardTestService;
       _notificationService = notificationService;
@@ -1168,6 +1172,7 @@ public partial class SurfaceTestViewModel : ViewModelBase, INavigableViewModel, 
 
       if(profile.IsDestructive)
       {
+         _confirmedTarget = DestructiveTargetIdentity.Capture(SelectedDrive);
          var confirmed = await _dialogService.ShowDangerConfirmationAsync(
             L.Get("SurfaceTest.Dialog.SanitizeConfirm"),
             string.Format(L.Get("SurfaceTest.Dialog.SanitizeConfirmMessage"), profile.Name, SelectedDrive.Name ?? SelectedDrive.Path));
@@ -1315,7 +1320,8 @@ public partial class SurfaceTestViewModel : ViewModelBase, INavigableViewModel, 
                // elects to prepare a new filesystem or leaves the disk blank.
                var prepared = await PostTestPartitionPreparation.OfferAsync(
                    _dialogService, _sanitizationService,
-                   SelectedDrive!.Path, SelectedDrive.Name ?? SelectedDrive.Path, cancellationToken);
+                   SelectedDrive!.Path, SelectedDrive.Name ?? SelectedDrive.Path, cancellationToken,
+                   ct => VerifyConfirmedTargetAsync(SelectedDrive!.Path, ct));
                if(prepared?.Success == true)
                   SetStatusMessage($"GPT / {prepared.FileSystem} (SCCM) byl vytvořen.");
                else if(prepared is { Success: false })
@@ -1490,6 +1496,7 @@ public partial class SurfaceTestViewModel : ViewModelBase, INavigableViewModel, 
 
       var drivePath = SelectedDrive.Path;
       var driveSize = SelectedDrive.TotalSize;
+      await VerifyConfirmedTargetAsync(drivePath, cancellationToken);
       var pacing = SanitizationWritePacing.FromSeconds(_sanitizationWritePauseSeconds);
       SanitizationResult result;
       try
@@ -2113,6 +2120,13 @@ public partial class SurfaceTestViewModel : ViewModelBase, INavigableViewModel, 
       foreach(var x in TestProfiles) x.IsSelected = false;
       p.IsSelected = true;
       StatusMessage = string.Format(L.Get("SurfaceTest.Status.ProfileSelected"), p.Name);
+   }
+
+   private Task VerifyConfirmedTargetAsync(string path, CancellationToken ct)
+   {
+      if (_targetGuard == null || _confirmedTarget == null)
+         throw new InvalidOperationException("Destructive target identity has not been verified.");
+      return _targetGuard.VerifyAsync(_confirmedTarget, path, ct);
    }
 
    public void Dispose()
