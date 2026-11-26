@@ -159,8 +159,15 @@ internal static class DocumentLauncher
                 return false;
 
             // xdg-open returns quickly; give it a moment to hand off to the viewer.
-            process.WaitForExit(5000);
-            return true;
+            // A viewer may remain running, but a completed nonzero exit means
+            // the hand-off failed. Never report that as success.
+            if (!process.WaitForExit(5000))
+                return true;
+            if (process.ExitCode == 0)
+                return true;
+
+            errors.Append($"{tool}/xdg-open exit code {process.ExitCode}. ");
+            return false;
         }
         catch (Win32Exception ex)
         {
