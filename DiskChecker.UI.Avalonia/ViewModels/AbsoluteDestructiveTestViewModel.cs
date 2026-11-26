@@ -941,8 +941,8 @@ public partial class AbsoluteDestructiveTestViewModel : ViewModelBase, INavigabl
             _samplerPass1.Initialize(SelectedDrive!.TotalSize);
 
             var sanitize1DrivePath = SelectedDrive!.Path;
-            var sanitize1DriveSize = SelectedDrive.TotalSize;
             await VerifyConfirmedTargetAsync(sanitize1DrivePath, ct);
+            var sanitize1DriveSize = _confirmedTarget!.Capacity;
             _sanitize1Result = await Task.Run(() => _sanitizationService.SanitizeDiskAsync(
                 sanitize1DrivePath,
                 sanitize1DriveSize,
@@ -1044,8 +1044,8 @@ public partial class AbsoluteDestructiveTestViewModel : ViewModelBase, INavigabl
             _samplerPass2.Initialize(SelectedDrive!.TotalSize);
 
             var sanitize2DrivePath = SelectedDrive!.Path;
-            var sanitize2DriveSize = SelectedDrive.TotalSize;
             await VerifyConfirmedTargetAsync(sanitize2DrivePath, ct);
+            var sanitize2DriveSize = _confirmedTarget!.Capacity;
             _sanitize2Result = await Task.Run(() => _sanitizationService.SanitizeDiskAsync(
                 sanitize2DrivePath,
                 sanitize2DriveSize,
@@ -1169,7 +1169,7 @@ public partial class AbsoluteDestructiveTestViewModel : ViewModelBase, INavigabl
                 var prepared = await PostTestPartitionPreparation.OfferAsync(
                     _dialogService, _sanitizationService,
                     SelectedDrive.Path, SelectedDrive.Name, ct,
-                    token => VerifyConfirmedTargetAsync(SelectedDrive.Path, token));
+                    VerifyConfirmedTargetAsync);
 
                 if (prepared == null)
                 {

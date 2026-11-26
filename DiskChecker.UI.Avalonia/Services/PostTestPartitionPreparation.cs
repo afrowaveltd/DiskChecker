@@ -16,7 +16,7 @@ public static class PostTestPartitionPreparation
         string devicePath,
         string diskName,
         CancellationToken cancellationToken,
-        Func<CancellationToken, Task>? verifyTarget = null)
+        Func<string, CancellationToken, Task>? verifyTarget = null)
     {
         // No is the default safe action; a completed test is valid without a filesystem.
         if (!await dialogs.ShowConfirmationAsync(
@@ -58,7 +58,7 @@ public static class PostTestPartitionPreparation
 
         cancellationToken.ThrowIfCancellationRequested();
         if (verifyTarget != null)
-            await verifyTarget(cancellationToken);
+            await verifyTarget(devicePath, cancellationToken);
         cancellationToken.ThrowIfCancellationRequested();
         return await sanitizer.CreatePartitionWithFileSystemAsync(
             devicePath, selected, "SCCM", cancellationToken: cancellationToken);

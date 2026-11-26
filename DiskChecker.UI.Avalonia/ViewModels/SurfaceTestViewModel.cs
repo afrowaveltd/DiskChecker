@@ -1321,7 +1321,7 @@ public partial class SurfaceTestViewModel : ViewModelBase, INavigableViewModel, 
                var prepared = await PostTestPartitionPreparation.OfferAsync(
                    _dialogService, _sanitizationService,
                    SelectedDrive!.Path, SelectedDrive.Name ?? SelectedDrive.Path, cancellationToken,
-                   ct => VerifyConfirmedTargetAsync(SelectedDrive!.Path, ct));
+                   VerifyConfirmedTargetAsync);
                if(prepared?.Success == true)
                   SetStatusMessage($"GPT / {prepared.FileSystem} (SCCM) byl vytvořen.");
                else if(prepared is { Success: false })
@@ -1495,8 +1495,8 @@ public partial class SurfaceTestViewModel : ViewModelBase, INavigableViewModel, 
       cancellationToken.ThrowIfCancellationRequested();
 
       var drivePath = SelectedDrive.Path;
-      var driveSize = SelectedDrive.TotalSize;
       await VerifyConfirmedTargetAsync(drivePath, cancellationToken);
+      var driveSize = _confirmedTarget!.Capacity;
       var pacing = SanitizationWritePacing.FromSeconds(_sanitizationWritePauseSeconds);
       SanitizationResult result;
       try

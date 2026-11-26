@@ -48,7 +48,7 @@ public enum SafeDestructiveMode
 public partial class SafeDestructiveTestViewModel : ViewModelBase, INavigableViewModel, IDisposable, INavigationActivity
 {
     /// <inheritdoc />
-    public bool IsNavigationBlocked => Phase is SafeDestructivePhase.Backup or SafeDestructivePhase.Test or SafeDestructivePhase.Restore or SafeDestructivePhase.Partition;
+    public bool IsNavigationBlocked => _cts != null || Phase is SafeDestructivePhase.Backup or SafeDestructivePhase.Test or SafeDestructivePhase.Restore or SafeDestructivePhase.Partition;
 
    // ──────────────────────────────────────────────
    //  Dependencies
@@ -644,6 +644,7 @@ public partial class SafeDestructiveTestViewModel : ViewModelBase, INavigableVie
 
       _confirmedTarget = DestructiveTargetIdentity.Capture(SelectedDrive);
       _cts = new CancellationTokenSource();
+      OnPropertyChanged(nameof(IsNavigationBlocked));
       var ct = _cts.Token;
       _workflowStartedAtUtc = DateTime.UtcNow;
       _backupVerified = false;
@@ -799,17 +800,26 @@ public partial class SafeDestructiveTestViewModel : ViewModelBase, INavigableVie
       }
       finally
       {
-         if(_powerSession != null)
+         try
          {
-            try
+            if(_powerSession != null)
             {
-               await _powerSession.RestoreAsync();
+               try
+               {
+                  await _powerSession.RestoreAsync();
+               }
+               finally
+               {
+                  _powerSession.Dispose();
+                  _powerSession = null;
+               }
             }
-            finally
-            {
-               _powerSession.Dispose();
-               _powerSession = null;
-            }
+         }
+         finally
+         {
+            _cts?.Dispose();
+            _cts = null;
+            OnPropertyChanged(nameof(IsNavigationBlocked));
          }
       }
    }
