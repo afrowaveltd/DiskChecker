@@ -225,6 +225,7 @@ public partial class App : global::Avalonia.Application
         
         // Disk cache service to avoid reloading disks on navigation
         services.AddSingleton<IDiskCacheService, DiskCacheService>();
+        services.AddSingleton<DestructiveTargetGuard>();
         services.AddSingleton<LocaleService>();
         services.AddSingleton<ILocaleProvider>(sp => sp.GetRequiredService<LocaleService>());
         
