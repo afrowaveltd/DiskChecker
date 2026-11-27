@@ -15,7 +15,8 @@ public static class PostTestPartitionPreparation
         IDiskSanitizationService sanitizer,
         string devicePath,
         string diskName,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        Func<string, CancellationToken, Task>? verifyTarget = null)
     {
         // No is the default safe action; a completed test is valid without a filesystem.
         if (!await dialogs.ShowConfirmationAsync(
@@ -55,6 +56,9 @@ public static class PostTestPartitionPreparation
                 $"Na disku {diskName}\n{devicePath}\nse vytvoří nový GPT oddíl přes celý disk a naformátuje jako {selected} (jméno SCCM).\n\nDosavadní tabulka oddílů a jejich obsah budou zničeny. Pokračovat?"))
             return null;
 
+        cancellationToken.ThrowIfCancellationRequested();
+        if (verifyTarget != null)
+            await verifyTarget(devicePath, cancellationToken);
         cancellationToken.ThrowIfCancellationRequested();
         return await sanitizer.CreatePartitionWithFileSystemAsync(
             devicePath, selected, "SCCM", cancellationToken: cancellationToken);

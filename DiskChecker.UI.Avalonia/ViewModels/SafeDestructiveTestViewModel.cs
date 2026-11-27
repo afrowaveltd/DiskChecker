@@ -48,7 +48,7 @@ public enum SafeDestructiveMode
 public partial class SafeDestructiveTestViewModel : ViewModelBase, INavigableViewModel, IDisposable, INavigationActivity
 {
     /// <inheritdoc />
-    public bool IsNavigationBlocked => Phase is SafeDestructivePhase.Backup or SafeDestructivePhase.Test or SafeDestructivePhase.Restore or SafeDestructivePhase.Partition;
+    public bool IsNavigationBlocked => _cts != null || Phase is SafeDestructivePhase.Backup or SafeDestructivePhase.Test or SafeDestructivePhase.Restore or SafeDestructivePhase.Partition;
 
    // ──────────────────────────────────────────────
    //  Dependencies
@@ -58,6 +58,8 @@ public partial class SafeDestructiveTestViewModel : ViewModelBase, INavigableVie
    private readonly ISelectedDiskService _selectedDiskService;
    private readonly IDialogService _dialogService;
    private readonly IDiskSanitizationService _sanitizationService;
+   private readonly DestructiveTargetGuard? _targetGuard;
+   private DestructiveTargetIdentity? _confirmedTarget;
    private readonly SeekTestService _seekTestService;
    private readonly ISmartaProvider _smartaProvider;
    private readonly SmartCheckService _smartCheckService;
@@ -311,12 +313,14 @@ public partial class SafeDestructiveTestViewModel : ViewModelBase, INavigableVie
        ICertificateGenerator certificateGenerator,
        TestCompletionNotificationService notificationService,
        IPowerManagementService powerManagementService,
-       IDiskTemperatureMonitor temperatureMonitor)
+       IDiskTemperatureMonitor temperatureMonitor,
+       DestructiveTargetGuard? targetGuard = null)
    {
       _navigationService = navigationService;
       _selectedDiskService = selectedDiskService;
       _dialogService = dialogService;
       _sanitizationService = sanitizationService;
+      _targetGuard = targetGuard;
       _seekTestService = seekTestService;
       _smartaProvider = smartaProvider;
       _smartCheckService = smartCheckService;
@@ -638,7 +642,9 @@ public partial class SafeDestructiveTestViewModel : ViewModelBase, INavigableVie
    {
       if(SelectedDrive == null) return;
 
+      _confirmedTarget = DestructiveTargetIdentity.Capture(SelectedDrive);
       _cts = new CancellationTokenSource();
+      OnPropertyChanged(nameof(IsNavigationBlocked));
       var ct = _cts.Token;
       _workflowStartedAtUtc = DateTime.UtcNow;
       _backupVerified = false;
@@ -649,6 +655,9 @@ public partial class SafeDestructiveTestViewModel : ViewModelBase, INavigableVie
 
       try
       {
+         if (SelectedMode != SafeDestructiveMode.ImageRoundTrip)
+            await VerifyConfirmedTargetAsync(DiskPath, ct);
+
          // Always establish the durable phase journal before opening the raw
          // source or creating an image. If this fails, no destructive I/O starts.
          _recoveryJournal = new LongTestRecoveryJournal(SelectedDrive, "SafeDestructive");
@@ -668,7 +677,7 @@ public partial class SafeDestructiveTestViewModel : ViewModelBase, INavigableVie
          {
             await RunBackupPhaseAsync(ct);
          }
-         if(ct.IsCancellationRequested) return;
+         ct.ThrowIfCancellationRequested();
 
          if(!_backupVerified)
             throw new InvalidOperationException(L.Get("SafeDestructive.Error.BackupNotVerified"));
@@ -705,13 +714,14 @@ public partial class SafeDestructiveTestViewModel : ViewModelBase, INavigableVie
          }
 
          // ── Phase 2: Destructive Test ──
+         await VerifyConfirmedTargetAsync(DiskPath, ct);
          _destructivePhaseStarted = true;
          await RunTestPhaseAsync(ct);
-         if(ct.IsCancellationRequested) return;
+         ct.ThrowIfCancellationRequested();
 
          // ── Phase 3: Restore (raw i VHDx režim obnovují původní data) ──
          await RunRestorePhaseAsync(ct);
-         if(ct.IsCancellationRequested) return;
+         ct.ThrowIfCancellationRequested();
 
          // ── Complete ──
          Phase = SafeDestructivePhase.Completed;
@@ -790,17 +800,26 @@ public partial class SafeDestructiveTestViewModel : ViewModelBase, INavigableVie
       }
       finally
       {
-         if(_powerSession != null)
+         try
          {
-            try
+            if(_powerSession != null)
             {
-               await _powerSession.RestoreAsync();
+               try
+               {
+                  await _powerSession.RestoreAsync();
+               }
+               finally
+               {
+                  _powerSession.Dispose();
+                  _powerSession = null;
+               }
             }
-            finally
-            {
-               _powerSession.Dispose();
-               _powerSession = null;
-            }
+         }
+         finally
+         {
+            _cts?.Dispose();
+            _cts = null;
+            OnPropertyChanged(nameof(IsNavigationBlocked));
          }
       }
    }
@@ -1078,6 +1097,7 @@ public partial class SafeDestructiveTestViewModel : ViewModelBase, INavigableVie
       var buffer = new byte[blockSize];
       long totalBlocks = DiskTotalBytes / blockSize;
 
+      await VerifyConfirmedTargetAsync(DiskPath, ct);
       using var deviceStream = new FileStream(DiskPath, FileMode.Open, FileAccess.ReadWrite,
           FileShare.ReadWrite, blockSize, FileOptions.SequentialScan);
 
@@ -1423,6 +1443,9 @@ public partial class SafeDestructiveTestViewModel : ViewModelBase, INavigableVie
           FileShare.Read, blockSize, FileOptions.SequentialScan);
       if(_backupDataStartOffset > 0)
          sourceStream.Position = _backupDataStartOffset;
+      // Applies to ordinary and emergency restoration. A recycled path is not
+      // authorization to write the saved image onto a different drive.
+      await VerifyConfirmedTargetAsync(DiskPath, ct);
       using var targetStream = new FileStream(DiskPath, FileMode.Open, FileAccess.Write,
           FileShare.Read, blockSize, FileOptions.SequentialScan);
 
@@ -1527,6 +1550,7 @@ public partial class SafeDestructiveTestViewModel : ViewModelBase, INavigableVie
 
       try
       {
+         await VerifyConfirmedTargetAsync(DiskPath, ct);
          var partitionResult = await _sanitizationService.CreatePartitionAsync(
              DiskPath,
              volumeLabel: "Tested",
@@ -2521,6 +2545,13 @@ public partial class SafeDestructiveTestViewModel : ViewModelBase, INavigableVie
    // ──────────────────────────────────────────────
    //  IDisposable
    // ──────────────────────────────────────────────
+
+   private Task VerifyConfirmedTargetAsync(string path, CancellationToken ct)
+   {
+      if (_targetGuard == null || _confirmedTarget == null)
+         throw new InvalidOperationException("Destructive target identity has not been verified.");
+      return _targetGuard.VerifyAsync(_confirmedTarget, path, ct);
+   }
 
    public void Dispose()
    {

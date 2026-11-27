@@ -75,6 +75,8 @@ public partial class AbsoluteDestructiveTestViewModel : ViewModelBase, INavigabl
     private readonly ISelectedDiskService _selectedDiskService;
     private readonly IDialogService _dialogService;
     private readonly IDiskSanitizationService _sanitizationService;
+    private readonly DestructiveTargetGuard? _targetGuard;
+    private DestructiveTargetIdentity? _confirmedTarget;
     private readonly SeekTestService _seekTestService;
     private readonly ISmartaProvider _smartaProvider;
     private readonly SmartCheckService _smartCheckService;
@@ -271,12 +273,14 @@ public partial class AbsoluteDestructiveTestViewModel : ViewModelBase, INavigabl
         ICertificateGenerator certificateGenerator,
         TestCompletionNotificationService notificationService,
         IPowerManagementService powerManagementService,
-        IDiskTemperatureMonitor temperatureMonitor)
+        IDiskTemperatureMonitor temperatureMonitor,
+        DestructiveTargetGuard? targetGuard = null)
     {
         _navigationService = navigationService;
         _selectedDiskService = selectedDiskService;
         _dialogService = dialogService;
         _sanitizationService = sanitizationService;
+        _targetGuard = targetGuard;
         _seekTestService = seekTestService;
         _smartaProvider = smartaProvider;
         _smartCheckService = smartCheckService;
@@ -547,7 +551,8 @@ public partial class AbsoluteDestructiveTestViewModel : ViewModelBase, INavigabl
             ShowManualProfileSelector = false;
         }
 
-        var confirmed = await _dialogService.ShowConfirmationAsync(
+        _confirmedTarget = DestructiveTargetIdentity.Capture(SelectedDrive);
+        var confirmed = await _dialogService.ShowDangerConfirmationAsync(
             L.Get("DestructiveTest.ConfirmTitle"),
             string.Format(L.Get("DestructiveTest.ConfirmMessage"),
                 SelectedDrive.Name, SelectedDrive.Path,
@@ -561,6 +566,16 @@ public partial class AbsoluteDestructiveTestViewModel : ViewModelBase, INavigabl
 
 
         if (!confirmed) return;
+
+        try
+        {
+            await VerifyConfirmedTargetAsync(SelectedDrive.Path, CancellationToken.None);
+        }
+        catch (Exception ex)
+        {
+            await _dialogService.ShowErrorAsync(L.Get("Common.Error"), ex.Message);
+            return;
+        }
 
         // The checkpoint header must exist before any physical destructive I/O.
         try
@@ -926,7 +941,8 @@ public partial class AbsoluteDestructiveTestViewModel : ViewModelBase, INavigabl
             _samplerPass1.Initialize(SelectedDrive!.TotalSize);
 
             var sanitize1DrivePath = SelectedDrive!.Path;
-            var sanitize1DriveSize = SelectedDrive.TotalSize;
+            await VerifyConfirmedTargetAsync(sanitize1DrivePath, ct);
+            var sanitize1DriveSize = _confirmedTarget!.Capacity;
             _sanitize1Result = await Task.Run(() => _sanitizationService.SanitizeDiskAsync(
                 sanitize1DrivePath,
                 sanitize1DriveSize,
@@ -1028,7 +1044,8 @@ public partial class AbsoluteDestructiveTestViewModel : ViewModelBase, INavigabl
             _samplerPass2.Initialize(SelectedDrive!.TotalSize);
 
             var sanitize2DrivePath = SelectedDrive!.Path;
-            var sanitize2DriveSize = SelectedDrive.TotalSize;
+            await VerifyConfirmedTargetAsync(sanitize2DrivePath, ct);
+            var sanitize2DriveSize = _confirmedTarget!.Capacity;
             _sanitize2Result = await Task.Run(() => _sanitizationService.SanitizeDiskAsync(
                 sanitize2DrivePath,
                 sanitize2DriveSize,
@@ -1151,7 +1168,8 @@ public partial class AbsoluteDestructiveTestViewModel : ViewModelBase, INavigabl
             {
                 var prepared = await PostTestPartitionPreparation.OfferAsync(
                     _dialogService, _sanitizationService,
-                    SelectedDrive.Path, SelectedDrive.Name, ct);
+                    SelectedDrive.Path, SelectedDrive.Name, ct,
+                    VerifyConfirmedTargetAsync);
 
                 if (prepared == null)
                 {
@@ -2381,6 +2399,13 @@ public partial class AbsoluteDestructiveTestViewModel : ViewModelBase, INavigabl
     // ──────────────────────────────────────────────
     //  Dispose
     // ──────────────────────────────────────────────
+
+    private Task VerifyConfirmedTargetAsync(string path, CancellationToken ct)
+    {
+       if (_targetGuard == null || _confirmedTarget == null)
+          throw new InvalidOperationException("Destructive target identity has not been verified.");
+       return _targetGuard.VerifyAsync(_confirmedTarget, path, ct);
+    }
 
     public void Dispose()
     {
