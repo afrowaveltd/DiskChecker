@@ -487,9 +487,8 @@ offline disk";
                 var bytesToWrite = writePacing.NextWriteLength(BUFFER_SIZE, bytesWritten, diskSize);
                 var chunk = await IoStallMonitor.ExecuteAsync(
                     _ => ExecuteIoWithUsbRecoveryAsync(
-                        () => WriteFileAsync(handle, buffer, bytesToWrite, cancellationToken),
+                        () => WriteFileAsync(handle, buffer, bytesToWrite, bytesWritten, cancellationToken),
                         phase: "Write",
-                        driveNumber,
                         bytesWritten,
                         progress,
                         result,
@@ -672,9 +671,8 @@ offline disk";
                 var bytesToRead = (int)Math.Min(BUFFER_SIZE, diskSize - bytesRead);
                 var chunk = await IoStallMonitor.ExecuteAsync(
                     _ => ExecuteIoWithUsbRecoveryAsync(
-                        () => ReadFileAsync(handle, buffer, bytesToRead, cancellationToken),
+                        () => ReadFileAsync(handle, buffer, bytesToRead, bytesRead, cancellationToken),
                         phase: "Read",
-                        driveNumber,
                         bytesRead,
                         progress,
                         result,
@@ -1235,10 +1233,20 @@ if ($disk -and $disk.PartitionStyle -eq 'GPT') {{
             IntPtr.Zero);
     }
 
-    private async Task<int> WriteFileAsync(SafeFileHandle handle, byte[] buffer, int bytesToWrite, CancellationToken cancellationToken)
+    private static void SeekToOffset(SafeFileHandle handle, long offset)
+    {
+        if (!Win32DiskInterop.SetFilePointerEx(handle.DangerousGetHandle(), offset, out var actual, 0))
+            throw CreateIoException(Marshal.GetLastWin32Error(), "SetFilePointerEx");
+        if (actual != offset)
+            throw new IOException("The raw disk handle did not seek to the requested offset.");
+    }
+
+    private async Task<int> WriteFileAsync(SafeFileHandle handle, byte[] buffer, int bytesToWrite, long offset, CancellationToken cancellationToken)
     {
         return await Task.Run(() =>
         {
+            // Each attempt uses the intended byte offset even after short/zero I/O.
+            SeekToOffset(handle, offset);
             // Use GCHandle to safely pin the buffer for the duration of the write
             var bufferHandle = GCHandle.Alloc(buffer, GCHandleType.Pinned);
             try
@@ -1267,10 +1275,12 @@ if ($disk -and $disk.PartitionStyle -eq 'GPT') {{
         }, cancellationToken);
     }
 
-    private async Task<int> ReadFileAsync(SafeFileHandle handle, byte[] buffer, int bytesToRead, CancellationToken cancellationToken)
+    private async Task<int> ReadFileAsync(SafeFileHandle handle, byte[] buffer, int bytesToRead, long offset, CancellationToken cancellationToken)
     {
         return await Task.Run(() =>
         {
+            // Each attempt uses the intended byte offset even after short/zero I/O.
+            SeekToOffset(handle, offset);
             // Use GCHandle to safely pin the buffer for the duration of the read
             var bufferHandle = GCHandle.Alloc(buffer, GCHandleType.Pinned);
             try
@@ -1302,7 +1312,6 @@ if ($disk -and $disk.PartitionStyle -eq 'GPT') {{
     private async Task<int> ExecuteIoWithUsbRecoveryAsync(
         Func<Task<int>> ioOperation,
         string phase,
-        string driveNumber,
         long offsetBytes,
         IProgress<SanitizationProgress>? progress,
         SanitizationPhaseResult result,
@@ -1324,7 +1333,7 @@ if ($disk -and $disk.PartitionStyle -eq 'GPT') {{
                 {
                     Phase = phase,
                     ErrorCode = "USB_COMM_RETRY",
-                    Message = "Detekován problém USB komunikace, pokouším se o reset a opakování.",
+                    Message = "Detekován problém USB komunikace, opakuji operaci na původním otevřeném zařízení.",
                     Details = ex.Message,
                     OffsetBytes = offsetBytes
                 });
@@ -1340,7 +1349,8 @@ if ($disk -and $disk.PartitionStyle -eq 'GPT') {{
                     "Transient USB communication issue during {Phase} at offset {Offset}. Attempt {Attempt}/{Max}.",
                     phase, offsetBytes, attempt + 1, maxRetries);
 
-                await TryResetUsbCommunicationAsync(driveNumber, cancellationToken);
+                // Never toggle a disk offline/online by a recyclable disk number.
+                // Retry only the existing handle; a removed device must fail safely.
                 await Task.Delay(300, cancellationToken);
             }
             catch (IOException ex) when (IsUsbCommunicationIssue(ex))
@@ -1352,70 +1362,6 @@ if ($disk -and $disk.PartitionStyle -eq 'GPT') {{
                     StatusDetail = $"{phase} offset {offsetBytes:#,0}: vyčerpány retry pokusy - {ex.Message}"
                 });
                 throw;
-            }
-        }
-    }
-
-    /// <summary>
-    /// Attempts to recover transient USB communication by toggling disk offline/online and rescanning.
-    /// </summary>
-    private async Task TryResetUsbCommunicationAsync(string driveNumber, CancellationToken cancellationToken)
-    {
-        var diskpartScript = $"select disk {driveNumber}{Environment.NewLine}offline disk{Environment.NewLine}online disk{Environment.NewLine}rescan";
-        var tempScriptPath = Path.Combine(Path.GetTempPath(), $"diskpart_usb_recover_{Guid.NewGuid():N}.txt");
-
-        try
-        {
-            await File.WriteAllTextAsync(tempScriptPath, diskpartScript, cancellationToken);
-
-            var psi = new ProcessStartInfo
-            {
-                FileName = "diskpart.exe",
-                Arguments = $"/s \"{tempScriptPath}\"",
-                RedirectStandardOutput = true,
-                RedirectStandardError = true,
-                UseShellExecute = false,
-                CreateNoWindow = true
-            };
-
-            using var process = Process.Start(psi);
-            if (process == null)
-            {
-                return;
-            }
-
-            var outputTask = process.StandardOutput.ReadToEndAsync(cancellationToken);
-            var errorTask = process.StandardError.ReadToEndAsync(cancellationToken);
-            await process.WaitForExitAsync(cancellationToken);
-
-            var output = await outputTask;
-            var error = await errorTask;
-            if (_logger != null && _logger.IsEnabled(LogLevel.Information))
-            {
-                _logger.LogInformation("USB recovery diskpart output: {Output}; error: {Error}", output, error);
-            }
-        }
-        catch (IOException ex)
-        {
-            _logger?.LogWarning(ex, "USB recovery attempt failed due to IO error.");
-        }
-        catch (InvalidOperationException ex)
-        {
-            _logger?.LogWarning(ex, "USB recovery attempt failed due to process error.");
-        }
-        finally
-        {
-            try
-            {
-                File.Delete(tempScriptPath);
-            }
-            catch (IOException)
-            {
-                // Ignore cleanup errors.
-            }
-            catch (UnauthorizedAccessException)
-            {
-                // Ignore cleanup errors.
             }
         }
     }
