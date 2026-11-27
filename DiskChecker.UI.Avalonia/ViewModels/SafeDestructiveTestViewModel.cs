@@ -1131,7 +1131,7 @@ public partial class SafeDestructiveTestViewModel : ViewModelBase, INavigableVie
 
       const int blockSize = 256 * 1024; // 256KB blocks
       var buffer = new byte[blockSize];
-      long totalBlocks = DiskTotalBytes / blockSize;
+      long totalBlocks = SafeDestructiveBlockIo.GetBlockCount(DiskTotalBytes, blockSize);
 
       await VerifyConfirmedTargetAsync(DiskPath, ct);
       using var deviceStream = new FileStream(DiskPath, FileMode.Open, FileAccess.ReadWrite,
@@ -1143,17 +1143,11 @@ public partial class SafeDestructiveTestViewModel : ViewModelBase, INavigableVie
          {
             ct.ThrowIfCancellationRequested();
 
+            int bytesThisBlock = (int)Math.Min(blockSize, DiskTotalBytes - bytesProcessed);
             try
             {
-               if(mode == "write")
-               {
-                  Array.Fill(buffer, (byte)0x00);
-                  await deviceStream.WriteAsync(buffer, ct);
-               }
-               else
-               {
-                  await deviceStream.ReadExactlyAsync(buffer, ct);
-               }
+               await SafeDestructiveBlockIo.TransferAsync(
+                   deviceStream, buffer, bytesThisBlock, mode == "write", bytesProcessed, ct);
             }
             catch(IOException ex) when(IsDeviceDisappearedError(ex))
             {
@@ -1162,8 +1156,8 @@ public partial class SafeDestructiveTestViewModel : ViewModelBase, INavigableVie
                    "Zkontrolujte připojení disku a opakujte operaci.", ex);
             }
 
-            bytesProcessed += blockSize;
-            _phaseBytesProcessed += blockSize;
+            bytesProcessed += bytesThisBlock;
+            _phaseBytesProcessed += bytesThisBlock;
             // No per-sector fsync. A bounded ~16 MiB heartbeat plus the
             // journal's 5%-or-10-second cadence keeps even 10TB tests small.
             if(block % 64 == 0 || block == totalBlocks - 1)
@@ -1214,6 +1208,11 @@ public partial class SafeDestructiveTestViewModel : ViewModelBase, INavigableVie
          throw new InvalidOperationException(
              L.Get("SafeDestructive.Error.DeviceDisappearedDuringSanitize"), ex);
       }
+
+      if (bytesProcessed != DiskTotalBytes)
+         throw new IOException("Sanitization did not cover the complete disk.");
+      if (mode == "write")
+         deviceStream.Flush(flushToDisk: true);
 
       phase.Status = TestPhaseStatus.Completed;
       phase.ProgressPercent = 100;
@@ -1563,6 +1562,10 @@ public partial class SafeDestructiveTestViewModel : ViewModelBase, INavigableVie
       if(bytesWritten != totalSize)
          throw new IOException($"Obnova zapsala jen {FormatBytesLong(bytesWritten)} z {FormatBytesLong(totalSize)}.");
 
+      // Flush and close the writer before independent raw readback.
+      targetStream.Flush(flushToDisk: true);
+      targetStream.Dispose();
+      await VerifyConfirmedTargetAsync(DiskPath, ct);
       await VerifyRestoredDiskAsync(ct);
       _restoreCompleted = true;
       TryRecoveryUpdate(j => j.SetPhaseMetadata("RestorationVerified", "true"));
