@@ -497,7 +497,6 @@ public static class SmartctlJsonParser
         // Completed successfully - various formats
         if (lower.Contains("completed without error") || 
             lower.Contains("passed") || 
-            lower.Contains("completed") && !lower.Contains("in progress") ||
             lower.Contains("success"))
             return SmartaSelfTestStatus.CompletedWithoutError;
         
@@ -516,13 +515,13 @@ public static class SmartctlJsonParser
         }
         
         // Error conditions
-        if (lower.Contains("fatal error") || lower.Contains("error fatal"))
+        if (lower.Contains("fatal error") || lower.Contains("error fatal") || lower.Contains("fatal or unknown error"))
             return SmartaSelfTestStatus.FatalError;
         if (lower.Contains("electrical"))
             return SmartaSelfTestStatus.ErrorElectrical;
         if (lower.Contains("servo") || lower.Contains("mechanical"))
             return SmartaSelfTestStatus.ErrorServo;
-        if (lower.Contains("read error") || lower.Contains("error reading"))
+        if (lower.Contains("read error") || lower.Contains("error reading") || lower.Contains("read failure"))
             return SmartaSelfTestStatus.ErrorRead;
         if (lower.Contains("handling"))
             return SmartaSelfTestStatus.ErrorHandling;
