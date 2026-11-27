@@ -1945,7 +1945,7 @@ public partial class CertificateViewModel : ViewModelBase, INavigableViewModel
 
        return
            $"Model: {smart.DeviceModel}\n" +
-           $"FW: {smart.FirmwareVersion} | Teplota: {(smart.Temperature?.ToString() ?? "N/A")}°C\n" +
+           $"FW: {smart.FirmwareVersion} | Teplota: {smart.TemperatureDisplay}\n" +
            $"Power-On Hours: {smart.PowerOnHours?.ToString() ?? "N/A"} | Power Cycles: {smart.PowerCycleCount}\n" +
            $"Reallocated: {smart.ReallocatedSectorCount?.ToString() ?? "N/A"} | Pending: {smart.PendingSectorCount?.ToString() ?? "N/A"} | Uncorrectable: {smart.UncorrectableErrorCount?.ToString() ?? "N/A"}";
     }

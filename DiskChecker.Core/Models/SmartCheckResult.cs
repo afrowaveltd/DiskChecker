@@ -30,6 +30,9 @@ namespace DiskChecker.Core.Models
         /// </summary>
         public bool SmartStatusKnown { get; set; }
 
+        /// <summary>Reasons why the reported diagnostic structures cannot be trusted.</summary>
+        public List<string> DiagnosticIssues { get; set; } = new();
+
         /// <summary>
         /// True/False when smartctl explicitly reported whether the device exposes SMART
         /// (<c>smart_support.available</c>). Null when smartctl did not report this field

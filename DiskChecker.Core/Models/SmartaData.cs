@@ -27,6 +27,12 @@ namespace DiskChecker.Core.Models
         /// </summary>
         public bool IsSmartAvailable { get; set; } = true;
 
+        /// <summary>True when the diagnostic payload is internally inconsistent. This is not proof of media failure.</summary>
+        public bool IsDiagnosticInvalid { get; set; }
+
+        /// <summary>Validation findings retained with the SMART snapshot.</summary>
+        public List<string> DiagnosticIssues { get; set; } = new();
+
         public bool IsHealthy { get; set; }
         public bool SmartEnabled { get; set; }
         
@@ -76,7 +82,7 @@ namespace DiskChecker.Core.Models
         public string TemperatureDisplay => Temperature > 0 ? $"{Temperature}°C" : "N/A";
         public string PowerOnHoursDisplay => PowerOnHours > 0 ? $"{PowerOnHours:N0} h" : "N/A";
         public string PowerCycleCountDisplay => PowerCycleCount > 0 ? $"{PowerCycleCount:N0}" : "N/A";
-        public string HealthStatus => IsHealthy ? "✅ Zdravý" : "⚠️ Pozor";
+        public string HealthStatus => IsDiagnosticInvalid ? "⚠️ Neplatná diagnostika" : IsHealthy ? "✅ Zdravý" : "⚠️ Pozor";
         
         public string TemperatureStatus
         {
