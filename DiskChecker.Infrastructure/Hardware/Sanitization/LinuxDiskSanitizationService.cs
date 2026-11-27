@@ -21,8 +21,6 @@ public class LinuxDiskSanitizationService : IDiskSanitizationService
 {
     private readonly ILogger<LinuxDiskSanitizationService>? _logger;
     private const int BUFFER_SIZE = 64 * 1024 * 1024; // 64 MB buffer
-    private const int DeviceOpenMaxAttempts = 10;
-    private const int DeviceOpenRetryDelayMs = 250;
     private const int SECTOR_SIZE = 4096; // 4 KB sector alignment for direct I/O
 
     // Linux direct I/O syscall constants and P/Invoke (bypasses page cache for ~10% perf gain)
@@ -385,7 +383,7 @@ public class LinuxDiskSanitizationService : IDiskSanitizationService
         {
             return await WriteZerosDirectAsync(devicePath, diskSize, pacing, progress, cancellationToken);
         }
-        catch (Exception ex) when (ex is IOException or InvalidOperationException)
+        catch (DirectIoUnsupportedException ex)
         {
             if (_logger != null && _logger.IsEnabled(LogLevel.Warning))
             {
@@ -432,8 +430,10 @@ public class LinuxDiskSanitizationService : IDiskSanitizationService
                 if (fd < 0)
                 {
                     var err = Marshal.GetLastPInvokeError();
-                    throw new InvalidOperationException(
-                        $"Failed to open {devicePath} with O_DIRECT (errno={err}).");
+                    var message = $"Failed to open {devicePath} with O_DIRECT (errno={err}).";
+                    if (CanFallbackFromDirectOpenError(err))
+                        throw new DirectIoUnsupportedException(message);
+                    throw new IOException(message);
                 }
             }
 
@@ -555,7 +555,7 @@ public class LinuxDiskSanitizationService : IDiskSanitizationService
 
         try
         {
-            using (var fileHandle = await OpenDeviceHandleWithRetryAsync(
+            using (var fileHandle = await OpenDeviceHandleAsync(
                 devicePath,
                 FileMode.Open,
                 // Windows opens the raw disk as read/write for both phases. Some Linux
@@ -677,7 +677,7 @@ public class LinuxDiskSanitizationService : IDiskSanitizationService
         {
             return await ReadAndVerifyDirectAsync(devicePath, diskSize, progress, cancellationToken);
         }
-        catch (Exception ex) when (ex is IOException or InvalidOperationException)
+        catch (DirectIoUnsupportedException ex)
         {
             if (_logger != null && _logger.IsEnabled(LogLevel.Warning))
             {
@@ -719,8 +719,10 @@ public class LinuxDiskSanitizationService : IDiskSanitizationService
                 if (fd < 0)
                 {
                     var err = Marshal.GetLastPInvokeError();
-                    throw new InvalidOperationException(
-                        $"Failed to open {devicePath} with O_DIRECT for read (errno={err}).");
+                    var message = $"Failed to open {devicePath} with O_DIRECT for read (errno={err}).";
+                    if (CanFallbackFromDirectOpenError(err))
+                        throw new DirectIoUnsupportedException(message);
+                    throw new IOException(message);
                 }
             }
 
@@ -855,7 +857,7 @@ public class LinuxDiskSanitizationService : IDiskSanitizationService
 
         try
         {
-            using (var fileHandle = await OpenDeviceHandleWithRetryAsync(
+            using (var fileHandle = await OpenDeviceHandleAsync(
                 devicePath,
                 FileMode.Open,
                 // Match the Windows CreateFile handle: read/write, exclusive and
@@ -1053,11 +1055,14 @@ public class LinuxDiskSanitizationService : IDiskSanitizationService
                ex.Message.Contains("device not", StringComparison.OrdinalIgnoreCase);
     }
 
-    /// <summary>
-    /// Opens a device handle with retry logic. Returns a SafeFileHandle for direct I/O
-    /// (no .NET buffering), matching the Windows raw disk access model.
-    /// </summary>
-    private async Task<SafeFileHandle> OpenDeviceHandleWithRetryAsync(
+    // Linux EINVAL / EOPNOTSUPP indicate direct-I/O flags are unsupported.
+    // Never reinterpret device disappearance or media I/O failure as a request
+    // to reopen the same mutable device path using a different implementation.
+    internal static bool CanFallbackFromDirectOpenError(int errno) => errno is 22 or 95;
+
+    private sealed class DirectIoUnsupportedException(string message) : IOException(message) { }
+
+    private static Task<SafeFileHandle> OpenDeviceHandleAsync(
         string devicePath,
         FileMode mode,
         FileAccess access,
@@ -1065,33 +1070,8 @@ public class LinuxDiskSanitizationService : IDiskSanitizationService
         FileOptions options,
         CancellationToken cancellationToken)
     {
-        for (var attempt = 1; ; attempt++)
-        {
-            cancellationToken.ThrowIfCancellationRequested();
-
-            try
-            {
-                var handle = File.OpenHandle(
-                    devicePath,
-                    mode,
-                    access,
-                    share,
-                    options);
-
-                return handle;
-            }
-            catch (IOException ex) when (attempt < DeviceOpenMaxAttempts)
-            {
-                _logger?.LogWarning(
-                    ex,
-                    "Device {DevicePath} is temporarily busy while opening for {Access}. Retrying ({Attempt}/{MaxAttempts})",
-                    devicePath,
-                    access,
-                    attempt,
-                    DeviceOpenMaxAttempts);
-                await Task.Delay(DeviceOpenRetryDelayMs, cancellationToken);
-            }
-        }
+        cancellationToken.ThrowIfCancellationRequested();
+        return Task.FromResult(File.OpenHandle(devicePath, mode, access, share, options));
     }
 
     private async Task<SanitizationPhaseResult> CreateGptPartitionAsync(
