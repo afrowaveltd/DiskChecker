@@ -61,7 +61,9 @@ public class QualityCalculator : IQualityCalculator
         if (HasCriticalSmartFailure(smartaData))
         {
             score = Math.Min(score, 34);
-            warnings.Add("Critical SMART failure detected");
+            warnings.Add(smartaData.IsDiagnosticInvalid
+                ? "SMART diagnostic data is inconsistent; drive health cannot be determined"
+                : "Critical SMART failure detected");
             return new QualityRating(QualityGrade.F, score) { Warnings = warnings };
         }
 
