@@ -489,6 +489,11 @@ public class TestSession
     /// </summary>
     public int Temperature => (int)Math.Round(AverageTemperature ?? MaxTemperature ?? StartTemperature ?? 0);
 
+    /// <summary>Temperature for history display; zero is the legacy missing-value sentinel.</summary>
+    [NotMapped]
+    public string TemperatureDisplay => SmartBefore?.IsDiagnosticInvalid == true || SmartAfter?.IsDiagnosticInvalid == true || Temperature == 0
+        ? "N/A" : $"{Temperature}°C";
+
     /// <summary>
     /// Indicates whether test data suggests thermal throttling.
     /// </summary>
