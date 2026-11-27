@@ -161,6 +161,9 @@ public static class SmartctlJsonParser
                     break;
             }
             
+            if (deviceType == DeviceType.ATA)
+                ValidateAtaDiagnostics(root, result);
+
             return result;
         }
         catch (Exception ex)
@@ -214,10 +217,10 @@ public static class SmartctlJsonParser
                 switch (attr.Id)
                 {
                     case 5: result.ReallocatedSectorCount = (int)attr.RawValue; break;
-                    case 9: if (result.PowerOnHours == 0) result.PowerOnHours = (int)attr.RawValue; break;
+                    case 9: if (result.PowerOnHours is null or 0) result.PowerOnHours = (int)attr.RawValue; break;
                     case 12: if (result.PowerCycleCount == 0) result.PowerCycleCount = (int)attr.RawValue; break;
                     case 177: result.WearLevelingCount = (int)attr.RawValue; break;
-                    case 194: if (result.Temperature == 0) result.Temperature = (int)(attr.RawValue & 0xFF); break;
+                    case 194: if (result.Temperature is null or 0) result.Temperature = (int)(attr.RawValue & 0xFF); break;
                     case 197: result.PendingSectorCount = (int)attr.RawValue; break;
                     case 198: result.UncorrectableErrorCount = (int)attr.RawValue; break;
                     case 231: if (result.WearLevelingCount == 0) result.WearLevelingCount = (int)attr.RawValue; break;
@@ -237,61 +240,17 @@ public static class SmartctlJsonParser
             
             if (selfTest.TryGetProperty("status", out var status))
             {
-                // status.value tells us if test is running
-                // According to ATA spec:
-                // 0x00 = No error, test completed or no test running
-                // Non-zero values indicate test in progress or error conditions
-                // Values 240-255 indicate % remaining (lower 7 bits = %)
-                // Bits 7-8 indicate test type (short/extended/conveyance)
-                
-                var statusVal = status.TryGetProperty("value", out var sv) ? sv.GetInt32() : 0;
+                // ATA self-test status: high nibble is the status code,
+                // low nibble is remaining tens of percent (0..10).
+                var statusVal = status.TryGetProperty("value", out var sv) ? sv.GetInt32() : -1;
                 var statusStr = status.TryGetProperty("string", out var ss) ? (ss.GetString() ?? "") : "";
-                
-                
-                // NON-ZERO value means something is happening
-                // According to smartctl source code and ATA spec:
-                // - Value 0 = no test running, no error
-                // - Value > 0 = test in progress OR error from last test
-                // The lower 7 bits indicate % remaining for in-progress tests
-                // String contains "in progress" for running tests
-                
-                bool isInProgress = false;
-                int remainingPercent = 0;
-                
-                // Method 1: String contains "in progress"
-                if (!string.IsNullOrEmpty(statusStr) && 
-                    (statusStr.ToLowerInvariant().Contains("in progress") ||
-                     statusStr.ToLowerInvariant().Contains("running") ||
-                     statusStr.ToLowerInvariant().Contains("incomplete")))
-                {
-                    isInProgress = true;
-                }
-                // Method 2: Value is non-zero (test running OR previous test error)
-                // For in-progress tests, value is typically 240-255 where lower bits = % remaining
-                else if (statusVal > 0)
-                {
-                    // Check if this is an in-progress test
-                    // Values 240-255 with % remaining in lower bits
-                    if (statusVal >= 240 && statusVal <= 255)
-                    {
-                        remainingPercent = statusVal & 0x7F; // Lower 7 bits = % remaining (0-100)
-                        isInProgress = true;
-                    }
-                    // Any non-zero value could indicate in-progress or error
-                    // If string exists, it's describing the status
-                    else if (!string.IsNullOrEmpty(statusStr))
-                    {
-                        // Non-zero with string = probably in-progress or error
-                        // String will tell us which
-                        if (!statusStr.ToLowerInvariant().Contains("error") &&
-                            !statusStr.ToLowerInvariant().Contains("abort") &&
-                            !statusStr.ToLowerInvariant().Contains("fail"))
-                        {
-                            isInProgress = true;
-                        }
-                    }
-                }
-                
+                bool isInProgress = statusVal >= 0
+                    ? statusVal is >= 0xF0 and <= 0xFF
+                    : statusStr.Contains("in progress", StringComparison.OrdinalIgnoreCase);
+                int? remainingPercent = statusVal is >= 0xF0 and <= 0xFA
+                    ? (statusVal & 0x0F) * 10
+                    : null;
+
                 if (isInProgress)
                 {
                     
@@ -300,7 +259,7 @@ public static class SmartctlJsonParser
                     {
                         result.CurrentSelfTest = result.SelfTests[0];
                         result.CurrentSelfTest.Status = SmartaSelfTestStatus.InProgress;
-                        if (remainingPercent > 0)
+                        if (remainingPercent.HasValue)
                         {
                             result.CurrentSelfTest.RemainingPercent = remainingPercent;
                         }
@@ -337,22 +296,77 @@ public static class SmartctlJsonParser
             result.CurrentSelfTest = result.SelfTests[0];
         }
         
-        // Additional fallback: check if passed=false (test running) 
-        // smartctl sets smart_status.passed=false during test execution
-        if (result.CurrentSelfTest == null && 
-            root.TryGetProperty("smart_status", out var smartStatusFallback) &&
-            smartStatusFallback.ValueKind == JsonValueKind.Object &&
-            smartStatusFallback.TryGetProperty("passed", out var passedFallback) &&
-            !passedFallback.GetBoolean())
+        // Overall SMART failure is not evidence that a self-test is running.
+    }
+
+    private static void ValidateAtaDiagnostics(JsonElement root, SmartCheckResult result)
+    {
+        foreach (var group in result.Attributes.Where(a => a.Id != 0).GroupBy(a => a.Id))
         {
-            result.CurrentSelfTest = new SmartaSelfTestEntry
-            {
-                Status = SmartaSelfTestStatus.InProgress,
-                Type = SmartaSelfTestType.Unknown
-            };
+            if (group.Count() > 1)
+                result.DiagnosticIssues.Add($"Duplicate ATA SMART attribute ID {group.Key}.");
+        }
+
+        foreach (var attr in result.Attributes.Where(a => a.Id is 5 or 197 or 198))
+        {
+            if (attr.RawValue > int.MaxValue)
+                result.DiagnosticIssues.Add($"ATA SMART attribute {attr.Id} exceeds the supported counter range.");
+        }
+
+        if (root.TryGetProperty("ata_smart_data", out var data) &&
+            data.TryGetProperty("self_test", out var selfTest) &&
+            selfTest.TryGetProperty("status", out var current))
+            ValidateAtaTestStatus(current, result);
+
+        long? blocks = null;
+        if (root.TryGetProperty("user_capacity", out var capacity) &&
+            capacity.ValueKind == JsonValueKind.Object &&
+            capacity.TryGetProperty("blocks", out var blockCount) &&
+            blockCount.TryGetInt64(out var count) && count > 0)
+            blocks = count;
+        else if (result.TotalSize > 0 && root.TryGetProperty("logical_block_size", out var sectorSize) &&
+                 sectorSize.TryGetInt64(out var size) && size > 0)
+            blocks = result.TotalSize / size;
+
+        if (root.TryGetProperty("ata_smart_self_test_log", out var log))
+        {
+            ValidateAtaLog(log, blocks, result);
+            foreach (var name in new[] { "standard", "extended" })
+                if (log.TryGetProperty(name, out var section))
+                    ValidateAtaLog(section, blocks, result);
         }
     }
-    
+
+    private static void ValidateAtaLog(JsonElement log, long? blocks, SmartCheckResult result)
+    {
+        if (!log.TryGetProperty("table", out var table) || table.ValueKind != JsonValueKind.Array)
+            return;
+        foreach (var entry in table.EnumerateArray())
+        {
+            if (entry.TryGetProperty("status", out var status))
+                ValidateAtaTestStatus(status, result);
+            if (entry.TryGetProperty("remaining_percent", out var remaining) &&
+                remaining.TryGetInt32(out var percent) && (percent < 0 || percent > 100))
+                result.DiagnosticIssues.Add("ATA SMART self-test remaining percentage is outside 0–100.");
+            if (blocks.HasValue && entry.TryGetProperty("lba", out var lba) &&
+                lba.TryGetInt64(out var address) && address >= blocks.Value &&
+                address != uint.MaxValue && address != 0xFFFFFFFFFFFFL)
+                result.DiagnosticIssues.Add("ATA SMART self-test error LBA exceeds device capacity.");
+        }
+    }
+
+    private static void ValidateAtaTestStatus(JsonElement status, SmartCheckResult result)
+    {
+        if (status.ValueKind != JsonValueKind.Object)
+            return;
+        if (status.TryGetProperty("value", out var raw) && raw.TryGetInt32(out var value) &&
+            (value < 0 || value > 255 || (value & 0x0F) > 10))
+            result.DiagnosticIssues.Add("Invalid ATA SMART self-test status or remaining percentage.");
+        if (status.TryGetProperty("remaining_percent", out var remaining) &&
+            remaining.TryGetInt32(out var percent) && (percent < 0 || percent > 100))
+            result.DiagnosticIssues.Add("ATA SMART self-test remaining percentage is outside 0–100.");
+    }
+
     private static uint GetRawValue(JsonElement item)
     {
         if (!item.TryGetProperty("raw", out var raw))
@@ -448,13 +462,15 @@ public static class SmartctlJsonParser
                         statusObj.TryGetProperty("value", out var statusVal))
                     {
                         var val = statusVal.GetInt32();
-                        // Lower 7 bits indicate % remaining for in-progress tests
+                        // Low nibble encodes remaining tens of percent.
                         if (val > 0 && val <= 255)
                         {
-                            entry.RemainingPercent = val & 0x7F;
+                            entry.RemainingPercent = (val & 0x0F) <= 10 ? (val & 0x0F) * 10 : null;
                         }
                     }
                     
+                    if (t.TryGetProperty("lba", out var lba) && lba.TryGetInt64(out var address))
+                        entry.LbaOfFirstError = address;
                     tests.Add(entry);
                 }
             }
@@ -974,7 +990,7 @@ public static class SmartctlJsonParser
             if (failingNowCount > 0)
             {
                 failurePrediction = failingNowCount == 1
-                    ? $"⚠️ Disk selže do 24 hodin — atribut {failingAttrs.First(a => a.Contains("FAILING_NOW")).Split(':')[0]} je v kritickém stavu. ZÁLOHUJTE NYNÍ!"
+                    ? $"⚠️ SMART hlásí kritické varování — atribut {failingAttrs.First(a => a.Contains("FAILING_NOW")).Split(':')[0]} je v kritickém stavu. ZÁLOHUJTE NYNÍ!"
                     : $"⚠️ Disk selže do 24 hodin — {failingNowCount} atributů v kritickém stavu. ZÁLOHUJTE NYNÍ!";
             }
             else if (failingAttrs.Any(a => a.Contains("In_the_past")))
@@ -987,25 +1003,31 @@ public static class SmartctlJsonParser
             }
         }
 
+        var invalid = result.DiagnosticIssues.Count > 0;
+        if (invalid)
+            failurePrediction = "SMART diagnostic data is inconsistent. Drive health is undetermined; test independently and do not rely on this drive for important data.";
+
         return new SmartaData
         {
             DeviceModel = result.DeviceModel ?? "",
             SerialNumber = result.SerialNumber ?? "",
             FirmwareVersion = result.FirmwareVersion ?? "",
             DeviceType = result.DeviceType ?? "Unknown",
-            IsHealthy = result.SmartStatusKnown ? result.IsHealthy : true,
+            IsDiagnosticInvalid = invalid,
+            DiagnosticIssues = new List<string>(result.DiagnosticIssues),
+            IsHealthy = !invalid && (result.SmartStatusKnown ? result.IsHealthy : true),
             IsSmartAvailable = result.SmartAvailable ?? true,
-            IsFailing = isFailing,
+            IsFailing = invalid || isFailing,
             FailurePrediction = failurePrediction,
             FailingAttributes = failingAttrs,
             SmartEnabled = result.IsEnabled,
-            Temperature = result.Temperature,
-            PowerOnHours = result.PowerOnHours,
-            PowerCycleCount = result.PowerCycleCount,
-            ReallocatedSectorCount = result.ReallocatedSectorCount,
-            PendingSectorCount = result.PendingSectorCount,
-            UncorrectableErrorCount = result.UncorrectableErrorCount,
-            WearLevelingCount = result.WearLevelingCount,
+            Temperature = invalid ? null : result.Temperature,
+            PowerOnHours = invalid ? null : result.PowerOnHours,
+            PowerCycleCount = invalid ? 0 : result.PowerCycleCount,
+            ReallocatedSectorCount = invalid ? null : result.ReallocatedSectorCount,
+            PendingSectorCount = invalid ? null : result.PendingSectorCount,
+            UncorrectableErrorCount = invalid ? null : result.UncorrectableErrorCount,
+            WearLevelingCount = invalid ? null : result.WearLevelingCount,
             AvailableSpare = result.AvailableSparePercent,
             PercentageUsed = result.EnduranceUsedPercent,
             MediaErrors = result.MediaErrors,
