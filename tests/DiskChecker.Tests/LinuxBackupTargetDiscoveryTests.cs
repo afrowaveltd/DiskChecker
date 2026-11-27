@@ -49,6 +49,12 @@ public class LinuxBackupTargetDiscoveryTests
     }
 
     [Fact]
+    public void MissingSourceCannotAuthorizeAnyBackupDestination()
+    {
+        Assert.Empty(LinuxBackupTargetDiscovery.GetMountPoints(Topology, "/dev/sdz"));
+    }
+
+    [Fact]
     public void UnpartitionedSourceDiskIsExcluded()
     {
         Assert.DoesNotContain("/media/USB backup", LinuxBackupTargetDiscovery.GetMountPoints(Topology, "/dev/sdb"));

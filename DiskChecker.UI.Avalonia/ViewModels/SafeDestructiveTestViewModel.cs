@@ -3,6 +3,7 @@ using DiskChecker.Application.Services;
 using DiskChecker.Core.Interfaces;
 using DiskChecker.Core.Models;
 using DiskChecker.Core.Services;
+using DiskChecker.Infrastructure.Hardware;
 using DiskChecker.UI.Avalonia.Services;
 using DiskChecker.UI.Avalonia.Services.Interfaces;
 using LiveChartsCore;
@@ -265,6 +266,7 @@ public partial class SafeDestructiveTestViewModel : ViewModelBase, INavigableVie
    private string _backupSha256 = string.Empty;
    private bool _backupVerified;
    private bool _destructivePhaseStarted;
+   private string? _verifiedBackupRoot;
    private bool _restoreCompleted;
 
    // ──────────────────────────────────────────────
@@ -473,16 +475,10 @@ public partial class SafeDestructiveTestViewModel : ViewModelBase, INavigableVie
           .OrderByDescending(d => d.AvailableFreeSpace)
           .ToList();
 
-      // Exclude source drive
-      if(SelectedDrive != null)
-      {
-         var sourceRoot = System.IO.Path.GetPathRoot(SelectedDrive.Path)?.TrimEnd('\\', '/');
-         drives = drives.Where(d =>
-         {
-            var root = d.RootDirectory.FullName.TrimEnd('\\', '/');
-            return !string.Equals(root, sourceRoot, StringComparison.OrdinalIgnoreCase);
-         }).ToList();
-      }
+      // A drive letter is not a physical disk number. Reject all volumes whose
+      // backing extents cannot be resolved, or include the source disk.
+      drives = drives.Where(d => WindowsBackupVolumeSafety.IsIndependentVolume(
+          SelectedDrive?.Path, WindowsBackupVolumeSafety.GetDiskNumbers(d.RootDirectory.FullName))).ToList();
 
       foreach(var d in drives)
       {
@@ -559,9 +555,11 @@ public partial class SafeDestructiveTestViewModel : ViewModelBase, INavigableVie
          using var process = System.Diagnostics.Process.Start(psi);
          if(process == null) return null;
 
-         var output = await process.StandardOutput.ReadToEndAsync();
+         var stdout = process.StandardOutput.ReadToEndAsync();
+         var stderr = process.StandardError.ReadToEndAsync();
          await process.WaitForExitAsync();
-         return output;
+         await stderr;
+         return process.ExitCode == 0 ? await stdout : null;
       }
       catch
       {
@@ -648,6 +646,7 @@ public partial class SafeDestructiveTestViewModel : ViewModelBase, INavigableVie
       var ct = _cts.Token;
       _workflowStartedAtUtc = DateTime.UtcNow;
       _backupVerified = false;
+      _verifiedBackupRoot = null;
       _destructivePhaseStarted = false;
       _restoreCompleted = false;
       _backupSha256 = string.Empty;
@@ -713,7 +712,11 @@ public partial class SafeDestructiveTestViewModel : ViewModelBase, INavigableVie
             return;
          }
 
-         // ── Phase 2: Destructive Test ──
+         // The mount/letter may have been reassigned during the long backup.
+         // Recheck its backing disk and confirm the verified image is present.
+         await VerifyBackupDestinationAsync(_verifiedBackupRoot!, ct);
+         if (string.IsNullOrWhiteSpace(_backupImagePath) || !File.Exists(_backupImagePath))
+            throw new IOException("Verified backup image is no longer available.");
          await VerifyConfirmedTargetAsync(DiskPath, ct);
          _destructivePhaseStarted = true;
          await RunTestPhaseAsync(ct);
@@ -828,8 +831,40 @@ public partial class SafeDestructiveTestViewModel : ViewModelBase, INavigableVie
    //  Phase 1: Raw Backup
    // ──────────────────────────────────────────────
 
+   private async Task VerifyBackupDestinationAsync(string root, CancellationToken ct)
+   {
+      ct.ThrowIfCancellationRequested();
+      if (string.IsNullOrWhiteSpace(root) || !Directory.Exists(root))
+         throw new IOException("Backup destination is no longer mounted or accessible.");
+
+      bool independent;
+      if (OperatingSystem.IsWindows())
+      {
+         independent = WindowsBackupVolumeSafety.IsIndependentVolume(
+             DiskPath, WindowsBackupVolumeSafety.GetDiskNumbers(root));
+      }
+      else if (OperatingSystem.IsLinux())
+      {
+         var topology = await ExecuteCommandAsync("lsblk",
+             "--json --paths --output NAME,KNAME,PATH,TYPE,FSTYPE,RO,MOUNTPOINTS,MAJ:MIN");
+         independent = !string.IsNullOrEmpty(topology) &&
+             LinuxBackupTargetDiscovery.GetMountPoints(topology, DiskPath)
+                 .Contains(root, StringComparer.Ordinal);
+      }
+      else
+      {
+         independent = false;
+      }
+
+      ct.ThrowIfCancellationRequested();
+      if (!independent)
+         throw new IOException("Backup destination cannot be verified as independent of the source disk.");
+   }
+
    private async Task RunBackupPhaseAsync(CancellationToken ct)
    {
+      _verifiedBackupRoot = BackupTargetPath;
+      await VerifyBackupDestinationAsync(_verifiedBackupRoot, ct);
       TryRecoveryUpdate(j => j.Checkpoint("BackupRaw", 0, DiskTotalBytes, 0));
       Phase = SafeDestructivePhase.Backup;
       CurrentPhaseName = L.Get("SafeDestructive.Phase.BackupRaw");
@@ -838,7 +873,8 @@ public partial class SafeDestructiveTestViewModel : ViewModelBase, INavigableVie
       OverallProgress = 0;
       OverallProgressText = "Celkem 0%";
 
-      var backupRoot = Path.Combine(BackupTargetPath, $"DiskChecker_SafeBackup_{DateTime.Now:yyyyMMdd_HHmmss}");
+      var destinationRoot = _verifiedBackupRoot ?? throw new IOException("Backup destination has not been verified.");
+      var backupRoot = Path.Combine(destinationRoot, $"DiskChecker_SafeBackup_{DateTime.Now:yyyyMMdd_HHmmss}_{Guid.NewGuid():N}");
       Directory.CreateDirectory(backupRoot);
       _backupImagePath = Path.Combine(backupRoot, "disk_image.raw");
       _backupManifestPath = Path.Combine(backupRoot, "backup_manifest.json");
@@ -1095,7 +1131,7 @@ public partial class SafeDestructiveTestViewModel : ViewModelBase, INavigableVie
 
       const int blockSize = 256 * 1024; // 256KB blocks
       var buffer = new byte[blockSize];
-      long totalBlocks = DiskTotalBytes / blockSize;
+      long totalBlocks = SafeDestructiveBlockIo.GetBlockCount(DiskTotalBytes, blockSize);
 
       await VerifyConfirmedTargetAsync(DiskPath, ct);
       using var deviceStream = new FileStream(DiskPath, FileMode.Open, FileAccess.ReadWrite,
@@ -1107,17 +1143,11 @@ public partial class SafeDestructiveTestViewModel : ViewModelBase, INavigableVie
          {
             ct.ThrowIfCancellationRequested();
 
+            int bytesThisBlock = (int)Math.Min(blockSize, DiskTotalBytes - bytesProcessed);
             try
             {
-               if(mode == "write")
-               {
-                  Array.Fill(buffer, (byte)0x00);
-                  await deviceStream.WriteAsync(buffer, ct);
-               }
-               else
-               {
-                  await deviceStream.ReadExactlyAsync(buffer, ct);
-               }
+               await SafeDestructiveBlockIo.TransferAsync(
+                   deviceStream, buffer, bytesThisBlock, mode == "write", bytesProcessed, ct);
             }
             catch(IOException ex) when(IsDeviceDisappearedError(ex))
             {
@@ -1126,8 +1156,8 @@ public partial class SafeDestructiveTestViewModel : ViewModelBase, INavigableVie
                    "Zkontrolujte připojení disku a opakujte operaci.", ex);
             }
 
-            bytesProcessed += blockSize;
-            _phaseBytesProcessed += blockSize;
+            bytesProcessed += bytesThisBlock;
+            _phaseBytesProcessed += bytesThisBlock;
             // No per-sector fsync. A bounded ~16 MiB heartbeat plus the
             // journal's 5%-or-10-second cadence keeps even 10TB tests small.
             if(block % 64 == 0 || block == totalBlocks - 1)
@@ -1178,6 +1208,11 @@ public partial class SafeDestructiveTestViewModel : ViewModelBase, INavigableVie
          throw new InvalidOperationException(
              L.Get("SafeDestructive.Error.DeviceDisappearedDuringSanitize"), ex);
       }
+
+      if (bytesProcessed != DiskTotalBytes)
+         throw new IOException("Sanitization did not cover the complete disk.");
+      if (mode == "write")
+         deviceStream.Flush(flushToDisk: true);
 
       phase.Status = TestPhaseStatus.Completed;
       phase.ProgressPercent = 100;
@@ -1232,6 +1267,8 @@ public partial class SafeDestructiveTestViewModel : ViewModelBase, INavigableVie
 
    private async Task RunVhdxBackupPhaseAsync(CancellationToken ct)
    {
+      _verifiedBackupRoot = BackupTargetPath;
+      await VerifyBackupDestinationAsync(_verifiedBackupRoot, ct);
       TryRecoveryUpdate(j => j.Checkpoint("BackupVhdx", 0, DiskTotalBytes, 0));
       Phase = SafeDestructivePhase.Backup;
       CurrentPhaseName = L.Get("SafeDestructive.Phase.VhdxBackup");
@@ -1242,7 +1279,8 @@ public partial class SafeDestructiveTestViewModel : ViewModelBase, INavigableVie
 
       if(SelectedDrive == null) return;
 
-      var backupRoot = Path.Combine(BackupTargetPath, $"DiskChecker_VhdxBackup_{DateTime.Now:yyyyMMdd_HHmmss}");
+      var destinationRoot = _verifiedBackupRoot ?? throw new IOException("Backup destination has not been verified.");
+      var backupRoot = Path.Combine(destinationRoot, $"DiskChecker_VhdxBackup_{DateTime.Now:yyyyMMdd_HHmmss}_{Guid.NewGuid():N}");
       Directory.CreateDirectory(backupRoot);
       _backupImagePath = Path.Combine(backupRoot, "disk_image.vhdx");
       _backupManifestPath = Path.Combine(backupRoot, "backup_manifest.json");
@@ -1524,6 +1562,10 @@ public partial class SafeDestructiveTestViewModel : ViewModelBase, INavigableVie
       if(bytesWritten != totalSize)
          throw new IOException($"Obnova zapsala jen {FormatBytesLong(bytesWritten)} z {FormatBytesLong(totalSize)}.");
 
+      // Flush and close the writer before independent raw readback.
+      targetStream.Flush(flushToDisk: true);
+      targetStream.Dispose();
+      await VerifyConfirmedTargetAsync(DiskPath, ct);
       await VerifyRestoredDiskAsync(ct);
       _restoreCompleted = true;
       TryRecoveryUpdate(j => j.SetPhaseMetadata("RestorationVerified", "true"));

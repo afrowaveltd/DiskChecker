@@ -13,7 +13,11 @@ public static class LinuxBackupTargetDiscovery
         using var document = JsonDocument.Parse(lsblkJson);
         var roots = document.RootElement.GetProperty("blockdevices").EnumerateArray().ToArray();
         var excluded = new HashSet<string>(StringComparer.Ordinal);
-        foreach (var root in roots.Where(r => ContainsSource(r, sourcePath)))
+        var sourceRoots = roots.Where(r => ContainsSource(r, sourcePath)).ToArray();
+        // A missing source must not turn all mounted volumes into safe targets.
+        if (!string.IsNullOrWhiteSpace(sourcePath) && sourceRoots.Length == 0)
+            return Array.Empty<string>();
+        foreach (var root in sourceRoots)
             CollectDeviceIds(root, excluded);
 
         var seen = new HashSet<string>(StringComparer.Ordinal);
