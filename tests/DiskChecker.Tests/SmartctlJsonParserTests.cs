@@ -294,4 +294,49 @@ public class SmartctlJsonParserTests
         Assert.Equal(3, result.PendingSectorCount);
         Assert.Equal(2, result.UncorrectableErrorCount);
     }
+
+    [Fact]
+    public void Parse_CorruptAtaDiagnostics_DoesNotPresentCountersAsTrusted()
+    {
+        var json = """
+            {"smart_status":{"passed":false},"user_capacity":{"blocks":156312576,"bytes":80032038912},
+             "ata_smart_attributes":{"table":[
+                 {"id":204,"value":200,"worst":77,"thresh":59,"raw":{"value":10}},
+                 {"id":204,"value":25,"worst":248,"thresh":59,"raw":{"value":11}},
+                 {"id":198,"raw":{"value":75569949573140}}]},
+             "ata_smart_self_test_log":{"standard":{"table":[{"num":1,"status":{"value":94},"lba":890857416}]}}}
+            """;
+        var result = SmartctlJsonParser.Parse(json);
+        Assert.NotNull(result);
+        Assert.NotEmpty(result.DiagnosticIssues);
+        var smart = SmartctlJsonParser.ToSmartaData(result);
+        Assert.True(smart.IsDiagnosticInvalid);
+        Assert.False(smart.IsHealthy);
+        Assert.Null(smart.ReallocatedSectorCount);
+        Assert.Null(smart.PendingSectorCount);
+        Assert.Null(smart.UncorrectableErrorCount);
+        Assert.Null(result.CurrentSelfTest);
+        Assert.Contains("undetermined", smart.FailurePrediction);
+    }
+
+    [Fact]
+    public void Parse_AtaRunningSelfTest_DecodesLowNibbleAsTensOfPercent()
+    {
+        var result = SmartctlJsonParser.Parse("""
+            {"smart_status":{"passed":true},"ata_smart_data":{"self_test":{"status":{"value":249,"string":"Self-test routine in progress"}}}}
+            """);
+        Assert.NotNull(result);
+        Assert.NotNull(result.CurrentSelfTest);
+        Assert.Equal(90, result.CurrentSelfTest.RemainingPercent);
+        Assert.Empty(result.DiagnosticIssues);
+    }
+
+    [Fact]
+    public void Parse_AtaHealthFailure_IsNotAnActiveSelfTest()
+    {
+        var result = SmartctlJsonParser.Parse("""{"smart_status":{"passed":false}}""");
+        Assert.NotNull(result);
+        Assert.Null(result.CurrentSelfTest);
+        Assert.False(SmartctlJsonParser.ToSmartaData(result).IsDiagnosticInvalid);
+    }
 }
