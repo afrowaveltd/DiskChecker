@@ -183,7 +183,7 @@
                             <DataGridTextColumn Header="{Binding L[DiskCardDetailView.Flags]}" Binding="{Binding DiagnosticFlagsText}" Width="120"/>
                             <DataGridTextColumn Header="{Binding L[DiskCardDetailView.Sectors]}" Binding="{Binding SectorsTested}" Width="80"/>
                             <DataGridTextColumn Header="{Binding L[DiskCardDetailView.Errors]}" Binding="{Binding ErrorCount}" Width="60"/>
-                            <DataGridTextColumn Header="{Binding L[DiskCardDetailView.Temperature]}" Binding="{Binding Temperature, StringFormat={}{0}°C}" Width="80"/>
+                            <DataGridTextColumn Header="{Binding L[DiskCardDetailView.Temperature]}" Binding="{Binding TemperatureDisplay}" Width="80"/>
                             <DataGridTextColumn Header="{Binding L[DiskCardDetailView.Throttle]}" Binding="{Binding ThermalThrottlingText}" Width="90"/>
                             <DataGridTextColumn Header="{Binding L[DiskCardDetailView.Duration]}" Binding="{Binding Duration, StringFormat={}{0} min}" Width="70"/>
                             <DataGridTextColumn Header="{Binding L[DiskCardDetailView.Notes]}" Binding="{Binding Notes}" Width="*"/>
